@@ -149,3 +149,42 @@ export function crossModelLabelWarning(models: string[], flaggedCount: number): 
   return `⚠️ ${flaggedCount} result(s) marked ⚠️ are owned by other models (${list}) — each resolves ` +
     `only if your model references that package; otherwise xppbp reports BPErrorUnknownLabel.`;
 }
+
+/**
+ * Is this the raw display text an author typed, rather than a label reference?
+ *
+ * A `@…` value is already a reference and is written verbatim — that is the
+ * escape hatch every auto-resolution path leaves open. Everything else that is
+ * non-empty is text xppbp will reject with `BPErrorLabelIsText`, so it is a
+ * candidate for resolve-or-create.
+ */
+export function isRawLabelText(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && !value.trim().startsWith('@');
+}
+
+/** How many words a derived label id keeps — enough to stay readable, short enough to stay an id. */
+const MAX_DERIVED_LABEL_WORDS = 6;
+/** And how many characters, so a long sentence cannot become a 200-char id. */
+const MAX_DERIVED_LABEL_CHARS = 40;
+
+/**
+ * Label text → the label id that NAMES it: "Credit limit" → "CreditLimit".
+ *
+ * Label ids describe MEANING, so the text itself is the only honest source for
+ * one — never the object being labelled, which is what produces the prefixed
+ * ids the create schema rejects ("ContosoExtInvoiceDate").
+ *
+ * Diacritics are folded rather than dropped because the id alphabet is
+ * `^[A-Za-z][A-Za-z0-9_]*$` (CreateLabelArgsSchema): "Kvalität" must become
+ * "Kvalitat", not "Kvalitt". Returns '' when nothing usable is left, which the
+ * caller reads as "cannot derive an id — leave the text alone".
+ */
+export function deriveLabelIdFromText(text: string): string {
+  const folded = (text ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const words = folded.split(/[^A-Za-z0-9]+/).filter(Boolean).slice(0, MAX_DERIVED_LABEL_WORDS);
+  let id = words.map(w => w[0].toUpperCase() + w.slice(1)).join('');
+  // An id must START with a letter; a text like "1st line" would otherwise
+  // produce "1StLine", which the schema rejects.
+  if (/^\d/.test(id)) id = `L${id}`;
+  return id.slice(0, MAX_DERIVED_LABEL_CHARS);
+}

@@ -19,7 +19,10 @@ export const getObjectInfoTool = {
           items: {
             type: 'object',
             properties: {
-              objectType: { type: 'string', enum: [...OBJECT_INFO_TYPES], description: 'Kind of object to read' },
+              // Enum deliberately NOT repeated — same values as the top-level
+              // `objectType` below, and zod is what validates the call. The
+              // second copy was only documentation, at ~260 chars per session.
+              objectType: { type: 'string', description: 'Kind of object to read — same values as the top-level `objectType`.' },
               objectName: { type: 'string', description: 'Exact object name.' },
               options: { type: 'object', description: 'Optional type-specific flags for this object; overrides the top-level options.' },
             },

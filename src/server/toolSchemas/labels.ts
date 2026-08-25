@@ -7,10 +7,10 @@
 export const labelsTool = {
     name: 'labels',
     description:
-      'Unified label operations — read and write. Choose an `action`:\n' +
-      '• search → full-text query across indexed label files.\n' +
+      'Unified label operations — read and write. Writing an object? d365fo_file create/modify already turn a raw-text label/fieldLabel into a real @Ref by themselves; no call here is needed. Choose an `action`:\n' +
+      '• search → full-text query across indexed label files. Never needed before a create.\n' +
       '• info → all translations for a labelId; without labelId lists label files (with labelFileId: physical .label.txt path per language).\n' +
-      '• create → add a new label to an AxLabelFile across every language .label.txt (write). Label IDs describe MEANING — never add a model prefix; target the model\'s ORIGINAL label file, never an …_Extension… file. Pass createIfMissing=true to reuse an existing label instead of reporting it — one call, no search first. Bulk: pass labels:[{labelId, translations}, …] with shared labelFileId/model at top level.\n' +
+      '• create → add a label to an AxLabelFile across every language .label.txt (write). ALWAYS pass createIfMissing=true: it creates when absent and reuses when present, so this ONE call replaces search-then-create. Bulk: labels:[{labelId, translations}, …] with shared labelFileId/model at top level does a whole object in one call. Label IDs describe MEANING — never a model prefix; target the model\'s ORIGINAL label file, never an …_Extension… one.\n' +
       '• update → overwrite the text of an EXISTING label; same args as create with corrected translations[] (write).\n' +
       '• rename → rename a label ID across .label.txt + X++ + XML + index. Use dryRun=true first (write).\n' +
       'Write plumbing (paths, languages, sortLabels, allowExtensionLabelFile…) is auto-resolved; ' +
@@ -21,12 +21,13 @@ export const labelsTool = {
         params: {
           type: 'object',
           additionalProperties: true,
-          description: 'Optional write plumbing (packagePath, projectPath, languages, sortLabels, allowExtensionLabelFile, …) — all auto-resolved when omitted. Contract: get_knowledge(kind="op-spec", topic="labels").',
+          description: 'Optional write plumbing — the auto-resolved overrides named at the end of the description above.',
         },
+        // No description: the five bullets above already say what each value does,
+        // and restating it here was ~45 chars of the payload per session.
         action: {
           type: 'string',
           enum: ['search', 'info', 'create', 'update', 'rename'],
-          description: 'Label operation to perform.',
         },
         // shared filters
         model: {
@@ -66,7 +67,7 @@ export const labelsTool = {
         labels: {
           type: 'array',
           description:
-            '[create] OPTIONAL bulk mode — create several labels in one call; shared fields (labelFileId, model, languages, paths…) stay at the top level and top-level labelId/translations are ignored. A failed entry does not abort the batch.',
+            '[create] Bulk mode — shared fields stay at the top level (top-level labelId/translations are then ignored); a failed entry does not abort the batch.',
           items: {
             type: 'object',
             properties: {

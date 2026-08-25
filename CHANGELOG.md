@@ -28,7 +28,44 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
-_Nothing released yet._
+### Changed
+- **The published tool surface is 20 tools, down from 23.** Every tool schema is
+  sent on every request, so a merge only pays when the merged description is
+  shorter than the sum of the parts. Three were, and each fold went into the tool
+  that already owned the subject and already had the parameter:
+  - `undo_last_modification` → **`d365fo_file(action="undo", filePath)`**.
+    `filePath` was already there, the tool is already annotated destructive, and
+    the warning that carried the tool — *git checkout HEAD discards ALL
+    uncommitted changes to that file, not just the last edit* — moved with it.
+  - `review_workspace_changes` → **`get_workspace_info(changes=true)`**. Both were
+    local, read-only and about the same workspace. The description was corrected
+    in the move: the retired tool advertised "BP violations, missing labels, CoC
+    patterns" and its handler only ever ran `git diff HEAD --unified=3`. It also
+    no longer needs a directory argument (it derives one from the workspace) and
+    says plainly that there is nothing to show when the workspace is not a git
+    work tree, instead of failing — 2 of its 7 recorded real calls failed exactly
+    that way.
+  - `trigger_db_sync` → **`build_d365fo_project(dbSync)`**, mirroring the existing
+    `bpCheck` knob: a sync always follows a successful build, so it should not
+    cost a second round trip. `dbSync: true` syncs the project's syncable
+    objects (full-model when it has none); `dbSync: ["CustTable"]` syncs exactly
+    those.
+- Schema trims paying for the folds: `get_object_info` stopped inlining the
+  object-type enum a second time inside `objects[]`, four discriminator
+  parameters stopped restating the bullet list their own tool description already
+  carries (`generate_object.mode`, `security_info.mode`, `object_patterns.domain`,
+  `validate_code.mode`), and `update_symbol_index` dropped the half of its
+  description that had become an essay. `ListTools` fell from 48,019 to 44,932
+  characters.
+
+### Breaking
+- **`undo_last_modification`, `review_workspace_changes` and `trigger_db_sync` are
+  no longer published.** Any prompt, instruction file or `MCP_EXTRA_TOOLS` list
+  that names one must be updated to the folded form above; this repo's own
+  `.github/copilot-instructions.md` and system prompt were. All three names stay
+  **routable**, so an agent still holding one gets its answer rather than an
+  unknown-tool error — and `trigger_db_sync` remains the way to run a partial
+  sync with no rebuild in front of it.
 
 ---
 

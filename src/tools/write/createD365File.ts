@@ -59,6 +59,8 @@ import { buildAxDataEntityViewExtensionXml } from '../xml/dataEntityViewExtensio
 import { buildAxMenuItemExtensionXml, type AxMenuItemExtensionRootElement } from '../xml/menuItemExtensionXml.js';
 import { buildAxServiceXml, buildAxServiceGroupXml } from '../xml/serviceXml.js';
 import { recordCreatedArtifact } from '../../workspace/createdArtifactLedger.js';
+import { resolveOrCreateLabelRef, type AutoLabelTarget } from './createLabel.js';
+import { isRawLabelText } from '../../utils/labelReference.js';
 import { sayOncePerSession } from '../../utils/repeatedNotes.js';
 import {
   reconcileTableCreateProperties,
@@ -274,6 +276,16 @@ const CreateD365FileArgsSchema = z.object({
     .record(z.string(), z.any())
     .optional()
     .describe('Additional properties for the object (extends, implements, etc.)'),
+  autoCorrect: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe(
+      'Apply a correction the server has already fully determined instead of reporting it — currently ' +
+      'resolving a raw-text `label` to an existing or newly created @LabelFile:Id, reported as a ' +
+      '"Note:" line. Same spelling and meaning as the modify path\'s autoCorrect. Set false for strict ' +
+      'behaviour: the raw text is written as passed and comes back as a BPErrorLabelIsText advisory.'
+    ),
   addToProject: z
     .boolean()
     .optional()
@@ -3247,6 +3259,73 @@ export function normalizeEnumValuesAlias(
 }
 
 /**
+ * Collections on `properties` whose entries carry a `label` of their own, and
+ * what one entry is called in the note the caller reads back.
+ *
+ * `fields` is the one that matters: the corpus shape was a table with three
+ * labelled fields costing three search/info/create rounds of `labels` before the
+ * create could even be attempted.
+ */
+const LABELLED_COLLECTIONS: Array<{ key: string; singular: string }> = [
+  { key: 'fields', singular: 'field' },
+  { key: 'fieldGroups', singular: 'field group' },
+  { key: 'enumValues', singular: 'enum value' },
+];
+
+/**
+ * Replace every raw-text `label` under `properties` with a real label reference,
+ * reusing an existing label when one already carries that exact text.
+ *
+ * Mutates in place — `properties` is this call's own parsed object, and every
+ * later reader (bridge params, XML generator, property reconciler) must see the
+ * reference rather than the text. Returns one note per label it touched; a value
+ * that is already an `@Ref` is left alone and produces no note.
+ */
+async function autoResolveRawLabels(
+  properties: Record<string, unknown> | undefined,
+  target: AutoLabelTarget,
+  symbolIndex?: import('../../metadata/symbolIndex.js').XppSymbolIndex,
+): Promise<string[]> {
+  if (!properties) return [];
+  const notes: string[] = [];
+
+  const resolveInto = async (
+    holder: Record<string, unknown>,
+    what: string,
+    enumType?: string,
+  ): Promise<void> => {
+    if (!isRawLabelText(holder.label)) return;
+    const outcome = await resolveOrCreateLabelRef(
+      { text: holder.label as string, what, enumType },
+      target,
+      symbolIndex,
+    );
+    if (!outcome) return;
+    if (outcome.ref) holder.label = outcome.ref;
+    notes.push(outcome.note);
+  };
+
+  await resolveInto(properties, 'Label');
+
+  for (const { key, singular } of LABELLED_COLLECTIONS) {
+    const entries = properties[key];
+    if (!Array.isArray(entries)) continue;
+    for (const entry of entries) {
+      if (entry === null || typeof entry !== 'object') continue;
+      const e = entry as Record<string, unknown>;
+      const name = typeof e.name === 'string' ? e.name : undefined;
+      await resolveInto(
+        e,
+        `${singular}${name ? ` "${name}"` : ''}`,
+        typeof e.enumType === 'string' ? e.enumType : undefined,
+      );
+    }
+  }
+
+  return notes;
+}
+
+/**
  * Returns a BP warning string when a `label` property is raw text (not a @File:Id reference).
  * xppbp raises BPErrorLabelIsText for any object-level label that is not a label ID.
  * Use the `labels` tool to find or create a label ID before writing the object.
@@ -3623,6 +3702,35 @@ export async function handleCreateD365File(
     const renameNote = finalObjectName !== args.objectName
       ? `\n🔖 Named \`${finalObjectName}\`, not \`${args.objectName}\` as passed — the model's naming ` +
         `style decides this. The declaration inside the file matches; use this name in later calls.`
+      : '';
+
+    // ── Raw label text → a label reference, before anything is written ───────
+    // Measured over 1,515 real MCP calls: `labels` was called 268 times against
+    // 171 writes, and `labels → labels` was the most frequent consecutive pair in
+    // the corpus (177). The whole of that traffic is search-then-info-then-create,
+    // once per label, in front of a write that already carries the text. Doing it
+    // here costs one index lookup and, at most, the create that was going to
+    // happen anyway — and removes N round trips from every labelled object.
+    //
+    // An `@Ref` the caller passed is never touched, and autoCorrect=false keeps
+    // the old behaviour (raw text written as passed + the BP advisory), the same
+    // opt-out the modify path publishes.
+    const autoLabelNotes = args.autoCorrect !== false && actualModelName
+      ? await timer.time('label auto-resolve', () => autoResolveRawLabels(
+          args.properties as Record<string, unknown> | undefined,
+          {
+            model: actualModelName as string,
+            packagePath: args.packagePath,
+            projectPath: projectPathToUse,
+            solutionPath: solutionPathToUse,
+            addToProject: args.addToProject,
+          },
+          context?.symbolIndex,
+        ))
+      : [];
+    const labelAutoNote = autoLabelNotes.length > 0
+      ? `\n\n${autoLabelNotes.map(n => `📝 Note: ${n}`).join('\n')}\n` +
+        `(Pass autoCorrect=false to have raw label text written as-is and reported as a BP risk instead.)`
       : '';
 
     // Determine object folder based on type
@@ -4257,7 +4365,7 @@ export async function handleCreateD365File(
                     type: 'text',
                     text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create() (Smart)${crossModelNotice}${renameNote}\n` +
                       `📁 ${smartResult.filePath}${projectMsg}\n` +
-                      `🔧 API: ${smartResult.api ?? 'IMetaTableProvider.Create (Smart)'}${bpSummary}${honestyReport}${rawLabelWarning}${verifyNote}${indexNote}${bpNote}` +
+                      `🔧 API: ${smartResult.api ?? 'IMetaTableProvider.Create (Smart)'}${bpSummary}${honestyReport}${rawLabelWarning}${labelAutoNote}${verifyNote}${indexNote}${bpNote}` +
                       validateWrittenXpp(sourceAsWritten(args.sourceCode, finalObjectName)),
                   },
                 ],
@@ -4365,7 +4473,7 @@ export async function handleCreateD365File(
                 type: 'text',
                 text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create()${crossModelNotice}${renameNote}\n` +
                   `📁 ${bridgeResult.filePath}${projectMsg}\n` +
-                  `🔧 API: ${bridgeResult.message}${honestyReport}${rawLabelWarning}${verifyNote}${indexNote}${bpNote}${xppRuleNote}${timer.render()}`,
+                  `🔧 API: ${bridgeResult.message}${honestyReport}${rawLabelWarning}${labelAutoNote}${verifyNote}${indexNote}${bpNote}${xppRuleNote}${timer.render()}`,
               },
             ],
           };
@@ -4776,6 +4884,7 @@ export async function handleCreateD365File(
             bridgeFallbackNote +
             tableHonestyReport +
             rawLabelBpWarning(args.properties, finalObjectName) +
+            labelAutoNote +
             extensibleEnumOrderingWarning(args.objectType, args.properties, finalObjectName) +
             projectMessage +
             verifyNote +

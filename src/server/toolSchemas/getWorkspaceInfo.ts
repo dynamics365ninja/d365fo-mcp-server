@@ -2,6 +2,12 @@
  * MCP tool definition for `get_workspace_info` (name/description/inputSchema),
  * extracted verbatim from mcpServer.ts. Serialized payload must not change
  * unintentionally — tests/utils/toolSchemaBudget.test.ts ratchets its size.
+ *
+ * `changes` was folded in from the retired `review_workspace_changes` tool.
+ * Both were LOCAL, read-only and about the same workspace, and the retired
+ * tool's published description promised "BP violations, missing labels, CoC
+ * patterns" while its handler only ever ran `git diff HEAD --unified=3` and
+ * appended undo hints. The knob below describes what it actually returns.
  */
 
 export const getWorkspaceInfoTool = {
@@ -17,6 +23,11 @@ export const getWorkspaceInfoTool = {
         projectPath: {
           type: 'string',
           description: 'Absolute path to a .rnrproj file. Fallback when projectName is ambiguous or D365FO_SOLUTIONS_PATH is not configured. Example: "K:\\\\repos\\\\Contoso\\\\MyProject\\\\MyProject.rnrproj"',
+        },
+        changes: {
+          type: 'boolean',
+          default: false,
+          description: 'Return the uncommitted X++ changes (`git diff HEAD`) plus per-file rollback hints INSTEAD of the configuration. Review-only — not a way to verify a write.',
         },
         diagnostics: {
           type: 'boolean',

@@ -33,11 +33,8 @@ export const LOCAL_TOOLS = new Set([
   'verify_d365fo_project',
   'update_symbol_index',
   'build_d365fo_project',
-  'trigger_db_sync',
   'run_bp_check',
   'run_systest_class',
-  'review_workspace_changes',
-  'undo_last_modification',
   'get_workspace_info',
 ]);
 
@@ -107,9 +104,10 @@ export function isToolAllowedInMode(mode: ServerMode, toolName: string): boolean
  *  - run_systest_class → test execution, a separate phase (and gated behind an
  *                      interactive console on most boxes).
  *
- * generate_object and trigger_db_sync are kept IN core against the raw
- * never-called list from the audit: scaffolding is load-bearing for the create
- * path, and a table change is not finished until the DB is synchronised.
+ * generate_object is kept IN core against the raw never-called list from the
+ * audit: scaffolding is load-bearing for the create path. The database sync is
+ * still in core too — it just travels as build_d365fo_project(dbSync) now,
+ * because a table change is not finished until the DB is synchronised.
  */
 export const CORE_TOOLS = new Set([
   // ground + discover
@@ -125,14 +123,11 @@ export const CORE_TOOLS = new Set([
   'generate_object',
   'd365fo_file',
   'labels',
-  'undo_last_modification',
   // build + verify
   'update_symbol_index',
   'build_d365fo_project',
-  'trigger_db_sync',
   'run_bp_check',
   'verify_d365fo_project',
-  'review_workspace_changes',
 ]);
 
 /**

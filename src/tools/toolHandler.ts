@@ -310,9 +310,13 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         return findReferencesTool(request, context);
       // get_method and suggest_edt are no longer PUBLISHED (their contracts moved
       // into get_object_info options.method and prepare's fieldsHint, which both
-      // already had the object in hand). The routes stay so an agent still holding
-      // the old name from an earlier session gets its answer plus a pointer,
-      // rather than an "unknown tool" it cannot recover from.
+      // already had the object in hand). Same for undo_last_modification,
+      // review_workspace_changes and trigger_db_sync, folded into
+      // d365fo_file(action="undo"), get_workspace_info(changes=true) and
+      // build_d365fo_project(dbSync) respectively. The routes stay so an agent
+      // still holding the old name from an earlier session gets its answer,
+      // rather than an "unknown tool" it cannot recover from — and, for
+      // trigger_db_sync, so a partial sync with no rebuild stays reachable.
       case 'get_method':
         return getMethodTool(request, context);
       case 'labels':

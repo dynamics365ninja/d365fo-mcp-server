@@ -1,4 +1,4 @@
-# Tool Reference — 23 tools
+# Tool Reference — 20 tools
 
 Every tool the server exposes, grouped by purpose. The AI agent picks tools automatically — the *example prompts* show what to ask to trigger them; you never name tools yourself.
 
@@ -6,7 +6,7 @@ Every tool the server exposes, grouped by purpose. The AI agent picks tools auto
 
 > **C# bridge first:** on Windows D365FO VMs, the bridge-backed read tools (marked †) query the live `IMetadataProvider` (always-fresh metadata) and `DYNAMICSXREFDB` (compiler-resolved cross-references), falling back to SQLite transparently on Azure/Linux. All write operations go exclusively through the bridge. See [ARCHITECTURE.md](ARCHITECTURE.md).
 >
-> **Server modes:** `full` = all 23 tools · `read-only` (Azure) = search/analysis only · `write-only` (hybrid companion) = file operations + bridge-backed reads. Independently, **`MCP_TOOL_PROFILE=core`** publishes only the 18-tool create-and-build loop, for workspaces that already run other MCP servers. See [MCP_CONFIG.md](MCP_CONFIG.md).
+> **Server modes:** `full` = all 20 tools · `read-only` (Azure) = search/analysis only · `write-only` (hybrid companion) = file operations + bridge-backed reads. Independently, **`MCP_TOOL_PROFILE=core`** publishes only the 15-tool create-and-build loop, for workspaces that already run other MCP servers. See [MCP_CONFIG.md](MCP_CONFIG.md).
 
 ---
 
@@ -50,7 +50,7 @@ flowchart LR
 
 † = bridge-first on Windows D365FO VMs
 
-## 📊 Advanced Object Info (3)
+## 📊 Advanced Object Info (2)
 
 One unified reader covers every object type via `objectType`; type-specific flags go in `options`.
 
@@ -76,7 +76,7 @@ One unified tool covers all label operations via `action` (mirrors the `get_obje
 | `get_knowledge` | `kind="knowledge"` — queryable X++ rulebook: select grammar, CoC, SysDa, FormRun lifecycle, form patterns, reading Excel/CSV files, parallel batch, direct SQL, AX2012→D365FO migration · `kind="error"` — compiler / runtime / BP errors explained with concrete fixes · `kind="op-spec"` — the parameter contract for one `d365fo_file` operation/objectType or one `generate_object` mode (`topic="add-index"`, `"table"`, `"scaffold:form"`, …); those two tools keep their parameters out of the wire schema, so this is where they come from. `topics: ["add-index", "add-field"]` answers SEVERAL lookups in one call (max 10) — a run typically needs 4-8 contracts and used to spend a round trip on each | *"What are the rules for crossCompany selects?"* · *"How do I read an uploaded Excel file in X++?"* · *"Explain error 'object not initialized' in batch"* |
 | `analyze_code` † | `mode="patterns"` — common patterns for a scenario · `mode="implementations"` — real implementations of a similar method · `mode="completeness"` — missing standard methods on a class · `mode="api-usage"` — how an API is initialized and called (compiler-resolved callers) | *"How are number sequences usually implemented here?"* · *"How do other classes implement validateWrite?"* · *"What standard methods is my service class missing?"* |
 
-## 🎨 Code Generation (2)
+## 🎨 Code Generation (1)
 
 | Tool | What it does | Example prompt |
 |------|--------------|----------------|
@@ -90,12 +90,11 @@ One unified tool covers all label operations via `action` (mirrors the `get_obje
 |------|--------------|----------------|
 | `object_patterns` | `domain="table"` — field/index/relation patterns for table groups · `domain="form"` — form-pattern toolkit: `action="analyze"` (pattern advisor via `recommend={entityKind, fieldCount, usageIntent, tableName}` → right pattern + reference forms; also analyzes existing forms), `action="spec"` (full pattern spec: required containers/ordering, sub-patterns, versions, lifecycle), `action="validate"` (structural validation FP001–FP010; errors **block form writes** via `FORM_PATTERN_ENFORCE`), `action="repair"` (auto-fill a form's **missing required controls** from its declared pattern — turns the FP003 report into a fix; existing controls preserved verbatim) | *"What do parameter tables typically look like?"* · *"Which form pattern fits a header+lines order entity?"* · *"Validate this form XML before I create it"* · *"Repair the missing controls on MyInquiryForm"* |
 
-## 📝 File Operations (2)
+## 📝 File Operations (1)
 
 | Tool | What it does | Example prompt |
 |------|--------------|----------------|
-| `d365fo_file` | `action=create` — create any of 39 AOT object types in the correct location + register in `.rnrproj` (gated by grounding token and form-pattern validation) · `action=modify` — safe metadata edits via the C# bridge, 38 operations: add-field, add-control, remove-control, add-entry-point, add-method, replace-code, modify-property, …; op-specific parameters go in a single `params` object (flat top-level keys still accepted) and come from `get_knowledge(kind="op-spec", topic="<operation>")` — the per-objectType `properties` contract for `action=create` from `topic="<objectType>"` — while a missing/wrong parameter returns that same complete per-op spec (error-driven guidance, source: `d365foFileOpSpecs.ts`) · `operations: [{operation, …}]` (max 20) applies SEVERAL edits to the same object in ONE call — on `action=modify` and on `action=create`, where they run against the object just created under the name it ACTUALLY got. Applied in order, stopped at the first failure, and each section of the report is capped so one call cannot return a context window · `action=delete` — remove an object's XML and un-register it from every `.rnrproj` of the model that lists it (irreversible; guarded against standard-model and cross-model targets) · `action=generate` — XML preview without writing (cloud-friendly) | *"Create the class file in my project"* · *"Add the field to the General tab of the form extension"* · *"Show me the XML for this enum without creating it"* |
-| `undo_last_modification` | Revert the last write: checkout HEAD or delete untracked file (also re-syncs the symbol index) | *"Undo that last change"* |
+| `d365fo_file` | `action=create` — create any of 39 AOT object types in the correct location + register in `.rnrproj` (gated by grounding token and form-pattern validation) · `action=modify` — safe metadata edits via the C# bridge, 38 operations: add-field, add-control, remove-control, add-entry-point, add-method, replace-code, modify-property, …; op-specific parameters go in a single `params` object (flat top-level keys still accepted) and come from `get_knowledge(kind="op-spec", topic="<operation>")` — the per-objectType `properties` contract for `action=create` from `topic="<objectType>"` — while a missing/wrong parameter returns that same complete per-op spec (error-driven guidance, source: `d365foFileOpSpecs.ts`) · `operations: [{operation, …}]` (max 20) applies SEVERAL edits to the same object in ONE call — on `action=modify` and on `action=create`, where they run against the object just created under the name it ACTUALLY got. Applied in order, stopped at the first failure, and each section of the report is capped so one call cannot return a context window · `action=delete` — remove an object's XML and un-register it from every `.rnrproj` of the model that lists it (irreversible; guarded against standard-model and cross-model targets) · `action=undo` — roll `filePath` back: git-tracked → `git checkout HEAD`, which discards ALL uncommitted changes to that file, not just the last edit; untracked → deleted; the symbol/label index is re-synced either way · `action=generate` — XML preview without writing (cloud-friendly) | *"Create the class file in my project"* · *"Add the field to the General tab of the form extension"* · *"Show me the XML for this enum without creating it"* · *"Undo that last change"* |
 
 ## 🔐 Security & Extensions (5)
 
@@ -104,28 +103,26 @@ One unified tool covers all label operations via `action` (mirrors the `get_obje
 | `security_info` | `mode="artifact"` — privilege / duty / role details + full hierarchy · `mode="coverage"` — which roles reach a form/table/menu item (Role → Duty → Privilege → Entry Point) + OLS policies | *"What does the duty VendPaymentTermsMaintain contain?"* · *"Who has access to the VendPaymTerms form?"* |
 | `extension_info` † | Unified extensibility analyzer. `mode="coc"` — existing CoC wrappers of a method (**check before writing a new one**) · `mode="events"` — all `[SubscribesTo]` handlers for an event · `mode="table-merge"` — all extensions of a table (fields, indexes, methods) + effective merged schema · `mode="points"` — CoC-eligible methods, delegates, events on an object · `mode="strategy"` — best extensibility mechanism for a goal | *"Is SalesFormLetter.run already wrapped by CoC?"* · *"What subscribes to CustTable onInserted?"* · *"What fields have we added to CustTable?"* · *"What can I extend on SalesFormLetter?"* · *"How should I customize sales confirmation posting?"* |
 | `validate_object_naming` | Naming conventions + symbol-index collision check | *"Is MY_VendPaymTermsMaintain a valid name?"* |
-| `get_workspace_info` | Detected paths, model, project, server mode + **index staleness warning** — call first in every session | *"Check my workspace configuration"* |
+| `get_workspace_info` | Detected paths, model, project, server mode + **index staleness warning** — call first in every session · `changes: true` returns the uncommitted X++ diff (`git diff HEAD`) plus per-file rollback hints instead of the configuration, and says so plainly when the workspace is not a git work tree | *"Check my workspace configuration"* · *"Review my changes"* |
 | `verify_d365fo_project` | Objects exist on disk and in the `.rnrproj` | *"Verify everything we created is in the project"* |
 
-## 🏗️ SDLC & Build (5)
+## 🏗️ SDLC & Build (4)
 
 > Local-only — require a Windows D365FO VM; excluded from the Azure `read-only` mode.
 
 | Tool | What it does | Example prompt |
 |------|--------------|----------------|
-| `build_d365fo_project` | MSBuild compilation with structured xppc diagnostics (severity, object, line, fix hints for the first errors). `bpCheck: true` appends the best-practice report to a GREEN build, saving the usual follow-up `run_bp_check`; advisory, never fails the build. A green build returns its diagnostics and summary rather than the raw phase-timing table | *"Build the project and show the errors"* |
-| `trigger_db_sync` | Database sync for the current model | *"Sync the database"* |
+| `build_d365fo_project` | MSBuild compilation with structured xppc diagnostics (severity, object, line, fix hints for the first errors). `bpCheck: true` appends the best-practice report to a GREEN build, saving the usual follow-up `run_bp_check`; advisory, never fails the build. `dbSync: true` runs the database sync (SyncEngine.exe) on a GREEN build — partial over the project's syncable objects, full-model when it has none; `dbSync: ["CustTable"]` syncs exactly those. Also advisory. A green build returns its diagnostics and summary rather than the raw phase-timing table | *"Build the project and show the errors"* · *"Build and sync the database"* |
 | `run_bp_check` | Microsoft Best Practices (xppbp.exe) analysis — `objects: [{objectType, objectName}]` checks several objects in one call (shared preamble once, findings grouped per object) | *"Run a BP check on my model"* · *"BP check the table, its extension class and the enum"* |
 | `run_systest_class` | Execute SysTest unit tests via SysTestConsole.exe (requires an interactive console session) | *"Run the MyServiceTest class"* |
 | `update_symbol_index` | Re-index file(s) changed **outside** this server, without a restart — `d365fo_file` create/modify already refresh the index themselves, so no follow-up call is needed after a write | *"I edited that table in Visual Studio — re-index it"* |
 
-## ✅ Quality & Grounding (3)
+## ✅ Quality & Grounding (2)
 
 | Tool | What it does | When it runs |
 |------|--------------|--------------|
 | `prepare` | `mode="change"` — one call before extending: signature + existing CoC wrappers + eligibility + strategy + **grounding token** · `mode="create"` — one call before creating: collision check + naming + EDT/label suggestions + property defaults + **grounding token** | automatically, before modifications / new objects |
 | `validate_code` | `mode="both"` — runs both checks below in ONE call and merges them; prefer it, since both are wanted before every write · `mode="references"` — proves every type/field/method/label in generated code against the index (anti-hallucination gate) · `mode="syntax"` — offline BP validator, < 50 ms: deprecated APIs, CoC correctness, select anti-patterns, data-driven XML property rules mined from standard models | automatically, after generation |
-| `review_workspace_changes` | AI code review of uncommitted X++ changes (git diff) | on request: *"Review my changes"* |
 
 > **Grounding enforcement:** `prepare` issues a SHA-256 provenance token (30-min TTL) **bound to the object it was issued for**. When `GROUNDING_ENFORCE=true` is set in `.env`:
 > - extension patterns in `generate_object(mode="pattern")` and extension objectTypes in `d365fo_file(action="create"/"modify")` require a valid token for the target object, and

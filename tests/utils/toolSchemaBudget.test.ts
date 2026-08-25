@@ -3,7 +3,7 @@
  * payload, which is sent to the model on (at least) every new session and is
  * the server's largest fixed token cost.
  *
- * Rationale: the 23 tool schemas are verbose on purpose (the descriptions encode
+ * Rationale: the 20 tool schemas are verbose on purpose (the descriptions encode
  * hard-won D365FO patterns that prevent failed/retried calls), so the goal is
  * NOT to minimise blindly — it is to make the size *visible and bounded* so it
  * cannot creep upward unnoticed. Lower these ceilings whenever the schema is
@@ -138,7 +138,30 @@ const CHARS_PER_TOKEN = 4;
 // still accepted by their handlers — only the advertisement is gone. Net across
 // the three schemas, measured in isolation against HEAD: 48,904 -> 48,502.
 // Measured payload for the whole tree after: 48_034.
-const TOTAL_BUDGET = 48_100;
+// Lowered again by the same audit's Phase C, which folded three tools into the
+// tools that already owned their subject and paid for the folds with trims —
+// 23 published tools -> 20:
+//   • undo_last_modification -> d365fo_file(action="undo"). `filePath` was
+//     already on d365fo_file, the tool is already annotated destructive, and the
+//     "discards ALL uncommitted changes to the file, not just the last edit"
+//     warning moved with it.
+//   • review_workspace_changes -> get_workspace_info(changes=true). Both LOCAL,
+//     both read-only, both about one workspace. Its published description also
+//     promised "BP violations, missing labels, CoC patterns" while the handler
+//     ran `git diff HEAD --unified=3`; the folded knob says what it returns.
+//   • trigger_db_sync -> build_d365fo_project(dbSync), on the `bpCheck`
+//     precedent: a sync always follows a successful build.
+// Paid for inside the schemas that grew, and then some: d365fo_file bought its
+// `undo` enum value back out of its own prose (5,676 -> 5,649, still the largest
+// tool), get_object_info stopped inlining the object-type enum a second time in
+// objects[] (`search` already solved this the same way), four discriminator
+// parameters stopped restating the bullet list their own tool description
+// carries (generate_object.mode, security_info.mode, object_patterns.domain,
+// validate_code.mode), and update_symbol_index dropped the half of its
+// description that was an essay rather than the two facts the inventory test
+// pins. All three retired names stay ROUTABLE, so an agent holding one still
+// gets an answer. Measured payload after: 44_919.
+const TOTAL_BUDGET = 45_000;
 const LARGEST_TOOL_BUDGET = 5_700;
 
 async function getTools(): Promise<Array<{ name: string }>> {
@@ -159,7 +182,7 @@ describe('tool schema token budget', () => {
       `[tool-budget] ${tools.length} tools · ${chars} chars ≈ ${Math.round(chars / CHARS_PER_TOKEN)} tokens ` +
       `(budget ${TOTAL_BUDGET} chars)`,
     );
-    expect(tools.length).toBe(23);
+    expect(tools.length).toBe(20);
     expect(chars).toBeLessThan(TOTAL_BUDGET);
   });
 

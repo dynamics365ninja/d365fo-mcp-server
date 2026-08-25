@@ -6,6 +6,7 @@
  *   • create   → write a NEW AOT object file into PackagesLocalDirectory (write)
  *   • modify   → edit an EXISTING object via IMetadataProvider (write)
  *   • delete   → remove an object's XML and its .rnrproj registration (write)
+ *   • undo     → roll a file back to HEAD, or delete it when untracked (write)
  *
  * Like `labels`, this mixes a read-capable action (generate works on Azure
  * read-only) with write actions that need local Windows-VM filesystem access;
@@ -21,6 +22,7 @@ import { handleGenerateD365Xml } from './xml/generateD365Xml.js';
 import { handleCreateD365File, type CreateOutcome } from './write/createD365File.js';
 import { handleDeleteD365File } from './write/deleteD365File.js';
 import { modifyD365FileTool, type ModifyOutcome } from './write/modifyD365File.js';
+import { undoLastModificationTool } from './sdlc/undoLastModification.js';
 import { upsertWrittenFileIntoIndex } from './write/inlineIndexUpsert.js';
 import {
   verifyWrittenFile, renderWriteVerification, membershipOf,
@@ -30,7 +32,7 @@ import { resetRecentPrepares } from './prepare/prepare.js';
 import * as debouncedRefresh from '../bridge/debouncedRefresh.js';
 import { truncateOnBlockBoundary } from '../utils/payloadBudget.js';
 
-export const D365_FILE_ACTIONS = ['generate', 'create', 'modify', 'delete'] as const;
+export const D365_FILE_ACTIONS = ['generate', 'create', 'modify', 'delete', 'undo'] as const;
 export type D365FileAction = (typeof D365_FILE_ACTIONS)[number];
 
 const D365FileArgsSchema = z
@@ -38,7 +40,8 @@ const D365FileArgsSchema = z
     action: z.enum(D365_FILE_ACTIONS).describe(
       'generate → XML text only (no file written, Azure/Linux fallback); ' +
       'create → write a NEW object file (Windows); modify → edit an EXISTING object (Windows); ' +
-      'delete → remove an object file and its project registration (Windows).',
+      'delete → remove an object file and its project registration (Windows); ' +
+      'undo → roll a file back to HEAD, or delete it when untracked (Windows).',
     ),
     // Operation-specific parameters may arrive nested in `params` (the published
     // schema advertises only this object) — they are flattened before dispatch.
@@ -398,8 +401,15 @@ export async function d365foFileTool(request: CallToolRequest, context: XppServe
   // A write changes the AOT out from under anything prepare aggregated earlier, so
   // the remembered answers stop being answers. Cleared before the write rather than
   // after: a handler that throws half-way has still touched disk.
-  if (action === 'create' || action === 'modify' || action === 'delete') {
+  if (action === 'create' || action === 'modify' || action === 'delete' || action === 'undo') {
     resetRecentPrepares();
+  }
+
+  // undo: folded in from the retired `undo_last_modification` tool. Routed
+  // before the write actions because it takes only `filePath` — none of the
+  // objectType/objectName plumbing below applies to it.
+  if (action === 'undo') {
+    return undoLastModificationTool(rest, context);
   }
 
   if (action === 'create') {

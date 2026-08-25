@@ -409,7 +409,7 @@ describe('an advisory about the workspace is spelled out once, not per write', (
     const second = textOf(await addIndex('Idx2'));
 
     expect(first).toContain('Target is not under git');
-    expect(first).toContain('undo_last_modification would not work here');
+    expect(first).toContain('d365fo_file(action="undo") would not work here');
     expect(second).not.toContain('Target is not under git');
     // The backup path is what a caller may actually need - never dropped.
     expect(second).toMatch(/Backup: .*\.backup-/);

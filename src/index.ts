@@ -187,7 +187,7 @@ async function initializeServices() {
   // -----------------------------------------------------------------------
   // write-only mode: skip all database/symbol work — the LOCAL_TOOLS set
   // (src/server/serverMode.ts; d365fo_file, build_d365fo_project,
-  //  verify_d365fo_project, undo_last_modification, get_workspace_info, …)
+  //  verify_d365fo_project, run_bp_check, get_workspace_info, …)
   //  only needs the config manager for path resolution, not the 1.5 GB symbol
   //  database. Read the set from serverMode.ts rather than trusting this list.
   // -----------------------------------------------------------------------
@@ -837,7 +837,7 @@ async function main() {
           { name: 'generate_object',                     desc: 'mode=pattern (named X++ skeleton) | scaffold (whole table/form/report)' },
         ]},
         { icon: '📝', category: 'File & Metadata Operations', tools: [
-          { name: 'd365fo_file',                  desc: 'action=create|modify|generate — write/edit AOT objects or emit XML (cloud)' },
+          { name: 'd365fo_file',                  desc: 'action=create|modify|delete|undo|generate — write/edit/roll back AOT objects or emit XML (cloud)' },
         ]},
         { icon: '📈', category: 'Pattern Analysis', tools: [
           { name: 'object_patterns',                     desc: 'domain=table|form — table field/index patterns, or form-pattern toolkit (analyze/spec/validate)' },
@@ -846,19 +846,14 @@ async function main() {
           { name: 'security_info',                desc: 'mode=artifact|coverage — Privilege/Duty/Role chain, or who can access an object' },
           { name: 'extension_info',                desc: 'mode=coc|events|table-merge|points|strategy — CoC/event-handler/extension analysis + strategy advice' },
           { name: 'validate_object_naming',       desc: 'Validate proposed extensions and object names against D365FO conventions' },
-          { name: 'get_workspace_info',           desc: 'Detected workspace paths, model name, project file, and server mode' },
+          { name: 'get_workspace_info',           desc: 'Detected workspace paths, model name, project file, and server mode; changes=true returns the uncommitted git diff' },
           { name: 'verify_d365fo_project',        desc: 'Verify objects exist on disk and are referenced in the .rnrproj project file' },
         ]},
         { icon: '🏗️ ', category: 'SDLC & Build Tools', tools: [
           { name: 'update_symbol_index',          desc: 'Re-index a file changed outside this server (create/modify refresh it themselves)' },
-          { name: 'build_d365fo_project',         desc: 'Run MSBuild compilation locally to capture errors' },
-          { name: 'trigger_db_sync',              desc: 'Run a database sync for the current model' },
+          { name: 'build_d365fo_project',         desc: 'Compile the model locally; bpCheck/dbSync fold the BP check and the database sync into the same call' },
           { name: 'run_bp_check',                 desc: 'Run Microsoft Best Practices (xppbp.exe) analysis' },
           { name: 'run_systest_class',            desc: 'Execute unit tests using SysTestConsole.exe' },
-        ]},
-        { icon: '🔄', category: 'Code Review & Source Control', tools: [
-          { name: 'review_workspace_changes',     desc: 'AI-based D365FO code review on uncommitted X++ changes (git diff)' },
-          { name: 'undo_last_modification',       desc: 'Safely revert last file change: checkout HEAD or delete untracked file' },
         ]},
         { icon: '🧪', category: 'Code Quality & Grounding', tools: [
           { name: 'validate_code',                     desc: 'mode=syntax (offline BP validator, SEL/COC/BP/TTS/XML) | references (semantic symbol resolver vs index)' },

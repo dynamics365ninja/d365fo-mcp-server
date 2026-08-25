@@ -946,7 +946,7 @@ MyRentEquipmentId newId = numSeq.num();
       'Data sources: add via d365fo_file(action="modify", operation="add-data-source")',
       'NEVER use PowerShell or read_file to inspect form XML — use get_object_info(objectType="form", name=...)',
       'A user-provided example form is a PATTERN CONTRACT: read it with get_object_info(objectType="form", name=...), keep the same pattern family, and verify the generated form keeps the required scaffolding (datasources, design pattern/version, ActionPane/Body/Tab/FastTab/grid/QuickFilter) — missing pattern elements are a failed generation even if the XML is well-formed',
-      'Edits must be additive: never drop unrelated <Controls>, <DataSources>, <DataSourceModifications>, methods, or pattern metadata — use targeted d365fo_file(action="modify") operations and verify the diff with review_workspace_changes afterwards',
+      'Edits must be additive: never drop unrelated <Controls>, <DataSources>, <DataSourceModifications>, methods, or pattern metadata — use targeted d365fo_file(action="modify") operations and verify the diff with get_workspace_info(changes=true) afterwards',
     ],
     related: ['coc', 'event-handlers', 'formrun-lifecycle'],
   },

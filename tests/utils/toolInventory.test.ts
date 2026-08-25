@@ -30,11 +30,15 @@ describe('tool inventory contract', () => {
   });
 
   it('exposes the expected total tool count', () => {
-    // 23 since get_method and suggest_edt were unpublished: their contracts moved
-    // into get_object_info(options.method) and prepare(fieldsHint), both of which
-    // already had the object in hand. Their handlers stay routable.
-    expect(mcpServerToolNames).toHaveLength(23);
-    expect(startupCatalogToolNames).toHaveLength(23);
+    // 20 since the 2026-08-25 audit's Phase C folded three more tools into the
+    // tools that already owned their subject: undo_last_modification ->
+    // d365fo_file(action="undo"), review_workspace_changes ->
+    // get_workspace_info(changes=true), trigger_db_sync ->
+    // build_d365fo_project(dbSync). Before that, get_method and suggest_edt were
+    // unpublished into get_object_info(options.method) and prepare(fieldsHint).
+    // Every one of those handlers stays routable under its old name.
+    expect(mcpServerToolNames).toHaveLength(20);
+    expect(startupCatalogToolNames).toHaveLength(20);
   });
 
   it('never states a tool count that disagrees with the published inventory', () => {
@@ -116,7 +120,12 @@ describe('tool inventory contract', () => {
     //
     // MCP_TOOLS.md and CHANGELOG.md are excluded on purpose: they are where the
     // retirement is documented, so naming the old tool there is the point.
-    const retiredButRoutable = ['get_method', 'suggest_edt', 'batch_get_info'];
+    const retiredButRoutable = [
+      'get_method', 'suggest_edt', 'batch_get_info',
+      // Phase C of the 2026-08-25 audit — folded into d365fo_file(action="undo"),
+      // get_workspace_info(changes=true) and build_d365fo_project(dbSync).
+      'undo_last_modification', 'review_workspace_changes', 'trigger_db_sync',
+    ];
     const readerFacing = [
       'README.md',
       '.github/copilot-instructions.md',
@@ -150,7 +159,11 @@ describe('tool inventory contract', () => {
       expect(publishedTools.has(toolName)).toBe(true);
     }
 
-    expect(LOCAL_TOOLS.size).toBe(9);
+    // 6, not 9: review_workspace_changes and undo_last_modification and
+    // trigger_db_sync left the published surface, and each fold landed in a tool
+    // whose locality already covered it (get_workspace_info and
+    // build_d365fo_project are LOCAL; d365fo_file is in ALWAYS_TOOLS).
+    expect(LOCAL_TOOLS.size).toBe(6);
     expect(mcpServerToolNames.filter(name => !LOCAL_TOOLS.has(name))).toHaveLength(14);
   });
 
@@ -247,10 +260,9 @@ describe('tool inventory contract', () => {
 
   it('marks write tools as non-read-only in annotations', () => {
     const writeTools = [
-      'd365fo_file', 'labels',
-      'undo_last_modification', 'generate_object',
+      'd365fo_file', 'labels', 'generate_object',
       'update_symbol_index', 'build_d365fo_project',
-      'trigger_db_sync', 'run_systest_class',
+      'run_systest_class',
     ];
     for (const toolName of writeTools) {
       expect(TOOL_ANNOTATIONS[toolName]?.readOnlyHint, `'${toolName}' must not be read-only`).toBe(false);

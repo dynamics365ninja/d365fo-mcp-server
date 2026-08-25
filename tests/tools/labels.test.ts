@@ -1894,6 +1894,13 @@ describe('labels dispatcher: action aliases + errors', () => {
       ctx,
     );
     // searchText is mapped to query, so the search runs instead of failing validation.
-    expect(r.content?.[0]?.text ?? '').not.toMatch(/expected string, received undefined|missing|required/i);
+    // Matched against the shapes a zod failure actually takes, not the bare words
+    // "missing"/"required" anywhere in the reply: the no-hit advice now names
+    // `createIfMissing` (the one call that replaces search-then-create), and the
+    // old broad regex read that as a validation error.
+    const text = r.content?.[0]?.text ?? '';
+    expect(text).not.toMatch(/expected string, received undefined/i);
+    expect(text).not.toContain('invalid arguments');
+    expect(text).not.toMatch(/\bquery\b[^\n]*\bis required\b/i);
   });
 });

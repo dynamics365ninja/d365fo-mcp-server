@@ -72,7 +72,7 @@ const REDIRECT_ANSWERS: Record<string, string> = {
     'Removes the object XML from disk AND the <Content Include> entry from every .rnrproj of the',
     'model that lists it. Confirm with the user first, and run find_references first — every',
     'remaining reference becomes a compile error. Recovery is only partial: when the model directory',
-    'is under git, undo_last_modification(filePath=…) restores the XML but NOT the project entries.',
+    'is under git, d365fo_file(action="undo", filePath=…) restores the XML but NOT the project entries.',
     '',
     '  REQUIRED objectType (string): the same enum action="create" takes. It must match the AOT',
     '      folder the file actually sits in — a mismatch is refused, because the un-register step',

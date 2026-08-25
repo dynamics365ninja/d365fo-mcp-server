@@ -411,7 +411,7 @@ export async function handleDeleteD365File(
         // the one call already says.
         `\n\nNext: build_d365fo_project — every remaining reference to "${resolvedName}" is now a compile error ` +
         `(find_references lists them).\n` +
-        `Undo (git-backed models only): undo_last_modification(filePath="${filePath}") restores the XML, but not the ` +
+        `Undo (git-backed models only): d365fo_file(action="undo", filePath="${filePath}") restores the XML, but not the ` +
         `project entr${unregistered.length === 1 ? 'y' : 'ies'} removed above — re-add ` +
         `${unregistered.length > 0 ? `\`${axFolder}\\${resolvedName}\` in ${unregistered.join(', ')}` : 'any project entry'} ` +
         `by hand or from source control.`,

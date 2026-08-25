@@ -1103,6 +1103,11 @@ async function renderFinishedBuildResult(
   // green build: when the compile failed, the compiler errors ARE the answer and
   // a BP report on half-built metadata is noise.
   const bpSection = succeeded ? await runPostBuildBpCheck(params, targetModel, context) : '';
+  // Same shape, same reason, for the database sync: a table change is not
+  // finished until AxDB is synchronised, and that sync always follows a
+  // successful build. Gated on `succeeded` for the same reason bpCheck is —
+  // syncing metadata the compiler just rejected is worse than not syncing.
+  const syncSection = succeeded ? await runPostBuildDbSync(params, targetModel, context) : '';
 
   return {
     content: [{
@@ -1111,7 +1116,7 @@ async function renderFinishedBuildResult(
         incrementalScopeCaveat(succeeded, !!finalState.fullBuild) + '\n' +
         (unexplained ? `${unexplained}\n\n` : '') +
         (structured ? `${structured}\n\n` : '') +
-        `${logContent || '(no output)'}` + bpSection,
+        `${logContent || '(no output)'}` + bpSection + syncSection,
     }],
     ...((!succeeded) ? { isError: true } : {}),
   };
@@ -1143,6 +1148,50 @@ async function runPostBuildBpCheck(
     return text ? `\n\n--- Best practices (bpCheck=true) ---\n${text}` : '';
   } catch (e: any) {
     return `\n\n⚠️ bpCheck requested but could not run: ${e?.message ?? e}`;
+  }
+}
+
+/**
+ * Database sync appended to a successful build when `dbSync` is set.
+ *
+ * Folded in from the retired `trigger_db_sync` tool, on the `bpCheck`
+ * precedent above and with the same advisory contract: a sync failure is
+ * reported as a section, never as a failed build, because the compile verdict
+ * already stands.
+ *
+ * `dbSync: true` lets dbSyncTool derive the partial-sync list from the project
+ * (its ordinary behaviour when no `tables` are named); `dbSync: ["CustTable"]`
+ * syncs exactly those.
+ */
+async function runPostBuildDbSync(
+  params: any,
+  targetModel: string,
+  context: any,
+): Promise<string> {
+  const requested = params?.dbSync;
+  const tables = Array.isArray(requested)
+    ? requested.filter((t: unknown) => typeof t === 'string' && t.trim().length > 0)
+    : undefined;
+  if (!Array.isArray(requested) && requested !== true && requested !== 'true') return '';
+  try {
+    const { dbSyncTool } = await import('./dbSync.js');
+    const result: any = await dbSyncTool(
+      {
+        modelName: targetModel,
+        projectPath: params?.projectPath,
+        packagePath: params?.packagePath,
+        ...(tables && tables.length > 0 ? { tables } : {}),
+      },
+      context,
+    );
+    const text = (result?.content ?? [])
+      .filter((c: any) => c?.type === 'text' && typeof c.text === 'string')
+      .map((c: any) => c.text)
+      .join('\n')
+      .trim();
+    return text ? `\n\n--- Database sync (dbSync) ---\n${text}` : '';
+  } catch (e: any) {
+    return `\n\n⚠️ dbSync requested but could not run: ${e?.message ?? e}`;
   }
 }
 

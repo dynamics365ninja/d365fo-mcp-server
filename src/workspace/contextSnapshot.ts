@@ -293,7 +293,7 @@ const COMPACT_RECENT_SHOWN = 3;
  * The same "live" portion as renderContextSnapshotSection, folded into at most
  * two lines for get_workspace_info's default output. Names only enough recent
  * objects to orient the agent — the full list, with timestamps and every
- * uncommitted path, stays behind diagnostics=true and review_workspace_changes.
+ * uncommitted path, stays behind diagnostics=true and changes=true.
  */
 export function renderContextSnapshotCompact(snapshot: ContextSnapshot): string[] {
   const lines: string[] = [];
@@ -312,7 +312,7 @@ export function renderContextSnapshotCompact(snapshot: ContextSnapshot): string[
 
   if (snapshot.uncommittedFiles.length > 0) {
     lines.push(
-      `Uncommitted : ${snapshot.uncommittedFiles.length} X++ file(s) — review_workspace_changes`
+      `Uncommitted : ${snapshot.uncommittedFiles.length} X++ file(s) — get_workspace_info(changes=true)`
     );
   }
 
@@ -370,7 +370,7 @@ export function renderContextSnapshotSection(snapshot: ContextSnapshot): string[
       lines.push(`  • ${f}`);
     }
     lines.push('');
-    lines.push('Review them with: review_workspace_changes');
+    lines.push('Review them with: get_workspace_info(changes=true)');
   }
 
   return lines;

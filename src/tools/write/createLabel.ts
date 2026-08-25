@@ -24,7 +24,9 @@ import { PackageResolver } from '../../utils/packageResolver.js';
 import { crossModelWriteRefusal, standDownNotice } from '../../utils/crossModelWriteGuard.js';
 import { resolveAnchorModel } from './writeAnchorGuard.js';
 import { detectEol } from '../../utils/eolUtils.js';
-import { formatLabelReference, labelIdSpellings } from '../../utils/labelReference.js';
+import {
+  deriveLabelIdFromText, formatLabelReference, labelIdSpellings, parseLabelReference,
+} from '../../utils/labelReference.js';
 import { isExtensionLabelFile } from '../../metadata/labelParser.js';
 import { ProjectFileManager, ProjectFileFinder } from '../../workspace/projectFile.js';
 
@@ -368,6 +370,287 @@ export async function createLabelsBulk(
   return {
     content: [{ type: 'text', text: [header, '', ...lines].join('\n') }],
     isError: failed > 0,
+  };
+}
+
+// Auto-resolution: raw label text → a label reference, without a round trip
+
+/**
+ * Where an auto-resolved label is allowed to land, and the path plumbing the
+ * caller has already resolved (passing it saves createLabelTool re-deriving it).
+ */
+export interface AutoLabelTarget {
+  model: string;
+  /** Overrides the label file pick; normally left out so the model's ORIGINAL file wins. */
+  labelFileId?: string;
+  packagePath?: string;
+  projectPath?: string;
+  solutionPath?: string;
+  addToProject?: boolean;
+}
+
+export interface AutoLabelRequest {
+  /** The raw text as the caller wrote it. */
+  text: string;
+  /** What is being labelled, for the reported note — e.g. `field "Status"`. */
+  what: string;
+  /**
+   * The enum an enum-typed field points at. Its own Label must NOT be reused:
+   * xppbp reports BPErrorFieldLabelIsCopyOfEnumLabel, and the agent cannot see
+   * that until a build runs.
+   */
+  enumType?: string;
+}
+
+export interface AutoLabelResult {
+  /** The reference to write. Absent when nothing could be resolved — keep the raw text. */
+  ref?: string;
+  /** One line, in the shape the other auto-corrections report in. */
+  note: string;
+}
+
+/** How many id spellings a resolve tries before giving up and leaving the text alone. */
+const MAX_LABEL_ID_CANDIDATES = 5;
+
+/**
+ * The model's ORIGINAL label file — never an `…_Extension…` one.
+ *
+ * New labels belong in the model's own file; an extension label file extends
+ * one owned by ANOTHER model, and labels added there end up wrongly prefixed
+ * (the same rule createLabelTool enforces with a hard error below).
+ * The file named after the model is the convention, so it wins; otherwise the
+ * one original file the model already has; otherwise the model name, which
+ * createLabelFileIfMissing then creates.
+ */
+export function pickOriginalLabelFileId(model: string, symbolIndex?: XppSymbolIndex): string {
+  try {
+    const originals = (symbolIndex?.getLabelFileIds(model) ?? [])
+      .filter(f => !isExtensionLabelFile(f.labelFileId));
+    const named = originals.find(f => f.labelFileId.toLowerCase() === model.toLowerCase());
+    if (named) return named.labelFileId;
+    if (originals.length > 0) return originals[0].labelFileId;
+  } catch {
+    // Index unavailable or mid-rebuild — the model name is the right guess.
+  }
+  return model;
+}
+
+/**
+ * An existing label whose text is EXACTLY this text, in this model.
+ *
+ * The FTS index is queried through the same searchLabels the `search` action
+ * uses, then filtered to an exact (case-insensitive) text match: the index
+ * matches wording, not meaning, so anything less than identical text is a
+ * candidate for a human, not for an automatic rewrite of the caller's XML.
+ */
+function findLabelByExactText(
+  text: string,
+  model: string,
+  preferredFileId: string,
+  excluded: Set<string>,
+  symbolIndex: XppSymbolIndex,
+): { labelFileId: string; labelId: string } | null {
+  const wanted = text.trim().toLowerCase();
+  let rows: Array<{ labelId: string; labelFileId: string; text: string }>;
+  try {
+    rows = symbolIndex.searchLabels(text, { language: 'en-US', model, limit: 200 });
+  } catch {
+    return null;
+  }
+  const hits = rows.filter(r =>
+    String(r.text ?? '').trim().toLowerCase() === wanted &&
+    !isExtensionLabelFile(r.labelFileId) &&
+    !excluded.has(String(r.labelId).replace(/^@/, '').toLowerCase()));
+  const preferred = hits.find(h => h.labelFileId.toLowerCase() === preferredFileId.toLowerCase());
+  const chosen = preferred ?? hits[0];
+  return chosen ? { labelFileId: chosen.labelFileId, labelId: chosen.labelId } : null;
+}
+
+/**
+ * Is this id free for `text`, already carrying it, or taken by something else?
+ *
+ * The third case is the one that matters: createIfMissing reuses an id it finds,
+ * so writing `@Model:Status` when `Status` already means "Statut" would point
+ * the object at a different sentence than the caller wrote. That is the one
+ * failure mode worse than the advisory this replaces, so a taken id is skipped
+ * rather than reused.
+ */
+function labelIdState(
+  labelId: string,
+  labelFileId: string,
+  model: string,
+  text: string,
+  symbolIndex?: XppSymbolIndex,
+): 'free' | 'same-text' | 'taken' {
+  if (!symbolIndex) return 'free';
+  let rows: Array<{ text: string; language: string }>;
+  try {
+    rows = symbolIndex.getLabelById(labelId, labelFileId, model);
+  } catch {
+    return 'free';
+  }
+  if (rows.length === 0) return 'free';
+  const wanted = text.trim().toLowerCase();
+  const enUs = rows.find(r => (r.language ?? '').toLowerCase() === 'en-us') ?? rows[0];
+  return String(enUs.text ?? '').trim().toLowerCase() === wanted ? 'same-text' : 'taken';
+}
+
+/**
+ * The label id an enum uses for its OWN Label, so a field pointing at that enum
+ * can be given a different one (BPErrorFieldLabelIsCopyOfEnumLabel).
+ *
+ * Read from the enum's XML rather than the index: the index stores no Label for
+ * enums, and one small file read is cheaper than the build that would otherwise
+ * report the error. `known: false` means the enum could not be read at all —
+ * the caller then declines to REUSE any existing label for the field, because
+ * an unverifiable reuse is exactly how the enum's own id gets picked up.
+ */
+async function enumOwnLabelId(
+  enumType: string,
+  symbolIndex?: XppSymbolIndex,
+): Promise<{ known: boolean; labelId?: string }> {
+  try {
+    const sym = symbolIndex?.getSymbolByName(enumType, 'enum');
+    const filePath = sym?.filePath;
+    if (!filePath || !/\.xml$/i.test(filePath)) return { known: false };
+    const xml = await fs.readFile(filePath, 'utf-8');
+    // The AxEnum's own <Label> precedes <EnumValues>, so the first match is it.
+    const m = /<Label>([^<]+)<\/Label>/i.exec(xml);
+    if (!m) return { known: true };            // read fine, the enum simply has no label
+    return { known: true, labelId: parseLabelReference(m[1].trim()).labelId };
+  } catch {
+    return { known: false };
+  }
+}
+
+/**
+ * Raw label text → a `@File:Id` reference, reusing an existing label when one
+ * already carries that exact text and creating one when none does.
+ *
+ * Why this exists: `labels` was the second most-called tool in a 1,515-call
+ * corpus — 268 calls against 171 writes — and `labels → labels` was the single
+ * most frequent consecutive pair (177 times). The shape was always the same:
+ * search for a label, read it back, create it, then write the object, once per
+ * label. Every one of those is a round trip that re-bills the whole cached
+ * context, and all of it is derivable from the text the write already carries.
+ *
+ * Nothing is invented silently: the returned note names the id that was reused
+ * or created, because a label reference the caller never chose and cannot see
+ * would be worse than the BP advisory this replaces.
+ */
+export async function resolveOrCreateLabelRef(
+  req: AutoLabelRequest,
+  target: AutoLabelTarget,
+  symbolIndex?: XppSymbolIndex,
+): Promise<AutoLabelResult | null> {
+  const text = (req.text ?? '').trim();
+  if (!text || text.startsWith('@') || !target.model) return null;
+
+  const base = deriveLabelIdFromText(text);
+  if (!base) return null;
+
+  const labelFileId = target.labelFileId ?? pickOriginalLabelFileId(target.model, symbolIndex);
+
+  // An enum field must not carry its enum's own label id.
+  const excluded = new Set<string>();
+  let enumCaveat = '';
+  if (req.enumType) {
+    const own = await enumOwnLabelId(req.enumType, symbolIndex);
+    if (own.labelId) excluded.add(own.labelId.toLowerCase());
+    if (!own.known) {
+      enumCaveat =
+        ` Could not read ${req.enumType}'s own Label to compare, so no existing label was reused` +
+        ` — check the two ids differ (BPErrorFieldLabelIsCopyOfEnumLabel).`;
+    }
+  }
+
+  // Reuse before create. Skipped entirely when an enum's own label could not be
+  // read: an unverifiable reuse is the one that lands on the enum's id.
+  if (symbolIndex && !enumCaveat) {
+    const existing = findLabelByExactText(text, target.model, labelFileId, excluded, symbolIndex);
+    if (existing) {
+      return {
+        ref: formatLabelReference(existing.labelFileId, existing.labelId),
+        note:
+          `${req.what}: "${text}" is raw text, not a label ID — reused the existing ` +
+          `${formatLabelReference(existing.labelFileId, existing.labelId)}, which already carries ` +
+          `exactly that text.`,
+      };
+    }
+  }
+
+  // Nothing carries the text: pick an id that is free (or already means the same
+  // thing) and let createIfMissing do the rest.
+  const candidates = [base, `${base}Field`, `${base}2`, `${base}3`, `${base}4`]
+    .slice(0, MAX_LABEL_ID_CANDIDATES);
+  let chosen: string | undefined;
+  let alreadyThere = false;
+  for (const candidate of candidates) {
+    if (excluded.has(candidate.toLowerCase())) continue;
+    const state = labelIdState(candidate, labelFileId, target.model, text, symbolIndex);
+    if (state === 'taken') continue;
+    chosen = candidate;
+    alreadyThere = state === 'same-text';
+    break;
+  }
+  if (!chosen) return null;
+
+  const disambiguated = chosen !== base
+    ? ` (id "${base}" was not free${excluded.size > 0 ? ` — it is ${req.enumType}'s own label` : ''})`
+    : '';
+
+  // createIfMissing, not a bare create: it is the existing "create when absent,
+  // reuse when present, never overwrite" path, and re-implementing the
+  // multi-language .label.txt write here would fork it.
+  const result = await createLabelTool(
+    {
+      method: 'tools/call',
+      params: {
+        name: 'create_label',
+        arguments: {
+          labelId: chosen,
+          labelFileId,
+          model: target.model,
+          translations: [{ language: 'en-US', text }],
+          createIfMissing: true,
+          ...(target.packagePath ? { packagePath: target.packagePath } : {}),
+          ...(target.projectPath ? { projectPath: target.projectPath } : {}),
+          ...(target.solutionPath ? { solutionPath: target.solutionPath } : {}),
+          ...(target.addToProject !== undefined ? { addToProject: target.addToProject } : {}),
+        },
+      },
+    },
+    // The real index, not an empty stand-in: createLabelTool writes the new rows
+    // into it (bulkAddLabels) so the very next lookup — including the reuse check
+    // of the next label in this same write — sees the label that was just created.
+    { symbolIndex } as unknown as XppServerContext,
+  );
+
+  if (result?.isError) {
+    const why = String(result.content?.[0]?.text ?? '').split('\n')[0];
+    return {
+      note:
+        `${req.what}: "${text}" is raw text, not a label ID, and creating ` +
+        `@${labelFileId}:${chosen} failed — ${why} The raw text was written as passed; ` +
+        `xppbp will report BPErrorLabelIsText until a label reference replaces it.`,
+    };
+  }
+
+  // Whether it was created or reused comes from the create's OWN answer, not from
+  // the index probe above: the index can be a moment behind the .label.txt (a
+  // rolled-back run, a model rebuilt outside the server), and reporting "created"
+  // for a label that was reused is exactly the kind of quiet inaccuracy that makes
+  // an auto-correction untrustworthy.
+  const reused = alreadyThere ||
+    String(result?.content?.[0]?.text ?? '').includes('already exists — reusing it');
+
+  const ref = `@${labelFileId}:${chosen}`;
+  return {
+    ref,
+    note:
+      `${req.what}: "${text}" is raw text, not a label ID — ` +
+      `${reused ? 'reused' : 'created'} ${ref}${disambiguated} and wrote that reference.` +
+      enumCaveat,
   };
 }
 

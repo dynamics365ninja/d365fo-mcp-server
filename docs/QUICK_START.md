@@ -275,7 +275,7 @@ GitHub Copilot Chat's `main.jsonl` is the format it reads today; the log only ex
 
 | Topic | Documentation |
 |-------|--------------|
-| All 23 tools | [MCP_TOOLS.md](MCP_TOOLS.md) |
+| All 20 tools | [MCP_TOOLS.md](MCP_TOOLS.md) |
 | Real-world tool chains (CoC, forms, security, reports) | [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) |
 | Full `.mcp.json` reference | [MCP_CONFIG.md](MCP_CONFIG.md) |
 | Every setting and its environment variable | [CONFIGURATION.md](CONFIGURATION.md) |

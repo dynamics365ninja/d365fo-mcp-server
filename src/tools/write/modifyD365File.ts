@@ -84,6 +84,8 @@ import {
   crossModelWriteRefusal, standDownNotice, baseObjectOf, type ExistingExtension,
 } from '../../utils/crossModelWriteGuard.js';
 import { resolveAnchorModel } from './writeAnchorGuard.js';
+import { resolveOrCreateLabelRef, type AutoLabelTarget } from './createLabel.js';
+import { isRawLabelText } from '../../utils/labelReference.js';
 
 
 /**
@@ -2560,7 +2562,7 @@ export const ModifyD365FileArgsSchema = z.object({
     'from state the server holds) instead of failing the call — reported as a "Note:" line in the result. ' +
     'Set false for strict behaviour: every such case becomes an error again (eval harness / deterministic callers).'
   ),
-  createBackup: z.boolean().optional().default(false).describe('Create a .bak backup of the file before modifying it (default: false). Changes can also be reverted with undo_last_modification (git checkout) without a backup. When the file is NOT inside a git repository, a backup is created automatically even with false, since undo_last_modification would not work there.'),
+  createBackup: z.boolean().optional().default(false).describe('Create a .bak backup of the file before modifying it (default: false). Changes can also be reverted with d365fo_file(action="undo") (git checkout) without a backup. When the file is NOT inside a git repository, a backup is created automatically even with false, since that undo would not work there.'),
   modelName: z.string().optional().describe('Model name (auto-detected if not provided). Pass this if the file was just created and is not yet indexed.'),
   packageName: z.string().optional().describe('Package name. Auto-resolved if omitted.'),
   packagePath: z.string().optional().describe(
@@ -3375,6 +3377,21 @@ export async function modifyD365FileTool(
         symbolIndex,
       );
       if (retargetNote) noteAutoCorrection(autoCorrectNotes, retargetNote);
+
+      // Raw label TEXT on fieldLabel / fieldGroupLabel / enumValueLabel becomes a
+      // real @LabelFile:Id here rather than a BP advisory the caller has to spend
+      // a `labels` round trip (or three) acting on. See autoResolveOperationLabels.
+      const labelNotes = await timer.time('label auto-resolve', () => autoResolveOperationLabels(
+        args as Record<string, unknown>,
+        {
+          model: containment.modelSegment || resolvedModelFromPath || modelName ||
+            getConfigManager().getModelName() || '',
+          packagePath: args.packagePath,
+          projectPath: (args as Record<string, unknown>).projectPath as string | undefined,
+        },
+        symbolIndex,
+      ));
+      for (const note of labelNotes) noteAutoCorrection(autoCorrectNotes, note);
     }
 
     // Settle a rebuild an earlier create/modify scheduled but did not wait for, so
@@ -5376,7 +5393,7 @@ export async function ensureRecoverableModification(
     'git-backup',
     path.win32.dirname(path.win32.dirname(actualFilePath)),
     `\n\nℹ️ Target is not under git — created backup ${backupPath} automatically ` +
-      `(undo_last_modification would not work here).`,
+      `(d365fo_file(action="undo") would not work here — it is a git checkout).`,
     `\n\nℹ️ Backup: ${backupPath}`,
   );
 }
@@ -5529,6 +5546,62 @@ export async function findBaseObjectXml(
 /** Record a correction, ignoring a repeat from the bridge auto-refresh retry. */
 function noteAutoCorrection(notes: string[], note: string): void {
   if (!notes.includes(note)) notes.push(note);
+}
+
+/**
+ * The operation parameters that end up as a `<Label>` element, and what the
+ * label belongs to (for the note the caller reads back).
+ *
+ * `propertyValue` is deliberately absent: modify-property's value is generic —
+ * it is a TableGroup or a field name just as often as a label — and rewriting it
+ * on the strength of the propertyPath would be a guess, not a determined
+ * correction.
+ */
+const LABEL_OP_PARAMS: Array<{ key: string; noun: string; nameKey: string }> = [
+  { key: 'fieldLabel', noun: 'field', nameKey: 'fieldName' },
+  { key: 'fieldGroupLabel', noun: 'field group', nameKey: 'fieldGroupName' },
+  { key: 'enumValueLabel', noun: 'enum value', nameKey: 'enumValueName' },
+];
+
+/**
+ * Replace raw label TEXT on an operation with a real label reference, reusing an
+ * existing label when one already carries that exact text.
+ *
+ * Same reason as the create path (see autoResolveRawLabels there): in a
+ * 1,515-call corpus `labels` was called 268 times against 171 writes, nearly all
+ * of it search-then-create in front of a write that already carried the text.
+ * A value that is already an `@Ref` is written verbatim and produces no note.
+ */
+async function autoResolveOperationLabels(
+  args: Record<string, unknown>,
+  target: AutoLabelTarget,
+  symbolIndex?: any,
+): Promise<string[]> {
+  if (!target.model) return [];
+  const notes: string[] = [];
+
+  for (const { key, noun, nameKey } of LABEL_OP_PARAMS) {
+    if (!isRawLabelText(args[key])) continue;
+    const name = typeof args[nameKey] === 'string' ? args[nameKey] as string : undefined;
+    const outcome = await resolveOrCreateLabelRef(
+      {
+        text: args[key] as string,
+        what: `${noun}${name ? ` "${name}"` : ''}`,
+        // Only a FIELD's label can collide with an enum's own label; a field
+        // group or an enum value has no enum behind it.
+        enumType: key === 'fieldLabel' && typeof args.fieldEnumType === 'string'
+          ? args.fieldEnumType as string
+          : undefined,
+      },
+      target,
+      symbolIndex,
+    );
+    if (!outcome) continue;
+    if (outcome.ref) args[key] = outcome.ref;
+    notes.push(outcome.note);
+  }
+
+  return notes;
 }
 
 /**

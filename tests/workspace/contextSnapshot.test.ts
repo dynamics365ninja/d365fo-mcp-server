@@ -71,7 +71,7 @@ describe('renderContextSnapshotSection', () => {
     expect(out).toContain('2026-06-23 10:30');
     expect(out).toContain('Uncommitted X++ changes (1)');
     expect(out).toContain('AxTable/MyTable.xml');
-    expect(out).toContain('review_workspace_changes');
+    expect(out).toContain('get_workspace_info(changes=true)');
   });
 });
 
@@ -123,7 +123,7 @@ describe('renderContextSnapshotCompact', () => {
 
     expect(out).toEqual([
       'Recent edits: A [table], B [table], C [table] (+2 more)',
-      'Uncommitted : 2 X++ file(s) — review_workspace_changes',
+      'Uncommitted : 2 X++ file(s) — get_workspace_info(changes=true)',
     ]);
   });
 

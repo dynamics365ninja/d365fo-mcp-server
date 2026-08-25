@@ -35,6 +35,15 @@ export async function getWorkspaceInfoTool(
   const configManager = getConfigManager();
   const args = (request as any).params?.arguments || {};
 
+  // changes=true — folded in from the retired `review_workspace_changes` tool.
+  // Answered INSTEAD of the configuration dump, not alongside it: the two have
+  // no reader in common, and appending a whole `git diff` to every workspace
+  // read would be the opposite of what this consolidation is for.
+  if (args.changes === true || args.changes === 'true') {
+    const { reviewWorkspaceChangesTool } = await import('../sdlc/reviewWorkspaceChanges.js');
+    return reviewWorkspaceChangesTool({ directoryPath: args.directoryPath }, context);
+  }
+
   // projectName: resolve to ONE project. A model name that several projects
   // build is not a selection — see projectSelector.ts for why picking the first
   // of them is the bug this replaced.

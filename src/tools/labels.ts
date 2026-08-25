@@ -17,6 +17,7 @@ import type { XppServerContext } from '../types/context.js';
 import {
   searchLabelsTool, REUSABLE_MARKER, NO_HITS_MARKER, NO_REUSE_ADVICE, SOME_REUSE_ADVICE,
 } from './analysis/searchLabels.js';
+import { createPhaseTimer } from '../utils/phaseTimer.js';
 import { mapWithConcurrency } from '../utils/concurrency.js';
 import {
   recordLabelSearchCall, repeatSearchNotice, searchBudgetNotice,
@@ -154,7 +155,28 @@ export async function labelsTool(request: CallToolRequest, context: XppServerCon
     method: 'tools/call',
     params: { name: dispatch.toolName, arguments: rest },
   };
-  return dispatch.tool(subRequest, context);
+  // Time the handler for EVERY action, not only search — the 2026-08-25 audit had
+  // a 5.6 s mean over 268 real `labels` calls and no way to attribute one of them,
+  // and 78 of those calls were `info`, which has no timing of its own. Rendered
+  // through the same helper the slow writes use: silent below SLOW_CALL_LOG_MS
+  // (10 s), so a normal reply is unchanged; SLOW_CALL_LOG_MS=0 makes the next
+  // audit's re-measure a matter of setting one already-registered variable.
+  const timer = createPhaseTimer();
+  const result = await timer.time(`${action} handler`, () => dispatch.tool(subRequest, context));
+  const phases = timer.render();
+  return phases ? appendPhaseLine(result, phases) : result;
+}
+
+/** Append the `⏱️` block to a tool result without disturbing its shape. */
+function appendPhaseLine(result: any, block: string): any {
+  const content = Array.isArray(result?.content) ? [...result.content] : [];
+  const last = content.length - 1;
+  if (last >= 0 && typeof content[last]?.text === 'string') {
+    content[last] = { ...content[last], text: `${content[last].text}${block}` };
+  } else {
+    content.push({ type: 'text', text: block });
+  }
+  return { ...result, content };
 }
 
 /** Most phrasings one call will try — beyond this the answer is "create your own". */
