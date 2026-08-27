@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace D365MetadataBridge.Models
@@ -255,6 +255,14 @@ namespace D365MetadataBridge.Models
         [JsonPropertyName("extends")]
         public string? Extends { get; set; }
 
+        /// <summary>
+        /// Root of the Extends chain, or null for a root EDT. Reported for orientation in a
+        /// multi-level hierarchy; it is not necessarily the element that declares the
+        /// StringSize -- see StringSizeInheritedFrom for that.
+        /// </summary>
+        [JsonPropertyName("rootEdt")]
+        public string? RootEdt { get; set; }
+
         [JsonPropertyName("label")]
         public string? Label { get; set; }
 
@@ -263,6 +271,14 @@ namespace D365MetadataBridge.Models
 
         [JsonPropertyName("stringSize")]
         public int? StringSize { get; set; }
+
+        /// <summary>
+        /// Ancestor the reported StringSize came from. Null when the number is what this EDT's
+        /// own XML declares. Set both when the EDT declares nothing (the common case) and when
+        /// an ancestor's value overrode one the EDT did declare.
+        /// </summary>
+        [JsonPropertyName("stringSizeInheritedFrom")]
+        public string? StringSizeInheritedFrom { get; set; }
 
         [JsonPropertyName("referenceTable")]
         public string? ReferenceTable { get; set; }

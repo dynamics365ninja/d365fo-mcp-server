@@ -144,7 +144,15 @@ function getEdtFromIndex(symbolIndex: any, edtName: string, modelName?: string) 
   if (row.enum_type) out += `| Enum Type | ${row.enum_type} |\n`;
   if (row.reference_table) out += `| Reference Table | ${row.reference_table} |\n`;
   if (row.relation_type) out += `| Relation Type | ${row.relation_type} |\n`;
-  if (row.string_size) out += `| String Size | ${row.string_size} |\n`;
+  // A derived EDT usually declares no StringSize, so `string_size` is null for 12 354 of
+  // the 25 332 indexed EDTs and this row used to be silently omitted for all of them.
+  // The value sits on the nearest ancestor that does declare one.
+  const size = resolveIndexedStringSize(db, row);
+  if (size) {
+    const from = size.inheritedFrom ? ` (inherited from ${size.inheritedFrom})` : '';
+    const shown = size.value === '-1' ? '-1 (memo, unlimited)' : size.value;
+    out += `| String Size | ${shown}${from} |\n`;
+  }
   if (row.database_string_size) out += `| Database String Size | ${row.database_string_size} |\n`;
   if (row.display_length) out += `| Display Length | ${row.display_length} |\n`;
   if (row.label) out += `| Label | ${row.label} |\n`;
@@ -152,6 +160,55 @@ function getEdtFromIndex(symbolIndex: any, edtName: string, modelName?: string) 
     `(HelpText, FormHelp, ConfigurationKey, Alignment…) are absent here, not absent from the EDT.\n`;
 
   return { content: [{ type: 'text', text: out }] };
+}
+
+/**
+ * The string size an indexed EDT really has, plus the ancestor it came from.
+ *
+ * A derived EDT usually declares no StringSize, leaving `edt_metadata.string_size` empty for
+ * 12 354 of the 25 332 indexed EDTs -- and this row used to be omitted for all of them even
+ * though the value sits an `extends` hop or two away. So: use the EDT's own size when it has
+ * one, otherwise walk `extends` to the nearest ancestor that stores one. Guards against a
+ * cycle and against a dangling `extends` (AmountMST names MoneyMST, which ships no AxEdt
+ * file).
+ *
+ * A child MAY declare its own size -- 228 do, permitted when the base carries
+ * StringSizeIsExtensible = Yes -- so a stored value is authoritative here and is not
+ * overridden.
+ *
+ * Known limitation of this path: `edt_metadata` does not store StringSizeIsExtensible, so it
+ * cannot tell when a declared size is overridden by an ancestor's. Where StringSizeIsExtensible
+ * is not Yes and the declared value is smaller than the nearest declaring ancestor's, the
+ * platform uses the ancestor's -- PartyName declares 100 under DirPartyName's 160 and really is
+ * 160, and this path reports the declared 100. That affects 4 EDTs in the shipped corpus, and
+ * only here: the bridge, which is the normal source, defers to Microsoft's resolver.
+ */
+function resolveIndexedStringSize(
+  db: any,
+  row: any,
+): { value: string; inheritedFrom?: string } | null {
+  if (row.string_size) return { value: String(row.string_size) };
+
+  const seen = new Set<string>([String(row.edt_name ?? '').toLowerCase()]);
+  let next: string | undefined = row.extends || undefined;
+
+  while (next && !seen.has(next.toLowerCase())) {
+    seen.add(next.toLowerCase());
+    let ancestor: any;
+    try {
+      ancestor = db.prepare(
+        'SELECT edt_name, extends, string_size FROM edt_metadata WHERE edt_name = ? LIMIT 1',
+      ).get(next);
+    } catch {
+      return null;
+    }
+    if (!ancestor) return null;
+    if (ancestor.string_size) {
+      return { value: String(ancestor.string_size), inheritedFrom: ancestor.edt_name };
+    }
+    next = ancestor.extends || undefined;
+  }
+  return null;
 }
 
 /** True when edt_metadata holds a row for exactly this spelling. */

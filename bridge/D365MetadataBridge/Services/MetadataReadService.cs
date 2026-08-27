@@ -438,7 +438,7 @@ namespace D365MetadataBridge.Services
 
             try { var mi = prov.Tables.GetModelInfo(tableName); if (mi?.Count > 0) result.Model = mi.First().Name; } catch { }
 
-            try { foreach (var f in table.Fields) result.Fields.Add(MapField(f)); } catch (Exception ex) { Warn("fields", tableName, ex); }
+            try { foreach (var f in table.Fields) result.Fields.Add(MapField(f, prov)); } catch (Exception ex) { Warn("fields", tableName, ex); }
             try { foreach (var g in table.FieldGroups) { var gm = new FieldGroupModel { Name = g.Name, Label = Safe(() => g.Label) }; try { foreach (var f in g.Fields) gm.Fields.Add(Safe(() => f.DataField) ?? f.Name); } catch { } result.FieldGroups.Add(gm); } } catch (Exception ex) { Warn("fieldGroups", tableName, ex); }
             try { foreach (var i in table.Indexes) { var im = new IndexInfoModel { Name = i.Name, AllowDuplicates = IsYes(() => i.AllowDuplicates), AlternateKey = IsYes(() => i.AlternateKey) }; try { foreach (var f in i.Fields) im.Fields.Add(new IndexFieldModel { DataField = Safe(() => f.DataField) ?? f.Name, IncludedColumn = IsYes(() => f.IncludedColumn) }); } catch { } result.Indexes.Add(im); } } catch (Exception ex) { Warn("indexes", tableName, ex); }
 
@@ -652,17 +652,45 @@ namespace D365MetadataBridge.Services
             var edt = prov.Edts.Read(edtName);
             if (edt == null) return null;
 
+            // The provider hands the EDT back exactly as its own XML declares it and does NOT
+            // fill in what it inherits. When a derived string EDT declares no StringSize of its
+            // own, the instance reports the AxEdtString constructor default of 10 instead of
+            // the inherited size. Measured against 10.0.2645: ItemFreeTxt read back as 10 and
+            // is really 1000 (from ItemFreeTxtBase); ItemId and CustAccount read back as 10 and
+            // are really 20.
+            //
+            // A child CAN declare its own StringSize -- 228 derived EDTs in the shipped corpus
+            // do. The platform allows it when the base carries StringSizeIsExtensible = Yes
+            // ("StringSize cannot be set on child edt when StringSizeIsExtensible is not set to
+            // Yes"). A declared value is left alone here; only the unset case is filled in.
+            var inherited = FindInheritedStringSize(edt, prov);
+            var declaredLocally = edt is AxEdtString local
+                ? SafeInt(() => local.StringSize, UnsetStringSize)
+                : 0;
+            ResolveInheritedEdtProperties(edt, inherited, prov);
+
             var result = new EdtInfoModel
             {
                 Name = edt.Name,
                 BaseType = edt.GetType().Name.Replace("AxEdt", ""),
                 Extends = Safe(() => edt.Extends),
+                RootEdt = inherited.Root,
                 Label = Safe(() => edt.Label),
                 HelpText = Safe(() => edt.HelpText),
             };
 
             try { var mi = prov.Edts.GetModelInfo(edtName); if (mi?.Count > 0) result.Model = mi.First().Name; } catch { }
-            if (edt is AxEdtString s) result.StringSize = SafeInt(() => s.StringSize, 0);
+            if (edt is AxEdtString s)
+            {
+                result.StringSize = SafeInt(() => s.StringSize, 0);
+                // Provenance only when the reported number is not what this EDT's own XML said.
+                // That covers the unset case, and the case where an ancestor's value overrode a
+                // declared one (PartyName declares 100, reports DirPartyName's 160).
+                if (result.StringSize != declaredLocally)
+                {
+                    result.StringSizeInheritedFrom = inherited.DeclaredBy;
+                }
+            }
             if (edt is AxEdtEnum en) result.EnumType = Safe(() => en.EnumType);
             try { result.ReferenceTable = Safe(() => ((dynamic)edt).ReferenceTable?.Table); } catch { }
 
@@ -670,7 +698,10 @@ namespace D365MetadataBridge.Services
             try { result.FormHelp = Safe(() => edt.FormHelp); } catch { }
             try { result.ConfigurationKey = Safe(() => ((dynamic)edt).ConfigurationKey); } catch { }
             try { result.Alignment = Safe(() => ((dynamic)edt).Alignment?.ToString()); } catch { }
-            try { result.DisplayLength = SafeInt(() => ((dynamic)edt).DisplayLength, 0); if (result.DisplayLength == 0) result.DisplayLength = null; } catch { }
+            // "Not set" for DisplayLength is -1, not 0 (verified against the AxEdtString
+            // constructor on 10.0.2645) — so the old `== 0` test never fired and every EDT
+            // without a local DisplayLength, 24 446 of the 25 332 indexed, reported -1.
+            try { result.DisplayLength = SafeInt(() => ((dynamic)edt).DisplayLength, -1); if (result.DisplayLength < 0) result.DisplayLength = null; } catch { }
             try { result.RelationType = Safe(() => ((dynamic)edt).RelationType?.ToString()); } catch { }
 
             // AxEdtReal specific
@@ -1863,11 +1894,134 @@ namespace D365MetadataBridge.Services
         private static int SafeInt(Func<int> f, int d) { try { return f(); } catch { return d; } }
         private static void Warn(string section, string obj, Exception ex) => Console.Error.WriteLine($"[WARN] Error reading {section} for {obj}: {ex.Message}");
 
+        /// <summary>
+        /// The value an AxEdtString reports when its XML declares no StringSize: the constructor
+        /// default. The serializer omits a property equal to its default, so a declared 10 and an
+        /// undeclared one are the same bytes on disk and the same value here -- and the compiler
+        /// treats both the same way, by inheriting. Verified against 10.0.2645, where an explicit
+        /// StringSize of 10 appears in none of the 25 332 shipped EDTs.
+        /// </summary>
+        private const int UnsetStringSize = 10;
+
+        /// <summary>Where a derived EDT's string size comes from, when it does not declare one.</summary>
+        private sealed class InheritedStringSize
+        {
+            /// <summary>Root of the Extends chain; null when the EDT is itself a root.</summary>
+            public string? Root;
+            /// <summary>Nearest ancestor that declares a StringSize; null when none does.</summary>
+            public string? DeclaredBy;
+            /// <summary>That ancestor's declared StringSize.</summary>
+            public int? Value;
+        }
+
+        /// <summary>
+        /// Walks <c>Extends</c> once, recording both the root of the hierarchy and the nearest
+        /// ancestor that actually declares a StringSize -- the value an undeclared child takes.
+        ///
+        /// Each hop goes back through <see cref="PickProvider"/> because an ancestor can live in
+        /// the other packages root (UDE: a custom EDT extending a Microsoft one). A dangling
+        /// <c>Extends</c> ends the walk where it breaks -- AmountMST names MoneyMST, which ships
+        /// no AxEdt file -- and a name already seen ends it too, so a metadata cycle cannot spin.
+        /// </summary>
+        private InheritedStringSize FindInheritedStringSize(AxEdt edt, IMetadataProvider prov)
+        {
+            var found = new InheritedStringSize();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { edt.Name };
+            var next = Safe(() => edt.Extends);
+
+            while (!string.IsNullOrEmpty(next) && seen.Add(next!))
+            {
+                var name = next!;
+                var parentProv = PickProvider(p => p.Edts.Exists(name)) ?? prov;
+                AxEdt? parent = null;
+                try { parent = parentProv.Edts.Read(name); } catch { }
+                if (parent == null) break;
+
+                found.Root = parent.Name;
+                if (found.DeclaredBy == null && parent is AxEdtString ps)
+                {
+                    var size = SafeInt(() => ps.StringSize, UnsetStringSize);
+                    if (size != UnsetStringSize)
+                    {
+                        found.DeclaredBy = parent.Name;
+                        found.Value = size;
+                    }
+                }
+                next = Safe(() => parent.Extends);
+            }
+            return found;
+        }
+
+        /// <summary>
+        /// Fills in the string size a derived EDT inherits rather than declares, so the reported
+        /// value is the one X++ compiles against.
+        /// </summary>
+        private void ResolveInheritedEdtProperties(AxEdt edt, InheritedStringSize inherited, IMetadataProvider prov)
+        {
+            if (string.IsNullOrEmpty(Safe(() => edt.Extends))) return;
+
+            try
+            {
+                // Microsoft's own resolver, which encodes a rule a reimplementation would get
+                // wrong: a declared size does not always win. Measured over the 182 derived EDTs
+                // that declare a size and have a declaring ancestor --
+                //   StringSizeIsExtensible = Yes  -> the declaration wins either way
+                //                                    (InvoiceId 50 over Num 20; CustInvoiceId 20
+                //                                    under InvoiceId 50)
+                //   otherwise, declared smaller   -> the ancestor's value wins (4 EDTs: PartyName
+                //                                    declares 100 under DirPartyName's 160 and
+                //                                    reports 160, ITMJourneyId, TAMRebateInvoice,
+                //                                    PSNPurchasingCardProviderName)
+                //   otherwise, declared larger    -> UNVERIFIED; no such EDT ships, so this code
+                //                                    does not assume a direction and simply lets
+                //                                    the resolver decide.
+                //
+                // isFlightEnabled: false, and the flag is not a detail. With true, an EDT-level
+                // read of CustInvoiceId returns 50 while the FIELD-level resolver returns 20 for
+                // CustInvoiceJour.InvoiceId -- a field typed with that very EDT -- so the bridge
+                // would contradict itself between get_object_info(edt) and
+                // get_object_info(table). With false the two agree at 20. false also confines
+                // this to the actual defect (an undeclared size) rather than rewriting values an
+                // EDT does declare, and the flag changes nothing for any of the broken cases
+                // (ItemFreeTxt 1000, ItemId 20, AccountNumber_IN 20 under either value).
+                Microsoft.Dynamics.AX.Metadata.MetaModel.Extensions.MetaEdtExtensions
+                    .ResolveVirtualProperties(edt, prov, false);
+                return;
+            }
+            catch (Exception ex)
+            {
+                // The bridge is compiled against one environment's Microsoft assemblies and
+                // loaded against another's, so the resolver can simply be absent.
+                Warn("resolveVirtualProperties", edt.Name, ex);
+            }
+
+            // Fallback: fill in ONLY an undeclared size, from the nearest ancestor that declares
+            // one. That is exactly the population the defect affects, and the rule matched the
+            // resolver on 148 of 148 such EDTs. It deliberately does not reproduce the rule for
+            // a declared-but-smaller value -- leaving a declared number alone is the honest
+            // failure mode, and that case covers 4 EDTs in the shipped corpus.
+            //
+            // NoOfDecimals is left alone throughout. It looks similar but is NOT virtual: a child
+            // real EDT may declare its own (AccruedAmountMST_IT declares 2 while its base reports
+            // -1), so copying an ancestor's would overwrite a real local value.
+            if (edt is AxEdtString derived && inherited.Value.HasValue)
+            {
+                try
+                {
+                    if (derived.StringSize == UnsetStringSize)
+                    {
+                        derived.StringSize = inherited.Value.Value;
+                    }
+                }
+                catch { }
+            }
+        }
+
         // ========================
         // DIAGNOSTIC: Probe IMetadataProvider write capability
         // ========================
 
-        private FieldInfoModel MapField(AxTableField field)
+        private FieldInfoModel MapField(AxTableField field, IMetadataProvider prov)
         {
             var m = new FieldInfoModel
             {
@@ -1879,9 +2033,73 @@ namespace D365MetadataBridge.Services
                 Mandatory = IsYes(() => field.Mandatory),
                 AllowEdit = Safe(() => field.AllowEdit.ToString()),
             };
-            if (field is AxTableFieldString s) m.StringSize = SafeInt(() => s.StringSize, 0);
+            if (field is AxTableFieldString s) m.StringSize = EffectiveFieldStringSize(s, prov);
             if (field is AxTableFieldEnum en) m.EnumType = Safe(() => en.EnumType);
             return m;
+        }
+
+        /// <summary>
+        /// Cleared the first time Microsoft's field-level resolver throws, so an environment whose
+        /// assemblies predate it takes the hand-rolled path directly from then on.
+        /// </summary>
+        private bool _fieldStringSizeHelperUsable = true;
+
+        /// <summary>
+        /// The string size a field really has. An EDT-typed field almost never declares its own
+        /// size -- it takes the EDT's, and through the EDT its ancestors' -- but the raw property
+        /// returns the AxTableFieldString constructor default of 10 regardless. Measured across
+        /// ten core tables on 10.0.2645, that was wrong for 310 of 564 string fields (55 %):
+        /// InventTable.ItemId reported 10 against a real 20, InventTable.AltConfigId reported 10
+        /// against a real 50.
+        /// </summary>
+        private int EffectiveFieldStringSize(AxTableFieldString field, IMetadataProvider prov)
+        {
+            if (_fieldStringSizeHelperUsable)
+            {
+                try
+                {
+                    // Microsoft's own resolver: field -> EDT -> its ancestors. isFlightEnabled is
+                    // passed false to match ReadEdt, so the two agree on the same type; measured,
+                    // this resolver returned the same value under either flag for every field
+                    // tried (CustInvoiceJour.InvoiceId 20, DirPartyTable.Name 160,
+                    // InventTable.ItemId 20).
+                    return Microsoft.Dynamics.AX.Metadata.MetaModel.Extensions.MetaTableFieldExtensions
+                        .GetStringSize(field, prov, false);
+                }
+                catch (Exception ex)
+                {
+                    // Latched off, and warned about exactly once: this runs per field, so a missing
+                    // helper would otherwise put one warning per string field per table read on
+                    // stderr (103 for CustTable alone).
+                    _fieldStringSizeHelperUsable = false;
+                    Warn("effectiveStringSize", field.Name, ex);
+                }
+            }
+
+            // Fallback for an environment whose assemblies predate the helper. A field that
+            // declares its own size keeps it; otherwise take the field's EDT, and from there the
+            // nearest declaring ancestor, exactly as ReadEdt does.
+            var declared = SafeInt(() => field.StringSize, UnsetStringSize);
+            if (declared != UnsetStringSize) return declared;
+
+            var edtName = Safe(() => field.ExtendedDataType);
+            if (!string.IsNullOrEmpty(edtName))
+            {
+                var edtProv = PickProvider(p => p.Edts.Exists(edtName!)) ?? prov;
+                AxEdt? edt = null;
+                try { edt = edtProv.Edts.Read(edtName!); } catch { }
+                if (edt != null)
+                {
+                    if (edt is AxEdtString es)
+                    {
+                        var own = SafeInt(() => es.StringSize, UnsetStringSize);
+                        if (own != UnsetStringSize) return own;
+                    }
+                    var inherited = FindInheritedStringSize(edt, edtProv);
+                    if (inherited.Value.HasValue) return inherited.Value.Value;
+                }
+            }
+            return declared;
         }
     }
 }
