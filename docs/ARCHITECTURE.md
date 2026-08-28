@@ -44,7 +44,7 @@ Three complementary data sources, one rule: **bridge-first when live metadata ma
 | Method signatures / source | ✅ snapshot | ✅ on demand | ✅ live |
 | Cross-references (callers) | ~ FTS approximation | — | ✅ exact (`DYNAMICSXREFDB`) |
 | Labels (20M+ rows) | ✅ sole source | — | create/rename only |
-| Create / modify objects | validated XML writers for types the provider cannot express | — | ✅ 13 create types, 31 modify ops |
+| Create / modify objects | validated XML writers for types the provider cannot express | — | ✅ 13 create types, 27 modify ops |
 
 SQLite stays essential even with the bridge: it is the **only** data source on Azure/Linux (no bridge), the sole store for 20M+ labels (`IMetadataProvider` has no label API), and the engine for all bulk search, aggregation and pattern mining (the bridge reads one object at a time).
 
@@ -86,7 +86,7 @@ Generated code must *prove* itself before touching disk. All gates are fail-clos
 |------|------------------|-------------|--------|
 | Provenance | `prepare` (mode=change/create) issues a grounding token (30 min TTL, object-bound). In-memory by default; with `GROUNDING_SECRET` set on both instances the token is HMAC-signed and portable, so the hybrid write-only companion (and scaled-out App Service) can validate it — without the secret, write-only mode bypasses enforcement | write called without a valid token | `GROUNDING_ENFORCE` + `GROUNDING_SECRET` |
 | References | `validate_code(mode="references")` — every type, field, method (incl. arity), enum, label checked against the index | any identifier unresolved | `GROUNDING_ENFORCE` |
-| Best practices | `validate_code(mode="syntax")` — 11 static rules (BP, COC, SEL, TTS, XML001/006/007) + 4 data-driven XML rules (XML002–XML005) mined from standard models (`property_stats`) | error-severity violations | — (advisory in output) |
+| Best practices | `validate_code(mode="syntax")` — 20 static rules (BP001–005, COC001–006, SEL001–005, TTS001, XML001/006/007) + 4 data-driven XML rules (XML002–XML005) mined from standard models (`property_stats`) | error-severity violations | — (advisory in output) |
 | Form patterns | `object_patterns (domain=form, action=validate)` — rules FP000–FP010 against the curated pattern catalog | structural violations (FP001–FP005, FP007) | `FORM_PATTERN_ENFORCE` |
 
 Supporting reliability mechanisms:
@@ -102,7 +102,7 @@ Supporting reliability mechanisms:
 
 ```mermaid
 flowchart LR
-    CAT["Curated catalog\n~19 patterns + ~20 sub-patterns\nsrc/knowledge/formPatterns"] --> ADV[object_patterns\ndomain=form, action=analyze]
+    CAT["Curated catalog\n36 patterns + 30 sub-patterns\nsrc/knowledge/formPatterns"] --> ADV[object_patterns\ndomain=form, action=analyze]
     CAT --> SPEC[object_patterns\ndomain=form, action=spec]
     CAT --> VAL[object_patterns domain=form, action=validate\nFP000–FP010]
     MINE[("form_patterns table\nmined from real forms\nduring build-database")] --> ADV
@@ -132,7 +132,7 @@ graph LR
     TS[bridgeClient.ts\nspawn + JSON-RPC + restarts] --> EXE[D365MetadataBridge.exe]
     TS -.->|types the provider cannot express| XMLW[XML writers\nsecurityPrivilegeXml · queryViewXml\ndirectXml fallbacks]
     EXE --> READ[MetadataReadService\nclasses, tables, forms, reports]
-    EXE --> WRITE[MetadataWriteService\n13 create types · 31 modify ops]
+    EXE --> WRITE[MetadataWriteService\n13 create types · 27 modify ops]
     EXE --> XREF[CrossReferenceService\nCoC, event handlers, callers]
     READ & WRITE --> PROV[IMetadataProvider / DiskProvider]
     XREF --> SQL[(DYNAMICSXREFDB)]
@@ -192,7 +192,7 @@ Two agents, one shared store, **no shared in-memory state** — either can run o
 
 | Element | What it is |
 |---|---|
-| Case catalog | 80 cases in `eval/cases/`, tiered L0–L4, each with a JSON spec validated against `schema.json` |
+| Case catalog | 87 cases in `eval/cases/`, tiered L0–L4, each with a JSON spec validated against `schema.json` |
 | Primary oracle | **golden metadata** — a diff of produced XML against the case's captured golden, not merely "it compiled" |
 | Runtime oracle | `run_systest_class` against `eval/systests/<id>.xml` — a SysTest references only standard objects, so it fails when a CoC wrapper is missing or wrong, which a golden cannot detect |
 | Fixtures | shared INPUT objects (e.g. `ConDemoNoteHeader`) live in `eval/fixtures/`, re-provisioned per run and excluded from rollback — case OUTPUTS are never pre-provisioned |
@@ -223,8 +223,8 @@ graph LR
 | Mode | `MCP_SERVER_MODE` | Tools exposed | Typical host |
 |------|-------------------|---------------|--------------|
 | Full | `full` (default) | all 20 | developer VM |
-| Read-only | `read-only` | search/analysis | Azure App Service |
-| Write-only | `write-only` | file ops + bridge reads | hybrid local companion |
+| Read-only | `read-only` | 14 — everything except the six `LOCAL_TOOLS` (build, BP, tests, reindex, workspace, verify) | Azure App Service |
+| Write-only | `write-only` | 9 — the six `LOCAL_TOOLS` + the three `ALWAYS_TOOLS` (`get_object_info`, `labels`, `d365fo_file`) | hybrid local companion |
 
 A second, independent axis controls how many of those tools are worth advertising. `MCP_TOOL_PROFILE=core` publishes only the create-and-build loop (15 tools) instead of all 20, with `MCP_EXTRA_TOOLS` adding individual ones back; `isToolEnabled()` in `serverMode.ts` combines both axes and is the single predicate used by the ListTools filter, the runtime call gate and the startup banner. It exists because hosts stop sending the tool catalogue inline past a limit (VS Code: ~100 tools across all servers) and fall back to a search-based tool surface, which costs a discovery round trip per tool the model needs.
 
@@ -237,7 +237,7 @@ Index refresh is automated via [Azure DevOps pipelines](SETUP_AZURE.md#azure-dev
 | Aspect | Implementation |
 |--------|----------------|
 | Search latency | FTS5 < 10 ms; active invalidation on writes |
-| Rate limits | `/mcp` 500 req / 15 min · `/health` 1000 req / 15 min |
+| Rate limits | `/mcp` 500 req / 15 min (`RATE_LIMIT_MAX_REQUESTS` / `RATE_LIMIT_WINDOW_MS`); `/health` exempt so Azure probes never throttle |
 | Auth (HTTP) | API key / Bearer middleware; HTTPS + TLS 1.2+; Blob access via connection string (`AZURE_STORAGE_CONNECTION_STRING`) |
 | Path safety | every write target validated against `PackagesLocalDirectory/<Package>/<Model>/Ax<Type>/` containment (no traversal) |
 | Error format | JSON-RPC errors with structured `data.detail`; network retries ×3; DB fallbacks logged |
@@ -250,5 +250,5 @@ Index refresh is automated via [Azure DevOps pipelines](SETUP_AZURE.md#azure-dev
 | Transport | MCP SDK — stdio + Express 5 HTTP |
 | Storage | node:sqlite (WAL, FTS5) — core module, no native addon |
 | Bridge | .NET Framework 4.8, Microsoft.Dynamics.AX.Metadata DLLs |
-| Tests | Vitest — ~2,850 tests, golden quality-gate suites |
+| Tests | Vitest — ~5,000 tests, golden quality-gate suites |
 | CI/CD | GitHub Actions — app CI + `eval-gate` (bridge attestation, golden regression, knowledge audit, coverage matrix); Azure DevOps (metadata pipelines) |

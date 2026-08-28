@@ -25,7 +25,7 @@
     <text x="928" y="50" text-anchor="middle" font-size="15" font-weight="700" fill="#ffffff">580K+</text>
     <text x="928" y="64" text-anchor="middle" font-size="9.5" fill="#aab6d3">symbols indexed</text>
     <rect x="1004" y="32" width="128" height="38" rx="8" fill="#ffffff" fill-opacity="0.10" stroke="#5b6aa8"/>
-    <text x="1068" y="50" text-anchor="middle" font-size="15" font-weight="700" fill="#ffffff">26</text>
+    <text x="1068" y="50" text-anchor="middle" font-size="15" font-weight="700" fill="#ffffff">20</text>
     <text x="1068" y="64" text-anchor="middle" font-size="9.5" fill="#aab6d3">MCP tools</text>
     <rect x="1144" y="32" width="128" height="38" rx="8" fill="#ffffff" fill-opacity="0.10" stroke="#5b6aa8"/>
     <text x="1208" y="50" text-anchor="middle" font-size="15" font-weight="700" fill="#ffffff">fail-closed</text>
@@ -86,7 +86,7 @@
   <text x="334" y="190" font-size="10.5" fill="#475569">stdio JSON-RPC · Express 5 HTTP (/mcp) · API-key / Bearer auth · rate limiting · dedup cache (60 s) · loop detection</text>
 
   <rect x="320" y="220" width="680" height="92" rx="9" fill="#ffffff" stroke="#6366f1"/>
-  <text x="334" y="242" font-size="12.5" font-weight="600" fill="#4338ca">26 tool handlers</text>
+  <text x="334" y="242" font-size="12.5" font-weight="600" fill="#4338ca">20 tool handlers</text>
   <g font-size="10" fill="#3730a3">
     <rect x="334" y="252" width="96" height="22" rx="11" fill="#eef2ff" stroke="#c7d2fe"/><text x="382" y="267" text-anchor="middle">Search / X-ref</text>
     <rect x="438" y="252" width="110" height="22" rx="11" fill="#eef2ff" stroke="#c7d2fe"/><text x="493" y="267" text-anchor="middle">Code intelligence</text>
@@ -123,7 +123,7 @@
     <circle cx="686" cy="436" r="9" fill="#ea580c"/><text x="686" y="440" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">3</text>
     <text x="702" y="440" font-size="11" font-weight="600" fill="#9a3412">Best practices</text>
     <text x="680" y="462" font-size="9" fill="#7c2d12">validate_code · syntax</text>
-    <text x="680" y="476" font-size="9" fill="#7c2d12">11 static + 4 mined rules</text>
+    <text x="680" y="476" font-size="9" fill="#7c2d12">20 static + 4 mined rules</text>
 
     <rect x="838" y="420" width="152" height="74" rx="8" fill="#ffffff" stroke="#fdba74"/>
     <circle cx="854" cy="436" r="9" fill="#ea580c"/><text x="854" y="440" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">4</text>
@@ -175,7 +175,7 @@
   <rect x="1064" y="306" width="212" height="82" rx="8" fill="#ffffff" stroke="#86c79c"/>
   <text x="1076" y="328" font-size="12" font-weight="600" fill="#15803d">Automation</text>
   <text x="1076" y="344" font-size="10" fill="#475569">Azure DevOps — extract→build→upload</text>
-  <text x="1076" y="360" font-size="10" fill="#475569">GitHub Actions — app CI · 2800+ tests</text>
+  <text x="1076" y="360" font-size="10" fill="#475569">GitHub Actions — app CI · 5000+ tests</text>
   <text x="1076" y="376" font-size="10" fill="#475569">eval gate — goldens · knowledge audit</text>
 
   <text x="560" y="668" font-size="10" fill="#15803d">produces both databases</text>
@@ -185,7 +185,7 @@
   <rect x="1044" y="424" width="252" height="238" rx="12" fill="#f5f3ff" stroke="#ddd6fe" filter="url(#card)"/>
   <circle cx="1064" cy="447" r="5" fill="#7c3aed"/>
   <text x="1078" y="451" font-size="12.5" font-weight="700" fill="#5b21b6" letter-spacing="1.2">EVAL LOOP</text>
-  <text x="1064" y="468" font-size="10" fill="#6d5bb5">self-improving harness · 80 cases</text>
+  <text x="1064" y="468" font-size="10" fill="#6d5bb5">self-improving harness · 87 cases</text>
 
   <rect x="1064" y="476" width="212" height="54" rx="8" fill="#ffffff" stroke="#a78bfa"/>
   <text x="1076" y="494" font-size="11.5" font-weight="600" fill="#6d28d9">Implementer agent</text>
@@ -231,7 +231,7 @@
   <text x="699" y="762" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">C# Metadata Bridge</text>
   <text x="699" y="782" text-anchor="middle" font-size="10.5" fill="#ddd6fe">D365MetadataBridge.exe · .NET Framework 4.8</text>
   <text x="699" y="799" text-anchor="middle" font-size="10.5" fill="#ddd6fe">JSON-RPC over stdio · IMetadataProvider</text>
-  <text x="699" y="816" text-anchor="middle" font-size="10.5" fill="#ddd6fe">primary write path · 13 create · 31 modify ops</text>
+  <text x="699" y="816" text-anchor="middle" font-size="10.5" fill="#ddd6fe">primary write path · 13 create · 27 modify ops</text>
   <text x="699" y="840" text-anchor="middle" font-size="9.5" fill="#c4b5fd">Windows VM only — graceful fallback to SQLite elsewhere</text>
 
   <rect x="898" y="736" width="376" height="120" rx="9" fill="#eff6ff" stroke="#3b82f6"/>
