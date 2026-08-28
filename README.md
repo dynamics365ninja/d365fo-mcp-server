@@ -8,7 +8,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D24.0.0-brightgreen.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7.0-blue.svg)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/tests-2800%2B-brightgreen.svg)](docs/TESTING.md)
+[![Tests](https://img.shields.io/badge/tests-5000%2B-brightgreen.svg)](docs/TESTING.md)
 <!-- coverage-badge:start -->
 [![Core coverage](https://img.shields.io/badge/core_coverage-100%25-brightgreen.svg)](eval/COVERAGE.md) [![Total coverage](https://img.shields.io/badge/total_coverage-100%25-lightgrey.svg)](eval/COVERAGE.md)
 <!-- coverage-badge:end -->

@@ -1,6 +1,6 @@
 # Testing
 
-The project uses [Vitest](https://vitest.dev/). ~2,900 tests across ~220 files run without a live D365FO environment — all external dependencies (SQLite, filesystem, bridge, cache) are mocked.
+The project uses [Vitest](https://vitest.dev/). ~5,000 tests across ~350 files run without a live D365FO environment — all external dependencies (SQLite, filesystem, bridge, cache) are mocked.
 
 ## Running tests
 
@@ -27,7 +27,7 @@ npx tsx tests/bridge-e2e.ts             # manual bridge E2E (Windows D365FO VM o
 | `tests/metadata/` | XML parser + pattern miner + SQLite indexing against fixture forms |
 | `tests/bridge/` | bridge client behavior (debounced refresh); `bridge-e2e.ts` is manual |
 
-Contract tests worth knowing: `tests/utils/toolInventory.test.ts` asserts the published tool count (23 at the time of writing — branches that add, consolidate or unpublish tools change it, and the test is what makes that deliberate) and keeps `src/server/toolSchemas/`, the startup catalog and `LOCAL_TOOLS` in sync; it also fails when guidance text names a tool retired by a consolidation. See [NEW_TOOL_CHECKLIST.md](NEW_TOOL_CHECKLIST.md). `tests/utils/toolSchemaBudget.test.ts` pins the serialized `tools/list` payload size — that payload ships on every request.
+Contract tests worth knowing: `tests/utils/toolInventory.test.ts` asserts the published tool count (20 at the time of writing — branches that add, consolidate or unpublish tools change it, and the test is what makes that deliberate) and keeps `src/server/toolSchemas/`, the startup catalog and `LOCAL_TOOLS` in sync; it also fails when guidance text names a tool retired by a consolidation. See [NEW_TOOL_CHECKLIST.md](NEW_TOOL_CHECKLIST.md). `tests/utils/toolSchemaBudget.test.ts` pins the serialized `tools/list` payload size — that payload ships on every request.
 
 ## Mock strategy
 

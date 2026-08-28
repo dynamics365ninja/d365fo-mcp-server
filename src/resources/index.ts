@@ -10,6 +10,7 @@
  * Resources exposed:
  *   • xpp://class/{className}     — class source (resource template)
  *   • workspace://context        — curated context snapshot (JSON)
+ *   • workspace://active         — most recently modified X++ object (JSON)
  *   • workspace://stats          — symbol-index + workspace statistics (JSON)
  *   • workspace://files          — list of X++ files in the workspace (JSON)
  *   • workspace://recent-changes — uncommitted X++ changes vs HEAD (JSON)

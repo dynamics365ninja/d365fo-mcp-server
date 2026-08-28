@@ -150,7 +150,7 @@ See [Azure DevOps Pipelines](#azure-devops-pipelines). Pipelines handle extracti
 
 ### Option B — Manual (from your Windows VM)
 
-1. Configure `.env` on your VM — set `PACKAGES_PATH`, `CUSTOM_MODELS`, `AZURE_STORAGE_CONNECTION_STRING`, `BLOB_CONTAINER_NAME`.
+1. Configure the server on your VM — `npm run setup` (or `npx d365fo-mcp config`) writes `environment.packagePath`, `environment.customModels` and the Azure storage secrets; the equivalent environment variables are `D365FO_PACKAGE_PATH`, `CUSTOM_MODELS`, `AZURE_STORAGE_CONNECTION_STRING`, `BLOB_CONTAINER_NAME` ([CONFIGURATION.md](CONFIGURATION.md)).
 
 2. Extract and build:
 

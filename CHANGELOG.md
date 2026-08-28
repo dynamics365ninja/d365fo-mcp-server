@@ -29,6 +29,22 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Fixed
+- **Docs and the architecture diagram re-aligned with the code.** The numbers
+  drift audit: the SVG still advertised 26 tools (it is 20 — the same fold this
+  block documents), TESTING.md still said 23 tools and ~2,900 tests across ~220
+  files (5,000+ across ~350), ARCHITECTURE.md carried a pre-fold "80 cases"
+  (87), "~19 patterns + ~20 sub-patterns" (36 + 30), "11 static rules" (20),
+  "31 modify ops" (27 distinct C# dispatcher ops) and a `/health` rate limit
+  that does not exist (`/health` is exempt). MCP_TOOLS.md now documents
+  `labels(action="update")` and `get_knowledge(kind="bp-moniker")`, the
+  extension objectTypes of `get_object_info`, the per-mode tool counts
+  (read-only 14 / write-only 9), and gained a short section on the 8 MCP
+  prompts and 5 workspace resources nothing user-facing listed before. The
+  heaviest table cells (`get_object_info`, `generate_object`, `d365fo_file`,
+  `object_patterns`) were unpacked into bullet lists — same facts, readable
+  shape. CUSTOM_EXTENSIONS.md and SETUP_AZURE.md stopped teaching the legacy
+  `.env`/`PACKAGES_PATH` configuration as the primary route now that the
+  wizard writes `config/d365fo-mcp.json`.
 - **Writes silently landed in whichever project scanned first.** When workspace
   heuristics resolved nothing, the `D365FO_SOLUTIONS_PATH` fallback pinned
   `all[0]` — so in a solution where several `.rnrproj` build one model (the

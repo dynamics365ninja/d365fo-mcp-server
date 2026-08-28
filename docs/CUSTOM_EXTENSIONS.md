@@ -15,21 +15,26 @@ This guide explains how to configure, extract, and index your custom X++ models 
 
 ### Traditional (PackagesLocalDirectory)
 
-Add to your `.env` file:
+The setup wizard (`npm run setup`, or later `npx d365fo-mcp config environment`) asks for all of this and writes it to `config/d365fo-mcp.json`. The keys involved — each overridable by its environment variable (a `.env` from an older installation keeps working as a fallback):
 
-```env
-# Standard D365 packages path
-PACKAGES_PATH=C:\AOSService\PackagesLocalDirectory
-
-# Your custom models (comma-separated package/model names)
-CUSTOM_MODELS=ISV_CustomModule1,ISV_CustomModule2,CompanyExtensions
-
-# ISV prefix — used by search(scope="extensions") for prefix filtering and by code-gen tools
-# for naming validation (e.g. class names must start with this prefix)
-EXTENSION_PREFIX=ISV_
-
-# Extraction mode: 'custom' (your models only), 'standard', or 'all'
-EXTRACT_MODE=custom
+```jsonc
+{
+  "environment": {
+    // Standard D365 packages path                       (env: D365FO_PACKAGE_PATH)
+    "packagePath": "C:\\AOSService\\PackagesLocalDirectory",
+    // Your custom models (comma-separated model names)  (env: CUSTOM_MODELS)
+    "customModels": "ISV_CustomModule1,ISV_CustomModule2,CompanyExtensions"
+  },
+  "naming": {
+    // ISV prefix — used by search(scope="extensions") for prefix filtering and by
+    // code-gen tools for naming validation               (env: EXTENSION_PREFIX)
+    "prefix": "ISV_"
+  },
+  "index": {
+    // 'custom' (your models only), 'standard', or 'all'  (env: EXTRACT_MODE)
+    "extractMode": "custom"
+  }
+}
 ```
 
 **How custom model detection works:** Everything listed in `CUSTOM_MODELS` is treated as your code. All other models are automatically classified as Microsoft standard. The server never requires you to maintain a static list of Microsoft model names — the list auto-adapts to new D365FO versions.
@@ -40,10 +45,14 @@ EXTRACT_MODE=custom
 
 In UDE environments, custom models are **auto-detected** from the custom packages path (`ModelStoreFolder` in your XPP config file). You do not need to set `CUSTOM_MODELS`:
 
-```env
-D365FO_DEV_ENVIRONMENT_TYPE=ude
-XPP_CONFIG_NAME=MyConfig    # name from %LOCALAPPDATA%\Microsoft\Dynamics365\XppConfig\
-EXTENSION_PREFIX=ISV_
+```jsonc
+{
+  "environment": {
+    "type": "ude",                 // env: D365FO_DEV_ENVIRONMENT_TYPE
+    "xppConfigName": "MyConfig"    // env: XPP_CONFIG_NAME — name from %LOCALAPPDATA%\Microsoft\Dynamics365\XPPConfig\
+  },
+  "naming": { "prefix": "ISV_" }   // env: EXTENSION_PREFIX
+}
 ```
 
 Every model under `ModelStoreFolder` is automatically treated as custom; everything under `FrameworkDirectory` is Microsoft standard. Run `npm run select-config` to list available XPP configs.
@@ -196,13 +205,13 @@ The server uses the two-level workspace path (`PackagesLocalDirectory\PackageNam
 
 ## Multiple Clients / Instances
 
-If you work on several D365FO environments (different clients, different ISV prefixes), use the multi-instance scripts in `instances/`:
+If you work on several D365FO environments (different clients, different ISV prefixes), use the instance commands:
 
 ```powershell
-.\instances\add-instance.ps1    # creates instances\clientA\ with its own .env
+npx d365fo-mcp instance add     # creates instances\clientA\ with its own config, database and port
 ```
 
-Each instance has its own `CUSTOM_MODELS`, `EXTENSION_PREFIX`, and database. See [Scenario F in SETUP.md](SETUP.md#scenario-f--multiple-instances).
+Each instance has its own `customModels`, `naming.prefix`, and database. The `instances\*.ps1` scripts remain for installations still configured through per-instance `.env` files. See [Scenario F in SETUP.md](SETUP.md#scenario-f--multiple-instances).
 
 ---
 
