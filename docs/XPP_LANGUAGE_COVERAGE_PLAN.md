@@ -1,6 +1,13 @@
 # X++ Language & Reporting Coverage Plan
 
-Status: **Phases A+B done (2026-08-29); C–E pending; E/F require the D365FO VM.**
+Status: **Phases A–C done (2026-08-29); D–E pending; E/F require the D365FO VM.**
+Phase C deltas vs. the original table: `CS001` (C#-isms) implemented as planned; `RPT003`/`RPT004`
+were dropped (the TempDB/preprocess-attribute claims could not be verified off-VM and risked false
+errors); `RPT005` landed as two cheaper checks — `ssrsReportStr` joined the FN001 fixed-arity table
+(2 args) and the references mode now resolves `ssrsReportStr`/`reportStr` first arguments against
+the index ('report' type). `FN001` grew from 4 to 27 functions — **Phase F must re-verify the new
+arities against xppc** before trusting them further. New `xml-report` codeType runs report-only
+rules (RPT101/102) so the X++ keyword rules never scan RDL CDATA.
 Phase B note: new-topic AOT references are constrained to prose + `My…` placeholders (the
 apiSymbols snapshot is entry-scoped and can only be re-captured on the VM). Phase F should
 re-capture the snapshot and may then upgrade prose mentions (e.g. `Exception::DuplicateKeyException`

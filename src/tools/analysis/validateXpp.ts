@@ -24,6 +24,15 @@
  *   BP005   an enum SYMBOL (enum2Symbol / value2Symbol) in user-facing text — never translated
  *   FN001   fixed-arity built-in called with the wrong number of arguments
  *   TTS001  Unbalanced ttsbegin / ttscommit
+ *   TTS002  Dead catch inside an open tts scope (only UpdateConflict/DuplicateKeyException reach it)
+ *   TTS003  retry with no visible guard in its catch block (infinite-loop risk)
+ *   SEL006  index hint without allowIndexHint(true)
+ *   SEL007  left/right join or join…on — SQL/C# join syntax that is not X++
+ *   CS001   C# constructs that do not compile in X++ ($"…", =>, foreach, ??, string type)
+ *   RPT001  DP reads parmDataContract() but declares no [SRSReportParameterAttribute]
+ *   RPT002  DP has processReport() but no [SRSReportDataSetAttribute] getter
+ *   RPT101  AxReport XML without a design node (codeType="xml-report")
+ *   RPT102  AxReport dataset without <Query> (codeType="xml-report")
  *   XML001  AxTable XML missing an index with <AlternateKey>Yes</AlternateKey>
  *   XML006  AxTable elements out of canonical order (silently dropped by the AOT)
  *   XML007  Table-level property that does not exist in the AxTable model
@@ -52,8 +61,8 @@ export const validateXppArgsSchema = z.object({
   code: z.string().describe(
     'X++ source code or XML metadata to validate. Paste the full generated text.'
   ),
-  codeType: z.enum(['xpp', 'xml-table', 'xml-any']).optional().default('xpp').describe(
-    '"xpp" for X++ source (default), "xml-table" for AxTable XML, "xml-any" for other XML.'
+  codeType: z.enum(['xpp', 'xml-table', 'xml-any', 'xml-report']).optional().default('xpp').describe(
+    '"xpp" for X++ source (default), "xml-table" for AxTable XML, "xml-report" for AxReport XML, "xml-any" for other XML.'
   ),
   context: z.string().optional().describe(
     'Optional: owning class/table name, used in diagnostic messages.'
@@ -603,6 +612,34 @@ const FIXED_ARITY_BUILTINS: Record<string, { name: string; arity: number; note: 
   enum2symbol: { name: 'enum2Symbol', arity: 2, note: 'enum2Symbol(enumNum(MyEnum), value) — enum id AND value' },
   symbol2enum: { name: 'symbol2Enum', arity: 2, note: 'symbol2Enum(enumNum(MyEnum), symbolString) — enum id AND symbol' },
   enumnum:     { name: 'enumNum',     arity: 1, note: 'enumNum(MyEnum) — the enum TYPE name alone, not a value' },
+  // Runtime string/container/date/math functions with genuinely fixed arity.
+  // Arities are taken from the X++ language reference; re-verify against xppc
+  // on the VM before extending further (Phase F of the coverage plan).
+  strlen:      { name: 'strLen',      arity: 1, note: 'strLen(text)' },
+  strupr:      { name: 'strUpr',      arity: 1, note: 'strUpr(text)' },
+  strlwr:      { name: 'strLwr',      arity: 1, note: 'strLwr(text)' },
+  substr:      { name: 'subStr',      arity: 3, note: 'subStr(text, position, number) — position is 1-based' },
+  strdel:      { name: 'strDel',      arity: 3, note: 'strDel(text, position, number)' },
+  strins:      { name: 'strIns',      arity: 3, note: 'strIns(text, insert, position)' },
+  strrep:      { name: 'strRep',      arity: 2, note: 'strRep(text, count)' },
+  strfind:     { name: 'strFind',     arity: 4, note: 'strFind(text, characters, start, count)' },
+  strscan:     { name: 'strScan',     arity: 4, note: 'strScan(text, pattern, start, count)' },
+  conlen:      { name: 'conLen',      arity: 1, note: 'conLen(container)' },
+  conpeek:     { name: 'conPeek',     arity: 2, note: 'conPeek(container, position) — 1-based' },
+  condel:      { name: 'conDel',      arity: 3, note: 'conDel(container, start, number)' },
+  conins:      { name: 'conIns',      arity: 3, note: 'conIns(container, start, value)' },
+  mkdate:      { name: 'mkDate',      arity: 3, note: 'mkDate(day, month, year)' },
+  year:        { name: 'year',        arity: 1, note: 'year(date)' },
+  mthofyr:     { name: 'mthOfYr',     arity: 1, note: 'mthOfYr(date)' },
+  dayofmth:    { name: 'dayOfMth',    arity: 1, note: 'dayOfMth(date)' },
+  endmth:      { name: 'endMth',      arity: 1, note: 'endMth(date)' },
+  nextmth:     { name: 'nextMth',     arity: 1, note: 'nextMth(date)' },
+  prevmth:     { name: 'prevMth',     arity: 1, note: 'prevMth(date)' },
+  datemthfwd:  { name: 'dateMthFwd',  arity: 2, note: 'dateMthFwd(date, months)' },
+  decround:    { name: 'decRound',    arity: 2, note: 'decRound(value, decimals)' },
+  power:       { name: 'power',       arity: 2, note: 'power(value, exponent)' },
+  abs:         { name: 'abs',         arity: 1, note: 'abs(value)' },
+  ssrsreportstr: { name: 'ssrsReportStr', arity: 2, note: 'ssrsReportStr(MyReport, MyDesign) — report AND design name; the design must exist inside that AxReport (scaffolded reports name it "Report")' },
 };
 
 /**
@@ -962,6 +999,241 @@ function checkDevArtifacts(code: string): ValidationViolation[] {
   );
 }
 
+/**
+ * CS001 — C# constructs that do not exist in X++.
+ *
+ * Every one of these is a guaranteed compile failure that reads perfectly
+ * naturally to anyone who writes C# all day, which is exactly why they slip
+ * into generated X++: string interpolation, lambdas, foreach, ?? and the
+ * `string` type name. The fix message carries the X++ equivalent so the
+ * repair is one edit, not a search.
+ */
+function checkCSharpIsms(code: string): ValidationViolation[] {
+  const masked = maskStringsAndComments(code);
+  const violations: ValidationViolation[] = [];
+  const patterns: Array<{ re: RegExp; fix: string }> = [
+    {
+      re: /\$"/g,
+      fix: 'X++ has no string interpolation ($"…") — use strFmt("%1 / %2", a, b).',
+    },
+    {
+      re: /=>/g,
+      fix: 'X++ has no lambdas/anonymous methods (=>) — use a named (private) method, or a delegate plus an eventhandler subscription.',
+    },
+    {
+      re: /\bforeach\b/g,
+      fix: 'X++ has no foreach — iterate collections with their Enumerator (while (en.moveNext()) { en.current(); }) and tables with while select.',
+    },
+    {
+      re: /\?\?/g,
+      fix: 'X++ has no null-coalescing operator (??) — value types hold null-EQUIVALENT values (0, empty string, 1900-01-01); test explicitly.',
+    },
+    {
+      re: /\bstring\s+\w+\s*[;=]/g,
+      fix: 'The X++ string type is str (or an EDT) — "string" is C#.',
+    },
+  ];
+  for (const p of patterns) {
+    violations.push(...matchAll(masked, p.re, 'CS001', 'error', p.fix));
+  }
+  return violations;
+}
+
+/**
+ * TTS002 — a catch inside an open ttsbegin/ttscommit scope that can never fire.
+ *
+ * Inside a transaction only Exception::UpdateConflict and
+ * Exception::DuplicateKeyException are deliverable to an INNER catch, and only
+ * when named explicitly — everything else aborts the transaction and unwinds
+ * to the first catch OUTSIDE the tts block. A bare `catch` inside tts is the
+ * classic shape (see the WRONG example in the transactions knowledge topic):
+ * it looks defensive and is dead code.
+ *
+ * Depth is approximated by counting ttsbegin minus ttscommit/ttsabort before
+ * the catch on the masked source — heuristic, hence warning severity.
+ */
+function checkCatchInsideTts(code: string): ValidationViolation[] {
+  const masked = maskStringsAndComments(code);
+  if (!/\bttsbegin\b/i.test(masked)) return [];
+  const violations: ValidationViolation[] = [];
+  const catchRe = /\bcatch\b\s*(?:\(([^)]*)\))?/g;
+  let m: RegExpExecArray | null;
+  while ((m = catchRe.exec(masked)) !== null) {
+    const before = masked.slice(0, m.index);
+    const depth =
+      (before.match(/\bttsbegin\b/gi)?.length ?? 0) -
+      (before.match(/\bttscommit\b/gi)?.length ?? 0) -
+      (before.match(/\bttsabort\b/gi)?.length ?? 0);
+    if (depth <= 0) continue;
+    const filter = m[1] ?? '';
+    if (/(?:UpdateConflict|DuplicateKeyException)\b/i.test(filter) && !/NotRecovered/i.test(filter)) continue;
+    violations.push({
+      rule: 'TTS002',
+      severity: 'warning',
+      line: lineNumber(code, m.index),
+      excerpt: m[0].trim() || 'catch',
+      fix:
+        'Inside an open transaction only Exception::UpdateConflict and Exception::DuplicateKeyException reach an inner catch, ' +
+        'and only when named explicitly — this catch is dead code; every other exception unwinds to the first catch OUTSIDE the tts block. ' +
+        'Move the try/catch outside ttsbegin/ttscommit (knowledge topic: transactions).',
+    });
+  }
+  return violations;
+}
+
+/**
+ * TTS003 — `retry` with no visible guard in its catch block.
+ *
+ * retry jumps back to the START of the try block and discards the infolog
+ * entries logged since try entry; on a deterministic error an unguarded retry
+ * loops forever. The heuristic asks only that the catch block containing the
+ * retry shows SOME guard shape (a counter ++/+=, or an if) before it.
+ */
+function checkUnguardedRetry(code: string): ValidationViolation[] {
+  const masked = maskStringsAndComments(code);
+  const violations: ValidationViolation[] = [];
+  const retryRe = /\bretry\s*;/g;
+  let m: RegExpExecArray | null;
+  while ((m = retryRe.exec(masked)) !== null) {
+    const before = masked.slice(0, m.index);
+    const catchIdx = before.search(/\bcatch\b(?![\s\S]*\bcatch\b)/);
+    if (catchIdx === -1) continue; // retry outside catch — the compiler rejects it
+    const segment = masked.slice(catchIdx, m.index);
+    if (/(\+\+|\+=|\bif\s*\()/.test(segment)) continue;
+    violations.push({
+      rule: 'TTS003',
+      severity: 'warning',
+      line: lineNumber(code, m.index),
+      excerpt: 'retry;',
+      fix:
+        'retry jumps back to the start of the try block and discards infolog messages logged since try entry — ' +
+        'unguarded, it loops forever on a deterministic error. Guard it with a counter ' +
+        '(retryCount++; if (retryCount > maxRetries) throw …; retry;).',
+    });
+  }
+  return violations;
+}
+
+/** SEL006 — `index hint` used without evidence of allowIndexHint(true). */
+function checkIndexHint(code: string): ValidationViolation[] {
+  const masked = maskStringsAndComments(code);
+  if (/\ballowIndexHint\s*\(\s*true\s*\)/i.test(masked)) return [];
+  return matchAll(
+    masked,
+    /\bindex\s+hint\s+\w+/gi,
+    'SEL006',
+    'warning',
+    '"index hint" is silently IGNORED unless the buffer called allowIndexHint(true) first — and it overrides the ' +
+    'optimizer, so use it only when measured. For sort order use plain "index IndexName" (no hint).',
+  );
+}
+
+/** SEL007 — SQL/C# join syntax that does not exist in X++. */
+function checkForeignJoinSyntax(code: string): ValidationViolation[] {
+  const masked = maskStringsAndComments(code);
+  const violations = matchAll(
+    masked,
+    /\b(?:left|right)\s+(?:outer\s+)?join\b/gi,
+    'SEL007',
+    'error',
+    'X++ has no left/right join keywords — "outer join" IS the left outer join; there is no right outer (swap the buffers). ' +
+    'Join kinds: join, outer join, exists join, notexists join.',
+  );
+  violations.push(...matchAll(
+    masked,
+    /\bjoin\s+\w+\s+on\b/gi,
+    'SEL007',
+    'error',
+    'X++ joins have no "on" keyword — put the join criteria in the joined buffer\'s own where clause: ' +
+    'join otherTable where otherTable.Field == driver.Field.',
+  ));
+  return violations;
+}
+
+/**
+ * RPT001/RPT002 — SSRS data-provider class shape.
+ *
+ * A DP that reads parmDataContract() without [SRSReportParameterAttribute]
+ * binds no contract (the dialog values never arrive), and a DP without a
+ * single [SRSReportDataSetAttribute] getter gives SSRS no dataset to read.
+ * Both compile clean and fail only at report run time, which is why they are
+ * worth catching at write time. PreProcess variants are exempt from RPT001
+ * (their contract can travel via the controller).
+ */
+function checkReportDpShape(code: string): ValidationViolation[] {
+  const masked = maskStringsAndComments(code);
+  const extendsMatch = masked.match(/\bextends\s+(SRSReportDataProvider(?:Base|PreProcess(?:TempDB)?))\b/i);
+  if (!extendsMatch) return [];
+  const violations: ValidationViolation[] = [];
+  const isPreProcess = /PreProcess/i.test(extendsMatch[1]);
+
+  if (!isPreProcess
+      && /\bparmDataContract\s*\(/i.test(masked)
+      && !/SRSReportParameterAttribute/i.test(code)) {
+    violations.push({
+      rule: 'RPT001',
+      severity: 'error',
+      line: lineNumber(code, masked.search(/\bparmDataContract\s*\(/i)),
+      excerpt: 'parmDataContract() without [SRSReportParameterAttribute]',
+      fix:
+        'The DP reads parmDataContract() but declares no contract — add ' +
+        '[SRSReportParameterAttribute(classStr(MyContract))] on the DP class, or the dialog values never reach processReport(). ' +
+        'Compiles clean, fails at report run time.',
+    });
+  }
+
+  if (/\bprocessReport\s*\(/i.test(masked) && !/SRSReportDataSetAttribute/i.test(code)) {
+    violations.push({
+      rule: 'RPT002',
+      severity: 'warning',
+      line: lineNumber(code, masked.search(/\bprocessReport\s*\(/i)),
+      excerpt: 'processReport() without any [SRSReportDataSetAttribute] getter',
+      fix:
+        'SSRS reads report data through [SRSReportDataSetAttribute(tableStr(MyTmp))] getter methods — without one this DP ' +
+        'fills a table nothing reads. Add the getter (returns the tmp buffer after select * from it), or ignore if the ' +
+        'getters live in a separate partial listing.',
+    });
+  }
+  return violations;
+}
+
+// AxReport XML rules (codeType="xml-report")
+
+/** RPT101 — AxReport without a design node. */
+function checkReportHasDesign(code: string): ValidationViolation[] {
+  if (!/<AxReport[\s>]/i.test(code)) return [];
+  if (/<AxReportDesign\b/i.test(code)) return [];
+  return [{
+    rule: 'RPT101',
+    severity: 'error',
+    excerpt: '<AxReport> — no <AxReportDesign>',
+    fix:
+      'The report declares no design — ssrsReportStr(report, design) can never reference it and the report cannot run. ' +
+      'Scaffolded reports carry one precision design named "Report" (generate_object(mode="scaffold", objectType="report")).',
+  }];
+}
+
+/** RPT102 — report dataset without a Query. */
+function checkReportDatasetShape(code: string): ValidationViolation[] {
+  if (!/<AxReport[\s>]/i.test(code)) return [];
+  const violations: ValidationViolation[] = [];
+  const dsRe = /<AxReportDataSet\b[\s\S]*?<\/AxReportDataSet>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = dsRe.exec(code)) !== null) {
+    if (/<Query>/i.test(m[0])) continue;
+    violations.push({
+      rule: 'RPT102',
+      severity: 'warning',
+      line: lineNumber(code, m.index),
+      excerpt: '<AxReportDataSet> without <Query>',
+      fix:
+        'A ReportDataProvider dataset needs <Query>SELECT * FROM DPClass.TmpTable</Query> (with ' +
+        '<DataSourceType>ReportDataProvider</DataSourceType>) — without it the dataset is empty at run time.',
+    });
+  }
+  return violations;
+}
+
 // Data-driven property rules (XML002-XML005)
 
 /**
@@ -1110,6 +1382,17 @@ const XPP_RULES = [
   checkGenericDocComment,
   checkUnbalancedTts,
   checkDevArtifacts,
+  checkCSharpIsms,
+  checkCatchInsideTts,
+  checkUnguardedRetry,
+  checkIndexHint,
+  checkForeignJoinSyntax,
+  checkReportDpShape,
+];
+
+const REPORT_XML_RULES = [
+  checkReportHasDesign,
+  checkReportDatasetShape,
 ];
 
 /**
@@ -1232,12 +1515,18 @@ const XML_PROPERTY_RULES = [
 
 export function runRules(
   code: string,
-  codeType: 'xpp' | 'xml-table' | 'xml-any',
+  codeType: 'xpp' | 'xml-table' | 'xml-any' | 'xml-report',
   stats?: PropertyStatsProvider,
 ): ValidationViolation[] {
   const violations: ValidationViolation[] = [];
   if (codeType === 'xpp') {
     for (const rule of XPP_RULES) {
+      violations.push(...rule(code));
+    }
+  } else if (codeType === 'xml-report') {
+    // AxReport XML embeds RDL in CDATA — running the X++ keyword rules over it
+    // would only produce noise, so the report document gets its own rule set.
+    for (const rule of REPORT_XML_RULES) {
       violations.push(...rule(code));
     }
   } else if (codeType === 'xml-table') {
