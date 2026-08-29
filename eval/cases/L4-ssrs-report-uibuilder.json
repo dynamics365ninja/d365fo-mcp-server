@@ -1,0 +1,32 @@
+{
+  "id": "L4-ssrs-report-uibuilder",
+  "title": "SSRS report with a UI builder (uiBuilder=true scaffold) + custom filtered lookup on a contract parameter via bindInfo/registerOverrideMethod",
+  "tier": 4,
+  "instruction": "In the sandbox model, use generate_object(mode=\"scaffold\", objectType=\"report\", name=\"DemoCustGroupReport\", caption=\"@TaxTransactionInquiry:HeaderNote\", fieldsHint=\"GroupId, Description\", contractParams=[{name:\"custGroup\", type:\"str\", label:\"@TaxTransactionInquiry:HeaderNote\"}], uiBuilder=true, generateController=true) to scaffold a 7-object SSRS report: a TempDB tmp table, a DataContract carrying the custGroup parameter, a DemoCustGroupReportUIBuilder class extending SrsReportDataContractUIBuilder and bound on the contract via [SysOperationContractProcessing(classStr(DemoCustGroupReportUIBuilder))], a Data Provider, a Controller, an output menu item, and the AxReport. The scaffolded build() in the UI builder is a TODO stub -- replace it with a real filtered lookup for the custGroup parameter: after super(), fetch the contract instance via this.dataContractObject(), get its dialog field with this.bindInfo().getDialogField(contract, methodStr(DemoCustGroupReportContract, parmCustGroup)), and call registerOverrideMethod(methodStr(FormStringControl, lookup), methodStr(DemoCustGroupReportUIBuilder, custGroupLookup), this). Implement custGroupLookup(FormStringControl _ctrl) on the builder using SysTableLookup::newParameters(tableNum(CustGroup), _ctrl): add lookup fields CustGroup and Name, and restrict the lookup query with a range on CustGroup.PaymTermId set to SysQuery::valueNotEmpty() so only customer groups with payment terms appear. Also replace the Data Provider's processReport() TODO stub: insert one tmp row per CustGroup record (GroupId = CustGroup, Description = Name), filtered to contract.parmCustGroup() when it is non-blank, all rows otherwise. All 7 objects must build clean.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxClass",
+    "AxClass",
+    "AxClass",
+    "AxClass",
+    "AxMenuItemOutput",
+    "AxReport"
+  ],
+  "golden_path": "eval/goldens/L4-ssrs-report-uibuilder/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo",
+    "AxReport/Designs/AxReportDesign/Text"
+  ],
+  "tags": [
+    "ssrs",
+    "report",
+    "ui-builder",
+    "contract-params",
+    "custom-lookup",
+    "menu-item-output",
+    "multi-artifact"
+  ],
+  "split": "holdout"
+}

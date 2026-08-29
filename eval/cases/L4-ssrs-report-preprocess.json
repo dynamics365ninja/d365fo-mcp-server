@@ -1,0 +1,30 @@
+{
+  "id": "L4-ssrs-report-preprocess",
+  "title": "Pre-processed SSRS report via generate_object preProcess=true (DP extends SrsReportDataProviderPreProcess; doubles as Phase F compile-verification of the preprocess scaffold shape)",
+  "tier": 4,
+  "instruction": "In the sandbox model, ground first with get_knowledge(topic=\"ssrs-rdp-preprocess\") and get_knowledge(topic=\"ssrs-reports\"), then use generate_object(mode=\"scaffold\", objectType=\"report\", name=\"DemoNoteReportPre\", caption=\"@TaxTransactionInquiry:HeaderNote\", fieldsHint=\"NoteId, Subject\", preProcess=true, generateController=true) to scaffold a 6-object pre-processed SSRS report: a tmp table, a DataContract, a Data Provider that extends SrsReportDataProviderPreProcess (no [SRSReportParameterAttribute] -- the contract is passed via the Controller -- and with an auto-generated preProcess() stub), a Controller, an output menu item, and the AxReport. Keep the generated preProcess() stub and complete processReport(): populate the tmp table with NoteId/Subject rows from a local ConDemoNoteHeader variable via insert_recordset. All 6 objects must build clean. IMPLEMENTER NOTE (golden capture, Phase F verification): the preProcess=true scaffold pairing is NOT yet compile-proven on any VM golden. If the build rejects SrsReportDataProviderPreProcess with the scaffold's TempDB tmp table (regular-table staging keyed by createdTransactionId is what that base expects), switch the DP base class to SrsReportDataProviderPreProcessTempDB (or adjust the tmp table's TableType to Regular with a createdTransactionId column -- whichever the compiler accepts with the fewest deviations from the scaffold) and record in the corpus evidence which base-class/table-type pairing actually compiled, so the scaffold and the ssrs-rdp-preprocess knowledge topic can be corrected.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxClass",
+    "AxClass",
+    "AxClass",
+    "AxMenuItemOutput",
+    "AxReport"
+  ],
+  "golden_path": "eval/goldens/L4-ssrs-report-preprocess/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo",
+    "AxReport/Designs/AxReportDesign/Text"
+  ],
+  "tags": [
+    "ssrs",
+    "report",
+    "preprocess",
+    "rdp",
+    "menu-item-output",
+    "multi-artifact"
+  ],
+  "split": "holdout"
+}

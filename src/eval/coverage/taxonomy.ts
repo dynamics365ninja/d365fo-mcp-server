@@ -233,6 +233,52 @@ export const TAXONOMY: CoverageLeaf[] = [
     aotTypes: ['class'], knowledgeIds: ['reflection-dict'], caseIds: ['L2-reflection-dict-fieldwalk'],
     note: 'Knowledge entry written (audit hole C9 closed); eval case authored, golden pending VM capture.',
   },
+  // Language-core leaves (Phase B/E of the coverage plan): the grammar itself,
+  // previously represented only by select-grammar. Leaves without caseIds are
+  // knowledge+validator-covered but unproven by an eval case yet — the honest
+  // gap the artifact-type taxonomy used to hide.
+  {
+    id: 'data-types', label: 'Data types, literals & conversions', domain: 'Code', source: 'topic', tier: 'core', weight: 5,
+    aotTypes: ['class'], knowledgeIds: ['xpp-data-types', 'enum-conversions'],
+    note: 'Taught (xpp-data-types) and partially validator-enforced (FN001 arities, CS001 string type); no dedicated eval case.',
+  },
+  {
+    id: 'declarations-scope', label: 'Declarations & scope (var/const/readonly/using)', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['class'], knowledgeIds: ['xpp-declarations'],
+    note: 'Taught; exercised implicitly by every class case — no dedicated eval case.',
+  },
+  {
+    id: 'operators', label: 'Operators & precedence (&&/|| trap, like, is/as)', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['class'], knowledgeIds: ['operators-precedence'],
+    note: 'Taught; CS001 blocks the C#-isms. No dedicated eval case.',
+  },
+  {
+    id: 'statements-flow', label: 'Statements & flow (switch fallthrough, loops)', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['class'], knowledgeIds: ['switch-loops'],
+    note: 'Taught; BP004 covers removed keywords. No dedicated eval case.',
+  },
+  {
+    id: 'exceptions-tts', label: 'Exceptions inside transactions (catchability, retry)', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['class'], knowledgeIds: ['transactions', 'error-handling'],
+    caseIds: ['L2-exception-tts-retry'],
+    note: 'TTS002/TTS003 validators + in-tts catchability matrix; eval case authored, golden pending VM capture.',
+  },
+  {
+    id: 'attributes', label: 'Attribute authoring & reflection', domain: 'Code', source: 'topic', tier: 'total', weight: 2,
+    aotTypes: ['class'], knowledgeIds: ['attributes-authoring', 'reflection-dict'],
+    note: 'Rules-only topic (examples wait for the Phase F snapshot capture); no eval case.',
+  },
+  {
+    id: 'intrinsics', label: 'Compile-time (intrinsic) functions', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['class'], knowledgeIds: ['intrinsic-functions'],
+    note: 'Full catalog taught; references mode resolves the common ones. No dedicated eval case.',
+  },
+  {
+    id: 'date-effective', label: 'Date-effective tables (validTimeState)', domain: 'Code', source: 'topic', tier: 'total', weight: 3,
+    aotTypes: ['table', 'class'], knowledgeIds: ['date-effective', 'select-statement'],
+    caseIds: ['L2-date-effective-table'],
+    note: 'Eval case authored (table + as-of vs unfiltered select); golden pending VM capture.',
+  },
 
   // ── UI ──────────────────────────────────────────────────────────────────
   {
@@ -285,8 +331,26 @@ export const TAXONOMY: CoverageLeaf[] = [
   {
     id: 'print-management', label: 'Print management', domain: 'Reporting', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['report'], knowledgeIds: ['print-management'],
-    caseIds: ['L3-print-management-report'],
-    note: 'Eval case authored (document node + settings resolution); golden pending VM capture.',
+    caseIds: ['L3-print-management-report', 'L3-print-mgmt-doctype-extension'],
+    note: 'Two cases authored (using an existing document type; registering a new one via delegates); goldens pending VM capture.',
+  },
+  {
+    id: 'report-contracts', label: 'Report contracts (RDP/RDL/print/composite)', domain: 'Reporting', source: 'topic', tier: 'core', weight: 3,
+    aotTypes: ['report'], knowledgeIds: ['ssrs-contracts'],
+    caseIds: ['L4-ssrs-report-advanced'],
+    note: 'Contract taxonomy + controller override points; proven implicitly by the advanced SSRS golden.',
+  },
+  {
+    id: 'rdp-preprocess', label: 'Pre-processed RDP (long-running reports)', domain: 'Reporting', source: 'topic', tier: 'total', weight: 2,
+    aotTypes: ['report'], knowledgeIds: ['ssrs-rdp-preprocess'],
+    caseIds: ['L4-ssrs-report-preprocess'],
+    note: 'Eval case authored — doubles as the Phase F verification of the preProcess scaffold pairing; golden pending VM capture.',
+  },
+  {
+    id: 'report-ui-builder', label: 'Report dialog UI builders', domain: 'Reporting', source: 'topic', tier: 'total', weight: 2,
+    aotTypes: ['report'], knowledgeIds: ['ssrs-ui-builder'],
+    caseIds: ['L4-ssrs-report-uibuilder'],
+    note: 'uiBuilder scaffold option landed in Phase D; eval case authored, golden pending VM capture.',
   },
   {
     id: 'electronic-reporting', label: 'Electronic Reporting (ER)', domain: 'Reporting', source: 'topic', tier: 'total', weight: 1,

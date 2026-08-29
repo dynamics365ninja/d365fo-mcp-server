@@ -8,8 +8,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
-| core | 44 | 44 | **100%** |
-| total | 78 | 78 | 100% |
+| core | 45 | 51 | **88.2%** |
+| total | 79 | 89 | 88.8% |
 
 ## Data model (12/12)
 
@@ -28,7 +28,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Relations, indexes, field groups | core | ✅ | ✅ | ✅ | L2-table-modify-lifecycle, L3-form-detailstransaction |
 | Table inheritance (SupportInheritance/Extends) | total | ✅ | ✅ | ✅ | L2-table-inheritance-basic |
 
-## Code (22/22)
+## Code (22/30)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -54,6 +54,14 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Date/time & time zones (utcdatetime, DateTimeUtil) | total | ✅ | ✅ | ✅ | L2-datetime-timezone-range |
 | .NET interop (CLRInterop, using alias, CLRError) | total | ✅ | ✅ | ✅ | L2-dotnet-interop-clrerror |
 | Reflection / Dict* metadata API | total | ✅ | ✅ | ✅ | L2-reflection-dict-fieldwalk |
+| Data types, literals & conversions | core | ✅ | — | ✅ | Taught (xpp-data-types) and partially validator-enforced (FN001 arities, CS001 string type); no dedicated eval case. |
+| Declarations & scope (var/const/readonly/using) | core | ✅ | — | ✅ | Taught; exercised implicitly by every class case — no dedicated eval case. |
+| Operators & precedence (&&/|| trap, like, is/as) | core | ✅ | — | ✅ | Taught; CS001 blocks the C#-isms. No dedicated eval case. |
+| Statements & flow (switch fallthrough, loops) | core | ✅ | — | ✅ | Taught; BP004 covers removed keywords. No dedicated eval case. |
+| Exceptions inside transactions (catchability, retry) | core | ✅ | — | ✅ | TTS002/TTS003 validators + in-tts catchability matrix; eval case authored, golden pending VM capture. |
+| Attribute authoring & reflection | total | ✅ | — | ✅ | Rules-only topic (examples wait for the Phase F snapshot capture); no eval case. |
+| Compile-time (intrinsic) functions | core | ✅ | — | ✅ | Full catalog taught; references mode resolves the common ones. No dedicated eval case. |
+| Date-effective tables (validTimeState) | total | ✅ | — | ✅ | Eval case authored (table + as-of vs unfiltered select); golden pending VM capture. |
 
 ## UI (7/7)
 
@@ -67,13 +75,16 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Menus & submenu nesting | core | ✅ | ✅ | ✅ | L4-master-security-slice |
 | Tiles & KPIs | total | ✅ | ✅ | ✅ | L2-tile-cue-over-query |
 
-## Reporting (4/4)
+## Reporting (5/7)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | SSRS report (DP + contract + controller) | core | ✅ | ✅ | ✅ | L4-ssrs-report-advanced, L4-ssrs-report-basic |
 | Multi-dataset SSRS report | total | ✅ | ✅ | ✅ | L4-ssrs-report-multidataset |
 | Print management | total | ✅ | ✅ | ✅ | L3-print-management-report |
+| Report contracts (RDP/RDL/print/composite) | core | ✅ | ✅ | ✅ | L4-ssrs-report-advanced |
+| Pre-processed RDP (long-running reports) | total | ✅ | — | ✅ | Eval case authored — doubles as the Phase F verification of the preProcess scaffold pairing; golden pending VM capture. |
+| Report dialog UI builders | total | ✅ | — | ✅ | uiBuilder scaffold option landed in Phase D; eval case authored, golden pending VM capture. |
 | Electronic Reporting (ER) | total | ✅ | ✅ | ✅ | L3-electronic-reporting-integration |
 
 ## Frameworks (16/16)
@@ -131,11 +142,22 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 ## Closure queue (uncovered, by frequency weight)
 
-Nothing uncovered.
+| Weight | Leaf | Missing |
+| ---: | --- | --- |
+| 5 | Data types, literals & conversions | missing E |
+| 4 | Declarations & scope (var/const/readonly/using) | missing E |
+| 4 | Exceptions inside transactions (catchability, retry) | missing E |
+| 4 | Compile-time (intrinsic) functions | missing E |
+| 4 | Operators & precedence (&&/|| trap, like, is/as) | missing E |
+| 4 | Statements & flow (switch fallthrough, loops) | missing E |
+| 3 | Date-effective tables (validTimeState) | missing E |
+| 2 | Attribute authoring & reflection | missing E |
+| 2 | Pre-processed RDP (long-running reports) | missing E |
+| 2 | Report dialog UI builders | missing E |
 
 ## Orphans
 
 - Knowledge entries no leaf claims (**unproven knowledge**): extensible-enums
 - Eval cases no leaf claims (**unmapped proof**): L0-create-readback-no-reindex, L2-batched-object-reads, L2-object-delete-and-entry-point-cleanup, L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice
 
-_Generated 2026-08-23._
+_Generated 2026-08-29._

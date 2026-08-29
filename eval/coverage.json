@@ -1,15 +1,15 @@
 {
   "core": {
     "tier": "core",
-    "total": 44,
-    "covered": 44,
-    "percent": 100
+    "total": 51,
+    "covered": 45,
+    "percent": 88.2
   },
   "total": {
     "tier": "all",
-    "total": 78,
-    "covered": 78,
-    "percent": 100
+    "total": 89,
+    "covered": 79,
+    "percent": 88.8
   },
   "leaves": [
     {
@@ -577,6 +577,102 @@
       ]
     },
     {
+      "id": "data-types",
+      "label": "Data types, literals & conversions",
+      "domain": "Code",
+      "tier": "core",
+      "weight": 5,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "declarations-scope",
+      "label": "Declarations & scope (var/const/readonly/using)",
+      "domain": "Code",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "operators",
+      "label": "Operators & precedence (&&/|| trap, like, is/as)",
+      "domain": "Code",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "statements-flow",
+      "label": "Statements & flow (switch fallthrough, loops)",
+      "domain": "Code",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "exceptions-tts",
+      "label": "Exceptions inside transactions (catchability, retry)",
+      "domain": "Code",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "attributes",
+      "label": "Attribute authoring & reflection",
+      "domain": "Code",
+      "tier": "total",
+      "weight": 2,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "intrinsics",
+      "label": "Compile-time (intrinsic) functions",
+      "domain": "Code",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "date-effective",
+      "label": "Date-effective tables (validTimeState)",
+      "domain": "Code",
+      "tier": "total",
+      "weight": 3,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
       "id": "form",
       "label": "Form",
       "domain": "UI",
@@ -725,6 +821,44 @@
       "cases": [
         "L3-print-management-report"
       ]
+    },
+    {
+      "id": "report-contracts",
+      "label": "Report contracts (RDP/RDL/print/composite)",
+      "domain": "Reporting",
+      "tier": "core",
+      "weight": 3,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L4-ssrs-report-advanced"
+      ]
+    },
+    {
+      "id": "rdp-preprocess",
+      "label": "Pre-processed RDP (long-running reports)",
+      "domain": "Reporting",
+      "tier": "total",
+      "weight": 2,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "report-ui-builder",
+      "label": "Report dialog UI builders",
+      "domain": "Reporting",
+      "tier": "total",
+      "weight": 2,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
     },
     {
       "id": "electronic-reporting",

@@ -1,6 +1,14 @@
 # X++ Language & Reporting Coverage Plan
 
-Status: **Phases A–D done (2026-08-29); E pending; E/F require the D365FO VM.**
+Status: **Phases A–E done (2026-08-29); only Phase F (VM) remains.**
+Phase E deltas: no separate "Language" domain — the 8 grammar leaves live in the existing `Code`
+domain (data-types, declarations-scope, operators, statements-flow, exceptions-tts, attributes,
+intrinsics, date-effective), Reporting gained report-contracts / rdp-preprocess / report-ui-builder.
+Coverage honestly dropped 100% → 88.2% core (45/51) — the closure queue now names the grammar
+leaves the old artifact-type taxonomy hid. Five cases authored `golden_pending` for Phase F:
+L2-exception-tts-retry, L2-date-effective-table, L3-print-mgmt-doctype-extension,
+L4-ssrs-report-preprocess (doubles as the preProcess-pairing verification),
+L4-ssrs-report-uibuilder.
 Phase D deltas: the report-pattern catalog is a RECIPE catalog (`src/knowledge/reportPatterns/`,
 7 patterns) rather than a FormPatternSpec mirror — reports have no pattern XML to validate against.
 The generator gained only `uiBuilder` (UIBuilder class + SysOperationContractProcessing binding);

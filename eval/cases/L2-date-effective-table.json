@@ -1,0 +1,26 @@
+{
+  "id": "L2-date-effective-table",
+  "title": "Date-effective table with as-of validTimeState select vs the unfiltered plain select",
+  "tier": 2,
+  "instruction": "In the sandbox model, prove the date-effective select contract. Ground it first with get_knowledge(topic=\"date-effective\") and get_knowledge(topic=\"select-statement\"). Create: (1) a table DemoWorkerBonusRate (table group Main) made date-effective by setting ValidTimeStateFieldType = Date, so the table carries the ValidFrom/ValidTo date columns (use exactly those platform names — do NOT invent differently named period fields). Business fields: WorkerId (String, EDT Num, mandatory) and BonusRate (Real, EDT Percent); use the standard EDTs from the index rather than inventing new ones. Add the required unique alternate-key index BonusRateIdx keyed on WorkerId and satisfying the platform's valid-time-state key requirement (AllowDuplicates = No, AlternateKey = Yes, ValidTimeStateKey = Yes, ValidTimeStateMode = NoGap — a date-effective table does not build without this index). (2) a class DemoWorkerBonusRateService with public static methods: (a) `void addRate(Num _workerId, Percent _rate, date _validFrom, date _validTo)` - inserts one version, stamping ValidFrom/ValidTo from the arguments inside ttsbegin/ttscommit; (b) `Percent effectiveRate(Num _workerId, date _asOfDate)` - returns the BonusRate of the SINGLE version valid on _asOfDate via `select validTimeState(_asOfDate)`; validTimeState is a FindOption and must sit between select and the buffer; (c) `int versionCount(Num _workerId)` - a PLAIN select count for the worker that deliberately omits validTimeState, demonstrating the trap this case exists to teach: an unfiltered X++ select returns ALL versions, historical included (forms and Query objects filter to the current date automatically — X++ code is the odd one out). Adding validTimeState to (c), or hand-filtering (c) on ValidFrom/ValidTo, FAILS the case. Both objects must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-date-effective-table/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "table",
+    "class",
+    "date-effective",
+    "validtimestate",
+    "index",
+    "select",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

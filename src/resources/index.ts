@@ -77,26 +77,50 @@ function json(uri: string, data: unknown) {
   };
 }
 
+/**
+ * Whether any client has actually LISTED or READ a resource this session.
+ *
+ * These handlers are the only place that knows. The HTTP transport logs its own
+ * request line, but the stdio transport — which is what VS Code and VS 2022 use,
+ * i.e. every target client — logs nothing per request, so without this a read of
+ * `workspace://active` was indistinguishable from no client ever asking.
+ *
+ * That distinction is the open question behind two docs/BACKLOG.md entries
+ * (context-pipeline Phase 3b and the VSIX shim): both are deferred *until we
+ * verify a client consumes these resources*, and neither can be answered while
+ * the evidence is discarded. One line per event, not gated behind a debug flag,
+ * because the events are rare (a list at session start, a read on demand) and a
+ * flag nobody sets collects nothing.
+ */
+function noteResourceUse(event: string): void {
+  process.stderr.write(`[resources] 📄 ${event}\n`);
+}
+
 export function registerResources(server: Server, context: XppServerContext): void {
-  server.setRequestHandler(ListResourcesRequestSchema, async () => ({
-    resources: WORKSPACE_RESOURCES.map((r) => ({ ...r })),
-  }));
+  server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    noteResourceUse(`resources/list — client enumerated ${WORKSPACE_RESOURCES.length} workspace resources`);
+    return { resources: WORKSPACE_RESOURCES.map((r) => ({ ...r })) };
+  });
 
   // Classes are exposed as a template instead of being enumerated (100k+ entries) —
   // clients resolve xpp://class/<ClassName> on demand.
-  server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => ({
-    resourceTemplates: [
-      {
-        uriTemplate: `${CLASS_URI_PREFIX}{className}`,
-        name: 'X++ Class Source',
-        description: 'Full source of an X++ class by name, e.g. xpp://class/CustTable',
-        mimeType: 'text/x-xpp',
-      },
-    ],
-  }));
+  server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
+    noteResourceUse('resources/templates/list — client enumerated the xpp://class/{name} template');
+    return {
+      resourceTemplates: [
+        {
+          uriTemplate: `${CLASS_URI_PREFIX}{className}`,
+          name: 'X++ Class Source',
+          description: 'Full source of an X++ class by name, e.g. xpp://class/CustTable',
+          mimeType: 'text/x-xpp',
+        },
+      ],
+    };
+  });
 
   server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     const uri = request.params.uri;
+    noteResourceUse(`resources/read ${uri}`);
 
     if (isClassUri(uri)) {
       const source = await readClassSource(context, uri);
