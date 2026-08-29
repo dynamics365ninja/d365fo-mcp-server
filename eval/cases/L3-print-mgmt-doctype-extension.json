@@ -1,0 +1,33 @@
+{
+  "id": "L3-print-mgmt-doctype-extension",
+  "title": "Print management: REGISTER a new document type (PrintMgmtDocumentType enum extension + PrintMgmtDocType delegate subscriptions + printMgmt controller scaffold)",
+  "tier": 3,
+  "instruction": "In the sandbox model, register a brand-NEW print-management document type end-to-end. Ground it first with get_knowledge(topic=\"print-management\") (its new-document-type rules name the exact delegate wiring) and get_knowledge(topic=\"ssrs-reports\"). Create, in this order: (1) an enum EXTENSION on the STANDARD PrintMgmtDocumentType base enum adding a single new value DemoEvalReceipt (reuse a standard label from the labels index -- do not invent raw-text labels); after the write, READ BACK the AxEnumExtension XML and confirm EnumValues is NON-EMPTY before proceeding. (2) The report side through the grounded scaffold in ONE call: generate_object(mode=\"scaffold\", objectType=\"report\", name=\"DemoEvalReceipt\", fieldsHint=\"SalesId, CustAccount\", controllerType=\"printMgmt\") -- this emits the TempDB table, contract class, DP class, an SrsPrintMgmtController-based controller, the output menu item and the AxReport together. Then edit the controller's main(): replace the scaffolded parmPrintMgmtDocType placeholder (PrintMgmtDocumentType::SalesOrderConfirmation and its TODO comment) with PrintMgmtDocumentType::DemoEvalReceipt. (3) A delegate-handler class DemoEvalReceiptDocTypeHandler subscribing to the two registration delegates on the PrintMgmtDocType CLASS: one static method decorated [SubscribesTo(classStr(PrintMgmtDocType), delegateStr(PrintMgmtDocType, getDefaultReportFormatDelegate))] that answers with the report design reference ssrsReportStr(<Report>, Report), and one static method decorated [SubscribesTo(classStr(PrintMgmtDocType), delegateStr(PrintMgmtDocType, getQueryTableIdDelegate))] that answers with tableNum(SalesTable) as the driving table. BOTH handlers must guard on the incoming document type equalling PrintMgmtDocumentType::DemoEvalReceipt and answer ONLY for it -- these delegates fire for EVERY document type. Confirm both delegate signatures and the EventHandlerResult answer pattern with search / get_object_info(objectType=\"class\", options={\"method\":\"getDefaultReportFormatDelegate\",\"include\":\"signature\"}) before writing them -- do not guess. NOTE on names: create/scaffold prefix only objectName, never names embedded in sourceCode -- read the scaffolded artifacts back to learn the FINAL (prefixed) report and controller names, and spell those exact names inside ssrsReportStr(...) and all other hand-written source. PREREQUISITE: the sandbox model's Descriptor must list ApplicationSuite in ModuleReferences (PrintMgmtDocumentType, PrintMgmtDocType, SrsPrintMgmtController and SalesTable live there) or the build fails with unresolved symbols even though the symbol index resolves them fine. Scope guard: this case is the REGISTRATION counterpart to L3-print-management-report -- that case models a document on its OWN custom base enum and resolves PrintMgmtSettings for it; THIS case extends the STANDARD PrintMgmtDocumentType enum and wires the framework delegates. Do NOT create a custom base enum, do NOT implement a PrintMgmtDocType/PrintMgmtNode subclass, and do NOT add any PrintMgmtSettings resolution or runner logic here. All objects must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxEnumExtension",
+    "AxTable",
+    "AxClass",
+    "AxClass",
+    "AxClass",
+    "AxMenuItemOutput",
+    "AxReport",
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L3-print-mgmt-doctype-extension/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo",
+    "AxReport/Designs/AxReportDesign/Text"
+  ],
+  "tags": [
+    "print-management",
+    "ssrs",
+    "report",
+    "enum-extension",
+    "delegate",
+    "subscribesto",
+    "multi-artifact"
+  ],
+  "split": "holdout"
+}
