@@ -154,9 +154,17 @@ export interface BridgeEdtInfo {
   name: string;
   baseType?: string;
   extends?: string;
+  /** Root of the Extends chain, for orientation in a multi-level hierarchy. */
+  rootEdt?: string;
   label?: string;
   helpText?: string;
   stringSize?: number;
+  /**
+   * Ancestor the reported `stringSize` came from. Absent when the number is what this EDT's
+   * own XML declares. Present both when the EDT declares nothing (the common case) and when
+   * an ancestor's value overrode one the EDT did declare.
+   */
+  stringSizeInheritedFrom?: string;
   enumType?: string;
   referenceTable?: string;
   model?: string;

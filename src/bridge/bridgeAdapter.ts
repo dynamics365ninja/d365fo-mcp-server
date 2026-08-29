@@ -499,10 +499,18 @@ function formatEdt(edt: BridgeEdtInfo): string {
   out += `## 🔧 Core Properties\n\n`;
   out += `| Property | Value |\n|---|---|\n`;
   out += `| Base Type | ${edt.baseType ?? '—'}${edt.extends ? ` (Extends: ${edt.extends})` : ''} |\n`;
+  if (edt.rootEdt && edt.rootEdt !== edt.extends) out += `| Root EDT | ${edt.rootEdt} |\n`;
   if (edt.enumType) out += `| Enum Type | ${edt.enumType} |\n`;
   if (edt.referenceTable) out += `| Reference Table | ${edt.referenceTable} |\n`;
   if (edt.relationType) out += `| Relation Type | ${edt.relationType} |\n`;
-  if (edt.stringSize) out += `| String Size | ${edt.stringSize} |\n`;
+  // A derived EDT usually inherits its StringSize rather than declaring one, and a value it
+  // does declare can still be overridden by an ancestor's. Say where the number came from
+  // whenever it is not what this EDT's own XML said.
+  if (edt.stringSize) {
+    const from = edt.stringSizeInheritedFrom ? ` (inherited from ${edt.stringSizeInheritedFrom})` : '';
+    const size = edt.stringSize === -1 ? '-1 (memo, unlimited)' : String(edt.stringSize);
+    out += `| String Size | ${size}${from} |\n`;
+  }
   if (edt.displayLength) out += `| Display Length | ${edt.displayLength} |\n`;
   if (edt.label) out += `| Label | ${edt.label} |\n`;
   if (edt.helpText) out += `| Help Text | ${edt.helpText} |\n`;
