@@ -1,6 +1,10 @@
 # X++ Language & Reporting Coverage Plan
 
-Status: **Phase A done (2026-08-29); B–E pending; E/F require the D365FO VM.**
+Status: **Phases A+B done (2026-08-29); C–E pending; E/F require the D365FO VM.**
+Phase B note: new-topic AOT references are constrained to prose + `My…` placeholders (the
+apiSymbols snapshot is entry-scoped and can only be re-captured on the VM). Phase F should
+re-capture the snapshot and may then upgrade prose mentions (e.g. `Exception::DuplicateKeyException`
+in `transactions`, `extends SysAttribute` in an `attributes-authoring` example) to audited code shapes.
 Prepared: 2026-08-29. Sources: full repo inventory + Microsoft Learn X++ reference sweep (~25 pages, current as of 2026-08).
 
 Goal: close the gap between the full X++ language (incl. SSRS report development) and what this
