@@ -1,6 +1,14 @@
 # X++ Language & Reporting Coverage Plan
 
-Status: **Phases A–C done (2026-08-29); D–E pending; E/F require the D365FO VM.**
+Status: **Phases A–D done (2026-08-29); E pending; E/F require the D365FO VM.**
+Phase D deltas: the report-pattern catalog is a RECIPE catalog (`src/knowledge/reportPatterns/`,
+7 patterns) rather than a FormPatternSpec mirror — reports have no pattern XML to validate against.
+The generator gained only `uiBuilder` (UIBuilder class + SysOperationContractProcessing binding);
+the planned PreProcessTempDB switch was NOT made — the preProcess path is unproven on the VM
+(no golden uses it) and the TempDB pairing claim awaits Phase F verification. Op-specs for
+`scaffold:report` now advertise the previously hidden aotQuery/callerTableName/preProcess/
+controllerType params. New knowledge: `ssrs-contracts`, `ssrs-rdp-preprocess`, `ssrs-ui-builder`
+(rules-only — zero extracted AOT refs pending the Phase F snapshot capture; examples then).
 Phase C deltas vs. the original table: `CS001` (C#-isms) implemented as planned; `RPT003`/`RPT004`
 were dropped (the TempDB/preprocess-attribute claims could not be verified off-VM and risked false
 errors); `RPT005` landed as two cheaper checks — `ssrsReportStr` joined the FN001 fixed-arity table

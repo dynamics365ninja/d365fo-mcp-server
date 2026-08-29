@@ -94,6 +94,8 @@ interface GenerateSmartReportArgs {
   preProcess?: boolean;
   /** Controller variant: "simple" (SrsReportRunController) or "printMgmt" (SrsPrintMgmtController) */
   controllerType?: 'simple' | 'printMgmt';
+  /** When true, also emits a <Name>UIBuilder class bound on the Contract via [SysOperationContractProcessing] */
+  uiBuilder?: boolean;
   /** Additional datasets — each generates an extra TmpTable (TempDB) and a get<Table>() method in the DP */
   additionalDatasets?: Array<{ name: string; fieldsHint?: string; fields?: ReportFieldSpec[] }>;
   /** Model name (auto-detected from projectPath) */
@@ -129,6 +131,7 @@ Strategies:
 - callerTableName: pre-fill contract from args.record() in prePromptModifyContract()
 - controllerType: "simple" (default) or "printMgmt" (SrsPrintMgmtController)
 - preProcess: true → SrsReportDataProviderPreProcess with preProcess() stub
+- uiBuilder: true → <Name>UIBuilder class bound via [SysOperationContractProcessing]
 - additionalDatasets: extra TmpTables + DP getters for multi-dataset reports
 
 Examples:
@@ -226,6 +229,10 @@ Examples:
         type: 'string',
         description: '"simple" (default — SrsReportRunController) or "printMgmt" (SrsPrintMgmtController with parmPrintMgmtDocType). Only relevant when generateController=true.',
       },
+      uiBuilder: {
+        type: 'boolean',
+        description: 'When true, also generates <Name>UIBuilder (extends SrsReportDataContractUIBuilder) and binds it on the Contract via [SysOperationContractProcessing] — for custom dialog lookups/field events.',
+      },
       additionalDatasets: {
         type: 'array',
         description: 'Extra datasets. Each entry generates an additional TmpTable (TempDB) and a corresponding get<Table>() method in the DP.',
@@ -265,6 +272,7 @@ export async function handleGenerateSmartReport(
     callerTableName,
     preProcess = false,
     controllerType = 'simple',
+    uiBuilder = false,
     additionalDatasets = [],
     modelName,
     projectPath,
@@ -345,6 +353,7 @@ export async function handleGenerateSmartReport(
   const contractClassName = `${finalName}Contract`;
   const dpClassName = `${finalName}DP`;
   const controllerClassName = `${finalName}Controller`;
+  const uiBuilderClassName = `${finalName}UIBuilder`;
   const reportCaption = caption || finalName;
 
   // Only decorate a plain-text caption with the suffix; appending to a label
@@ -632,12 +641,17 @@ export async function handleGenerateSmartReport(
     `    }`,
   ].join('\n') : '';
 
+  // With a UI builder the contract binds it via SysOperationContractProcessing.
+  const contractClassAttr = uiBuilder
+    ? `[\n    DataContractAttribute,\n    SysOperationContractProcessing(classStr(${uiBuilderClassName}))\n]`
+    : `[DataContractAttribute]`;
+
   const contractSourceCode = [
     `/// <summary>`,
     `/// Data contract for the ${reportCaption} report.`,
     `/// Defines dialog parameters shown to the user before report execution.`,
     `/// </summary>`,
-    `[DataContractAttribute]`,
+    contractClassAttr,
     `public class ${contractClassName}`,
     `{`,
     contractMemberDecls || '    // No dialog parameters',
@@ -659,6 +673,48 @@ export async function handleGenerateSmartReport(
     content: contractXml,
   });
   log(`Generated Contract: ${contractClassName} (${contractParms.length} params)`);
+
+  // 2b. UI builder class (optional) — custom dialog behaviour for the contract
+  if (uiBuilder) {
+    const exampleParm = contractParms[0]
+      ? `parm${contractParms[0].name.charAt(0).toUpperCase()}${contractParms[0].name.slice(1)}`
+      : 'parmMyParameter';
+    const uiBuilderSourceCode = [
+      `/// <summary>`,
+      `/// UI builder for the ${reportCaption} report dialog.`,
+      `/// Customizes dialog fields (lookups, dependent fields, events).`,
+      `/// </summary>`,
+      `public class ${uiBuilderClassName} extends SrsReportDataContractUIBuilder`,
+      `{`,
+      `}`,
+      ``,
+      `    /// <summary>`,
+      `    /// Builds the dialog and customizes its fields.`,
+      `    /// </summary>`,
+      `    public void build()`,
+      `    {`,
+      `        super();`,
+      ``,
+      `        // TODO: customize dialog fields, e.g.:`,
+      `        // ${contractClassName} contract = this.dataContractObject() as ${contractClassName};`,
+      `        // DialogField df = this.bindInfo().getDialogField(contract, methodStr(${contractClassName}, ${exampleParm}));`,
+      `        // df.registerOverrideMethod(methodStr(FormStringControl, lookup), methodStr(${uiBuilderClassName}, myParameterLookup), this);`,
+      `    }`,
+    ].join('\n');
+
+    const uiBuilderXml = XmlTemplateGenerator.generateAxClassXml(
+      uiBuilderClassName,
+      uiBuilderSourceCode
+    );
+
+    generatedObjects.push({
+      objectType: 'class',
+      objectName: uiBuilderClassName,
+      aotFolder: 'AxClass',
+      content: uiBuilderXml,
+    });
+    log(`Generated UI builder: ${uiBuilderClassName}`);
+  }
 
   // ──────────────────────────────────────────────────────────────────────────
   // 3. DP class (Data Provider)

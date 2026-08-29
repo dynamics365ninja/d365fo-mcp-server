@@ -11,15 +11,16 @@ export const objectPatternsTool = {
       '• table → common field types, index patterns and relation structures for D365FO tables. Filter by tableGroup (Main, Transaction, …) or similarTo a given table.\n' +
       '• form → form-pattern toolkit; pick an `action`:\n' +
       '   - analyze → pattern advisor + usage analysis. RECOMMEND (preferred for a new form): pass recommend={entityKind, hasHeaderLines, fieldCount, usageIntent, tableName} for the right pattern via the Microsoft decision tree + reference forms to clone. Or filter by formPattern / dataSource / similarTo.\n' +
-      '   - spec → full structure spec of a pattern or sub-pattern (required hierarchy/ordering, allowed children, reference forms, lifecycle). Call after analyze, before building.\n' +
-      '   - validate → structural validator of AxForm XML (<50 ms, offline): container hierarchy/order, sub-patterns, PatternVersion. Returns FP001-FP010 violations. Call before action=create on d365fo_file.',
+      '   - spec → full structure spec of a pattern or sub-pattern (required hierarchy/ordering, allowed children, reference forms, lifecycle).\n' +
+      '   - validate → structural validator of AxForm XML: container hierarchy/order, sub-patterns, PatternVersion. Returns FP001-FP010 violations. Call before action=create on d365fo_file.\n' +
+      '• report → SSRS implementation recipes: object roster, scaffold call, checks. Optional pattern=<id> for one recipe.',
     inputSchema: {
       type: 'object',
       properties: {
         domain: {
           type: 'string',
-          enum: ['table', 'form'],
-          description: 'Optional — inferred from the other params (action/pattern/xml/formName → form; tableGroup → table). ⚠️ NOT a free-form "pattern type": a concept like "number-sequence"/"SysOperation" belongs to get_knowledge, not here.',
+          enum: ['table', 'form', 'report'],
+          description: 'Optional — inferred from the other params (action/pattern/xml/formName → form; tableGroup → table). ⚠️ NOT a free-form "pattern type": a concept like "number-sequence"/"SysOperation" belongs to get_knowledge.',
         },
         // domain=table
         tableGroup: {
@@ -45,7 +46,7 @@ export const objectPatternsTool = {
         },
         similarTo: {
           type: 'string',
-          description: '[table] table name to find similar table patterns; [form/analyze] form name to find similar form patterns.',
+          description: '[table] table / [form-analyze] form name to find similar patterns.',
         },
         recommend: {
           type: 'object',
@@ -77,13 +78,13 @@ export const objectPatternsTool = {
         },
         limit: {
           type: 'number',
-          description: '[analyze] Maximum number of pattern examples (default: 10)',
+          description: '[analyze] Max pattern examples (default 10)',
           default: 10,
         },
         // action=spec
         pattern: {
           type: 'string',
-          description: '[spec] REQUIRED. Pattern name (id, xmlName, or alias) — e.g. "SimpleList", "DetailsMaster", or a sub-pattern like "FieldsFieldGroups".',
+          description: '[spec|report] Pattern name (id, xmlName, or alias) — e.g. "SimpleList", a sub-pattern like "FieldsFieldGroups", or a report recipe like "PrintMgmtFormLetter".',
         },
         // action=validate
         xml: {
@@ -96,7 +97,7 @@ export const objectPatternsTool = {
         },
         filePath: {
           type: 'string',
-          description: '[form/validate] Explicit path to an AxForm XML file (e.g. a freshly created form not yet indexed).',
+          description: '[form/validate] Path to an AxForm XML file not yet indexed.',
         },
       },
       // domain is optional: inferred from other params (also accepts `patternType` alias).
