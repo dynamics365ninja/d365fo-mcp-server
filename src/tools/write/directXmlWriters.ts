@@ -606,7 +606,7 @@ function maskXmlNonMarkup(content: string): string {
  * of the one that was asked for — valid XML, different query.
  */
 function findDirectChild(block: string, childName: string): DirectChild | null {
-  const openTag = new RegExp(`^<[A-Za-z_][\\w.-]*(?:"[^"]*"|'[^']*'|[^>"'])*?>`).exec(block);
+  const openTag = /^<[A-Za-z_][\w.-]*(?:"[^"]*"|'[^']*'|[^>"'])*?>/.exec(block);
   if (!openTag) return null;
 
   const tagRe = new RegExp(XML_TAG_SOURCE, 'g');
