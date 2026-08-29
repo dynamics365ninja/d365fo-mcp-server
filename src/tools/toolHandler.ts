@@ -463,7 +463,18 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       // Invalidate every cached read, whatever the outcome: a write that threw
       // may still have changed the disk, and serving a pre-write body afterwards
       // is the failure this guards against.
-      if (MUTATING_TOOLS.has(toolName)) bumpWriteEpoch();
+      if (MUTATING_TOOLS.has(toolName)) {
+        bumpWriteEpoch();
+        // Same reasoning, second cache: WorkspaceScanner holds a 15s TTL cache of
+        // the .xml files on disk, and its own doc comment claimed writes invalidated
+        // it — nothing did, so for up to 15s after a create the workspace-backed
+        // readers (hybridSearch, get_object_info/completion with includeWorkspace)
+        // and workspace://files, workspace://active could not see a file this
+        // server had just written. Full clear, not per-path: the write's workspace
+        // is not reliably known here, and clearing a Map is cheaper than guessing
+        // wrong. The next scan re-globs.
+        context.workspaceScanner?.invalidate();
+      }
       inFlightHandle?.resolve(capped);
       clearInFlight(callKey);
     }

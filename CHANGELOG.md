@@ -29,6 +29,29 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Fixed
+- **A write did not invalidate the workspace scan cache.** `WorkspaceScanner`'s
+  own doc comment said its 15s TTL was "paired with invalidate() (called after
+  writes)"; `invalidate()` had no production caller at all — only tests and its
+  own `clearCache()` alias. So for up to 15 seconds after a create, the
+  workspace-backed readers and the `workspace://files` / `workspace://active`
+  resources could not see a file this same server had just written. The
+  dispatcher now clears it at the same choke point that bumps the write epoch,
+  which is the sibling cache with the same failure mode and the same fix.
+- **Four served MCP methods were logged as if unimplemented.** The HTTP
+  transport's `SILENT_PROBES` set carried `resources/list`,
+  `resources/templates/list`, `prompts/list` and `logging/setLevel` under a
+  comment reading "capability-probe methods that always return Method not
+  found". All four are served — the first three since resources and prompts got
+  handlers, and `logging/setLevel` by the SDK itself off the declared
+  `logging: {}` capability, which is why no grep for a request schema in this
+  repo ever found it. Nothing was broken for clients; what it cost was evidence.
+  A client that reads `workspace://active` and one that ignores our resources
+  produced byte-identical logs, and that difference is precisely the trigger two
+  `docs/BACKLOG.md` entries (context-pipeline Phase 3b, VSIX shim) have been
+  waiting on. The resource and prompt handlers now log each list/read
+  themselves, so the signal survives stdio too — where VS Code and VS 2022, i.e.
+  every target client, connect and the transport logs nothing per request.
+  `SILENT_PROBES` is now pinned against the SDK's real handler registry.
 - **Docs and the architecture diagram re-aligned with the code.** The numbers
   drift audit: the SVG still advertised 26 tools (it is 20 — the same fold this
   block documents), TESTING.md still said 23 tools and ~2,900 tests across ~220

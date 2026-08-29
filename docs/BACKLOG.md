@@ -8,6 +8,12 @@ the design.
 > Add a new item when you defer something during a PR. Move it to a commit (and
 > delete it here) when it ships. Keep entries small and honest about the unknowns.
 
+> **When something is rejected rather than shipped, it stays here** — rewritten as
+> a decision (`Status: rejected <date>`), with the reasons and with what evidence
+> would reopen it. A deleted rejection is indistinguishable from an idea nobody
+> ever had, so the next person proposes it again and re-derives the whole
+> argument. Deferrals expire into decisions; the decision is the valuable part.
+
 > **Restored 2026-08-08.** This file was deleted by `5ef1413` ("clean up repo and
 > consolidate docs") with all three items still open and not migrated anywhere —
 > so the deferral rationale, the triggers and the design sketches were lost. It is
@@ -28,6 +34,14 @@ the design.
     [`src/types/context.ts`](../src/types/context.ts), currently unpopulated).
   - Add `fs.watch` on the model metadata dir with debounce to invalidate the
     `WorkspaceScanner` cache on change, instead of the 15s lazy TTL added in 3a.
+  - *[2026-08-29] The watcher's main job is already done without it.* 3a's TTL
+    comment claimed `invalidate()` ran after writes; nothing called it — the
+    dispatcher now does, on every `MUTATING_TOOLS` call
+    ([`src/tools/toolHandler.ts`](../src/tools/toolHandler.ts)), so a file this
+    server wrote is visible to the workspace readers immediately instead of up to
+    15s later. What `fs.watch` would still add is picking up edits made **outside**
+    this server (the developer typing in the IDE) — a smaller prize, and one only
+    worth the platform-flakiness once the focus half below has a consumer.
 
 **Why deferred**
 - MCP exposes workspace **roots**, not the focused file in the editor — there is
@@ -43,6 +57,17 @@ the design.
 - We verify a target client reads `workspace://active` / `workspace://context`
   (or sends editor focus in `_meta`). At that point a precise active file is
   worth the watcher complexity.
+- *[2026-08-29] That verification is now possible — it was not before.* The
+  resource and prompt handlers log every list/read
+  ([`src/resources/index.ts`](../src/resources/index.ts),
+  [`src/prompts/codeReview.ts`](../src/prompts/codeReview.ts)), and the HTTP
+  transport stopped classifying `resources/list`, `resources/templates/list`,
+  `prompts/list` and `logging/setLevel` as unimplemented probes to swallow — all
+  four are served. Until then a client that read `workspace://active` and one
+  that ignored our resources entirely produced identical logs, so this trigger
+  could never fire. **Read the logs before doing any of the work below**; if the
+  target client never lists our resources, the honest resolution of this entry
+  and of the VSIX one is to close them, not to build them.
 
 **Sketch**
 - `EditorContext.activeFile` ← from client-supplied focus when available; else
@@ -60,37 +85,56 @@ the design.
 
 ---
 
-## Context ranker in `search`
+## Context ranker in `search` — REJECTED
 
-**Status:** deferred · **Area:** `src/tools/analysis/search.ts`, `src/workspace/contextRanker.ts` · **Depends on:** Phase 2 (shipped)
+**Status:** **rejected 2026-08-29** · **Area:** `src/tools/analysis/search.ts`, `src/workspace/contextRanker.ts`
 
-**What**
+**What was proposed**
 - Optionally let `search` re-rank / append a `rankContext()` "related" block when
-  the caller passes an intent, reusing the ranker already wired into `prepare`.
+  the caller passes an intent, reusing the ranker already wired into `prepare` —
+  via an optional `intent`/`rankRelated` param on the single-search path.
 
-**Why deferred**
-- `search` already returns FTS5-ranked results, so the ranker is largely
-  redundant there — and `search` is the hottest, most-tested path. Adding a new
-  param means threading it through the schema plus `searchUnified` and tests, for
-  marginal gain.
-  - *[2026-08] The cost argument is weaker than when this was written: commit
-    `a49488a` moved the schema out of the large inline block in `mcpServer.ts`
-    into its own file, [`src/server/toolSchemas/search.ts`](../src/server/toolSchemas/search.ts).
-    The "search is the hottest path" half of the rationale still stands.*
+**Why it is rejected, not deferred**
+Deferred twice (2026-06, 2026-08) on a cost argument. Re-examined on 2026-08-29
+against the current code, every leg of the case got *worse*, so this is a "no",
+not a "not yet". Four independent reasons, any one of which would be enough:
 
-**Trigger to pick this up**
-- A concrete case where plain FTS ordering misses relevance that the xref/usage
-  signals would catch (e.g. users repeatedly searching then manually pulling the
-  same neighbors).
+1. **There is no room to publish the parameter.** `TOTAL_BUDGET` in
+   [`tests/utils/toolSchemaBudget.test.ts`](../tests/utils/toolSchemaBudget.test.ts)
+   is 45,000 chars against a measured 44,998 — **2 chars of headroom** — and that
+   ratchet's own rule is *"fit the change to the budget, never the budget to the
+   change"*. The param could only ship by trimming a different tool's schema
+   first, i.e. by making some other tool harder to call. Leaving it unpublished
+   is not a way out: a parameter the model cannot see is a parameter nobody
+   passes.
+2. **The output slot is already occupied.** `search` ships an opt-in related
+   block today — `verbose` → related-searches / patterns / tips
+   ([`search.ts:429`](../src/tools/analysis/search.ts)). A second, differently-ranked
+   "related" section next to it is the double-ranking confusion the original
+   entry listed under *Risks*, now with a concrete collision.
+3. **The path got hotter, not cooler.** The 2026-08-25 audit cut untyped `search`
+   from 17.9s to 91ms. The "hottest, most-tested path" half of the original
+   rationale was never the weak half, and it is now stronger.
+4. **The trigger never fired in two months.** It asked for a concrete case where
+   FTS ordering misses relevance the xref/usage signals would catch. Across two
+   full usage audits — the second over 1,515 real MCP calls — no such case
+   appeared. `prepare` remains the right home for the ranker: it is where an
+   intent actually exists.
 
-**Sketch**
-- Add an optional `intent`/`rankRelated` param on the single-search path; when
-  set, append `renderRankedContext(rankContext(...))` after the FTS results.
-  Keep it off by default so existing behaviour/tests are untouched.
+**The correction that made this decidable**
+The 2026-08 note on this entry claimed the cost argument had *weakened*, because
+commit `a49488a` moved the schema into its own file. That measured the wrong
+cost. Moving a file cut the *editing* friction; what a published parameter
+actually costs is bytes in the ListTools payload, which are rationed and were
+not being counted. That note is retained here as the reason to be suspicious of
+"this got cheaper" claims that name no unit.
 
-**Risks**
-- Schema churn on a high-traffic tool; double-ranking confusion. Keep it additive
-  and clearly separated from the primary results.
+**What would reopen it**
+Nothing about implementation convenience — only demand. Concretely: corpus
+evidence of callers issuing a `search`, then immediately hand-pulling the same
+neighbours the ranker would have surfaced, often enough to beat the schema bytes
+it would cost. Reopen by re-adding an entry with that evidence attached; do not
+reopen it on the grounds that it would now be easy to build.
 
 ---
 
@@ -113,6 +157,11 @@ the design.
 **Trigger to pick this up**
 - Evidence that Copilot-in-VS / target clients do NOT consume our MCP resources
   or send focus, AND the proactive-context UX gap is costing real adoption.
+- *[2026-08-29] The first half of that trigger is now measurable — see the same
+  note under Phase 3b. Both entries hang on one unanswered question, and the
+  handlers finally log the answer. Note the asymmetry before reading the logs:
+  silence here argues for building the VSIX and against building 3b, so "no
+  client reads our resources" is not a null result for this entry.*
 
 **Sketch**
 - VSIX sends active file + open docs via `_meta` on tool calls (already partially
