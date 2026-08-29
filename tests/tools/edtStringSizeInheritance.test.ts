@@ -40,7 +40,7 @@ import { describe, it, expect, vi } from 'vitest';
 import Database from '../../src/database/sqlite.js';
 import { getEdtInfoTool } from '../../src/tools/readers/edtInfo';
 
-function makeDb(rows: Array<{ name: string; extends?: string; stringSize?: string }>) {
+function makeDb(rows: Array<{ name: string; extends?: string; stringSize?: string; model?: string }>) {
   const db = new Database(':memory:');
   db.exec(`
     CREATE TABLE edt_metadata (
@@ -59,9 +59,9 @@ function makeDb(rows: Array<{ name: string; extends?: string; stringSize?: strin
     CREATE VIRTUAL TABLE symbols_fts USING fts5(name, type, parent_name, signature, description, tags);
   `);
   const insEdt = db.prepare(
-    `INSERT INTO edt_metadata (edt_name, extends, string_size, model) VALUES (?, ?, ?, 'Foundation')`,
+    `INSERT INTO edt_metadata (edt_name, extends, string_size, model) VALUES (?, ?, ?, ?)`,
   );
-  for (const r of rows) insEdt.run(r.name, r.extends ?? null, r.stringSize ?? null);
+  for (const r of rows) insEdt.run(r.name, r.extends ?? null, r.stringSize ?? null, r.model ?? 'Foundation');
   return db;
 }
 
@@ -234,5 +234,73 @@ describe('EDT StringSize inheritance — SQLite fallback path', () => {
 
     const out = text(await getEdtInfoTool(req('LoopA'), ctx(db, null)));
     expect(out).not.toContain('| String Size |');
+  });
+});
+
+/**
+ * Both modes answer out of the same table over the same `extends` chain, and used to walk it
+ * with two separate loops — so they could disagree about the same EDT. They now share
+ * `walkEdtChain`.
+ */
+describe('EDT StringSize inheritance — the two SQLite modes agree', () => {
+  const hierReq = (edtName: string, modelName?: string) => ({
+    method: 'tools/call' as const,
+    params: {
+      name: 'get_edt_info',
+      arguments: { edtName, mode: 'hierarchy', ...(modelName ? { modelName } : {}) },
+    },
+  });
+
+  it('states the inherited size in hierarchy mode, which used to show none', async () => {
+    // The per-level list only ever showed what each level DECLARES, so the EDT the caller
+    // actually asked about — which declares nothing — showed no size at all.
+    const rows = [
+      { name: 'AccountNumber_IN', extends: 'CustVendAC' },
+      { name: 'CustVendAC', extends: 'ExternalAccount' },
+      { name: 'ExternalAccount', stringSize: '20' },
+    ];
+
+    const hier = text(await getEdtInfoTool(hierReq('AccountNumber_IN'), ctx(makeDb(rows), null)));
+    expect(hier).toContain('Effective String Size: 20 (inherited from ExternalAccount)');
+
+    // …and it is the same number basic mode reports for the same EDT.
+    const basic = text(await getEdtInfoTool(req('AccountNumber_IN'), ctx(makeDb(rows), null)));
+    expect(basic).toContain('| String Size | 20 (inherited from ExternalAccount) |');
+  });
+
+  it('claims no inheritance in hierarchy mode when the EDT declares its own size', async () => {
+    const db = makeDb([
+      { name: 'InvoiceId', extends: 'Num', stringSize: '50' },
+      { name: 'Num', stringSize: '20' },
+    ]);
+
+    const out = text(await getEdtInfoTool(hierReq('InvoiceId'), ctx(db, null)));
+    expect(out).toContain('Effective String Size: 50');
+    expect(out).not.toContain('inherited from');
+  });
+
+  it('follows the chain into other models instead of cutting it at the first hop', async () => {
+    // A child in an ISV model extending a Microsoft one is the normal case, not the exotic one.
+    // modelName pins WHICH EDT the caller means; carrying it up the chain would end the walk at
+    // ExtendedName and report an ISV EDT as a root with no size.
+    const db = makeDb([
+      { name: 'ExtendedName', extends: 'DirPartyName', model: 'ISVModel' },
+      { name: 'DirPartyName', stringSize: '160', model: 'ApplicationPlatform' },
+    ]);
+
+    const out = text(await getEdtInfoTool(hierReq('ExtendedName', 'ISVModel'), ctx(db, null)));
+    expect(out).toContain('ExtendedName → DirPartyName');
+    expect(out).toContain('Effective String Size: 160 (inherited from DirPartyName)');
+  });
+
+  it('does not spin on a cycle in hierarchy mode either', async () => {
+    const db = makeDb([
+      { name: 'LoopA', extends: 'LoopB' },
+      { name: 'LoopB', extends: 'LoopA' },
+    ]);
+
+    const out = text(await getEdtInfoTool(hierReq('LoopA'), ctx(db, null)));
+    expect(out).toContain('Ancestor Chain (2 level(s))');
+    expect(out).not.toContain('Effective String Size');
   });
 });

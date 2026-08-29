@@ -168,9 +168,8 @@ function getEdtFromIndex(symbolIndex: any, edtName: string, modelName?: string) 
  * A derived EDT usually declares no StringSize, leaving `edt_metadata.string_size` empty for
  * 12 354 of the 25 332 indexed EDTs -- and this row used to be omitted for all of them even
  * though the value sits an `extends` hop or two away. So: use the EDT's own size when it has
- * one, otherwise walk `extends` to the nearest ancestor that stores one. Guards against a
- * cycle and against a dangling `extends` (AmountMST names MoneyMST, which ships no AxEdt
- * file).
+ * one, otherwise walk `extends` to the nearest ancestor that stores one. The walk itself, with
+ * its cycle and dangling-`extends` guards, is `walkEdtChain`, shared with hierarchy mode.
  *
  * A child MAY declare its own size -- 228 do, permitted when the base carries
  * StringSizeIsExtensible = Yes -- so a stored value is authoritative here and is not
@@ -190,25 +189,55 @@ function resolveIndexedStringSize(
   if (row.string_size) return { value: String(row.string_size) };
 
   const seen = new Set<string>([String(row.edt_name ?? '').toLowerCase()]);
-  let next: string | undefined = row.extends || undefined;
-
-  while (next && !seen.has(next.toLowerCase())) {
-    seen.add(next.toLowerCase());
-    let ancestor: any;
-    try {
-      ancestor = db.prepare(
-        'SELECT edt_name, extends, string_size FROM edt_metadata WHERE edt_name = ? LIMIT 1',
-      ).get(next);
-    } catch {
-      return null;
-    }
-    if (!ancestor) return null;
+  for (const ancestor of walkEdtChain(db, row.extends, { seen })) {
     if (ancestor.string_size) {
       return { value: String(ancestor.string_size), inheritedFrom: ancestor.edt_name };
     }
-    next = ancestor.extends || undefined;
   }
   return null;
+}
+
+/**
+ * Yields the `edt_metadata` row for `startName` and then each `extends` ancestor in turn.
+ *
+ * Both modes of this tool walk the same chain over the same table with the same two stop
+ * conditions — a dangling `extends` (AmountMST names MoneyMST, which ships no AxEdt file) and a
+ * name already seen, so a metadata cycle cannot spin — so they walk it through here rather than
+ * each keeping their own copy of those rules.
+ *
+ * `modelName` filters the START row only. Ancestors are looked up across every model on purpose:
+ * a child in an ISV model almost always extends something in ApplicationPlatform or Foundation,
+ * and carrying the filter up the chain would cut it at the first hop and report the child as a
+ * root. Names are compared case-insensitively because X++ identifiers are.
+ */
+function* walkEdtChain(
+  db: any,
+  startName: string | undefined | null,
+  opts: { modelName?: string; seen?: Set<string> } = {},
+): Generator<any> {
+  const seen = opts.seen ?? new Set<string>();
+  let next: string | undefined = startName || undefined;
+  let first = true;
+
+  while (next && !seen.has(next.toLowerCase())) {
+    seen.add(next.toLowerCase());
+    const useModel = first ? opts.modelName : undefined;
+    first = false;
+
+    let row: any;
+    try {
+      row = db.prepare(
+        `SELECT edt_name, model, extends, label, string_size FROM edt_metadata
+          WHERE edt_name = ?${useModel ? ' AND model = ?' : ''} LIMIT 1`,
+      ).get(...(useModel ? [next, useModel] : [next]));
+    } catch {
+      return;
+    }
+    if (!row) return;
+
+    yield row;
+    next = row.extends || undefined;
+  }
 }
 
 /** True when edt_metadata holds a row for exactly this spelling. */
@@ -283,23 +312,11 @@ function getEdtHierarchy(db: any, edtName: string, modelName?: string) {
     ? edtName
     : (canonicalSymbolName(db, edtName, ['edt']) ?? edtName);
 
-  // Ancestor chain walk
+  // Ancestor chain walk — shared with basic mode's string-size resolution, so both modes stop
+  // on the same dangling `extends` and the same cycle, and agree on what the chain is.
   const chain: Array<{ name: string; model: string; extends?: string; label?: string; stringSize?: string }> = [];
-  let current = startName;
-  const visited = new Set<string>();
-
-  while (current && !visited.has(current)) {
-    visited.add(current);
-    const row = db.prepare(`
-      SELECT edt_name, model, extends, label, string_size
-      FROM edt_metadata WHERE edt_name = ?
-      ${modelName ? 'AND model = ?' : ''}
-      LIMIT 1
-    `).get(...(modelName ? [current, modelName] : [current])) as any;
-
-    if (!row) break;
+  for (const row of walkEdtChain(db, startName, { modelName })) {
     chain.push({ name: row.edt_name, model: row.model, extends: row.extends, label: row.label, stringSize: row.string_size });
-    current = row.extends;
   }
 
   if (chain.length === 0) {
@@ -326,6 +343,20 @@ function getEdtHierarchy(db: any, edtName: string, modelName?: string) {
     if (e.stringSize) output += `, StringSize: ${e.stringSize}`;
     if (e.extends) output += ` [extends ${e.extends}]`;
     output += '\n';
+  }
+
+  // The per-level StringSize above is only what each level DECLARES, so the queried EDT — which
+  // usually declares nothing — showed no size at all while basic mode reported the inherited
+  // one. Same resolution, same answer, stated once.
+  const effective = resolveIndexedStringSize(db, {
+    edt_name: chain[0].name,
+    extends: chain[0].extends,
+    string_size: chain[0].stringSize,
+  });
+  if (effective) {
+    const from = effective.inheritedFrom ? ` (inherited from ${effective.inheritedFrom})` : '';
+    const shown = effective.value === '-1' ? '-1 (memo, unlimited)' : effective.value;
+    output += `\nEffective String Size: ${shown}${from}\n`;
   }
 
   // Children

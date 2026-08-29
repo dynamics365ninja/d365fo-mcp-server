@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace D365MetadataBridge.Models
@@ -256,9 +256,13 @@ namespace D365MetadataBridge.Models
         public string? Extends { get; set; }
 
         /// <summary>
-        /// Root of the Extends chain, or null for a root EDT. Reported for orientation in a
-        /// multi-level hierarchy; it is not necessarily the element that declares the
-        /// StringSize -- see StringSizeInheritedFrom for that.
+        /// Root of the Extends chain. Reported for orientation in a multi-level hierarchy; it is
+        /// not necessarily the element that declares the StringSize -- see StringSizeInheritedFrom
+        /// for that.
+        ///
+        /// Null for a root EDT, and also null when the chain could not be walked to its end -- a
+        /// dangling Extends or a cycle -- because the last ancestor reached is not the root and
+        /// naming it as one would be a wrong answer rather than a missing one.
         /// </summary>
         [JsonPropertyName("rootEdt")]
         public string? RootEdt { get; set; }
