@@ -55,7 +55,7 @@ export interface FieldMetadata {
 export class WorkspaceScanner {
   private workspaceCache: Map<string, { files: WorkspaceFile[]; scannedAt: number }> = new Map();
 
-  /** Cache TTL; paired with invalidate() (called after writes) to keep results current without an fs.watch. Lazy expiry — no background timer. */
+  /** Cache TTL; paired with invalidate() (called by the dispatcher after every MUTATING_TOOLS call) to keep results current without an fs.watch. Lazy expiry — no background timer. */
   private static readonly CACHE_TTL_MS = 15_000;
 
   /**

@@ -28,6 +28,28 @@ const TOOL_TIMEOUT_MS = Math.max(10_000,
 const TOOL_TIMEOUT_FAST_MS  = Math.max(5_000,  parseInt(process.env.MCP_TOOL_TIMEOUT_FAST_MS  || '30000',  10) || 30_000);
 const TOOL_TIMEOUT_HEAVY_MS = Math.max(60_000, parseInt(process.env.MCP_TOOL_TIMEOUT_HEAVY_MS || '600000', 10) || 600_000);
 
+/**
+ * MCP methods this server does NOT implement: they always come back
+ * "Method not found", so logging them is noise.
+ *
+ * Keep this list to methods with NO registered handler — tests/server/silentProbes.test.ts
+ * pins that invariant against the SDK's real handler registry. Four of the five
+ * entries it used to hold were served, not probed: `resources/list`,
+ * `resources/templates/list` and `prompts/list` have had handlers since
+ * src/resources/index.ts and src/prompts/codeReview.ts registered them, and
+ * `logging/setLevel` is auto-registered by the SDK because the capabilities
+ * block declares `logging: {}` — a fact no grep for a request schema in this
+ * repo can find, which is how it stayed hidden.
+ *
+ * What the mistake cost was visibility, not correctness: silencing them
+ * discarded the only signal that says whether any client actually reads what we
+ * volunteer — which is exactly the evidence docs/BACKLOG.md's context-pipeline
+ * Phase 3b and VSIX entries are waiting on before either is worth building.
+ */
+export const SILENT_PROBES = new Set<string>([
+  'completion/complete',
+]);
+
 const HEAVY_TOOLS = new Set<string>([
   'build_d365fo_project',
   'trigger_db_sync',
@@ -256,14 +278,6 @@ export class CustomHttpTransport implements Transport {
         // Handle requests - send to MCP server via onmessage
         // Wait for response via Promise
         if (this.onmessage) {
-          // MCP capability-probe methods that always return "Method not found" — log silently
-          const SILENT_PROBES = new Set([
-            'resources/templates/list',
-            'resources/list',
-            'prompts/list',
-            'logging/setLevel',
-            'completion/complete',
-          ]);
           const isSilentProbe = SILENT_PROBES.has(request.method);
 
           // Log incoming request (skip silent probes)
