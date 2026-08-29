@@ -1836,20 +1836,69 @@ if (SecurityRights::hasTableAccess(tableNum(MyCustomTable), AccessType::Read))
   {
     id: 'ssrs-reports',
     title: 'SSRS Reports (DP → TmpTable → RDL)',
-    keywords: ['ssrs', 'report', 'rdl', 'dp class', 'data provider', 'srsreportdataproviderbase', 'contract', 'controller', 'design'],
+    keywords: ['ssrs', 'report', 'rdl', 'dp class', 'data provider', 'srsreportdataproviderbase', 'contract',
+               'controller', 'design', 'ssrsreportstr', 'preprocess', 'dataset', 'multi-dataset', 'output menu item'],
     summary:
-      'D365FO SSRS reports use: TmpTable (TempDB) → DataContract → DP class → Controller → AxReport with RDL design.',
+      'D365FO SSRS reports use: TmpTable (TempDB) → DataContract → DP class → Controller → AxReport with RDL design. ' +
+      'The scaffolded design is always named "Report"; ssrsReportStr is compile-time checked against it.',
     rules: [
-      '5 objects: TmpTable (TempDB), Contract (DataContractAttribute), DP (extends SrsReportDataProviderBase), Controller (extends SrsReportRunController), AxReport XML',
+      '6 objects: TmpTable (TempDB), Contract (DataContractAttribute), DP (extends SrsReportDataProviderBase), Controller (extends SrsReportRunController), AxMenuItemOutput, AxReport XML with RDL design',
+      'Scaffold ALL of them in one call: generate_object(mode="scaffold", objectType="report", name=..., fieldsHint=..., contractParams=[...]) — never hand-author the AxReport XML/RDL',
       'TmpTable: MUST be TableType=TempDB (NOT InMemory) — required for SSRS data connection',
-      'DP class: [SrsReportParameterAttribute(classStr(MyContract))], processReport() fills TmpTable',
-      'DP getter: [SRSReportDataSetAttribute(tableStr(MyTmp))] public MyTmp getMyTmp()',
-      'Controller: sets report name via ssrsReportStr(), opens dialog, runs report',
+      'DP class: [SrsReportParameterAttribute(classStr(MyReportContract))], processReport() fills TmpTable',
+      'DP getter: [SRSReportDataSetAttribute(tableStr(MyReportTmp))] public MyReportTmp getMyReportTmp() — one getter per dataset; extra datasets via additionalDatasets=[...] in the scaffold',
+      'Controller main(): controller.parmReportName(ssrsReportStr(MyReport, Report)) — every scaffolded AxReport names its design "Report"; ssrsReportStr is compile-time checked, so any other design name (e.g. "Design") fails the build',
+      'Long-running report (>10 min interactive SSRS timeout)? Scaffold with preProcess=true → DP base class becomes SrsReportDataProviderPreProcess (data staged before rendering; contract travels via controller, not the parameter attribute)',
+      'Print-management output: scaffold with controllerType="printMgmt" → controller base becomes SrsPrintMgmtController with parmPrintMgmtDocType() — see print-management topic',
+      'RDL layout options: designStyle="SimpleList" (default) or "GroupedWithTotals" (row group + SUM totals); query-based DP via aotQuery=...; pre-fill contract from caller record via callerTableName=...',
       'AxReport XML: DataSet with DataSourceType=ReportDataProvider, Query=SELECT * FROM DPClass.TmpTable',
-      'Use generate MCP tool to generate all 5 objects at once',
       'For existing reports, use get_object_info(objectType="report", name=...) — NEVER read report XML with PowerShell',
     ],
-    related: ['temp-tables', 'sysoperation'],
+    examples: [
+      {
+        label: 'DP class — fills the TmpTable dataset',
+        code: `[SrsReportParameterAttribute(classStr(MyReportContract))]
+public class MyReportDP extends SrsReportDataProviderBase
+{
+    MyReportTmp tmpTable;
+
+    [SRSReportDataSetAttribute(tableStr(MyReportTmp))]
+    public MyReportTmp getMyReportTmp()
+    {
+        select * from tmpTable;
+        return tmpTable;
+    }
+
+    public void processReport()
+    {
+        MyReportContract contract = this.parmDataContract() as MyReportContract;
+        date fromDate = contract.parmFromDate();
+
+        delete_from tmpTable;
+
+        insert_recordset tmpTable (ItemId, Qty)
+            select ItemId, Qty
+            from MySourceTable
+            where MySourceTable.TransDate >= fromDate;
+    }
+}`,
+      },
+      {
+        label: 'Controller — design name must match the AxReport design',
+        code: `public class MyReportController extends SrsReportRunController
+{
+    public static void main(Args _args)
+    {
+        MyReportController controller = new MyReportController();
+        // 'Report' is the design name inside the scaffolded AxReport — compile-time checked
+        controller.parmReportName(ssrsReportStr(MyReport, Report));
+        controller.parmArgs(_args);
+        controller.startOperation();
+    }
+}`,
+      },
+    ],
+    related: ['temp-tables', 'sysoperation', 'print-management'],
   },
 
   // ── Inventory Management ────────────────────────────────────────────────

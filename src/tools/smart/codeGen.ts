@@ -681,7 +681,7 @@ function ssrsReportFullTemplate(name: string): string {
 //   2. ${name}Contract  — DataContract class (below)
 //   3. ${name}DP        — Data Provider class (below)
 //   4. ${name}Controller — Report controller (below)
-//   5. ${name}.xml      — AxReport with RDL design (use generate_smart)
+//   5. ${name}.xml      — AxReport with RDL design (use generate_object(mode="scaffold", objectType="report"))
 // ══════════════════════════════════════════════════════════════════
 
 // ── 1. DataContract ─────────────────────────────────────────────────────────
@@ -753,7 +753,8 @@ public class ${name}Controller extends SrsReportRunController
     public static void main(Args _args)
     {
         ${name}Controller controller = new ${name}Controller();
-        controller.parmReportName(ssrsReportStr(${name}, Design));
+        // The design inside every scaffolded AxReport is named 'Report' — ssrsReportStr is compile-time checked against it
+        controller.parmReportName(ssrsReportStr(${name}, Report));
         controller.parmArgs(_args);
         controller.startOperation();
     }
