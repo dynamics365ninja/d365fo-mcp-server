@@ -461,3 +461,283 @@ describe('XML property rules — mined statistics', () => {
     expect(getText(result)).toContain('XML005');
   });
 });
+
+// ─── Phase C rules (CS001 / TTS002 / TTS003 / SEL006 / SEL007 / RPT / FN001 ext) ─
+
+describe('CS001 — C# constructs', () => {
+  it('flags string interpolation, lambda, foreach, ?? and string type', async () => {
+    const code = `
+      string name = custTable.Name;
+      str greeting = $"hello";
+      list.ForEach(x => x.run());
+      foreach (var item in items) {}
+      str fallback = a ?? b;
+    `;
+    const result = await validateXppTool(req({ code, codeType: 'xpp' }));
+    const text = getText(result);
+    const hits = (text.match(/\[CS001\]/g) ?? []).length;
+    expect(hits).toBeGreaterThanOrEqual(5);
+    expect(result.isError).toBe(true);
+  });
+
+  it('stays quiet on plain X++ (>= is not =>, quotes mask $")', async () => {
+    const code = `
+      if (qty >= minQty)
+      {
+          info(strFmt("@MyModel:Msg", qty));
+      }
+      str note = "uses => and foreach in prose";
+    `;
+    const result = await validateXppTool(req({ code, codeType: 'xpp' }));
+    expect(getText(result)).not.toContain('CS001');
+  });
+});
+
+describe('TTS002 — dead catch inside tts', () => {
+  it('flags a catch-all inside an open tts scope', async () => {
+    const code = `
+      ttsbegin;
+      try
+      {
+          custTable.update();
+      }
+      catch
+      {
+          info("never reached");
+      }
+      ttscommit;
+    `;
+    const result = await validateXppTool(req({ code, codeType: 'xpp' }));
+    expect(getText(result)).toContain('TTS002');
+  });
+
+  it('allows catch (Exception::UpdateConflict) inside tts and any catch outside', async () => {
+    const code = `
+      try
+      {
+          ttsbegin;
+          custTable.update();
+          ttscommit;
+      }
+      catch (Exception::Deadlock)
+      {
+          info("outside tts - fine");
+      }
+    `;
+    const result = await validateXppTool(req({ code, codeType: 'xpp' }));
+    expect(getText(result)).not.toContain('TTS002');
+  });
+});
+
+describe('TTS003 — unguarded retry', () => {
+  it('flags retry with no counter or condition in its catch', async () => {
+    const code = `
+      try
+      {
+          this.run();
+      }
+      catch (Exception::Deadlock)
+      {
+          retry;
+      }
+    `;
+    const result = await validateXppTool(req({ code, codeType: 'xpp' }));
+    expect(getText(result)).toContain('TTS003');
+  });
+
+  it('accepts a counter-guarded retry', async () => {
+    const code = `
+      try
+      {
+          this.run();
+      }
+      catch (Exception::Deadlock)
+      {
+          retryCount++;
+          if (retryCount > 5)
+          {
+              throw error("@MyModel:TooManyRetries");
+          }
+          retry;
+      }
+    `;
+    const result = await validateXppTool(req({ code, codeType: 'xpp' }));
+    expect(getText(result)).not.toContain('TTS003');
+  });
+});
+
+describe('SEL006 / SEL007 — index hint and foreign join syntax', () => {
+  it('SEL006: flags index hint without allowIndexHint(true)', async () => {
+    const code = `select firstOnly custTable index hint AccountIdx where custTable.AccountNum == acc;`;
+    const result = await validateXppTool(req({ code, codeType: 'xpp' }));
+    expect(getText(result)).toContain('SEL006');
+  });
+
+  it('SEL006: quiet when allowIndexHint(true) is present', async () => {
+    const code = `
+      custTable.allowIndexHint(true);
+      select firstOnly custTable index hint AccountIdx where custTable.AccountNum == acc;
+    `;
+    const result = await validateXppTool(req({ code, codeType: 'xpp' }));
+    expect(getText(result)).not.toContain('SEL006');
+  });
+
+  it('SEL007: flags left join and join…on', async () => {
+    const code = `
+      select custTable
+          left join custTrans on custTrans.AccountNum == custTable.AccountNum;
+    `;
+    const result = await validateXppTool(req({ code, codeType: 'xpp' }));
+    const text = getText(result);
+    expect(text).toContain('SEL007');
+    expect(result.isError).toBe(true);
+  });
+
+  it('SEL007: quiet on valid X++ joins', async () => {
+    const code = `
+      select custTable
+          outer join custTrans where custTrans.AccountNum == custTable.AccountNum
+          notexists join custBlocked where custBlocked.AccountNum == custTable.AccountNum;
+    `;
+    const result = await validateXppTool(req({ code, codeType: 'xpp' }));
+    expect(getText(result)).not.toContain('SEL007');
+  });
+});
+
+describe('RPT001/RPT002 — DP class shape', () => {
+  it('RPT001: DP reads parmDataContract() without SRSReportParameterAttribute', async () => {
+    const code = `
+      public class MyReportDP extends SRSReportDataProviderBase
+      {
+          public void processReport()
+          {
+              MyReportContract contract = this.parmDataContract() as MyReportContract;
+          }
+
+          [SRSReportDataSetAttribute(tableStr(MyReportTmp))]
+          public MyReportTmp getMyReportTmp()
+          {
+              select * from tmpTable;
+              return tmpTable;
+          }
+      }
+    `;
+    const result = await validateXppTool(req({ code, codeType: 'xpp' }));
+    expect(getText(result)).toContain('RPT001');
+  });
+
+  it('RPT002: processReport without any dataset getter', async () => {
+    const code = `
+      [SRSReportParameterAttribute(classStr(MyReportContract))]
+      public class MyReportDP extends SRSReportDataProviderBase
+      {
+          public void processReport()
+          {
+          }
+      }
+    `;
+    const result = await validateXppTool(req({ code, codeType: 'xpp' }));
+    expect(getText(result)).toContain('RPT002');
+  });
+
+  it('quiet on a well-formed DP', async () => {
+    const code = `
+      [SRSReportParameterAttribute(classStr(MyReportContract))]
+      public class MyReportDP extends SRSReportDataProviderBase
+      {
+          [SRSReportDataSetAttribute(tableStr(MyReportTmp))]
+          public MyReportTmp getMyReportTmp()
+          {
+              select * from tmpTable;
+              return tmpTable;
+          }
+
+          public void processReport()
+          {
+              MyReportContract contract = this.parmDataContract() as MyReportContract;
+          }
+      }
+    `;
+    const result = await validateXppTool(req({ code, codeType: 'xpp' }));
+    const text = getText(result);
+    expect(text).not.toContain('RPT001');
+    expect(text).not.toContain('RPT002');
+  });
+});
+
+describe('codeType xml-report — RPT101/RPT102', () => {
+  it('RPT101: AxReport without a design', async () => {
+    const code = `<?xml version="1.0" encoding="utf-8"?>
+<AxReport>
+  <Name>MyReport</Name>
+  <Datasets>
+    <AxReportDataSet>
+      <Name>MyReportTmp</Name>
+      <Query>SELECT * FROM MyReportDP.MyReportTmp</Query>
+    </AxReportDataSet>
+  </Datasets>
+</AxReport>`;
+    const result = await validateXppTool(req({ code, codeType: 'xml-report' }));
+    expect(getText(result)).toContain('RPT101');
+  });
+
+  it('RPT102: dataset without Query', async () => {
+    const code = `<?xml version="1.0" encoding="utf-8"?>
+<AxReport>
+  <Name>MyReport</Name>
+  <Datasets>
+    <AxReportDataSet>
+      <Name>MyReportTmp</Name>
+    </AxReportDataSet>
+  </Datasets>
+  <Designs>
+    <AxReportDesign>
+      <Name>Report</Name>
+    </AxReportDesign>
+  </Designs>
+</AxReport>`;
+    const result = await validateXppTool(req({ code, codeType: 'xml-report' }));
+    const text = getText(result);
+    expect(text).toContain('RPT102');
+    expect(text).not.toContain('RPT101');
+  });
+
+  it('X++ keyword rules do NOT run over the RDL CDATA', async () => {
+    const code = `<?xml version="1.0" encoding="utf-8"?>
+<AxReport>
+  <Name>MyReport</Name>
+  <Designs>
+    <AxReportDesign>
+      <Name>Report</Name>
+      <Text><![CDATA[ print this; pause; select * from x; ]]></Text>
+    </AxReportDesign>
+  </Designs>
+</AxReport>`;
+    const result = await validateXppTool(req({ code, codeType: 'xml-report' }));
+    expect(getText(result)).toMatch(/no violations/i);
+  });
+});
+
+describe('FN001 — extended fixed-arity set', () => {
+  it('flags subStr with 2 arguments and ssrsReportStr with 1', async () => {
+    const code = `
+      str part = subStr(fullName, 3);
+      controller.parmReportName(ssrsReportStr(MyReport));
+    `;
+    const result = await validateXppTool(req({ code, codeType: 'xpp' }));
+    const text = getText(result);
+    const hits = (text.match(/\[FN001\]/g) ?? []).length;
+    expect(hits).toBe(2);
+  });
+
+  it('accepts correct arities (subStr 3, conPeek 2, mkDate 3, ssrsReportStr 2)', async () => {
+    const code = `
+      str part = subStr(fullName, 3, 5);
+      str first = conPeek(values, 1);
+      date d = mkDate(1, 7, 2026);
+      controller.parmReportName(ssrsReportStr(MyReport, Report));
+    `;
+    const result = await validateXppTool(req({ code, codeType: 'xpp' }));
+    expect(getText(result)).not.toContain('FN001');
+  });
+});

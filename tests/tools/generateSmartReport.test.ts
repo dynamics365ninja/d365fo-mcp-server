@@ -243,3 +243,58 @@ describe('generate_object(scaffold, report) EDT/field-type reconciliation', () =
     expect(text).not.toMatch(/<Name>LineCount<\/Name>[\s\S]{0,300}?System\.String/);
   });
 });
+
+/**
+ * Phase D: uiBuilder=true emits the UI-builder class and binds it on the
+ * Contract via [SysOperationContractProcessing] — and stays absent otherwise,
+ * so the default scaffold shape (compile-proven by the L4 goldens) is unchanged.
+ */
+describe('generate_object(scaffold, report) uiBuilder option', () => {
+  const originalPlatform = process.platform;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform });
+  });
+
+  it('emits <Name>UIBuilder and the SysOperationContractProcessing binding', async () => {
+    const result = await handleGenerateSmartReport(
+      {
+        name: 'CustAgingReport',
+        fieldsHint: 'CustAccount, Balance',
+        contractParams: [{ name: 'CustGroup', type: 'CustGroupId' }],
+        uiBuilder: true,
+        modelName: 'MyModel',
+      } as any,
+      createSymbolIndexStub()
+    );
+    const text = result.content[0].text as string;
+
+    expect(text).toContain('CustAgingReportUIBuilder');
+    expect(text).toContain('extends SrsReportDataContractUIBuilder');
+    expect(text).toContain('SysOperationContractProcessing(classStr(CustAgingReportUIBuilder))');
+    // build() calls super() first, per the ssrs-ui-builder topic
+    expect(text).toContain('public void build()');
+    expect(text).toContain('parmCustGroup');
+  });
+
+  it('default scaffold carries no UI builder and a plain [DataContractAttribute]', async () => {
+    const result = await handleGenerateSmartReport(
+      {
+        name: 'PlainReport',
+        fieldsHint: 'ItemId, Qty',
+        modelName: 'MyModel',
+      } as any,
+      createSymbolIndexStub()
+    );
+    const text = result.content[0].text as string;
+
+    expect(text).not.toContain('UIBuilder');
+    expect(text).not.toContain('SysOperationContractProcessing');
+    expect(text).toContain('[DataContractAttribute]');
+  });
+});

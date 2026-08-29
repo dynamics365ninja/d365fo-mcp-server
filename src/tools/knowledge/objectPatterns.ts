@@ -15,7 +15,9 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { XppServerContext } from '../../types/context.js';
 import { getTablePatternsTool } from './getTablePatterns.js';
 import { formPatternTool } from './formPattern.js';
+import { getReportPatternsTool } from './getReportPatterns.js';
 import { resolvePatternExact } from '../../knowledge/formPatterns/index.js';
+import { resolveReportPattern } from '../../knowledge/reportPatterns/index.js';
 
 function err(text: string) {
   return { content: [{ type: 'text' as const, text }], isError: true };
@@ -35,16 +37,27 @@ export async function objectPatternsTool(request: CallToolRequest, context: XppS
   // (exact, case-insensitive), so concept nouns like "number-sequence" still fall
   // through to the get_knowledge redirect below.
   let inferredPattern: string | undefined;
-  if (domain !== 'table' && domain !== 'form' && typeof aliasRaw === 'string') {
+  if (domain !== 'table' && domain !== 'form' && domain !== 'report' && typeof aliasRaw === 'string') {
     const spec = resolvePatternExact(aliasRaw);
     if (spec) {
       inferredPattern = spec.xmlName;
       domain = 'form';
+    } else if (resolveReportPattern(aliasRaw)) {
+      // A report pattern id (e.g. "PrintMgmtFormLetter") passed as the domain.
+      inferredPattern = aliasRaw;
+      domain = 'report';
     }
   }
 
+  // A pattern name that only the report catalog recognizes routes to it even
+  // when the caller said nothing about domains.
+  if (domain !== 'table' && domain !== 'form' && domain !== 'report'
+      && typeof a.pattern === 'string' && !resolvePatternExact(a.pattern) && resolveReportPattern(a.pattern)) {
+    domain = 'report';
+  }
+
   // Infer the discriminator from form/table-specific params when omitted.
-  if (domain !== 'table' && domain !== 'form') {
+  if (domain !== 'table' && domain !== 'form' && domain !== 'report') {
     const formSignals = ['action', 'pattern', 'recommend', 'formPattern', 'similarTo', 'dataSource', 'xml', 'formName'];
     const tableSignals = ['tableGroup'];
     if (formSignals.some(k => a[k] !== undefined)) {
@@ -56,6 +69,13 @@ export async function objectPatternsTool(request: CallToolRequest, context: XppS
 
   if (domain === 'table') {
     return getTablePatternsTool(request, context);
+  }
+
+  if (domain === 'report') {
+    const reportRequest: CallToolRequest = inferredPattern !== undefined && a.pattern === undefined
+      ? { ...request, params: { ...request.params, arguments: { ...a, pattern: inferredPattern } } }
+      : request;
+    return getReportPatternsTool(reportRequest);
   }
 
   if (domain === 'form') {
@@ -80,8 +100,9 @@ export async function objectPatternsTool(request: CallToolRequest, context: XppS
   const got = a.domain ?? a.patternType ?? a.type ?? a.objectType ?? '';
   return err(
     `object_patterns: could not determine domain (got domain/objectType="${got}"). ` +
-    `This tool only covers table and form patterns — pass domain="table" (table field/index/relation patterns) ` +
-    `or domain="form" (form-pattern toolkit; with action=analyze|spec|validate). ` +
+    `This tool covers table, form and report patterns — pass domain="table" (field/index/relation patterns), ` +
+    `domain="form" (form-pattern toolkit; with action=analyze|spec|validate) ` +
+    `or domain="report" (SSRS implementation recipes; optional pattern=<id>). ` +
     `Domain is also inferred from action/pattern/xml/formName (→ form) or tableGroup (→ table).\n\n` +
     `If you were after a feature/concept (e.g. "number-sequence", SysOperation, RunBase, data events), ` +
     `that is a knowledge topic — use get_knowledge(topic="${typeof got === 'string' && got ? got : '<topic>'}") instead.`,

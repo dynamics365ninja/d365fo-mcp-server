@@ -135,3 +135,25 @@ describe('extension type inferred from the proposed name', () => {
     expect(out).toContain('as query');
   });
 });
+
+describe('objectType="report" (Phase D)', () => {
+  it('suggests the SSRS companion-object roster', async () => {
+    const out = await validate({
+      objectType: 'report',
+      proposedName: 'ConSK_CustAging',
+    });
+    expect(out).toContain('ConSK_CustAgingTmp');
+    expect(out).toContain('ConSK_CustAgingContract');
+    expect(out).toContain('ConSK_CustAgingDP');
+    expect(out).toContain('ConSK_CustAgingController');
+    expect(out).toContain('generate_object(mode="scaffold", objectType="report")');
+  });
+
+  it('warns when the report name carries a companion-class suffix', async () => {
+    const out = await validate({
+      objectType: 'report',
+      proposedName: 'ConSK_CustAgingDP',
+    });
+    expect(out).toContain('COMPANION-class suffix');
+  });
+});

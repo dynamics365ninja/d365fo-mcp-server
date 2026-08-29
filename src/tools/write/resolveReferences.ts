@@ -230,6 +230,16 @@ const INTRINSIC_TARGET_TYPES: Record<string, string[] | null> = {
   menuitemoutputstr: null,
   tilestr: null,
   resourcestr: null,
+  reportstr: ['report'],
+  // 2nd argument is the DESIGN name inside the report — not an indexed symbol,
+  // so only the report itself is resolved here (design existence is a build check).
+  ssrsreportstr: ['report'],
+  delegatestr: ['class', 'table', 'form', 'class-extension'],
+  staticdelegatestr: ['class', 'table', 'form', 'class-extension'],
+  attributestr: ['class', 'class-extension'],
+  indexstr: ['table', 'view', 'data-entity', 'table-extension'],
+  tablemethodstr: ['table', 'view', 'map', 'data-entity', 'table-extension'],
+  tablestaticmethodstr: ['table', 'view', 'map', 'data-entity', 'table-extension'],
 };
 
 interface CleanedCode {

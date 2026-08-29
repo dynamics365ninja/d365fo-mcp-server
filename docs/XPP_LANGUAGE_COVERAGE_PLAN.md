@@ -1,6 +1,33 @@
 # X++ Language & Reporting Coverage Plan
 
-Status: **Phase A done (2026-08-29); B–E pending; E/F require the D365FO VM.**
+Status: **Phases A–E done (2026-08-29); only Phase F (VM) remains.**
+Phase E deltas: no separate "Language" domain — the 8 grammar leaves live in the existing `Code`
+domain (data-types, declarations-scope, operators, statements-flow, exceptions-tts, attributes,
+intrinsics, date-effective), Reporting gained report-contracts / rdp-preprocess / report-ui-builder.
+Coverage honestly dropped 100% → 88.2% core (45/51) — the closure queue now names the grammar
+leaves the old artifact-type taxonomy hid. Five cases authored `golden_pending` for Phase F:
+L2-exception-tts-retry, L2-date-effective-table, L3-print-mgmt-doctype-extension,
+L4-ssrs-report-preprocess (doubles as the preProcess-pairing verification),
+L4-ssrs-report-uibuilder.
+Phase D deltas: the report-pattern catalog is a RECIPE catalog (`src/knowledge/reportPatterns/`,
+7 patterns) rather than a FormPatternSpec mirror — reports have no pattern XML to validate against.
+The generator gained only `uiBuilder` (UIBuilder class + SysOperationContractProcessing binding);
+the planned PreProcessTempDB switch was NOT made — the preProcess path is unproven on the VM
+(no golden uses it) and the TempDB pairing claim awaits Phase F verification. Op-specs for
+`scaffold:report` now advertise the previously hidden aotQuery/callerTableName/preProcess/
+controllerType params. New knowledge: `ssrs-contracts`, `ssrs-rdp-preprocess`, `ssrs-ui-builder`
+(rules-only — zero extracted AOT refs pending the Phase F snapshot capture; examples then).
+Phase C deltas vs. the original table: `CS001` (C#-isms) implemented as planned; `RPT003`/`RPT004`
+were dropped (the TempDB/preprocess-attribute claims could not be verified off-VM and risked false
+errors); `RPT005` landed as two cheaper checks — `ssrsReportStr` joined the FN001 fixed-arity table
+(2 args) and the references mode now resolves `ssrsReportStr`/`reportStr` first arguments against
+the index ('report' type). `FN001` grew from 4 to 27 functions — **Phase F must re-verify the new
+arities against xppc** before trusting them further. New `xml-report` codeType runs report-only
+rules (RPT101/102) so the X++ keyword rules never scan RDL CDATA.
+Phase B note: new-topic AOT references are constrained to prose + `My…` placeholders (the
+apiSymbols snapshot is entry-scoped and can only be re-captured on the VM). Phase F should
+re-capture the snapshot and may then upgrade prose mentions (e.g. `Exception::DuplicateKeyException`
+in `transactions`, `extends SysAttribute` in an `attributes-authoring` example) to audited code shapes.
 Prepared: 2026-08-29. Sources: full repo inventory + Microsoft Learn X++ reference sweep (~25 pages, current as of 2026-08).
 
 Goal: close the gap between the full X++ language (incl. SSRS report development) and what this
