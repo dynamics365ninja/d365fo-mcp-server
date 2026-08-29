@@ -21,6 +21,7 @@ const ValidateObjectNamingArgsSchema = z.object({
       'edt',
       'query',
       'view',
+      'report',
       'table-extension',
       'class-extension',
       'form-extension',

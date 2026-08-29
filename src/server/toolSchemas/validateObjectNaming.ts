@@ -13,7 +13,7 @@ export const validateObjectNamingTool = {
         proposedName: { type: 'string', description: 'The proposed object name to validate' },
         objectType: {
           type: 'string',
-          enum: ['class', 'table', 'form', 'enum', 'edt', 'query', 'view',
+          enum: ['class', 'table', 'form', 'enum', 'edt', 'query', 'view', 'report',
             'table-extension', 'class-extension', 'form-extension', 'enum-extension', 'edt-extension',
             'menu-item', 'security-privilege', 'security-duty', 'security-role', 'data-entity'],
           description: 'Type of the D365FO object',

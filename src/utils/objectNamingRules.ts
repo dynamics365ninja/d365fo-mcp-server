@@ -407,6 +407,23 @@ export async function checkObjectNaming(
           suggestions.push(`Data entity name: ${name}Entity`);
         }
       }
+
+      if (args.objectType === 'report') {
+        // The AxReport name itself carries no suffix; what matters is that the
+        // companion classes follow the role-suffix convention, so hand the full
+        // roster to the caller in one place.
+        if (/(DP|Contract|Controller|UIBuilder|Tmp)$/.test(name)) {
+          warnings.push(
+            `"${name}" ends with a report COMPANION-class suffix — the AxReport itself is normally the bare document name ` +
+            `(the suffixed names belong to its classes/table).`,
+          );
+        }
+        suggestions.push(
+          `SSRS companion objects for "${name}": ${name}Tmp (TempDB table), ${name}Contract, ${name}DP, ` +
+          `${name}Controller, ${name}UIBuilder (optional), plus an AxMenuItemOutput named ${name}. ` +
+          `generate_object(mode="scaffold", objectType="report") emits the full roster.`,
+        );
+      }
     }
 
     // The model's own naming and EXTENSION_PREFIX disagree. Reported wherever the

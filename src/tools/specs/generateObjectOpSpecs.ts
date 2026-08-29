@@ -120,6 +120,26 @@ export const GENERATE_OBJECT_PARAM_SPECS: Record<string, { type: string; descrip
       '("Header" → <Report>HeaderTmp).',
   },
   generateController: { type: 'boolean', description: 'Generate the Controller class (default: true).' },
+  aotQuery: {
+    type: 'string',
+    description: 'AOT query name — DP gains [SRSReportQueryAttribute] and a query-based processReport() via this.parmQuery().',
+  },
+  callerTableName: {
+    type: 'string',
+    description: 'Caller record table (e.g. "CustTable") — Controller pre-fills the contract from args.record() in prePromptModifyContract().',
+  },
+  preProcess: {
+    type: 'boolean',
+    description: 'DP extends SrsReportDataProviderPreProcess (long-running reports; preProcess() stub, contract via Controller instead of [SRSReportParameterAttribute]).',
+  },
+  controllerType: {
+    type: 'string',
+    description: '"simple" (default — SrsReportRunController) or "printMgmt" (SrsPrintMgmtController + parmPrintMgmtDocType placeholder).',
+  },
+  uiBuilder: {
+    type: 'boolean',
+    description: 'Also emit a <Name>UIBuilder class (extends SrsReportDataContractUIBuilder) and bind it on the contract via [SysOperationContractProcessing] — for custom dialog lookups/events.',
+  },
   designStyle: {
     type: 'string',
     description: 'RDL design pattern: "SimpleList" (default) or "GroupedWithTotals".',
@@ -197,7 +217,9 @@ export const GENERATE_OBJECT_MODE_SPECS: Record<string, GenerateObjectModeSpec> 
     optional: [
       'caption', 'packagePath', 'fields', 'fieldsHint', 'contractParams', 'additionalDatasets',
       'generateController', 'designStyle', 'copyFrom', 'modelName', 'projectPath', 'solutionPath',
+      'aotQuery', 'callerTableName', 'preProcess', 'controllerType', 'uiBuilder',
     ],
+    note: 'Pattern recipes (roster + when-to-use): object_patterns(domain="report").',
   },
   'find-methods': {
     required: ['name'],

@@ -1291,8 +1291,10 @@ while select crosscompany : companies
       'To open the Print management setup: go to Accounts receivable → Setup → Print management',
       'For new document types: also add an entry in PrintMgmtReportFormat (links document type to report design)',
       'Original vs copy: the base enum is PrintCopyOriginal (Original/Copy), carried on the report contract as parmPrintCopyOriginal() — there is no PrintCopyType enum or parmPrintCopyType()',
+      'Wiring a NEW document type to its report happens through the delegate subscriptions on PrintMgmtDocType — getDefaultReportFormatDelegate answers with the report design reference, getQueryTableIdDelegate with the driving table — plus the module\'s PrintMgmtNode subclass so the type appears in the setup tree',
+      'Scaffold the controller side with generate_object(mode="scaffold", objectType="report", controllerType="printMgmt") — then replace the scaffolded parmPrintMgmtDocType placeholder with the real document type',
     ],
-    related: ['ssrs-reports'],
+    related: ['ssrs-reports', 'ssrs-contracts'],
   },
 
   // ── Unit Testing ─────────────────────────────────────────────────────────
@@ -1713,6 +1715,8 @@ MySalesConfirmedBusinessEvent::newFromContract(contract).send();`,
       'ER classes ARE extensible by CoC (ERParameters, ERInvoicingServiceParameters and others carry class extensions); what cannot be edited in code is the configuration, not the framework',
       'ER format file path: System administration > Electronic reporting > Reporting configurations',
       'Country-specific ER formats loaded via localization features — check ERSolutionRepositoryTable',
+      'Choosing the technology: SSRS (RDP) for interactive/analytical documents and print-management output; ER for regulatory and localizable FILES (XML, JSON, TEXT, SEPA, VAT) and formats customers reconfigure without deployment; Business document management (Word/Excel templates on ER) when power users should edit document layouts themselves',
+      'SSRS platform notes (2024-26): custom code/assemblies in report properties are unsupported in the cloud service, and embedded drill-through links in service-rendered documents were removed — keep new designs free of both',
     ],
     examples: [
       {
@@ -1908,7 +1912,66 @@ public class MyReportDP extends SrsReportDataProviderBase
 }`,
       },
     ],
-    related: ['temp-tables', 'sysoperation', 'print-management'],
+    related: ['temp-tables', 'sysoperation', 'print-management', 'ssrs-contracts', 'ssrs-rdp-preprocess', 'ssrs-ui-builder'],
+  },
+  {
+    id: 'ssrs-contracts',
+    title: 'SSRS Contract Taxonomy (RDP / RDL / print / composite)',
+    keywords: ['report contract', 'rdl contract', 'print settings', 'print destination', 'srsprintdestinationsettings',
+               'srsreportdatacontract', 'parmreportcontract', 'composite contract', 'report parameters'],
+    summary:
+      'Four contract kinds meet in one report run: the RDP contract (your DataContractAttribute class), the RDL ' +
+      'contract (design-level parameters), the print contract (destination/format/copies) and the COMPOSITE that ' +
+      'aggregates them for the controller. Mutate the parts — never replace the composite.',
+    rules: [
+      'RDP contract: your DataContractAttribute-decorated class with DataMemberAttribute parm methods — the one your DP reads via parmDataContract(); nested contracts are supported (a parm method returning another contract)',
+      'RDL contract (SrsReportRdlDataContract): parameters modeled in the report DESIGN (query ranges, company, language) — set them in controller overrides, do not subclass it',
+      'Print contract (SRSPrintDestinationSettings): destination medium, file format, printer, copies, orientation — reachable as parmPrintSettings() on the composite',
+      'Composite (SrsReportDataContract): aggregates RDP + RDL + print + query contracts; the controller hands it out via parmReportContract() — MUTATE its parts, never assign a new composite',
+      'Controller override points: prePromptModifyContract (before the dialog — pre-fill from args.record()), preRunModifyContract (after OK, before render — company/language/print defaults)',
+      '"Print straight to PDF/file": in preRunModifyContract fetch parmPrintSettings(), set the file medium + format + fileName, and run with controller.parmShowDialog(false) when no dialog is wanted',
+      'Dialog persistence is automatic: parameter values round-trip via SysLastValue per user+report — no code needed',
+      'Mandatory parameters: enforce in the RDP contract validate() with checkFailed — a false blocks the dialog OK (there is no per-parameter mandatory attribute)',
+    ],
+    related: ['ssrs-reports', 'sysoperation', 'ssrs-ui-builder', 'print-management'],
+  },
+  {
+    id: 'ssrs-rdp-preprocess',
+    title: 'Pre-Processed Report Data Providers (long-running reports)',
+    keywords: ['preprocess', 'pre-process', 'long running report', 'report timeout', 'srsreportdataproviderpreprocess',
+               'createdtransactionid', 'staging', 'report performance'],
+    summary:
+      'Interactive SSRS rendering times out around 10 minutes — a DP whose processReport() runs longer must stage ' +
+      'its data BEFORE the render request via a pre-processed base class.',
+    rules: [
+      'Trigger: the report times out interactively but the same query succeeds in batch, or processReport() takes minutes on production volumes',
+      'Two staging bases: SrsReportDataProviderPreProcess (stages into a REGULAR table whose rows are keyed by createdTransactionId) and SrsReportDataProviderPreProcessTempDB (stages into TempDB tables)',
+      'Regular-table staging: the staging table needs a createdTransactionId column; the platform deletes the rows after rendering, and concurrent runs are isolated by transaction id',
+      'Migration from a plain DP: swap the base class, adjust the staging table type to match it, keep the SRSReportDataSetAttribute getters unchanged, and make sure the menu item points at the CONTROLLER',
+      'Scaffold: generate_object(mode="scaffold", objectType="report", preProcess=true) — emits the PreProcess base and a preProcess() stub. NOTE: this pairing is not yet compile-proven by the repo\'s eval goldens — build on the VM before trusting the generated shape',
+      'Do NOT default to preprocess — the staging machinery costs complexity; profile processReport() first and try set-based population (insert_recordset) before reaching for it',
+    ],
+    related: ['ssrs-reports', 'temp-tables', 'transactions'],
+  },
+  {
+    id: 'ssrs-ui-builder',
+    title: 'Report Dialog UI Builders (SrsReportDataContractUIBuilder)',
+    keywords: ['ui builder', 'uibuilder', 'report dialog', 'dialog field', 'custom lookup', 'sysoperationcontractprocessing',
+               'srsreportdatacontractuibuilder', 'dialog customization', 'dependent fields'],
+    summary:
+      'A UI builder customizes the report parameter dialog — filtered lookups, dependent fields, field events. ' +
+      'It derives from SrsReportDataContractUIBuilder and is bound on the CONTRACT via the ' +
+      'SysOperationContractProcessing attribute.',
+    rules: [
+      'The builder class derives from SrsReportDataContractUIBuilder; the CONTRACT declares it via the SysOperationContractProcessing attribute naming the builder class — the controller needs no change',
+      'Override build(): call super() FIRST, then fetch fields with this.bindInfo().getDialogField(contractInstance, the parm method) and attach behaviour',
+      'Custom lookup / events: dialogField.registerOverrideMethod binds a FormControl event to a method ON THE BUILDER (FormStringControl-style signature)',
+      'Dependent fields: react in one field\'s modified override, then enable/disable or re-filter the other via its DialogField',
+      'The automatic dialog needs NO builder — plain parameters render themselves; reach for a builder only for filtered lookups, cascading fields, or layout beyond group attributes',
+      'Scaffold: generate_object(mode="scaffold", objectType="report", uiBuilder=true) emits the builder class and binds it on the contract',
+      'Identical mechanics drive SysOperation dialogs (SysOperationAutomaticUIBuilder base) — see sysoperation',
+    ],
+    related: ['ssrs-reports', 'ssrs-contracts', 'sysoperation', 'form-patterns'],
   },
 
   // ── Inventory Management ────────────────────────────────────────────────

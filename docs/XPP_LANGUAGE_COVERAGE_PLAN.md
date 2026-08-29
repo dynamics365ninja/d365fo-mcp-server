@@ -1,6 +1,21 @@
 # X++ Language & Reporting Coverage Plan
 
-Status: **Phases A+B done (2026-08-29); C–E pending; E/F require the D365FO VM.**
+Status: **Phases A–D done (2026-08-29); E pending; E/F require the D365FO VM.**
+Phase D deltas: the report-pattern catalog is a RECIPE catalog (`src/knowledge/reportPatterns/`,
+7 patterns) rather than a FormPatternSpec mirror — reports have no pattern XML to validate against.
+The generator gained only `uiBuilder` (UIBuilder class + SysOperationContractProcessing binding);
+the planned PreProcessTempDB switch was NOT made — the preProcess path is unproven on the VM
+(no golden uses it) and the TempDB pairing claim awaits Phase F verification. Op-specs for
+`scaffold:report` now advertise the previously hidden aotQuery/callerTableName/preProcess/
+controllerType params. New knowledge: `ssrs-contracts`, `ssrs-rdp-preprocess`, `ssrs-ui-builder`
+(rules-only — zero extracted AOT refs pending the Phase F snapshot capture; examples then).
+Phase C deltas vs. the original table: `CS001` (C#-isms) implemented as planned; `RPT003`/`RPT004`
+were dropped (the TempDB/preprocess-attribute claims could not be verified off-VM and risked false
+errors); `RPT005` landed as two cheaper checks — `ssrsReportStr` joined the FN001 fixed-arity table
+(2 args) and the references mode now resolves `ssrsReportStr`/`reportStr` first arguments against
+the index ('report' type). `FN001` grew from 4 to 27 functions — **Phase F must re-verify the new
+arities against xppc** before trusting them further. New `xml-report` codeType runs report-only
+rules (RPT101/102) so the X++ keyword rules never scan RDL CDATA.
 Phase B note: new-topic AOT references are constrained to prose + `My…` placeholders (the
 apiSymbols snapshot is entry-scoped and can only be re-captured on the VM). Phase F should
 re-capture the snapshot and may then upgrade prose mentions (e.g. `Exception::DuplicateKeyException`

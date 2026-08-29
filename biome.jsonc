@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.8/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.11/schema.json",
 
   // Biome was added to ~86k lines of TypeScript that had never been linted.
   // The default recommended set produced 3,391 findings, which is a gate nobody
