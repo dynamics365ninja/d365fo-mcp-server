@@ -164,8 +164,11 @@ class MyProcessContract
       'OCC (Optimistic Concurrency Control) is the default — always handle UpdateConflict exceptions.',
     rules: [
       'ALWAYS pair ttsbegin with ttscommit — unbalanced calls cause runtime crash',
-      'NEVER put try/catch INSIDE ttsbegin..ttscommit — transaction is already rolled back when exception is caught',
-      'Put try/catch OUTSIDE the tts block, catch UpdateConflict, then retry',
+      'Inside an open transaction only TWO exceptions are catchable by a catch INSIDE the tts scope: Exception::UpdateConflict and the duplicate-key exception — and only when named EXPLICITLY; a bare catch-all inside tts does NOT catch them',
+      'Every other exception thrown inside tts aborts the transaction and transfers control to the first catch OUTSIDE the tts block — an inner catch-all is dead code',
+      'The NotRecovered variants (UpdateConflictNotRecovered) and Timeout cannot be caught inside a transaction at all',
+      'throw inside an open transaction implicitly aborts it before unwinding; finally blocks still run',
+      'Recommended pattern: try/catch OUTSIDE the tts block, catch UpdateConflict, then retry with a counter',
       'Use forupdate keyword on select when modifying records',
       'Use pessimisticlock for high-concurrency scenarios (e.g. number sequences)',
       'NEVER call ttsabort() as normal flow — it\'s for unrecoverable situations only',
@@ -357,6 +360,8 @@ while (qr.next())
       'Naming: <TargetClass>_<YourModel>_Extension (e.g. SalesTable_ContosoExt_Extension)',
       'Form CoC: [ExtensionOf(formStr(CustTable))] — wraps form methods like init(), run()',
       'Form datasource CoC: wrap datasource methods like init(), validateWrite()',
+      'next may sit inside try/catch/finally (PU21+) — still exactly once, still unconditional',
+      'Tables/data entities: system methods (insert, update, validateWrite, …) can be wrapped even when the target never declared them (PU22+) — wrap the implicit method directly',
     ],
     examples: [
       {
@@ -423,6 +428,9 @@ final class SalesFormLetter_MyModel_Extension
       'NEVER use SubscribesTo + delegateStr for standard table data events — use DataEventHandler',
       'REUSE BEFORE CREATING: call extension_info(mode="events") first — if a handler class for the target already exists in the custom model, add the new handler method there instead of creating a parallel class',
       'Both _EH and _EventHandler handler-class naming styles exist — follow the style already used in the model; never introduce a feature-named handler class (<Form>_<Feature>_EH) unless the user explicitly asks for a separate class',
+      'Declare a delegate on the OWNING class: delegate void myThresholdCrossed(int _newValue) { } — void return, EMPTY body; raise it by simply calling this.myThresholdCrossed(x)',
+      'Runtime subscription: instance.myDelegate += eventhandler(this.onSomething) or += eventhandler(MyObserver::onSomethingStatic); -= unsubscribes',
+      'Attribute-subscribed handlers have NO guaranteed firing order — never encode ordering assumptions across handlers',
     ],
     examples: [
       {
@@ -553,8 +561,10 @@ class MyReportDP extends SrsReportDataProviderBase
       'ALWAYS use label references in info(), warning(), error() — never hardcoded strings (BPErrorLabelIsText)',
       'checkFailed(): posts error to infolog AND returns false — use in validateWrite/validateField',
       'Return pattern: ret = ret && checkFailed("@Label:Message") — accumulates all errors before returning',
-      'Exception types: Error, Warning, Info, Deadlock, UpdateConflict, DuplicateKeyConflict, CLRError',
+      'Exception enum values include: Error, Warning, Info, Deadlock, DuplicateKeyException, UpdateConflict (+ NotRecovered variants of both), CLRError, Numeric, Internal, Break, Timeout, Sequence',
       'Catch specific exceptions — avoid bare catch without type',
+      'retry (valid only inside catch) jumps back to the START of the try block and discards infolog messages logged since try entry — ALWAYS guard it with a counter or changed state; an unguarded retry on a deterministic error loops forever',
+      'finally runs on every path — normal exit, caught, uncaught propagation',
       'CLR interop: catch(Exception::CLRError) then use CLRInterop::getLastException() for details',
       'Global::error() = same as error() — both post to infolog',
       'NEVER swallow exceptions silently — at minimum log them',
@@ -2279,6 +2289,8 @@ else
       'FindOptions go BETWEEN "select" and the table buffer. Each joined buffer has its own where clause immediately after it.',
     rules: [
       'FindOptions (crossCompany, firstOnly, forUpdate, forceNestedLoop, forceSelectOrder, forcePlaceholders, pessimisticLock, optimisticLock, repeatableRead, validTimeState, noFetch, reverse, firstFast) go BETWEEN "select" and the table buffer / field list',
+      'firstOnly variants: firstOnly (1 row), firstOnly10, firstOnly100, firstOnly1000 — row-count hints to the plan; firstFast is a priority hint only and does NOT limit rows',
+      'exists join / notexists join are semi-joins: the joined buffer fetches NO fields and cannot be read in the loop body — its conditions go in its own where clause',
       'crossCompany belongs on the OUTER (driving) buffer — never on a joined buffer. Optional container filter: select crossCompany : myContainer table …',
       'Each joined buffer gets its own "where" clause immediately after it; order by / group by appear after the full join chain',
       '"in" operator: "where field in container" — container = X++ container type; works with str/int/int64/real/enum/boolean/date/utcDateTime. NOT a Set, List class, or subquery',
@@ -2418,8 +2430,14 @@ public void post()
       'Constants over macros: public const str FOO = "bar"; at class scope; reference via ClassName::FOO or unqualified inside the class',
       '"var" keyword only when the type is obvious from initialization; skip when ambiguous',
       'Declare variables close to first use, smallest scope; compiler rejects shadowing',
+      'NO method overloading and NO constructor overloading — one new() per class; simulate with optional parameters or distinct static newFromX()/construct() factories',
+      'NO C# property syntax — the accessor-pair convention is the parm method: public FromDate parmFromDate(FromDate _v = fromDate) { fromDate = _v; return fromDate; }',
+      'NO generics, NO lambdas/anonymous methods — .NET-only features; generic types are reachable only through .NET interop',
+      'Local (nested) functions can be declared at the top of a method body — legacy feature; prefer private methods',
+      'Static constructor: static void TypeNew() runs once on first use of the class — the supported place for one-time static-state init',
+      'Interfaces: implement a comma-separated list; interface members are implicitly public; name prefix convention is I',
     ],
-    related: ['coc-authoring', 'coc', 'class-inheritance'],
+    related: ['coc-authoring', 'coc', 'class-inheritance', 'xpp-declarations'],
   },
 
   // ── Class Inheritance ───────────────────────────────────────────────────
@@ -3689,6 +3707,270 @@ public class MyPostingLimits
       },
     ],
     related: ['configuration-keys', 'feature-management', 'security'],
+  },
+
+  // ── Language Core (X++ grammar) ─────────────────────────────────────────
+  {
+    id: 'xpp-data-types',
+    title: 'X++ Data Types, Literals & Conversions (primitives, null-equivalents)',
+    keywords: ['data type', 'primitive', 'literal', 'str', 'int', 'int64', 'real', 'date literal', 'utcdatetime',
+               'timeofday', 'guid', 'anytype', 'null', 'null value', 'conversion', 'str2int', 'int2str', 'num2str',
+               'str2date', 'verbatim string', 'truncation', 'edt extends'],
+    summary:
+      'X++ value types have no null references — each type has a null-EQUIVALENT value (0, empty string, 1900-01-01). ' +
+      'Conversions are explicit functions, not casts, and declared string lengths truncate silently.',
+    rules: [
+      'Primitives: boolean, int (32-bit), int64, real (128-bit decimal — no float drift; exponent literals like 1.0e3), str, date, utcdatetime, timeOfDay (seconds since midnight, 0–86400), guid, enum, container, anytype. There are NO unsigned integer types',
+      'Date literals use backslashes day\\month\\year (21\\11\\1998); date range 1900-01-01..2154-12-31 (maxDate()); utcdatetime literal form 1988-07-20T13:34:45',
+      'str is unlimited Unicode by default; a declared length (str 20 code;) TRUNCATES silently on assignment — prefer EDT-typed variables so the length lives in metadata',
+      'Prefix @ makes a verbatim string (backslashes literal — file paths, regex)',
+      'No null for value types — the null-EQUIVALENT values are: 0, 0.0, empty string, false, 1900-01-01, time 0, enum value 0. Only class and table-buffer references can be genuinely null',
+      'Conversions are FUNCTIONS, not casts: str2Int, int2Str, str2Int64, str2Num, num2Str(value, digits, decimals, sep1, sep2), str2Date(text, sequence), date2Str — the numeric format arguments are positional and easy to get wrong',
+      'anytype adopts the first type assigned and locks to it; any2Int / any2Str / any2Date / any2Real / any2Enum / any2Guid convert out — prefer a concrete type wherever possible',
+      'guid: newGuid() creates one, guid2Str / str2Guid convert',
+      'An EDT "extends" a primitive or another EDT in METADATA only — an EDT is not a class: is/as do not apply, and two EDTs over the same primitive assign to each other with no warning',
+      'For enum ↔ text conversions see enum-conversions; for date/time formatting and time zones see datetime-timezones; for container vs collection classes see xpp-collections',
+    ],
+    examples: [
+      {
+        label: 'Null-equivalents, truncation, anytype locking',
+        code: `// Value types initialize to their null-EQUIVALENT, never null
+date emptyDate;          // 1900-01-01
+str  emptyText;          // ''
+int  zero;               // 0
+
+// Declared-length strings truncate silently
+str 3 shortCode = 'ABCDEF';   // holds 'ABC' — no error, no warning
+
+// anytype locks to the first assignment
+anytype v = 42;          // v is now an int
+str asText = any2Str(v);`,
+      },
+    ],
+    related: ['enum-conversions', 'xpp-collections', 'datetime-timezones', 'extensible-enums'],
+  },
+  {
+    id: 'xpp-declarations',
+    title: 'Declarations & Scope (var, const, readonly, using)',
+    keywords: ['declaration', 'scope', 'shadowing', 'var', 'const', 'readonly', 'using', 'namespace', 'alias',
+               'disposable', 'inline declaration', 'block scope', 'loop scope'],
+    summary:
+      'X++ allows declare-anywhere with block scope and REJECTS shadowing at compile time. const/readonly replace ' +
+      'macros for constants; using has two unrelated meanings (namespace import clause vs disposable statement).',
+    rules: [
+      'Declare anywhere; scope is the enclosing block. The compiler REJECTS shadowing an outer variable — rename instead of nesting the same name',
+      '"var" requires an initializer and infers its type; not allowed for fields or parameters; skip it when the right side is not obviously typed',
+      'const = compile-time constant, initializer required at the declaration; readonly = assignable at the declaration OR in new(), immutable afterwards',
+      'Multiple declarations share one statement (int i, j;); for (int i = 0; …) scopes i to the loop',
+      'using clause at file top imports a .NET namespace (using System.Collections;) or aliases one (using IO = System.IO;) — only .NET interop needs it, X++ types never do',
+      'using (expr) { } STATEMENT scopes a .NET IDisposable — Dispose runs on exit even on exception; X++ classes do not implement it',
+      'Fields may have inline initializers; they run before new() executes',
+      'Optional parameters come after required ones and cannot be skipped in the middle; prmIsDefault(_p) detects "was this supplied" — details in xpp-class-rules',
+    ],
+    examples: [
+      {
+        label: 'const vs readonly, loop scope',
+        code: `public class MyRetryPolicy
+{
+    public const int MaxAttempts = 5;   // compile-time constant
+    readonly int timeoutSec;            // frozen after the constructor
+
+    protected void new(int _timeoutSec)
+    {
+        timeoutSec = _timeoutSec;       // last assignable moment
+    }
+
+    public int totalBudget()
+    {
+        int total;
+        for (int i = 0; i < MaxAttempts; i++)   // i is loop-scoped
+        {
+            total += timeoutSec;
+        }
+        return total;
+    }
+}`,
+      },
+    ],
+    related: ['xpp-class-rules', 'dotnet-interop', 'macros'],
+  },
+  {
+    id: 'operators-precedence',
+    title: 'Operators & Precedence (&& / || equal-precedence trap, like, is/as)',
+    keywords: ['operator', 'precedence', 'logical operator', 'parentheses', 'div', 'mod', 'like', 'wildcard',
+               'ternary', 'is as', 'cast', 'downcast', 'increment', 'bitwise', 'string concatenation'],
+    summary:
+      'X++ operator precedence differs from C# in one dangerous place: && and || have EQUAL precedence and evaluate ' +
+      'left-to-right. Casting uses is/as functions-of-the-language, and ++/-- are statements, not expressions.',
+    rules: [
+      'TRAP: && and || have EQUAL precedence, evaluated left-to-right — a || b && c means (a || b) && c, NOT a || (b && c) as in C#. ALWAYS parenthesize mixed &&/|| chains',
+      'Precedence (high→low): unary (- ~ !) → * / DIV MOD << >> & ^ → + - | → relational (< <= == != > >= like as is) → && and || (equal) → ?:',
+      'DIV = integer division, MOD = remainder — keywords, not / and %: 7 DIV 2 == 3, 7 MOD 2 == 1. Plain / always divides as real, even between ints',
+      '++ and -- are STATEMENTS with no prefix/postfix value distinction — i++ cannot sit inside a larger expression',
+      'like matches SQL-style wildcards: * = any run, ? = one character; works in where clauses (translated to SQL LIKE) and on str values in code',
+      'String concatenation is +; there is NO string interpolation ($"…" does not exist) — use strFmt("%1 / %2", a, b)',
+      'is tests the runtime type; as downcasts and yields null on failure — check the result before use. Both apply to class/table hierarchies only, never to EDTs',
+      'Ternary cond ? a : b requires type-compatible branches',
+      'Bitwise & | ^ ~ << >> operate on int/int64',
+    ],
+    examples: [
+      {
+        label: 'The equal-precedence trap',
+        code: `boolean isAdmin   = true;
+boolean isOwner   = false;
+boolean isEnabled = false;
+
+// X++ evaluates left-to-right: (isAdmin || isOwner) && isEnabled → FALSE
+if (isAdmin || isOwner && isEnabled)
+{
+    // an admin does NOT get here — surprise
+}
+
+// The C#-style intent needs explicit parentheses → TRUE for an admin
+if (isAdmin || (isOwner && isEnabled))
+{
+    // correct
+}`,
+      },
+    ],
+    related: ['select-statement', 'xpp-data-types', 'switch-loops'],
+  },
+  {
+    id: 'switch-loops',
+    title: 'switch Fallthrough & Loop Statements',
+    keywords: ['switch', 'case', 'fallthrough', 'fall through', 'break', 'continue', 'default', 'while', 'do while',
+               'for loop', 'loop', 'pause', 'removed keywords'],
+    summary:
+      'X++ switch FALLS THROUGH between cases unless you break — the opposite of C#. case accepts comma lists and ' +
+      'non-constant expressions; pause/window are removed keywords, client/server are parsed but ignored.',
+    rules: [
+      'switch FALLS THROUGH: without break, execution continues into the next case (opposite of C#) — end every case with break and comment any deliberate fallthrough',
+      'case accepts comma-separated lists (case 1, 2, 3:) and non-constant expressions; default: is optional',
+      'switch works on int, enum, str and other primitives',
+      'Loops: while, do { } while (…);, for (init; test; increment) — break exits the innermost loop, continue jumps to the next iteration',
+      'break inside a switch that sits inside a loop exits only the SWITCH — use a flag or restructure to leave the loop',
+      'pause and window were REMOVED (compile errors); print still parses but goes nowhere useful in the cloud — use info() with a label',
+      'client and server modifiers are parsed but IGNORED — delete them in new code',
+    ],
+    examples: [
+      {
+        label: 'Fallthrough — the missing break',
+        code: `MyDocStatus status = MyDocStatus::Posted;
+int handled;
+
+switch (status)
+{
+    case MyDocStatus::Draft, MyDocStatus::Review:
+        handled = 1;
+        break;              // remove this and Draft ALSO runs the Posted branch
+
+    case MyDocStatus::Posted:
+        handled = 2;
+        break;
+
+    default:
+        handled = 0;
+}`,
+      },
+    ],
+    related: ['operators-precedence', 'xpp-declarations', 'error-handling'],
+  },
+  {
+    id: 'attributes-authoring',
+    title: 'Authoring & Reading Attributes (SysAttribute, literal-only args)',
+    keywords: ['attribute', 'sysattribute', 'custom attribute', 'annotation', 'decorator', 'reflection',
+               'getallattributes', 'obsolete', 'sysobsolete', 'attribute suffix'],
+    summary:
+      'An attribute class is a plain X++ class deriving from SysAttribute, applied in square brackets with ' +
+      'LITERAL-only constructor arguments and read back via reflection. Instances are constructed lazily.',
+    rules: [
+      'An attribute class is a non-abstract X++ class deriving from SysAttribute; the name conventionally ends in "Attribute" and that suffix may be OMITTED at the usage site',
+      'Constructor arguments at the usage site MUST be compile-time literals of primitive types (str/int/boolean/enum value) — no variables, no object creation',
+      'Attributes apply to classes, interfaces, methods, class fields and table methods; several stack comma-separated in one bracket or in separate brackets',
+      'Attribute arguments are positional only — X++ has no named-argument syntax',
+      'Instances are constructed LAZILY when reflection reads them — a throwing attribute constructor surfaces at the READER, far from the declaration site',
+      'Read back via reflection: DictClass / DictMethod expose getAllAttributes, getAttribute and getAttributedClasses — see reflection-dict. Attribute scanning is the backbone of the SysExtension plug-in pattern (see sysextension)',
+      'SysObsoleteAttribute("message", makeError) on a class/method/field turns every REFERENCE into a compile warning (false) or error (true) — the supported deprecation mechanism (see deprecated)',
+    ],
+    examples: [
+      {
+        label: 'Usage site — suffix optional, literal args only',
+        code: `// The declaration is a plain class deriving from SysAttribute (one line,
+// a str field, a parm method). Consuming it is reflection — see reflection-dict.
+[MyIntegrationTarget('CustomerSync'), MyPriority(10)]
+public class MyCustomerSyncStrategy
+{
+}`,
+      },
+    ],
+    related: ['reflection-dict', 'sysextension', 'deprecated', 'xpp-class-rules'],
+  },
+  {
+    id: 'intrinsic-functions',
+    title: 'Compile-Time (Intrinsic) Functions — the full catalog',
+    keywords: ['intrinsic', 'compile-time function', 'tablestr', 'classstr', 'fieldstr', 'methodstr', 'fieldnum',
+               'tablenum', 'enumnum', 'identifierstr', 'literalstr', 'ssrsreportstr', 'menuitemstr', 'formstr',
+               'metadata assertion'],
+    summary:
+      'Intrinsics are compile-time metadata assertions: the argument must be a literal element name, the compiler ' +
+      'fails the build when the element does not exist, and the call costs nothing at runtime. Always prefer them ' +
+      'over string literals.',
+    rules: [
+      'Arguments must be LITERAL element names — never variables; the compiler validates existence and (for member forms) membership',
+      'Element names: classStr, tableStr, formStr, queryStr, reportStr, menuStr, enumStr, extendedTypeStr, attributeStr, resourceStr, tileStr, dutyStr, privilegeStr, roleStr, tableCollectionStr, workflowTypeStr, workflowTaskStr, workflowApprovalStr, workflowCategoryStr, measureStr, measurementStr, dimensionHierarchyStr',
+      'Member forms take the owner first: fieldStr(MyTable, MyField), tableMethodStr, tableStaticMethodStr, methodStr(MyClass, myMethod), staticMethodStr, delegateStr(MyClass, myDelegate), staticDelegateStr, indexStr(MyTable, MyIdx), tableFieldGroupStr(MyTable, MyGroup), enumLiteralStr(MyEnum, MyValue)',
+      'Form internals: formControlStr(MyForm, MyControl), formDataSourceStr(MyForm, MyDs), formDataFieldStr(MyForm, MyDs, MyField), formMethodStr; queries: queryDatasourceStr(MyQuery, MyDs), queryMethodStr',
+      'Menu items are kind-specific: menuItemDisplayStr / menuItemActionStr / menuItemOutputStr — the display form fails the build on an action item',
+      'Numeric ids for API calls: tableNum, classNum, enumNum, fieldNum(MyTable, MyField), indexNum; enumCnt(MyEnum) = number of values',
+      'Reports: ssrsReportStr(MyReport, MyDesign) — TWO arguments, report AND design name, both validated (see ssrs-reports)',
+      'Data entities: dataEntityDataSourceStr(MyEntity, MyDs)',
+      'identifierStr does NO existence check — a last resort for names outside metadata; literalStr passes a label id through without label lookup; varStr returns a local variable\'s name',
+      'maxInt / minInt / maxDate are compile-time constants',
+    ],
+    examples: [
+      {
+        label: 'Compile-time validated references',
+        code: `// A typo in any of these fails the BUILD, not production
+str tableName  = tableStr(MyBonusTable);
+str methodName = methodStr(MyBonusService, calculate);
+str designRef  = ssrsReportStr(MyBonusReport, Report);`,
+      },
+    ],
+    related: ['select-statement', 'ssrs-reports', 'labels', 'reflection-dict'],
+  },
+  {
+    id: 'date-effective',
+    title: 'Date-Effective Tables (ValidTimeStateFieldType, validTimeState)',
+    keywords: ['date effective', 'date effectivity', 'validtimestate', 'valid time state', 'validfrom', 'validto',
+               'as of date', 'historical', 'versioned rows', 'time period'],
+    summary:
+      'Date-effective tables version rows over ValidFrom/ValidTo. Forms and queries filter to the current date ' +
+      'automatically — a plain X++ select does NOT, which is how historical rows leak into business logic.',
+    rules: [
+      'Make a table date-effective by setting ValidTimeStateFieldType = Date or UtcDateTime — the platform adds ValidFrom/ValidTo columns and requires them in an alternate-key unique index',
+      'A plain X++ select returns ALL versions — no implicit date filter; add validTimeState(asOfDate) or validTimeState(from, to) between select and the buffer',
+      'Forms and Query objects DO filter by default (as-of-current-date auto query) — X++ code is the odd one out',
+      'validTimeState is a FindOption — placement rules in select-statement',
+      'Overlapping updates are resolved by the buffer\'s update mode (the ValidTimeStateUpdate modes: Correction, CreateNewTimePeriod, EffectiveBased) — the kernel splits/adjusts neighbouring rows accordingly',
+      'Set-based operations DOWNGRADE to row-by-row on date-effective tables — update_recordset/delete_from lose their speed advantage here',
+      '"No end date" is the max-value sentinel (maxDate() / utcdatetime max — see datetime-timezones), never an empty date',
+    ],
+    examples: [
+      {
+        label: 'as-of select vs the unfiltered default',
+        code: `MyRateTable rate;
+date asOf = mkDate(1, 7, 2026);
+
+// Only the version valid on asOf:
+select validTimeState(asOf) rate
+    where rate.MyWorkerId == 42;
+
+// ALL versions, historical included — plain select has no implicit filter:
+select rate
+    where rate.MyWorkerId == 42;`,
+      },
+    ],
+    related: ['select-statement', 'datetime-timezones'],
   },
 ];
 
