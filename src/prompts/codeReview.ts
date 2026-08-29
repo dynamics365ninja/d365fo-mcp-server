@@ -21,6 +21,10 @@ export function registerCodeReviewPrompt(server: Server, context: XppServerConte
   const { symbolIndex, parser } = context;
 
   server.setRequestHandler(ListPromptsRequestSchema, async () => {
+    // Same reason as the resource handlers (src/resources/index.ts): stdio logs
+    // nothing per request, so without this line a client that reads our prompts
+    // and one that ignores them look identical.
+    process.stderr.write('[prompts] 💬 prompts/list — client enumerated the MCP prompts\n');
     return {
       prompts: [
         getSystemInstructionsPromptDefinition(),
@@ -96,6 +100,7 @@ export function registerCodeReviewPrompt(server: Server, context: XppServerConte
   // Handle prompt requests
   server.setRequestHandler(GetPromptRequestSchema, async (request) => {
     const promptName = request.params.name;
+    process.stderr.write(`[prompts] 💬 prompts/get ${promptName}\n`);
 
     // Handle system instructions prompt
     if (promptName === 'xpp_system_instructions') {
