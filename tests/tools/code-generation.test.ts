@@ -125,6 +125,20 @@ describe('generate_code', () => {
     expect(result.content[0].text).toMatch(/SubscribesTo|static void/);
   });
 
+  it('ssrs-report-full controller uses the same design name as the scaffolded AxReport', async () => {
+    const result = await codeGenTool(
+      req('generate_code', { pattern: 'ssrs-report-full', name: 'TestRpt', modelName: 'MyModel' }),
+    );
+    expect(result.isError).toBeFalsy();
+    const text = result.content[0].text;
+    // ssrsReportStr(report, design) is compile-time checked against the AxReport design name
+    expect(text).toMatch(/ssrsReportStr\(\w*TestRpt, Report\)/);
+    expect(text).not.toContain(', Design)');
+    // The AxReport generator's default design name — the two paths must agree
+    const xml = XmlTemplateGenerator.generateAxReportXml('TestRpt');
+    expect(xml).toContain('<Name>Report</Name>');
+  });
+
   it('generates a security-privilege XML', async () => {
     const result = await codeGenTool(
       req('generate_code', { pattern: 'security-privilege', name: 'MyPrivilege', modelName: 'MyModel' }),
