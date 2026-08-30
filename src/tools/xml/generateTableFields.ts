@@ -21,6 +21,7 @@ import {
   resolveEdtBaseType,
   heuristicEdtBaseType,
   isEnumName,
+  targetModelName,
 } from '../smart/generateSmartTable.js';
 import { axTableFieldElement, baseTypeFromEdtName, normalizeFieldBaseType } from '../../utils/axFieldTypes.js';
 
@@ -107,12 +108,13 @@ export function parseFieldsHint(hint: string): string[] {
 export function resolveField(
   input: ResolvedField,
   db: any,
+  model?: string,
 ): { field: ResolvedField; warning?: string } {
   const field: ResolvedField = { ...input };
   let warning: string | undefined;
 
   if (!field.edt && !field.enumType) {
-    field.edt = db ? resolveBestEdt(field.name, db) : field.name;
+    field.edt = db ? resolveBestEdt(field.name, db, { model }) : field.name;
   }
 
   // An EDT that is actually an enum → switch to enum-backed field.
@@ -166,7 +168,7 @@ export async function generateTableFieldsTool(
   const resolved: ResolvedField[] = [];
   const warnings: string[] = [];
   for (const input of inputs) {
-    const { field, warning } = resolveField(input, db);
+    const { field, warning } = resolveField(input, db, targetModelName());
     resolved.push(field);
     if (warning) warnings.push(warning);
   }

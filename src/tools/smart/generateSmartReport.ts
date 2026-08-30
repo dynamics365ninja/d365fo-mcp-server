@@ -128,7 +128,7 @@ Generates:
 6. AxReport XML + RDL — multi-dataset, page header (company/title/date), optional GroupedWithTotals tablix
 
 Strategies:
-- fieldsHint: comma-separated field names → auto-suggest EDTs, build TmpTable + report fields
+- fieldsHint: comma-separated field names → auto-suggest EDTs (a field of that name already in the target model wins), build TmpTable + report fields
 - fields: structured field specs with explicit EDTs and data types
 - contractParams: dialog parameters → Contract class with parm methods + validate()
 - copyFrom: copy field structure from existing report's TmpTable
@@ -154,7 +154,9 @@ Examples:
       },
       caption: {
         type: 'string',
-        description: 'Human-readable caption/title for the report (e.g. "Inventory by Zones"). Used in RDL header and menu item.',
+        description: 'Human-readable caption/title for the report (e.g. "Inventory by Zones"). Titles the RDL page header. '
+          + 'Pass a label ID ("@Module:LabelId") to also label the tmp table and the output menu item — a Label property '
+          + 'must hold a label ID, so prose leaves them unlabelled instead of earning a BPErrorLabelIsText.',
       },
       fieldsHint: {
         type: 'string',
@@ -362,11 +364,15 @@ export async function handleGenerateSmartReport(
   const uiBuilderClassName = `${finalName}UIBuilder`;
   const reportCaption = caption || finalName;
 
-  // Only decorate a plain-text caption with the suffix; appending to a label
-  // reference (e.g. "@Module:LabelId") would create mixed content that xppbp
-  // flags as BPErrorLabelIsText.
-  const tmpTableLabel = (suffix: string): string =>
-    reportCaption.startsWith('@') ? reportCaption : `${reportCaption}${suffix}`;
+  // A Label property holds a label ID or nothing: prose there is a
+  // BPErrorLabelIsText, and shipped metadata omits the Label freely (39 of 200
+  // sampled TempDB tables, 3 of 400 AxMenuItemOutput). The caption still titles
+  // the RDL and the doc comments; `labelAdvisory` tells the caller what is missing.
+  const labelRef: string | undefined = reportCaption.startsWith('@') ? reportCaption : undefined;
+  const labelAdvisory: string | undefined = labelRef ? undefined :
+    `⚠️ No label written: the caption ${caption ? 'is prose, not a label ID' : 'was not given'}, so the tmp `
+    + `table and the output menu item carry no Label — a raw-text one fails xppbp BPErrorLabelIsText. `
+    + `Find or create one with labels(action="search"/"create"), then re-run with caption="@Model:LabelId".`;
 
   const rdb = symbolIndex.getReadDb();
 
@@ -437,7 +443,7 @@ export async function handleGenerateSmartReport(
   // Strategy 2: structuredFields (explicit specs from the caller)
   if (structuredFields && structuredFields.length > 0 && reportFields.length === 0) {
     for (const f of structuredFields) {
-      const edt = f.edt || suggestEdtFromFieldName(f.name, rdb);
+      const edt = f.edt || suggestEdtFromFieldName(f.name, rdb, resolvedModel);
       reportFields.push({
         ...f,
         edt,
@@ -451,7 +457,7 @@ export async function handleGenerateSmartReport(
   if (fieldsHint && reportFields.length === 0) {
     const hints = fieldsHint.split(',').map(s => s.trim()).filter(Boolean);
     for (const h of hints) {
-      const edt = suggestEdtFromFieldName(h, rdb);
+      const edt = suggestEdtFromFieldName(h, rdb, resolvedModel);
       reportFields.push({
         name: h,
         edt,
@@ -495,7 +501,7 @@ export async function handleGenerateSmartReport(
     const dsFields: ReportFieldSpec[] = [];
     if (ds.fields && ds.fields.length > 0) {
       for (const f of ds.fields) {
-        const edt = f.edt || suggestEdtFromFieldName(f.name, rdb);
+        const edt = f.edt || suggestEdtFromFieldName(f.name, rdb, resolvedModel);
         dsFields.push({
           ...f,
           edt,
@@ -505,7 +511,7 @@ export async function handleGenerateSmartReport(
     } else if (ds.fieldsHint) {
       const hints = ds.fieldsHint.split(',').map((s: string) => s.trim()).filter(Boolean);
       for (const h of hints) {
-        const edt = suggestEdtFromFieldName(h, rdb);
+        const edt = suggestEdtFromFieldName(h, rdb, resolvedModel);
         dsFields.push({ name: h, edt, dataType: resolveRdlDataType(await primitiveOf(edt)) });
       }
     }
@@ -538,7 +544,7 @@ export async function handleGenerateSmartReport(
   const builder = new SmartXmlBuilder(symbolIndex);
   const tmpTableXml = builder.buildTableXml({
     name: tmpTableName,
-    label: tmpTableLabel(' (temp)'),
+    label: labelRef,
     tableGroup: 'Main',
     tableType: 'TempDB',
     fields: tableFields,
@@ -561,7 +567,7 @@ export async function handleGenerateSmartReport(
     }
     const dsTblXml = builder.buildTableXml({
       name: ds.tmpTableName,
-      label: tmpTableLabel(` - ${ds.name} (temp)`),
+      label: labelRef,
       tableGroup: 'Main',
       tableType: 'TempDB',
       fields: ds.tableFields,
@@ -945,10 +951,13 @@ export async function handleGenerateSmartReport(
         `        }`,
       ].join('\n');
     } else {
+      // Nothing to pre-fill without a caller record, so the contract fetch stays in
+      // the example — a declared-but-never-read local is a BPLocalVariableNotUsed.
       prePromptBody = [
-        `        ${contractClassName} ${contractVarName} = this.parmReportContract().parmRdpContract() as ${contractClassName};`,
-        `        // TODO: Set default parameter values here`,
-        `        // Example: ${contractVarName}.parmFromDate(DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone()));`,
+        `        // TODO: set default parameter values here. Fetch the contract where you read it:`,
+        `        // Example:`,
+        `        //     ${contractClassName} ${contractVarName} = this.parmReportContract().parmRdpContract() as ${contractClassName};`,
+        `        //     ${contractVarName}.parmFromDate(DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone()));`,
       ].join('\n');
     }
 
@@ -1033,7 +1042,7 @@ export async function handleGenerateSmartReport(
       {
         targetObject: controllerClassName,
         objectType: 'Class',
-        label: reportCaption,
+        label: labelRef ?? null,
       }
     );
     generatedObjects.push({
@@ -1153,6 +1162,7 @@ export async function handleGenerateSmartReport(
           `✅ SSRS Report generated: **${finalName}** (${generatedObjects.length} objects)`,
           resolvedModel ? `   Model: ${resolvedModel}` : `   ℹ️ No model resolved — no prefix applied.`,
           objectSummary,
+          ...(labelAdvisory ? ['', labelAdvisory] : []),
           ``,
           `ℹ️ MCP server is running on Azure/Linux — file writing is handled by the local Windows companion.`,
           ``,
@@ -1238,6 +1248,7 @@ export async function handleGenerateSmartReport(
         ``,
         `📦 Model: ${resolvedModel}`,
         results.join('\n'),
+        ...(labelAdvisory ? ['', labelAdvisory] : []),
         ``,
         `⛔ DO NOT call \`d365fo_file(action="create")\` — all files are already written to disk.`,
         `⛔ DO NOT call \`generate\` again — task is COMPLETE.`,
@@ -1464,10 +1475,10 @@ function injectGroupedTablix(
  * which is a superset of the one deleted here. Without a DB (Azure/Linux) the
  * heuristic is used directly, so the two paths agree in both cases.
  */
-function suggestEdtFromFieldName(fieldName: string, db?: any): string {
+function suggestEdtFromFieldName(fieldName: string, db?: any, model?: string): string {
   if (db) {
     try {
-      return resolveBestEdt(fieldName, db);
+      return resolveBestEdt(fieldName, db, { model });
     } catch {
       /* DB unusable — fall through to the shared heuristic */
     }

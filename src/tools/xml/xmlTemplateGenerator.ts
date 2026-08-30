@@ -2808,7 +2808,12 @@ public final class ${contractName} extends BusinessEventsContract
       : itemType === 'menu-item-output' ? 'AxMenuItemOutput'
       : 'AxMenuItemDisplay';
     const targetObject = properties?.targetObject || properties?.object || name;
-    const label = properties?.label || '@TODO:LabelId';
+    // `label: null` = the caller has no label ID to give, so the element is omitted
+    // rather than filled with prose or a dangling '@TODO:LabelId'. `undefined` keeps
+    // the placeholder, leaving callers that never thought about labels unaffected.
+    const label: string | null = properties?.label === null
+      ? null
+      : (properties?.label || '@TODO:LabelId');
 
     // Determine ObjectType based on item type and explicit properties.
     // D365FO serializer rules (confirmed from real XML files):
@@ -2839,10 +2844,10 @@ public final class ${contractName} extends BusinessEventsContract
     }
 
     const objectTypeXml = objType ? `\n\t<ObjectType>${objType}</ObjectType>` : '';
+    const labelXml = label === null ? '' : `\n\t<Label>${escapeXml(label)}</Label>`;
     return `<?xml version="1.0" encoding="utf-8"?>
 <${elemName} xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
-\t<Name>${name}</Name>
-\t<Label>${escapeXml(label)}</Label>
+\t<Name>${name}</Name>${labelXml}
 \t<Object>${targetObject}</Object>${objectTypeXml}
 </${elemName}>`;
   }
