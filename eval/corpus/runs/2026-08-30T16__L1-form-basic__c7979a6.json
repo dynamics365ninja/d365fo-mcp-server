@@ -1,0 +1,44 @@
+{
+  "run_id": "2026-08-30T16__L1-form-basic__c7979a6",
+  "case_id": "L1-form-basic",
+  "tier": 1,
+  "timestamp": "2026-08-30T16:00:00.000Z",
+  "server_git_sha": "c7979a6",
+  "platform_build": "7.0.7996.33",
+  "generated_artifacts": [
+    "ConDemoNoteHeader.xml",
+    "ConDemoNoteHeaderList.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 1
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "RE-CAPTURE. The committed table golden did not satisfy its own case instruction, which asks for a field group Overview over NoteId and Subject and states the consequence outright (\"a form whose grid names a field group the table does not declare fails FormPatternValidation at build time\"). It carried <FieldGroups />. Cause: d365fo_file(create, table) rendered <FieldGroups> as a hardcoded literal and dropped properties.fieldGroups. The same create path also dropped properties.indexes, and the repair it offered (add-index) needs the C# bridge, so on the template path an index could not be produced at all - both are now rendered by builders shared with the table-extension path. Re-captured through the fixed path: build 0 errors, xppbp clean. eval/fixtures/ConDemoNoteHeader.metadata.xml re-synchronised to match, as its own README requires.",
+  "suggested_fix_area": "src/tools/xml/tableXml.ts",
+  "evidence_refs": [
+    "eval/golden-build-verification.json",
+    "tests/tools/xml/formTableCreateFidelity.test.ts",
+    "eval/fixtures/README.md"
+  ]
+}

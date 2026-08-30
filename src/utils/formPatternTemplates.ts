@@ -51,6 +51,32 @@ export interface FormTemplateOptions {
    * (the 2026-07-21 eval sweep, finding #32).
    */
   titleField?: string;
+  /**
+   * Field group the grid/group control binds to via `<DataGroup>`.
+   *
+   * Three states on purpose. `undefined` keeps the historical default
+   * (`Overview`), which is what shipped forms bind to and what every caller
+   * relied on before this option existed. A STRING names a different group.
+   * `false` omits the element entirely, and is only ever passed when the bound
+   * table has been READ and positively found not to declare the group —
+   * absence of evidence is not evidence of absence, so a table that cannot be
+   * read leaves the default alone.
+   *
+   * A dangling `<DataGroup>` is a build error ("Field group 'Overview' does not
+   * exist") that an INCREMENTAL build passes silently, which is how three
+   * captured goldens ended up carrying one.
+   */
+  gridDataGroup?: string | false;
+}
+
+/**
+ * The `<DataGroup>` line for a grid or group control, or '' when the caller has
+ * proven the group is not there. `indent` is the tab prefix of the sibling
+ * elements, so the line lands in the same column.
+ */
+export function dataGroupLine(gridDataGroup: string | false | undefined, indent: string): string {
+  const group = gridDataGroup === undefined ? 'Overview' : gridDataGroup;
+  return group === false ? '' : `${indent}<DataGroup>${group}</DataGroup>\n`;
 }
 
 /**
@@ -106,7 +132,7 @@ export class FormPatternTemplates {
 
   // SimpleList (v1.1): simple entity with < 10 fields per record (setup tables, groups, etc). Reference: CustGroup.
   static buildSimpleList(opt: FormTemplateOptions): string {
-    const { formName, dsName = formName, dsTable = dsName, caption, gridFields = [] } = opt;
+    const { formName, dsName = formName, dsTable = dsName, caption, gridFields = [], gridDataGroup } = opt;
     const captionXml = caption
       ? `\t\t<Caption xmlns="">${caption}</Caption>\n`
       : '';
@@ -237,8 +263,7 @@ ${captionXml}\t\t<DataSource xmlns="">${dsName}</DataSource>
 \t\t\t\t<Controls>
 ${fieldControls}\t\t\t\t</Controls>
 \t\t\t\t<AlternateRowShading>No</AlternateRowShading>
-\t\t\t\t<DataGroup>Overview</DataGroup>
-\t\t\t\t<DataSource>${dsName}</DataSource>
+${dataGroupLine(gridDataGroup, '\t\t\t\t')}\t\t\t\t<DataSource>${dsName}</DataSource>
 \t\t\t\t<MultiSelect>No</MultiSelect>
 \t\t\t\t<ShowRowLabels>No</ShowRowLabels>
 \t\t\t\t<Style>Tabular</Style>
@@ -252,7 +277,7 @@ ${fieldControls}\t\t\t\t</Controls>
 
   // SimpleListDetails (v1.3): medium complexity entity — left list panel, right details panel. Reference: PaymTerm.
   static buildSimpleListDetails(opt: FormTemplateOptions): string {
-    const { formName, dsName = formName, dsTable = dsName, caption, gridFields = [] } = opt;
+    const { formName, dsName = formName, dsTable = dsName, caption, gridFields = [], gridDataGroup } = opt;
     const captionXml = caption
       ? `\t\t<Caption xmlns="">${caption}</Caption>\n`
       : '';
@@ -400,8 +425,7 @@ ${listFieldControls}\t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t\ti:type="AxFormGroupControl">
 \t\t\t\t\t\t<Name>Overview</Name>
 \t\t\t\t\t\t<Type>Group</Type>
-\t\t\t\t\t\t<DataGroup>Overview</DataGroup>
-\t\t\t\t\t\t<DataSource>${dsName}</DataSource>
+${dataGroupLine(gridDataGroup, '\t\t\t\t\t\t')}\t\t\t\t\t\t<DataSource>${dsName}</DataSource>
 \t\t\t\t\t\t<FormControlExtension
 \t\t\t\t\t\t\ti:nil="true" />
 \t\t\t\t\t\t<Controls>
@@ -453,7 +477,7 @@ ${tabFieldControls}\t\t\t\t\t\t\t\t</Controls>
 
   // DetailsMaster (v1.1): complex master entity with FastTabs (customers, vendors, workers...). Reference: CustTable.
   static buildDetailsMaster(opt: FormTemplateOptions): string {
-    const { formName, dsName = formName, dsTable = dsName, caption, gridFields = [] } = opt;
+    const { formName, dsName = formName, dsTable = dsName, caption, gridFields = [], gridDataGroup } = opt;
     const captionXml = caption
       ? `\t\t<Caption xmlns="">${caption}</Caption>\n`
       : '';
@@ -660,8 +684,7 @@ ${detailTitleXml}\t\t\t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t\t\t\t\t\t\t\ti:nil="true" />
 \t\t\t\t\t\t\t\t\t\t\t\t<Controls>
 ${overviewFieldControls}\t\t\t\t\t\t\t\t\t\t\t\t</Controls>
-\t\t\t\t\t\t\t\t\t\t\t\t<DataGroup>Overview</DataGroup>
-\t\t\t\t\t\t\t\t\t\t\t\t<DataSource>${dsName}</DataSource>
+${dataGroupLine(gridDataGroup, '\t\t\t\t\t\t\t\t\t\t\t\t')}\t\t\t\t\t\t\t\t\t\t\t\t<DataSource>${dsName}</DataSource>
 \t\t\t\t\t\t\t\t\t\t\t</AxFormControl>
 \t\t\t\t\t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t\t\t\t\t<ColumnsMode>Fill</ColumnsMode>

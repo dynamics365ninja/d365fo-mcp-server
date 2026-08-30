@@ -1,0 +1,42 @@
+{
+  "run_id": "2026-08-30T16__L1-form-simplelistdetails__c7979a6",
+  "case_id": "L1-form-simplelistdetails",
+  "tier": 1,
+  "timestamp": "2026-08-30T16:00:00.000Z",
+  "server_git_sha": "c7979a6",
+  "platform_build": "7.0.7996.33",
+  "generated_artifacts": [
+    "ConDemoNoteHeaderDetails.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 1
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "RE-CAPTURE. The committed golden carried <DataGroup>Overview</DataGroup> on the details header group control with NO sibling <DataSource>. A form control resolves its field group against that control own datasource, so the build failed with \"Field group Overview does not exist\" while pointing at the control rather than the missing sibling - and an INCREMENTAL build passes it silently, which is how it survived capture. The template emits the sibling now. Separately, the three form templates hardcoded that <DataGroup> whether or not the bound table declared the group; the builder now reads the table and omits it only on positive evidence of absence. Re-captured: build 0 errors, xppbp clean.",
+  "suggested_fix_area": "src/utils/formPatternTemplates.ts, src/tools/xml/formXml.ts",
+  "evidence_refs": [
+    "eval/golden-build-verification.json",
+    "tests/tools/xml/formTableCreateFidelity.test.ts"
+  ]
+}

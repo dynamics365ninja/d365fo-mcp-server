@@ -48,7 +48,7 @@ import {
   RELATIONSHIP_TYPES,
   SECURITY_POLICY_CONTEXT_TYPES,
 } from '../../utils/axEnumProperties.js';
-import { buildAxTableXml } from './tableXml.js';
+import { buildAxTableXml, buildAxTableIndexesXml } from './tableXml.js';
 import { buildAxFormXml } from './formXml.js';
 import {
   buildAxSecurityDutyXml,
@@ -2280,49 +2280,12 @@ ${enumValuesXml}
       fieldGroupExtensionsXml += '\t</FieldGroupExtensions>';
     }
 
-    // ── Indexes ──────────────────────────────────────────────────────────────
-    const idxSpecs: Array<{
-      name: string;
-      fields: Array<{ fieldName: string; direction?: string } | string>;
-      allowDuplicates?: boolean;
-      alternateKey?: boolean;
-    }> = Array.isArray(properties?.indexes) ? properties.indexes : [];
-    let indexesXml: string;
-    if (idxSpecs.length === 0) {
-      indexesXml = '\t<Indexes />';
-    } else {
-      indexesXml = '\t<Indexes>\n';
-      for (const idx of idxSpecs) {
-        indexesXml += `\t\t<AxTableIndex>\n\t\t\t<Name>${idx.name}</Name>\n`;
-        if (idx.allowDuplicates !== undefined) indexesXml += `\t\t\t<AllowDuplicates>${idx.allowDuplicates ? 'Yes' : 'No'}</AllowDuplicates>\n`;
-        if (idx.alternateKey)                 indexesXml += `\t\t\t<AlternateKey>Yes</AlternateKey>\n`;
-        // `fields: ["AccountNum"]` is the documented shape everywhere else — the
-        // bridge normalizer (normalizeIndexSpecsForBridge) accepts it, and so does
-        // add-index. This writer only ever read `f.fieldName`, so a caller who used
-        // the string form and landed on the fallback got a literal
-        // <DataField>undefined</DataField> in the AOT file: it deserializes, and the
-        // index silently points at nothing.
-        const idxFields = (Array.isArray(idx.fields) ? idx.fields : [])
-          .map((f: any): { fieldName?: string; direction?: string } => (typeof f === 'string'
-            ? { fieldName: f }
-            : { fieldName: f?.fieldName ?? f?.name ?? f?.dataField, direction: f?.direction }))
-          .filter((f): f is { fieldName: string; direction?: string } =>
-            typeof f.fieldName === 'string' && f.fieldName.length > 0);
-        if (idxFields.length === 0) {
-          indexesXml += `\t\t\t<Fields />\n`;
-        } else {
-          indexesXml += `\t\t\t<Fields>\n`;
-          for (const f of idxFields) {
-            indexesXml += `\t\t\t\t<AxTableIndexField>\n\t\t\t\t\t<DataField>${f.fieldName}</DataField>\n`;
-            if (f.direction) indexesXml += `\t\t\t\t\t<Direction>${f.direction}</Direction>\n`;
-            indexesXml += `\t\t\t\t</AxTableIndexField>\n`;
-          }
-          indexesXml += `\t\t\t</Fields>\n`;
-        }
-        indexesXml += `\t\t</AxTableIndex>\n`;
-      }
-      indexesXml += '\t</Indexes>';
-    }
+    // ── Indexes ────────────────────────────────────────────────────────
+    // Shared with the plain table builder, which used to emit a hardcoded
+    // <Indexes /> and drop every index the caller passed.
+    const indexesXml = buildAxTableIndexesXml(
+      Array.isArray(properties?.indexes) ? properties.indexes : [],
+    );
 
     // ── Relations ────────────────────────────────────────────────────────────
     const relSpecs: Array<{

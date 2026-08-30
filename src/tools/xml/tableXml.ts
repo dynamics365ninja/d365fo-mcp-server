@@ -109,6 +109,64 @@ export function buildAxTableFieldGroupsXml(groupSpecs: AxTableFieldGroupSpec[]):
   return `${xml}\t</FieldGroups>`;
 }
 
+/** Index spec as accepted by the tool surface (same shape as the table-extension path). */
+export interface AxTableIndexSpec {
+  name: string;
+  fields: Array<{ fieldName?: string; name?: string; dataField?: string; direction?: string } | string>;
+  allowDuplicates?: boolean;
+  alternateKey?: boolean;
+}
+
+/**
+ * Render <Indexes> from the caller's index specs.
+ *
+ * Lifted out of the table-EXTENSION builder so the two cannot drift, and
+ * because the plain table builder emitted a hardcoded `<Indexes />`, dropping
+ * every index the caller passed. `createTablePropertyHonesty` caught the loss and
+ * offered `add-index` as the repair — but that operation needs the C# bridge, so
+ * on the template path there was no way to get an index at all.
+ *
+ * `<Relations />` is still a literal, and stays reported by that same check.
+ */
+export function buildAxTableIndexesXml(indexSpecs: AxTableIndexSpec[]): string {
+  if (indexSpecs.length === 0) return '\t<Indexes />';
+
+  let xml = '\t<Indexes>\n';
+  for (const idx of indexSpecs) {
+    if (!idx?.name) continue;
+    xml += `\t\t<AxTableIndex>\n\t\t\t<Name>${escapeXml(idx.name)}</Name>\n`;
+    if (idx.allowDuplicates !== undefined) {
+      xml += `\t\t\t<AllowDuplicates>${idx.allowDuplicates ? 'Yes' : 'No'}</AllowDuplicates>\n`;
+    }
+    if (idx.alternateKey) xml += '\t\t\t<AlternateKey>Yes</AlternateKey>\n';
+    // `fields: ["AccountNum"]` is the documented shape everywhere else — the
+    // bridge normalizer accepts it and so does add-index. Reading only
+    // `fieldName` turned the string form into a literal
+    // <DataField>undefined</DataField>: it deserializes, and the index points
+    // at nothing.
+    const fields = (Array.isArray(idx.fields) ? idx.fields : [])
+      .map((f): { fieldName?: string; direction?: string } => (typeof f === 'string'
+        ? { fieldName: f }
+        : { fieldName: f?.fieldName ?? f?.name ?? f?.dataField, direction: f?.direction }))
+      .filter((f): f is { fieldName: string; direction?: string } =>
+        typeof f.fieldName === 'string' && f.fieldName.length > 0);
+
+    if (fields.length === 0) {
+      xml += '\t\t\t<Fields />\n';
+    } else {
+      xml += '\t\t\t<Fields>\n';
+      for (const f of fields) {
+        xml += `\t\t\t\t<AxTableIndexField>\n\t\t\t\t\t<DataField>${escapeXml(f.fieldName)}</DataField>\n`;
+        if (f.direction) xml += `\t\t\t\t\t<Direction>${escapeXml(f.direction)}</Direction>\n`;
+        xml += '\t\t\t\t</AxTableIndexField>\n';
+      }
+      xml += '\t\t\t</Fields>\n';
+    }
+    xml += '\t\t</AxTableIndex>\n';
+  }
+  return `${xml}\t</Indexes>`;
+}
+
 /** Render the <Fields> block from the caller's field specs. */
 export function buildAxTableFieldsXml(fieldSpecs: AxTableFieldSpec[]): string {
   if (fieldSpecs.length === 0) return '\t<Fields />\n';
@@ -195,6 +253,10 @@ export function buildAxTableXml(
     Array.isArray(properties?.fieldGroups) ? properties.fieldGroups : [],
   );
 
+  const indexesXml = buildAxTableIndexesXml(
+    Array.isArray(properties?.indexes) ? properties.indexes : [],
+  );
+
   // X++ passed in `sourceCode` used to be discarded outright: the caller got a ✅
   // and an empty <Methods /> on disk, discoverable only by reading the file back
   // (findings #19). Table source is class-shaped (`public class X extends common`
@@ -226,7 +288,7 @@ ${methodsXml}
 ${propertiesXml}\t<DeleteActions />
 ${fieldGroupsXml}
 ${fieldsXml}\t<FullTextIndexes />
-\t<Indexes />
+${indexesXml}
 \t<Mappings />
 \t<Relations />
 \t<StateMachines />
