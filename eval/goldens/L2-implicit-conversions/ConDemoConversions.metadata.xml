@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoConversions</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Separates the assignments X++ converts on its own from the ones it refuses,
+/// and shows what each refusal has to be written as instead.
+/// </summary>
+public class ConDemoConversions
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>truncated</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the whole part of an amount.
+    /// </summary>
+    /// <param name = "_amount">The amount to truncate.</param>
+    /// <returns>The whole part.</returns>
+    /// <remarks>
+    /// A real does not assign to an int: the conversion loses range and
+    /// precision, so it has to be asked for.
+    /// </remarks>
+    public static int truncated(real _amount)
+    {
+        return real2int(trunc(_amount));
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>described</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Describes a count and a flag as one line of text.
+    /// </summary>
+    /// <param name = "_count">The count to describe.</param>
+    /// <param name = "_flag">The flag to describe.</param>
+    /// <returns>The description.</returns>
+    /// <remarks>
+    /// Neither an int nor an enum assigns to a str; both are converted.
+    /// </remarks>
+    public static str described(int _count, NoYes _flag)
+    {
+        return strFmt("@SYS100074", int2Str(_count), enum2Str(_flag));
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>isSet</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Tells whether a flag is set.
+    /// </summary>
+    /// <param name = "_flag">The flag to read.</param>
+    /// <returns>true when the flag is set; otherwise false.</returns>
+    /// <remarks>
+    /// These are the conversions that DO happen on their own: an enum assigns
+    /// to an int and to a boolean.
+    /// </remarks>
+    public static boolean isSet(NoYes _flag)
+    {
+        int asInt = _flag;
+        boolean asBoolean = _flag;
+
+        return asBoolean && asInt > 0;
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>hasValue</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Tells whether a string holds anything.
+    /// </summary>
+    /// <param name = "_text">The string to test.</param>
+    /// <returns>true when the string is not empty; otherwise false.</returns>
+    /// <remarks>
+    /// A str is usable as a condition directly. Value types have no null to
+    /// compare against.
+    /// </remarks>
+    public static boolean hasValue(str _text)
+    {
+        if (_text)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

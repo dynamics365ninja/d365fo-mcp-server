@@ -1,0 +1,903 @@
+{
+  "capturedAt": "2026-08-30T10:08:40.045Z",
+  "compilerVersion": "7.0.7996.33",
+  "packagesRoot": "K:/AosService/PackagesLocalDirectory",
+  "method": "reflection (keywords, intrinsics) + xppc probe builds (run-time function arities)",
+  "keywords": [
+    "abstract",
+    "anytype",
+    "as",
+    "asc",
+    "async",
+    "avg",
+    "await",
+    "break",
+    "breakpoint",
+    "by",
+    "byref",
+    "case",
+    "catch",
+    "changecompany",
+    "class",
+    "client",
+    "const",
+    "container",
+    "continue",
+    "count",
+    "crosscompany",
+    "date",
+    "default",
+    "delegate",
+    "delete_from",
+    "desc",
+    "display",
+    "div",
+    "do",
+    "edit",
+    "else",
+    "eventhandler",
+    "exists",
+    "extends",
+    "false",
+    "final",
+    "finally",
+    "firstfast",
+    "firstonly",
+    "firstonly1",
+    "firstonly10",
+    "firstonly100",
+    "firstonly1000",
+    "flush",
+    "for",
+    "forceliterals",
+    "forcenestedloop",
+    "forceplaceholders",
+    "forceselectorder",
+    "foreach",
+    "forupdate",
+    "from",
+    "generateonly",
+    "group",
+    "guid",
+    "having",
+    "hint",
+    "if",
+    "implements",
+    "in",
+    "index",
+    "insert_recordset",
+    "int",
+    "int64",
+    "interface",
+    "internal",
+    "is",
+    "join",
+    "like",
+    "maxof",
+    "minof",
+    "mod",
+    "namespace",
+    "new",
+    "next",
+    "nofetch",
+    "notexists",
+    "null",
+    "optimisticlock",
+    "order",
+    "outer",
+    "pessimisticlock",
+    "print",
+    "private",
+    "protected",
+    "public",
+    "readonly",
+    "real",
+    "repeatableread",
+    "retry",
+    "return",
+    "reverse",
+    "select",
+    "server",
+    "setting",
+    "static",
+    "str",
+    "sum",
+    "super",
+    "switch",
+    "throw",
+    "true",
+    "try",
+    "ttsabort",
+    "ttsbegin",
+    "ttscommit",
+    "unchecked",
+    "update_recordset",
+    "using",
+    "utcdatetime",
+    "validtimestate",
+    "var",
+    "void",
+    "where",
+    "while"
+  ],
+  "exemptedKeywords": [
+    "in"
+  ],
+  "intrinsics": {
+    "attributeStr": 1,
+    "classNum": 1,
+    "classStr": 1,
+    "configurationKeyNum": 1,
+    "configurationKeyStr": 1,
+    "dataEntityDataSourceStr": 2,
+    "dataentityviewstr": 1,
+    "delegateStr": 2,
+    "dimensionHierarchyLevelStr": 1,
+    "dimensionHierarchyStr": 1,
+    "dimensionReferenceStr": 1,
+    "dutyStr": 1,
+    "enumCnt": 1,
+    "enumLiteralStr": 2,
+    "enumNum": 1,
+    "enumStr": 1,
+    "extendedTypeNum": 1,
+    "extendedTypeStr": 1,
+    "fieldNum": 2,
+    "fieldPName": 2,
+    "fieldStr": 2,
+    "formControlStr": 2,
+    "formDataFieldStr": 3,
+    "formDataSourceStr": 2,
+    "formMethodStr": 2,
+    "formStr": 1,
+    "identifierStr": 1,
+    "indexNum": 2,
+    "indexStr": 2,
+    "licenseCodeNum": 1,
+    "licenseCodeStr": 1,
+    "literalStr": 1,
+    "mapstr": 1,
+    "maxDate": 0,
+    "maxInt": 0,
+    "measurementStr": 1,
+    "measureStr": 1,
+    "menuItemActionStr": 1,
+    "menuItemDisplayStr": 1,
+    "menuItemOutputStr": 1,
+    "menuStr": 1,
+    "methodStr": 2,
+    "minInt": 0,
+    "privilegeStr": 1,
+    "queryDatasourceStr": 2,
+    "queryMethodStr": 2,
+    "queryStr": 1,
+    "reportStr": 1,
+    "resourceStr": 1,
+    "roleStr": 1,
+    "ssrsReportStr": 2,
+    "staticDelegateStr": 2,
+    "staticMethodStr": 2,
+    "tableCollectionStr": 1,
+    "tableFieldGroupStr": 2,
+    "tableMethodStr": 2,
+    "tableNum": 1,
+    "tablePName": 1,
+    "tableStaticMethodStr": 2,
+    "tableStr": 1,
+    "tileStr": 1,
+    "varStr": 1,
+    "viewstr": 1,
+    "webActionItemStr": 1,
+    "webDisplayContentItemStr": 1,
+    "webFormStr": 1,
+    "webletItemStr": 1,
+    "webMenuStr": 1,
+    "webOutputContentItemStr": 1,
+    "webpageDefStr": 1,
+    "webReportStr": 1,
+    "websiteDefStr": 1,
+    "webSiteTempStr": 1,
+    "webStaticFileStr": 1,
+    "webUrlItemStr": 1,
+    "webWebPartStr": 1,
+    "workflowApprovalStr": 1,
+    "workflowCategoryStr": 1,
+    "workflowTaskStr": 1,
+    "workflowTypeStr": 1
+  },
+  "runtimeFunctions": {
+    "abs": {
+      "min": 1,
+      "max": 1
+    },
+    "acos": {
+      "min": 1,
+      "max": 1
+    },
+    "any2Date": {
+      "min": 1,
+      "max": 1
+    },
+    "any2Enum": {
+      "min": 1,
+      "max": 1
+    },
+    "any2Guid": {
+      "min": 1,
+      "max": 1
+    },
+    "any2Int": {
+      "min": 1,
+      "max": 1
+    },
+    "any2Int64": {
+      "min": 1,
+      "max": 1
+    },
+    "any2Real": {
+      "min": 1,
+      "max": 1
+    },
+    "any2Str": {
+      "min": 1,
+      "max": 1
+    },
+    "asin": {
+      "min": 1,
+      "max": 1
+    },
+    "atan": {
+      "min": 1,
+      "max": 1
+    },
+    "beep": {
+      "min": 0,
+      "max": 0
+    },
+    "char2Num": {
+      "min": 2,
+      "max": 2
+    },
+    "checkFailed": {
+      "min": 1,
+      "max": 3
+    },
+    "classId2Name": {
+      "min": 1,
+      "max": 1
+    },
+    "classIdGet": {
+      "min": 1,
+      "max": 1
+    },
+    "className2Id": {
+      "min": 1,
+      "max": 1
+    },
+    "con2Str": {
+      "min": 1,
+      "max": 2
+    },
+    "conDel": {
+      "min": 3,
+      "max": 3
+    },
+    "conFind": {
+      "min": 0,
+      "max": "variadic"
+    },
+    "conIns": {
+      "min": 0,
+      "max": "variadic"
+    },
+    "conLen": {
+      "min": 1,
+      "max": 1
+    },
+    "conNull": {
+      "min": 0,
+      "max": 0
+    },
+    "conPeek": {
+      "min": 2,
+      "max": 2
+    },
+    "conPoke": {
+      "min": 0,
+      "max": "variadic"
+    },
+    "corrFlagSet": {
+      "min": 2,
+      "max": 2
+    },
+    "cos": {
+      "min": 1,
+      "max": 1
+    },
+    "cosh": {
+      "min": 1,
+      "max": 1
+    },
+    "cTerm": {
+      "min": 3,
+      "max": 3
+    },
+    "curExt": {
+      "min": 0,
+      "max": 0
+    },
+    "curUserId": {
+      "min": 0,
+      "max": 0
+    },
+    "date2Num": {
+      "min": 1,
+      "max": 1
+    },
+    "date2Str": {
+      "min": 7,
+      "max": 8
+    },
+    "dateEndMth": {
+      "min": 1,
+      "max": 1
+    },
+    "dateEndQtr": {
+      "min": 1,
+      "max": 1
+    },
+    "dateEndWk": {
+      "min": 1,
+      "max": 1
+    },
+    "dateEndYr": {
+      "min": 1,
+      "max": 1
+    },
+    "dateMax": {
+      "min": 0,
+      "max": 0
+    },
+    "dateMthFwd": {
+      "min": 2,
+      "max": 2
+    },
+    "dateNull": {
+      "min": 0,
+      "max": 0
+    },
+    "dateStartMth": {
+      "min": 1,
+      "max": 1
+    },
+    "dateStartQtr": {
+      "min": 1,
+      "max": 1
+    },
+    "dateStartWk": {
+      "min": 1,
+      "max": 1
+    },
+    "dateStartYr": {
+      "min": 1,
+      "max": 1
+    },
+    "datetime2Str": {
+      "min": 1,
+      "max": 2
+    },
+    "dayName": {
+      "min": 1,
+      "max": 1
+    },
+    "dayOfMth": {
+      "min": 1,
+      "max": 1
+    },
+    "dayOfWk": {
+      "min": 1,
+      "max": 1
+    },
+    "dayOfYr": {
+      "min": 1,
+      "max": 1
+    },
+    "ddb": {
+      "min": 4,
+      "max": 4
+    },
+    "decRound": {
+      "min": 2,
+      "max": 2
+    },
+    "dg": {
+      "min": 2,
+      "max": 2
+    },
+    "dimOf": {
+      "min": 1,
+      "max": 1
+    },
+    "endMth": {
+      "min": 1,
+      "max": 1
+    },
+    "enum2int": {
+      "min": 1,
+      "max": 1
+    },
+    "enum2Str": {
+      "min": 1,
+      "max": 1
+    },
+    "enum2Symbol": {
+      "min": 2,
+      "max": 2
+    },
+    "enum2Value": {
+      "min": 1,
+      "max": 1
+    },
+    "enumName2Id": {
+      "min": 1,
+      "max": 1
+    },
+    "error": {
+      "min": 1,
+      "max": 3
+    },
+    "exp": {
+      "min": 1,
+      "max": 1
+    },
+    "exp10": {
+      "min": 1,
+      "max": 1
+    },
+    "fieldId2Name": {
+      "min": 2,
+      "max": 3
+    },
+    "fieldId2PName": {
+      "min": 2,
+      "max": 3
+    },
+    "fieldName2Id": {
+      "min": 2,
+      "max": 2
+    },
+    "frac": {
+      "min": 1,
+      "max": 1
+    },
+    "funcName": {
+      "min": 0,
+      "max": 0
+    },
+    "fV": {
+      "min": 3,
+      "max": 3
+    },
+    "getCurrentPartition": {
+      "min": 0,
+      "max": 0
+    },
+    "getCurrentPartitionRecId": {
+      "min": 0,
+      "max": 0
+    },
+    "getPrefix": {
+      "min": 0,
+      "max": 0
+    },
+    "guid2Str": {
+      "min": 1,
+      "max": 1
+    },
+    "idg": {
+      "min": 2,
+      "max": 2
+    },
+    "indexId2Name": {
+      "min": 2,
+      "max": 2
+    },
+    "indexName2Id": {
+      "min": 2,
+      "max": 2
+    },
+    "info": {
+      "min": 1,
+      "max": 3
+    },
+    "int2Str": {
+      "min": 1,
+      "max": 1
+    },
+    "int642Str": {
+      "min": 1,
+      "max": 1
+    },
+    "intvMax": {
+      "min": 3,
+      "max": 3
+    },
+    "intvName": {
+      "min": 3,
+      "max": 3
+    },
+    "intvNo": {
+      "min": 3,
+      "max": 3
+    },
+    "intvNorm": {
+      "min": 3,
+      "max": 3
+    },
+    "log10": {
+      "min": 1,
+      "max": 1
+    },
+    "logN": {
+      "min": 1,
+      "max": 1
+    },
+    "match": {
+      "min": 2,
+      "max": 2
+    },
+    "max": {
+      "min": 0,
+      "max": "variadic"
+    },
+    "min": {
+      "min": 0,
+      "max": "variadic"
+    },
+    "mkDate": {
+      "min": 3,
+      "max": 3
+    },
+    "mthName": {
+      "min": 1,
+      "max": 1
+    },
+    "mthOfYr": {
+      "min": 1,
+      "max": 1
+    },
+    "newGuid": {
+      "min": 0,
+      "max": 0
+    },
+    "nextMth": {
+      "min": 1,
+      "max": 1
+    },
+    "nextQtr": {
+      "min": 1,
+      "max": 1
+    },
+    "nextYr": {
+      "min": 1,
+      "max": 1
+    },
+    "num2Char": {
+      "min": 1,
+      "max": 1
+    },
+    "num2Date": {
+      "min": 1,
+      "max": 1
+    },
+    "num2Str": {
+      "min": 5,
+      "max": 5
+    },
+    "pmt": {
+      "min": 3,
+      "max": 3
+    },
+    "power": {
+      "min": 2,
+      "max": 2
+    },
+    "prevMth": {
+      "min": 1,
+      "max": 1
+    },
+    "prevQtr": {
+      "min": 1,
+      "max": 1
+    },
+    "prevYr": {
+      "min": 1,
+      "max": 1
+    },
+    "pt": {
+      "min": 2,
+      "max": 2
+    },
+    "pv": {
+      "min": 3,
+      "max": 3
+    },
+    "rate": {
+      "min": 3,
+      "max": 3
+    },
+    "round": {
+      "min": 2,
+      "max": 2
+    },
+    "runAs": {
+      "min": 4,
+      "max": 7
+    },
+    "sessionId": {
+      "min": 0,
+      "max": 0
+    },
+    "setPrefix": {
+      "min": 1,
+      "max": 1
+    },
+    "sin": {
+      "min": 1,
+      "max": 1
+    },
+    "sinh": {
+      "min": 1,
+      "max": 1
+    },
+    "sleep": {
+      "min": 1,
+      "max": 1
+    },
+    "sln": {
+      "min": 3,
+      "max": 3
+    },
+    "str2Con": {
+      "min": 1,
+      "max": 3
+    },
+    "str2Date": {
+      "min": 2,
+      "max": 2
+    },
+    "str2Datetime": {
+      "min": 2,
+      "max": 2
+    },
+    "str2Enum": {
+      "min": 2,
+      "max": 2
+    },
+    "str2Guid": {
+      "min": 1,
+      "max": 1
+    },
+    "str2Int": {
+      "min": 1,
+      "max": 1
+    },
+    "str2Int64": {
+      "min": 1,
+      "max": 1
+    },
+    "str2Num": {
+      "min": 1,
+      "max": 1
+    },
+    "str2Time": {
+      "min": 1,
+      "max": 1
+    },
+    "strAlpha": {
+      "min": 1,
+      "max": 1
+    },
+    "strCmp": {
+      "min": 2,
+      "max": 2
+    },
+    "strColSeq": {
+      "min": 1,
+      "max": 1
+    },
+    "strContains": {
+      "min": 2,
+      "max": 2
+    },
+    "strDel": {
+      "min": 3,
+      "max": 3
+    },
+    "strEndsWith": {
+      "min": 2,
+      "max": 2
+    },
+    "strFind": {
+      "min": 4,
+      "max": 4
+    },
+    "strFmt": {
+      "min": 0,
+      "max": "variadic"
+    },
+    "strIns": {
+      "min": 3,
+      "max": 3
+    },
+    "strKeep": {
+      "min": 2,
+      "max": 2
+    },
+    "strLen": {
+      "min": 1,
+      "max": 1
+    },
+    "strLFix": {
+      "min": 2,
+      "max": 3
+    },
+    "strLine": {
+      "min": 2,
+      "max": 2
+    },
+    "strLRTrim": {
+      "min": 1,
+      "max": 1
+    },
+    "strLTrim": {
+      "min": 1,
+      "max": 1
+    },
+    "strLwr": {
+      "min": 1,
+      "max": 1
+    },
+    "strNFind": {
+      "min": 4,
+      "max": 4
+    },
+    "strPoke": {
+      "min": 3,
+      "max": 3
+    },
+    "strPrompt": {
+      "min": 2,
+      "max": 2
+    },
+    "strRem": {
+      "min": 2,
+      "max": 2
+    },
+    "strRep": {
+      "min": 2,
+      "max": 2
+    },
+    "strReplace": {
+      "min": 3,
+      "max": 3
+    },
+    "strRFix": {
+      "min": 2,
+      "max": 3
+    },
+    "strRTrim": {
+      "min": 1,
+      "max": 1
+    },
+    "strScan": {
+      "min": 4,
+      "max": 4
+    },
+    "strSplit": {
+      "min": 2,
+      "max": 2
+    },
+    "strStartsWith": {
+      "min": 2,
+      "max": 2
+    },
+    "strUpr": {
+      "min": 1,
+      "max": 1
+    },
+    "subStr": {
+      "min": 3,
+      "max": 3
+    },
+    "syd": {
+      "min": 4,
+      "max": 4
+    },
+    "symbol2Enum": {
+      "min": 2,
+      "max": 2
+    },
+    "systemDateGet": {
+      "min": 0,
+      "max": 0
+    },
+    "systemDateSet": {
+      "min": 1,
+      "max": 1
+    },
+    "tableId2Name": {
+      "min": 1,
+      "max": 1
+    },
+    "tableId2PName": {
+      "min": 1,
+      "max": 1
+    },
+    "tableName2Id": {
+      "min": 1,
+      "max": 1
+    },
+    "tan": {
+      "min": 1,
+      "max": 1
+    },
+    "tanh": {
+      "min": 1,
+      "max": 1
+    },
+    "term": {
+      "min": 3,
+      "max": 3
+    },
+    "time2Str": {
+      "min": 3,
+      "max": 3
+    },
+    "timeNow": {
+      "min": 0,
+      "max": 0
+    },
+    "today": {
+      "min": 0,
+      "max": 0
+    },
+    "trunc": {
+      "min": 1,
+      "max": 1
+    },
+    "typeOf": {
+      "min": 1,
+      "max": 1
+    },
+    "uint2Str": {
+      "min": 1,
+      "max": 1
+    },
+    "warning": {
+      "min": 1,
+      "max": 3
+    },
+    "wkOfYr": {
+      "min": 1,
+      "max": 1
+    },
+    "year": {
+      "min": 1,
+      "max": 1
+    }
+  },
+  "unknownFunctions": [
+    "corrFlagGet",
+    "dateMin",
+    "int2Enum",
+    "refPrintAll",
+    "typeName2Id"
+  ],
+  "obsoleteFunctions": [
+    "dateEndWk",
+    "dateEndYr",
+    "dateStartWk",
+    "dateStartYr"
+  ]
+}

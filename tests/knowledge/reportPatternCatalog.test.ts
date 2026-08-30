@@ -13,6 +13,7 @@ import {
   renderReportPatternSpec,
 } from '../../src/knowledge/reportPatterns/index';
 import { KNOWLEDGE_BASE } from '../../src/tools/knowledge/xppKnowledge';
+import { CODE_GEN_PATTERNS } from '../../src/tools/smart/codeGen';
 
 describe('report pattern catalog integrity', () => {
   it('ids and aliases are unique (normalized)', () => {
@@ -35,12 +36,42 @@ describe('report pattern catalog integrity', () => {
     }
   });
 
-  it('every pattern has a scaffold line that references generate_object', () => {
+  it('every pattern has a scaffold line that references a generation call that EXISTS', () => {
     for (const p of REPORT_PATTERN_CATALOG) {
-      expect(p.scaffold).toContain('generate_object(mode="scaffold", objectType="report"');
+      // Two kinds of recipe now: the seven that CREATE a report scaffold one,
+      // and the three that EXTEND a standard report, which are mode="pattern"
+      // calls. Both are checked against the real call rather than a substring
+      // that happened to be true when there was only one kind.
+      const scaffoldMode = p.scaffold.includes('generate_object(mode="scaffold", objectType="report"');
+      const patternMode = /generate_object\(mode="pattern", pattern="([a-z-]+)"/.exec(p.scaffold);
+
+      expect(
+        scaffoldMode || patternMode !== null,
+        `${p.id}: scaffold names neither the report scaffold nor a mode="pattern" call`,
+      ).toBe(true);
+
+      if (patternMode) {
+        // A recipe naming a pattern the generator does not accept is worse than
+        // no recipe: the agent spends a round trip on a call that cannot work.
+        expect(
+          (CODE_GEN_PATTERNS as readonly string[]).includes(patternMode[1]),
+          `${p.id}: names pattern "${patternMode[1]}", which generate_object does not accept`,
+        ).toBe(true);
+      }
+
       expect(p.objects.length).toBeGreaterThan(0);
       expect(p.whenToUse.length).toBeGreaterThan(0);
       expect(p.crossChecks.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('the three extension recipes are resolvable under the name the generator uses', () => {
+    // An agent that read the pattern name off generate_object must land on the
+    // recipe, and vice versa.
+    for (const pattern of ['report-dataset-extension', 'report-custom-design', 'report-menu-redirect']) {
+      const spec = resolveReportPattern(pattern);
+      expect(spec, `no recipe resolves "${pattern}"`).toBeDefined();
+      expect(spec!.scaffold).toContain(`pattern="${pattern}"`);
     }
   });
 

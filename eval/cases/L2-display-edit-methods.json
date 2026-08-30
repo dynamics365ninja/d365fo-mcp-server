@@ -1,0 +1,23 @@
+{
+  "id": "L2-display-edit-methods",
+  "title": "display and edit methods: the modifier that will not combine with static, and the per-row cost",
+  "tier": 2,
+  "instruction": "In the sandbox model, add two computed columns to the standard CustGroup table. An AxTableExtension carries no <Methods> element at all, so display and edit methods on a table you do not own go in an [ExtensionOf(tableStr(CustGroup))] final class; writing them into a table extension FAILS this case. Ground it first with get_knowledge(topic=\"display-edit-methods\"). (1) A DISPLAY method returning an EDT-typed value computed from the record. It must carry [SysClientCacheDataMethodAttribute(true)], because a display method runs once per VISIBLE ROW on every refresh and this one only changes with the record. (2) An EDIT method with the signature `edit <T> name(boolean _set, <T> _value)`: _set is false while the form paints and true when the user commits, and the method returns the value to show. Neither may be static - `display static` is a compile error (\"Conflicting modifiers 'static display'\"), and writing it that way FAILS this case. Neither may be used in a select where clause: they are X++, not SQL. The extension must build with zero errors and zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-display-edit-methods/",
+  "golden_pending": false,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "display-method",
+    "edit-method",
+    "cache",
+    "table-extension",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

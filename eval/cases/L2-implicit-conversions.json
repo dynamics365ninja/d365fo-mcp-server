@@ -1,0 +1,24 @@
+{
+  "id": "L2-implicit-conversions",
+  "title": "X++ implicit conversions: which assignments compile, which are errors, and how to convert explicitly",
+  "tier": 2,
+  "instruction": "In the sandbox model, create a class DemoConversions that shows the conversion rules the language reference gets wrong. Ground it first with get_knowledge(topic=\"operators-precedence\") and get_knowledge(topic=\"xpp-data-types\"). All methods public static. (1) `int truncated(real _amount)` - returns the whole part. Assigning a real to an int is a COMPILE ERROR in X++ (\"The type conversion from 'real' to 'int' loses range and precision\"), so the conversion must be explicit with real2int. A plain `int i = _amount;` FAILS this case. (2) `str described(int _count, NoYes _flag)` - builds a message. There is no implicit conversion to str either: int2Str for the number and enum2Str for the enum, joined with strFmt over a LABEL. `str s = _count;` FAILS the case. (3) `boolean isSet(NoYes _flag)` - relies on the conversions that DO compile: an enum assigns to an int and to a boolean without a function. (4) `boolean hasValue(str _text)` - uses the truthiness of a str directly in an if, which is legal. Do NOT compare an int with null anywhere: \"Operator '==' cannot be applied to operands of type 'int' and 'nulltype'\" - value types have null-EQUIVALENT values instead. The class must build with zero errors and zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-implicit-conversions/",
+  "golden_pending": false,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "conversions",
+    "data-types",
+    "real2int",
+    "language",
+    "class",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

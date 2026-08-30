@@ -1,0 +1,25 @@
+{
+  "id": "L3-report-dataset-extension",
+  "title": "Adding a column to a standard report dataset, without overlayering it",
+  "tier": 3,
+  "instruction": "In the sandbox model, add a column to a report that already exists, using only extension points. Ground it first with get_knowledge(topic=\"report-extension-patterns\"). The slice is (1) a table extension on the report's temp table that adds the field, and (2) a handler class that fills it with [PostHandlerFor(classStr(<the DP>), methodStr(<the DP>, processReport))] and the signature `public static void h(XppPrePostArgs _args)`. Inside, obtain the DP instance with `_args.getThis()` and downcast it with `as` before use. A handler whose parameter is anything but XppPrePostArgs is a compile error (\"cannot be used as an event handler ... because the parameter profile does not match\"). Do not modify the standard RDP class, the standard temp table or the standard report. Confirm the DP class name, its processReport method and the temp table with search and get_object_info before writing any intrinsic. Everything must build with zero errors and zero BP errors.",
+  "target_artifact_types": [
+    "AxTableExtension",
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L3-report-dataset-extension/",
+  "golden_pending": false,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "report-extension",
+    "posthandler",
+    "dataset",
+    "reporting",
+    "class",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoCustomerQueries</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Exercises the parts of the select grammar the report cases never reach: a
+/// find option instead of a counter, the two joins that fetch nothing,
+/// aggregation, and the in operator.
+/// </summary>
+public class ConDemoCustomerQueries
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>topGroups</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the identifiers of at most ten customer groups.
+    /// </summary>
+    /// <returns>A container of customer group identifiers.</returns>
+    /// <remarks>
+    /// firstOnly10 is a find option, so the database returns ten rows. A loop
+    /// counter would fetch every row and then throw most of them away.
+    /// </remarks>
+    public static container topGroups()
+    {
+        CustGroup custGroup;
+        container result;
+
+        while select firstOnly10 CustGroup from custGroup
+            order by custGroup.CustGroup
+        {
+            result += [custGroup.CustGroup];
+        }
+
+        return result;
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>hasCustomers</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Tells whether a customer group has any customer in it.
+    /// </summary>
+    /// <param name = "_group">The customer group to test.</param>
+    /// <returns>true when at least one customer belongs to the group.</returns>
+    /// <remarks>
+    /// An exists join fetches no fields from the joined buffer, so custTable
+    /// cannot be read in the body. That is the point: the database answers the
+    /// question without shipping a row back.
+    /// </remarks>
+    public static boolean hasCustomers(CustGroupId _group)
+    {
+        CustGroup custGroup;
+        CustTable custTable;
+
+        select firstOnly RecId from custGroup
+            where custGroup.CustGroup == _group
+            exists join custTable
+            where custTable.CustGroup == custGroup.CustGroup;
+
+        return custGroup.RecId != 0;
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>groupsWithoutCustomers</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the customer groups that hold no customers.
+    /// </summary>
+    /// <returns>A container of customer group identifiers.</returns>
+    public static container groupsWithoutCustomers()
+    {
+        CustGroup custGroup;
+        CustTable custTable;
+        container result;
+
+        while select CustGroup from custGroup
+            notexists join custTable
+            where custTable.CustGroup == custGroup.CustGroup
+        {
+            result += [custGroup.CustGroup];
+        }
+
+        return result;
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>groupNamesWithCounts</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Counts the unblocked customers in each customer group.
+    /// </summary>
+    /// <returns>A container of [group, count] pairs.</returns>
+    /// <remarks>
+    /// The ordering clause belongs before the where of the same segment.
+    /// Written the other way round the compiler answers only "'join' expected".
+    /// </remarks>
+    public static container groupNamesWithCounts()
+    {
+        CustTable custTable;
+        container result;
+
+        while select count(RecId) from custTable
+            group by custTable.CustGroup
+            order by custTable.CustGroup
+            where custTable.Blocked == CustVendorBlocked::No
+        {
+            result += [[custTable.CustGroup, custTable.RecId]];
+        }
+
+        return result;
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>blockedInAny</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Tells whether a customer is in any of the given blocking states.
+    /// </summary>
+    /// <param name = "_account">The customer account to test.</param>
+    /// <param name = "_states">The blocking states to accept.</param>
+    /// <returns>true when the customer is in one of the states.</returns>
+    /// <remarks>
+    /// The right side of in has to be a container VARIABLE; a literal is
+    /// refused outright, and so is a left side that is not a container-
+    /// compatible type.
+    /// </remarks>
+    public static boolean blockedInAny(CustAccount _account, container _states)
+    {
+        CustTable custTable;
+
+        select firstOnly RecId from custTable
+            where custTable.AccountNum == _account
+            && custTable.Blocked in _states;
+
+        return custTable.RecId != 0;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

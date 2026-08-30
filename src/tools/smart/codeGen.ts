@@ -10,16 +10,28 @@ import { resolveObjectPrefix, applyObjectPrefix, deriveExtensionInfix, getObject
 import { getConfigManager } from '../../utils/configManager.js';
 import { enforceGrounding } from '../../utils/provenanceStore.js';
 
+/**
+ * Every pattern this tool ACCEPTS. Exported because it is the only honest
+ * answer to "does this call exist?" — the published wire schema advertises a
+ * subset (the ListTools payload is re-sent on every request and has a budget),
+ * so a catalog recipe or a doc that names a pattern must be checked against
+ * THIS list, not against the schema.
+ */
+export const CODE_GEN_PATTERNS = [
+  'class', 'runnable', 'form-handler', 'data-entity', 'batch-job', 'table-extension',
+  'sysoperation', 'event-handler', 'security-privilege', 'menu-item', 'class-extension',
+  'ssrs-report-full', 'lookup-form',
+  'dialog-box', 'dimension-controller', 'number-seq-handler',
+  'display-menu-controller', 'data-entity-staging', 'service-class-ais',
+  'form-datasource-extension', 'form-control-extension', 'map-extension',
+  'business-event', 'custom-telemetry', 'feature-class', 'systest',
+  'composite-entity', 'custom-service', 'er-custom-function',
+  'report-dataset-extension', 'report-custom-design', 'report-menu-redirect',
+] as const;
+
 const CodeGenArgsSchema = z.object({
   pattern: z
-    .enum(['class', 'runnable', 'form-handler', 'data-entity', 'batch-job', 'table-extension',
-           'sysoperation', 'event-handler', 'security-privilege', 'menu-item', 'class-extension',
-           'ssrs-report-full', 'lookup-form',
-           'dialog-box', 'dimension-controller', 'number-seq-handler',
-           'display-menu-controller', 'data-entity-staging', 'service-class-ais',
-           'form-datasource-extension', 'form-control-extension', 'map-extension',
-           'business-event', 'custom-telemetry', 'feature-class',
-           'composite-entity', 'custom-service', 'er-custom-function'])
+    .enum(CODE_GEN_PATTERNS)
     .describe('Code pattern to generate'),
   name: z.string().describe(
     'For NEW objects (class, runnable, data-entity, batch-job, sysoperation): the object name WITHOUT prefix — prefix is auto-applied from EXTENSION_PREFIX env var or modelName. ' +
@@ -40,8 +52,30 @@ const CodeGenArgsSchema = z.object({
       'For form-datasource-extension: data source name within the form (e.g. "CustTable"). Defaults to form name if omitted. ' +
       'For form-control-extension: control name within the form (e.g. "AccountNum", "CustAccount").'
     ),
+  testMethods: z.array(z.string()).optional()
+    .describe(
+      'For the systest pattern: the target class methods to write a test for. ' +
+      'One [SysTestMethod] per entry, each failing until its assertion is written. ' +
+      'Read them from get_object_info(objectType=\"class\", options:{members:\"names\"}).'
+    ),
   targetObject: z.string().optional()
     .describe('For menu-item pattern: target form/class/report name'),
+  datasetAccessor: z.string().optional()
+    .describe(
+      'For report-dataset-extension: the data provider method that returns the dataset buffer — ' +
+      'the one carrying [SRSReportDataSetAttribute(tableStr(<TmpTable>))]. Read it from ' +
+      'get_object_info; it cannot be derived from the table name (the platform ships ' +
+      '"geAssetBarCodeTmp"). Omit it to get the per-row DataEventHandler shape, which needs no accessor.'
+    ),
+  documentType: z.string().optional()
+    .describe(
+      'For report-custom-design: the PrintMgmtDocumentType literal to override, e.g. "SalesOrderInvoice".'
+    ),
+  designName: z.string().optional()
+    .describe(
+      'For report-custom-design / report-menu-redirect: the DESIGN name inside the AxReport ' +
+      '(usually "Report", but read it — ssrsReportStr checks it at compile time).'
+    ),
   serviceMethod: z.string().optional()
     .describe(
       'For sysoperation pattern: the name of the method on the Service class that the Controller will call. ' +
@@ -468,6 +502,88 @@ final class ${className}
 }`;
 }
 
+/**
+ * SysTest case for a target class — the red half of a red/green cycle.
+ *
+ * Every generated test FAILS on purpose (`this.fail(...)`): a test that passes
+ * before the behaviour exists proves nothing, and the framework gives no other
+ * signal that the developer has not written the assertion yet.
+ *
+ * Only API the platform actually has is emitted (read from SysTestCase /
+ * SysTestAssert in ApplicationFoundation):
+ *  - the asserts come from SysTestAssert, which SysTestCase extends;
+ *  - an expected exception is DECLARED with parmExceptionExpected(true) before
+ *    the call — there is no assertExpectedException in X++;
+ *  - SysTestTarget's second argument is a utilElementType, not a method name
+ *    (xppc: "Cannot implicitly convert from type 'str' to type
+ *    'Enumeration(utilElementType)'");
+ *  - rollback is the framework default, so there is no attribute to add and no
+ *    cleanup to write.
+ */
+function sysTestTemplate(targetClass: string, methods: string[]): string {
+  const testFor = (method: string): string => {
+    const cap = method.charAt(0).toUpperCase() + method.slice(1);
+    return `
+    /// <summary>
+    /// TODO: state the behaviour this pins down, in one sentence.
+    /// </summary>
+    [SysTestMethod]
+    public void test${cap}()
+    {
+        // Arrange
+        ${targetClass} instance = new ${targetClass}();
+
+        // Act
+        // TODO: call ${targetClass}.${method}(...) and capture the result.
+
+        // Assert
+        // TODO: replace with the assertion this test exists for, e.g.
+        //   this.assertEquals(expected, actual, 'what should hold');
+        this.fail('test${cap} is not implemented yet.');
+    }
+`;
+  };
+
+  const bodies = (methods.length > 0 ? methods : ['behaviour']).map(testFor).join('');
+
+  return `
+/// <summary>
+/// Unit tests for <c>${targetClass}</c>.
+/// </summary>
+/// <remarks>
+/// Every test method runs inside its own transaction, which the framework rolls
+/// back afterwards — created records need no cleanup.
+/// </remarks>
+[SysTestTarget(classStr(${targetClass}), UtilElementType::Class)]
+class ${targetClass}Test extends SysTestCase
+{
+    /// <summary>
+    /// Runs before EACH test method. setUpTestCase() runs once for the class.
+    /// </summary>
+    public void setUp()
+    {
+        super();
+
+        // TODO: arrange shared fixtures here, or delete this method.
+    }
+${bodies}
+    /// <summary>
+    /// Expected exceptions are DECLARED, not asserted: there is no
+    /// assertExpectedException in X++.
+    /// </summary>
+    [SysTestMethod]
+    public void testRejectsInvalidInput()
+    {
+        ${targetClass} instance = new ${targetClass}();
+
+        this.parmExceptionExpected(true);
+
+        // TODO: call the method with input that must be rejected.
+        this.fail('testRejectsInvalidInput is not implemented yet.');
+    }
+}`;
+}
+
 const extensionTemplates: Record<string, (baseName: string, prefix: string) => string> = {
   'form-handler': formHandlerTemplate,
   'table-extension': tableExtensionTemplate,
@@ -475,6 +591,245 @@ const extensionTemplates: Record<string, (baseName: string, prefix: string) => s
   'class-extension': classExtensionTemplate,
   'map-extension': mapExtensionTemplate,
 };
+
+/**
+ * Add columns to a STANDARD report's dataset, without touching the RDP class,
+ * its temp table or the report.
+ *
+ * Two shapes, because the choice is real and the knowledge base draws the same
+ * line: a BULK pass over the finished temp table (one lookup for the whole set)
+ * when the caller can name the provider's dataset accessor, and a per-ROW
+ * handler when it cannot — the row handler needs no accessor at all.
+ *
+ * The accessor is a parameter rather than something derived from the temp table
+ * name because it CANNOT be derived: the platform's own AssetBarCodeDP spells
+ * its getter `geAssetBarCodeTmp`, a shipped typo. Guessing it would produce a
+ * scaffold that looks right and does not compile.
+ *
+ * Both shapes were compiled against AssetBarCodeDP / AssetBarCodeTmp on the VM.
+ */
+function reportDatasetExtensionTemplate(
+  dpClass: string,
+  prefix: string,
+  tmpTable: string,
+  datasetAccessor?: string,
+): string {
+  const className = `${dpClass}${prefix}_EventHandler`;
+
+  if (!datasetAccessor) {
+    return `
+/// <summary>
+/// Fills the column(s) this model added to <c>${tmpTable}</c>, one row at a time.
+/// </summary>
+/// <remarks>
+/// This shape needs no accessor on <c>${dpClass}</c>, which makes it the safe
+/// default. For a lookup that could be done ONCE for the whole set, pass
+/// datasetAccessor instead and get the bulk post-handler.
+/// </remarks>
+public final class ${className}
+{
+    /// <summary>
+    /// Runs for each row the provider inserts, before it reaches the database.
+    /// </summary>
+    /// <param name = "_sender">The buffer being inserted.</param>
+    /// <param name = "_e">The event arguments.</param>
+    [DataEventHandler(tableStr(${tmpTable}), DataEventType::Inserting)]
+    public static void ${tmpTable}_onInserting(Common _sender, DataEventArgs _e)
+    {
+        ${tmpTable} row = _sender as ${tmpTable};
+
+        if (!row)
+        {
+            return;
+        }
+
+        // TODO: set the field(s) your table extension added to ${tmpTable}.
+        // Everything the standard provider computed is already on the buffer.
+    }
+}`;
+  }
+
+  return `
+/// <summary>
+/// Fills the column(s) this model added to <c>${tmpTable}</c>, after
+/// <c>${dpClass}</c> has finished building its rows.
+/// </summary>
+/// <remarks>
+/// One pass over the finished temp table, which beats a lookup per row. For a
+/// per-row CALCULATION use the DataEventHandler shape instead (omit
+/// datasetAccessor).
+/// </remarks>
+public final class ${className}
+{
+    /// <summary>
+    /// Runs after the standard provider has populated its dataset.
+    /// </summary>
+    /// <param name = "_args">The call this handler is wrapped around.</param>
+    /// <remarks>
+    /// The parameter type is fixed: anything but XppPrePostArgs is a COMPILE
+    /// error ("cannot be used as an event handler ... because the parameter
+    /// profile does not match"). getThis() is typed Object, so the provider is
+    /// downcast before use, and the temp table instance is SHARED through
+    /// linkPhysicalTableInstance — a buffer merely declared here would be a
+    /// different, empty table, and this handler would appear to work while
+    /// updating nothing.
+    /// </remarks>
+    [PostHandlerFor(classStr(${dpClass}), methodStr(${dpClass}, processReport))]
+    public static void ${dpClass}_Post_processReport(XppPrePostArgs _args)
+    {
+        ${dpClass} dataProvider = _args.getThis() as ${dpClass};
+        ${tmpTable} providerRows;
+        ${tmpTable} tmpUpdate;
+
+        if (!dataProvider)
+        {
+            return;
+        }
+
+        providerRows = dataProvider.${datasetAccessor}();
+        tmpUpdate.linkPhysicalTableInstance(providerRows);
+
+        ttsbegin;
+
+        while select forupdate tmpUpdate
+        {
+            // TODO: set the field(s) your table extension added to ${tmpTable}.
+            tmpUpdate.update();
+        }
+
+        ttscommit;
+    }
+}`;
+}
+
+/**
+ * Give a STANDARD report a custom DESIGN: a controller that runs your copy of
+ * the report, and the print-management delegate that makes the document type
+ * resolve to it.
+ *
+ * `main()` is the shape shipped controllers actually use — parmArgs +
+ * parmReportName + startOperation. There is no `initArgs` on
+ * SrsReportRunController or anywhere in its hierarchy; the knowledge base said
+ * there was, and the platform disagreed.
+ */
+function reportCustomDesignTemplate(
+  standardReport: string,
+  prefix: string,
+  baseController: string,
+  documentType: string,
+  designName: string,
+): string {
+  const customReport = `${prefix}${standardReport}`;
+  return `
+// ── 1. Controller — runs YOUR copy of the report ────────────────────────
+/// <summary>
+/// Runs this model's own design of <c>${standardReport}</c>.
+/// </summary>
+/// <remarks>
+/// Duplicate ${standardReport} into this model and rename the copy to
+/// ${customReport} FIRST. The second argument of ssrsReportStr is the DESIGN
+/// name inside that report — read it off the AxReport rather than assuming
+/// "Report"; it is compile-time checked, so a wrong one fails the build.
+/// The copy keeps consuming the STANDARD data contract and data provider, which
+/// is the point of duplicating the design rather than the whole solution.
+/// </remarks>
+public class ${customReport}Controller extends ${baseController}
+{
+    /// <summary>
+    /// Entry point for the menu item.
+    /// </summary>
+    /// <param name = "_args">The arguments the menu item was started with.</param>
+    public static void main(Args _args)
+    {
+        ${customReport}Controller controller = new ${customReport}Controller();
+
+        controller.parmArgs(_args);
+        controller.parmReportName(ssrsReportStr(${customReport}, ${designName}));
+        controller.startOperation();
+    }
+}
+
+// ── 2. Print management — map the document type to YOUR design ──────────
+/// <summary>
+/// Points ${documentType} at this model's design.
+/// </summary>
+/// <remarks>
+/// PrintMgmtDocType exposes seven delegates, all with this same
+/// (PrintMgmtDocumentType, EventHandlerResult) shape. Answer ONLY the document
+/// types you are replacing and leave the rest to the platform.
+/// </remarks>
+public final class ${customReport}PrintMgmtHandler
+{
+    /// <summary>
+    /// Supplies the report format for the document type this model overrides.
+    /// </summary>
+    /// <param name = "_docType">The document type being resolved.</param>
+    /// <param name = "_result">Carries the answer back to the framework.</param>
+    [SubscribesTo(classStr(PrintMgmtDocType), delegateStr(PrintMgmtDocType, getDefaultReportFormatDelegate))]
+    public static void getDefaultReportFormatDelegate(
+        PrintMgmtDocumentType _docType,
+        EventHandlerResult    _result)
+    {
+        switch (_docType)
+        {
+            case PrintMgmtDocumentType::${documentType}:
+                _result.result(ssrsReportStr(${customReport}, ${designName}));
+                break;
+        }
+    }
+}
+
+// ── 3. Menu item — the metadata half, which is NOT X++ ──────────────────
+// Extend the standard output menu item and point it at ${customReport}Controller:
+//   d365fo_file(action="create", objectType="menu-item-output-extension",
+//               objectName="<StandardMenuItem>")
+// then modify its Object property. Without this the menu item still starts the
+// standard controller and the two classes above never run.`;
+}
+
+/**
+ * Redirect an EXISTING report run at your own design without editing the menu
+ * item or hunting down callers: a post-handler on the controller's static
+ * construct(), which is the light-touch variant of the custom-design recipe.
+ *
+ * Only works when the controller HAS a static construct() — many do not (
+ * AssetBarCodeController does not; SalesInvoiceController does). Check with
+ * get_object_info before generating, or use the menu-item extension instead.
+ */
+function reportMenuRedirectTemplate(
+  controllerClass: string,
+  prefix: string,
+  customReport: string,
+  designName: string,
+): string {
+  return `
+/// <summary>
+/// Sends <c>${controllerClass}</c> to this model's report design.
+/// </summary>
+/// <remarks>
+/// The lighter half of the custom-design recipe: no menu item is touched and no
+/// caller has to change, because every route into the report goes through
+/// construct(). It requires a STATIC construct() on the controller — confirm it
+/// exists with get_object_info first; the intrinsic fails the build otherwise.
+/// </remarks>
+public final class ${controllerClass}${prefix}_EventHandler
+{
+    /// <summary>
+    /// Repoints the freshly constructed controller at this model's design.
+    /// </summary>
+    /// <param name = "_args">The call this handler is wrapped around.</param>
+    [PostHandlerFor(classStr(${controllerClass}), staticMethodStr(${controllerClass}, construct))]
+    public static void ${controllerClass}_Post_construct(XppPrePostArgs _args)
+    {
+        SrsReportRunController controller = _args.getReturnValue() as SrsReportRunController;
+
+        if (controller)
+        {
+            controller.parmReportName(ssrsReportStr(${customReport}, ${designName}));
+        }
+    }
+}`;
+}
 
 // SysOperation pattern: 3 classes (DataContract + Controller + Service)
 function sysOperationTemplate(name: string, serviceMethod = 'process'): string {
@@ -533,7 +888,7 @@ class ${name}Controller extends SysOperationServiceController
 // ── 3. Service ───────────────────────────────────────────────────────────
 /// <summary>
 /// Service class that contains the business logic for the ${name} operation.
-/// The method marked [SysEntryPointAttribute] is called by the controller.
+/// The controller calls the method below.
 /// TODO: Add a description of what data or records this operation processes.
 /// </summary>
 class ${name}Service extends SysOperationServiceBase
@@ -541,7 +896,6 @@ class ${name}Service extends SysOperationServiceBase
     /// <summary>
     /// Business logic entry point called by the controller.
     /// </summary>
-    [SysEntryPointAttribute(true)]
     public void ${serviceMethod}(${name}DataContract _contract)
     {
         TransDate transDate = _contract.parmTransDate();
@@ -1183,7 +1537,6 @@ public class ${name}Service
     /// <summary>
     /// Creates a new ${name} record.
     /// </summary>
-    [SysEntryPointAttribute(true)]
     public ${name}Id create(${name}Contract _contract)
     {
         ${name} record;
@@ -1206,7 +1559,6 @@ public class ${name}Service
     /// <summary>
     /// Updates an existing ${name} record.
     /// </summary>
-    [SysEntryPointAttribute(true)]
     public void update(${name}Contract _contract)
     {
         ${name} record;
@@ -1229,7 +1581,6 @@ public class ${name}Service
     /// <summary>
     /// Deletes a ${name} record.
     /// </summary>
-    [SysEntryPointAttribute(true)]
     public void delete(${name}Id _id)
     {
         ${name} record;
@@ -1248,7 +1599,6 @@ public class ${name}Service
     /// <summary>
     /// Reads a ${name} record and returns a contract.
     /// </summary>
-    [SysEntryPointAttribute(false)]
     public ${name}Contract read(${name}Id _id)
     {
         ${name}          record = ${name}::find(_id);
@@ -1818,6 +2168,10 @@ public final class ${name}ERFunctions
 const EXTENSION_PATTERNS = new Set([
   'table-extension', 'form-handler', 'event-handler', 'class-extension', 'map-extension',
   'form-datasource-extension', 'form-control-extension',
+  // The report trio extends STANDARD reports, so it belongs here for the same
+  // reason the rest do: grounding is enforced, because you cannot write any of
+  // them correctly without having looked at the real DP, controller or design.
+  'report-dataset-extension', 'report-custom-design', 'report-menu-redirect',
 ]);
 const XML_PATTERNS = new Set(['security-privilege', 'menu-item']);
 
@@ -1905,6 +2259,82 @@ export async function codeGenTool(request: CallToolRequest) {
           ? `📌 **Naming (MS guidelines):** Generated class: \`${className}\`\n  Form: \`${formName}\`, Control: \`${ctrlName}\`, Prefix infix: \`${extensionInfix}\``
           : `⚠️ **No prefix resolved** — pass \`modelName\` or set \`EXTENSION_PREFIX\` env var.\n  Generated bare name: \`${formName}_${ctrlName}Ctrl_Extension\` (not MS-compliant without infix).`;
 
+      } else if (args.pattern === 'report-dataset-extension') {
+        const dpClass = args.name;
+        const tmpTable = args.baseName?.trim();
+        if (!tmpTable) {
+          return {
+            content: [{
+              type: 'text',
+              text:
+                `report-dataset-extension needs the report's temp table in \`baseName\`.\n\n` +
+                `It is the table named by [SRSReportDataSetAttribute(tableStr(…))] on ${dpClass} — ` +
+                `read it with get_object_info(objectType="class", objectName="${dpClass}"). ` +
+                `Add \`params:{datasetAccessor:"<the getter carrying that attribute>"}\` for the bulk ` +
+                `post-handler; leave it out for the per-row handler, which needs no accessor.`,
+            }],
+            isError: true,
+          };
+        }
+        const accessor = args.datasetAccessor?.trim();
+        code = reportDatasetExtensionTemplate(dpClass, extensionInfix, tmpTable, accessor);
+        displayName = dpClass;
+        namingNote =
+          `📌 **Generated class:** \`${dpClass}${extensionInfix}_EventHandler\`` +
+          (extensionInfix ? '' : ' — ⚠️ no prefix resolved; set `EXTENSION_PREFIX` or pass `modelName`.') +
+          `\n\n**Shape:** ${accessor
+            ? `bulk \`[PostHandlerFor]\` on \`processReport\`, reading the dataset through \`${accessor}()\`.`
+            : 'per-row `[DataEventHandler(… DataEventType::Inserting)]` — no accessor needed.'}` +
+          `\n\n**The other half is metadata:** add your field(s) to \`${tmpTable}\` with ` +
+          `\`d365fo_file(action="create", objectType="table-extension", objectName="${tmpTable}")\`. ` +
+          `The handler above will not compile until that field exists.\n\n` +
+          (accessor
+            ? '⚠️ `linkPhysicalTableInstance` is load-bearing: a temp-table buffer merely declared in the ' +
+              'handler is a DIFFERENT, empty table, and the handler would appear to work while updating nothing.'
+            : '💡 For a lookup that could be done once for the whole set, re-generate with ' +
+              '`params:{datasetAccessor:"…"}` to get the cheaper bulk shape.') +
+          `\n\nRecipe: \`object_patterns(domain="report", pattern="DatasetExtension")\`.`;
+
+      } else if (args.pattern === 'report-custom-design') {
+        const standardReport = args.name;
+        const baseController = args.baseName?.trim() || `${standardReport}Controller`;
+        const documentType = args.documentType?.trim() || 'SalesOrderConfirmation';
+        const designName = args.designName?.trim() || 'Report';
+        code = reportCustomDesignTemplate(
+          standardReport, extensionInfix, baseController, documentType, designName);
+        displayName = `${extensionInfix}${standardReport}`;
+        namingNote =
+          `📌 **Generated:** \`${extensionInfix}${standardReport}Controller extends ${baseController}\` ` +
+          `+ \`${extensionInfix}${standardReport}PrintMgmtHandler\`` +
+          (extensionInfix ? '' : ' — ⚠️ no prefix resolved; set `EXTENSION_PREFIX` or pass `modelName`.') +
+          `\n\n**Do this first:** duplicate the standard \`${standardReport}\` report into your model and ` +
+          `rename the copy \`${extensionInfix}${standardReport}\`. Neither class compiles until it exists.\n\n` +
+          `⚠️ **Verify two names against the real objects** — both are compile-time checked: the base ` +
+          `controller (\`${baseController}\`) and the DESIGN inside the report (\`${designName}\`). ` +
+          `Read the design from the AxReport, not from habit: shipped reports do use "Report", but it is a ` +
+          `name like any other.\n\n` +
+          `⚠️ \`PrintMgmtDocumentType::${documentType}\` is a placeholder unless you passed ` +
+          `\`params:{documentType:"…"}\`. Answer only the types you replace.\n\n` +
+          `Recipe: \`object_patterns(domain="report", pattern="CustomDesign")\`.`;
+
+      } else if (args.pattern === 'report-menu-redirect') {
+        const controllerClass = args.name;
+        const customReport = args.baseName?.trim() || `${extensionInfix}Report`;
+        const designName = args.designName?.trim() || 'Report';
+        code = reportMenuRedirectTemplate(controllerClass, extensionInfix, customReport, designName);
+        displayName = controllerClass;
+        namingNote =
+          `📌 **Generated class:** \`${controllerClass}${extensionInfix}_EventHandler\`` +
+          (extensionInfix ? '' : ' — ⚠️ no prefix resolved; set `EXTENSION_PREFIX` or pass `modelName`.') +
+          `\n\n⚠️ **This shape needs a STATIC \`construct()\` on \`${controllerClass}\`** — many report ` +
+          `controllers have only \`main()\` (AssetBarCodeController does; SalesInvoiceController has both). ` +
+          `Confirm with \`get_object_info(objectType="class", objectName="${controllerClass}")\` before ` +
+          `writing it; \`staticMethodStr\` fails the build otherwise.\n\n` +
+          `**When there is no construct():** extend the output menu item instead — ` +
+          `\`d365fo_file(action="create", objectType="menu-item-output-extension", …)\` — and point its ` +
+          `Object at your own controller. That route works for every report.\n\n` +
+          `Recipe: \`object_patterns(domain="report", pattern="MenuRedirect")\`.`;
+
       } else {
         // Generic 2-param extension templates
         const baseName = args.pattern === 'event-handler' ? (args.baseName || args.name) : args.name;
@@ -1943,6 +2373,27 @@ export async function codeGenTool(request: CallToolRequest) {
             : `⚠️ **No prefix resolved** — set \`EXTENSION_PREFIX\` env var or pass \`modelName\` argument.\n  Generated bare name without prefix infix (e.g. \`${baseName}_Extension\`) which is **not MS-compliant**.`;
         }
       }
+    } else if (args.pattern === 'systest') {
+      // name is the TARGET class; the test class is named after it. No prefix is
+      // applied — the target already carries one, and <Target>Test is the naming
+      // the platform's own tests use.
+      const targetClass = args.name.trim();
+      const methods = (args.testMethods ?? []).map(m => m.trim()).filter(Boolean);
+      code = sysTestTemplate(targetClass, methods);
+      displayName = `${targetClass}Test`;
+      namingNote =
+        `📌 **Generated:** \`${targetClass}Test extends SysTestCase\` — one [SysTestMethod] per ` +
+        `target method${methods.length ? ` (${methods.join(', ')})` : ''}, plus the expected-exception shape.\n\n` +
+        `🔴 **Every test fails as written.** That is the point: run it first and watch it fail, so a ` +
+        `later pass means the behaviour arrived rather than the assertion being empty. Replace each ` +
+        `\`this.fail(...)\` with the assertion the test exists for.\n\n` +
+        `**The cycle:** \`d365fo_file(action="create", objectType="class")\` → ` +
+        `\`build_d365fo_project\` (must COMPILE — red means a failing assertion, not a broken file) → ` +
+        `\`run_systest_class(className="${targetClass}Test")\` (expect failures) → implement → build → ` +
+        `run again (expect green) → \`run_bp_check\`.\n\n` +
+        `⚠️ The test model must reference **TestEssentials**; [SysTestCategory], [SysTestOwner] and ` +
+        `[SysTestPriority] live there, while [SysTestMethod] and [SysTestCheckInTest] are in ` +
+        `ApplicationFoundation. Details: \`get_knowledge(topic="unit-testing")\`.`;
     } else if (args.pattern === 'sysoperation') {
       // sysoperation is handled separately so we can pass the optional serviceMethod param
       let finalName = applyObjectPrefix(args.name, prefix, resolvedModelName || undefined);

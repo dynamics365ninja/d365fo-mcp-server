@@ -36,7 +36,11 @@ export const GENERATE_OBJECT_PARAM_SPECS: Record<string, { type: string; descrip
     description:
       'REQUIRED. CoC skeletons: class/table-extension, form-handler, form-datasource-extension ' +
       '(name=FormName, baseName=DataSourceName), form-control-extension (name=FormName, baseName=ControlName), ' +
-      'map-extension. ssrs-report-full = Contract+DP+Controller; service-class-ais = CRUD service + contract.',
+      'map-extension. ssrs-report-full = Contract+DP+Controller; service-class-ais = CRUD service + contract. ' +
+      'Extending a STANDARD report: report-dataset-extension (name=DP class, baseName=its temp table, ' +
+      'optional datasetAccessor), report-custom-design (name=standard report, baseName=its controller, ' +
+      'documentType, designName), report-menu-redirect (name=controller, baseName=your report, designName). ' +
+      'Recipes with the metadata half: object_patterns(domain="report").',
   },
   menuItemType: {
     type: 'string (display | action | output)',
@@ -52,9 +56,35 @@ export const GENERATE_OBJECT_PARAM_SPECS: Record<string, { type: string; descrip
     type: 'string',
     description: 'For the menu-item and security-privilege patterns: target form/class/report name.',
   },
+  testMethods: {
+    type: 'string[]',
+    description:
+      'systest: target-class methods to write a test for — one [SysTestMethod] each. ' +
+      'Every generated test fails until its assertion is written, which is what makes the ' +
+      'first run meaningful. Read the method names from get_object_info(objectType="class").',
+  },
   serviceMethod: {
     type: 'string',
     description: 'sysoperation: service method the Controller calls (default "process").',
+  },
+  datasetAccessor: {
+    type: 'string',
+    description:
+      'report-dataset-extension: the data provider method returning the dataset buffer — the one ' +
+      'carrying [SRSReportDataSetAttribute(tableStr(<TmpTable>))]. It CANNOT be derived from the table ' +
+      'name (the platform ships "geAssetBarCodeTmp"), so read it with get_object_info. Given it, you get ' +
+      'the bulk [PostHandlerFor] shape; omit it for the per-row [DataEventHandler], which needs no accessor.',
+  },
+  documentType: {
+    type: 'string',
+    description:
+      'report-custom-design: the PrintMgmtDocumentType literal to override, e.g. "SalesOrderInvoice".',
+  },
+  designName: {
+    type: 'string',
+    description:
+      'report-custom-design / report-menu-redirect: the DESIGN name inside the AxReport (commonly ' +
+      '"Report", but read it off the report — ssrsReportStr checks it at compile time).',
   },
   // mode=scaffold
   objectType: { type: 'string (table | form | report)', description: 'REQUIRED. Kind of object to generate.' },
@@ -188,7 +218,10 @@ export interface GenerateObjectModeSpec {
 export const GENERATE_OBJECT_MODE_SPECS: Record<string, GenerateObjectModeSpec> = {
   pattern: {
     required: ['name', 'pattern'],
-    optional: ['menuItemType', 'baseName', 'targetObject', 'serviceMethod', 'modelName'],
+    optional: [
+      'menuItemType', 'baseName', 'targetObject', 'serviceMethod', 'testMethods', 'modelName',
+      'datasetAccessor', 'documentType', 'designName',
+    ],
     note:
       'Text only, no write. Call analyze_code(mode="patterns") first, then generate_object(mode="pattern"), ' +
       'then d365fo_file(action="create") to write the result.',

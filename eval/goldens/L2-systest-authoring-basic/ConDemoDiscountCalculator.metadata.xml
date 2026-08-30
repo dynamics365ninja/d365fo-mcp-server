@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoDiscountCalculator</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Works out discount amounts. Small on purpose: it exists so there is
+/// behaviour worth pinning down with a test.
+/// </summary>
+public class ConDemoDiscountCalculator
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>percentOf</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns a percentage of an amount, rounded to two decimals.
+    /// </summary>
+    /// <param name = "_amount">The amount to take a percentage of.</param>
+    /// <param name = "_percent">The percentage, between 0 and 100.</param>
+    /// <returns>The discounted amount.</returns>
+    /// <exception cref = "Exception::Error">The percentage is outside 0 to 100.</exception>
+    public real percentOf(real _amount, real _percent)
+    {
+        if (_percent < 0 || _percent > 100)
+        {
+            throw error(strFmt("@SYS23264", methodStr(ConDemoDiscountCalculator, percentOf)));
+        }
+
+        return decRound(_amount * _percent / 100, 2);
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>isFree</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Tells whether an amount costs the customer nothing.
+    /// </summary>
+    /// <param name = "_amount">The amount to test.</param>
+    /// <returns>true when the amount is zero or below.</returns>
+    public boolean isFree(real _amount)
+    {
+        return _amount <= 0;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

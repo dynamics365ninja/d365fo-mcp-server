@@ -1,0 +1,25 @@
+{
+  "id": "L2-select-find-options-joins",
+  "title": "select grammar in one class: find options, the three join kinds, clause order, and the in operator",
+  "tier": 2,
+  "instruction": "In the sandbox model, create a class DemoCustomerQueries whose methods each exercise one part of the select grammar that the report cases never reach. Ground it first with get_knowledge(topic=\"select-statement\"). All methods public static. (1) `container topGroups()` - reads at most ten rows with the firstOnly10 find option (not a loop counter). (2) `boolean hasCustomers(CustGroupId _group)` - uses an EXISTS JOIN, whose joined buffer fetches no fields and cannot be read in the body; a plain join plus a RecId test FAILS this case. (3) `container groupsWithoutCustomers()` - uses a NOTEXISTS JOIN. (4) `container groupNamesWithCounts()` - aggregates with count() and group by. The ordering clause belongs BEFORE the where of the same segment: `select ... order by X where Y` compiles, `select ... where Y order by X` is a compile error whose message is only \"'join' expected\". (5) `boolean blockedInAny(CustAccount _account, container _states)` - filters an ENUM field with the `in` operator. The right side must be a container VARIABLE: an inline literal answers \"Container literals in 'in' expression are not supported. Declare container variable instead.\", and a str or int64 field answers \"Types 'str(...)' and 'container' are not compatible with operator 'in'\". Confirm every field you read with get_object_info before writing it. Build with zero errors and zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-select-find-options-joins/",
+  "golden_pending": false,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "select-grammar",
+    "joins",
+    "find-options",
+    "in-operator",
+    "language",
+    "class",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

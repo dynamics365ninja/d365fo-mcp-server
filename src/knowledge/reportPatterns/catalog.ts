@@ -1,12 +1,15 @@
 /**
- * Report-pattern catalog — 7 implementation recipes for D365FO SSRS reports.
+ * Report-pattern catalog — 10 implementation recipes for D365FO SSRS reports:
+ * seven that CREATE a report and three that EXTEND one that already ships.
  *
- * Every recipe is grounded in what generate_object(mode="scaffold",
- * objectType="report") actually emits (src/tools/smart/generateSmartReport.ts):
- * a pattern here never describes a shape the scaffold cannot produce, so
- * "scaffold" is always the fastest correct path. Deviations that need hand
- * work (print-management document types, preProcess staging) say so in
- * methodNotes rather than pretending the tool covers them.
+ * Every recipe is grounded in what generate_object actually emits — the create
+ * seven in generateSmartReport.ts (mode="scaffold"), the extension three in
+ * codeGen.ts (mode="pattern") — so a pattern here never describes a shape the
+ * tool cannot produce, and "scaffold" is always the fastest correct path.
+ * tests/knowledge/reportPatternCatalog.test.ts enforces that by checking every
+ * pattern name in this file against CODE_GEN_PATTERNS. Deviations that need
+ * hand work (print-management document types, preProcess staging, duplicating
+ * a report design) say so in methodNotes rather than pretending otherwise.
  */
 
 import type { ReportObjectSpec, ReportPatternSpec } from './types.js';
@@ -274,5 +277,160 @@ export const REPORT_PATTERN_CATALOG: ReportPatternSpec[] = [
     ],
     crossChecks: SHARED_CROSS_CHECKS,
     relatedTopics: ['ssrs-reports', 'sysoperation'],
+  },
+
+  // ── Extending a report that already exists ──────────────────────────────
+  //
+  // The seven recipes above CREATE a report. The three below change one that
+  // already ships, and none of them touches a standard object: no overlayering,
+  // no edit to the RDP class, the temp table or the report. Every X++ shape
+  // named here was compiled on the VM (xppc 7.0.7996.33) before it was written
+  // down — including a negative control, because a probe that reports nothing
+  // is not a probe that passed.
+  {
+    id: 'DatasetExtension',
+    displayName: 'Add a column to a standard report',
+    aliases: ['report-dataset-extension', 'add-column', 'extend-dataset'],
+    purpose: 'Adds field(s) to a standard report\'s dataset by extending its temp table and filling them from a handler.',
+    whenToUse: [
+      'Users need one more column on a report the platform already ships',
+      'The data is reachable from what the standard provider already selected',
+    ],
+    whenNotToUse: [
+      'The layout has to change as well → CustomDesign (a new column still needs placing in the RDL)',
+      'You are building the report yourself → SimpleList and friends',
+    ],
+    objects: [
+      {
+        role: 'Temp table extension',
+        naming: '{TmpTable}.{Prefix}Extension',
+        baseOrType: 'AxTableExtension on the report\'s dataset table',
+        notes: 'The standard temp table stays untouched; your field(s) live in the extension. Find the table on the DP method carrying [SRSReportDataSetAttribute(tableStr(…))].',
+      },
+      {
+        role: 'Handler',
+        naming: '{DP}{Prefix}_EventHandler',
+        baseOrType: 'class (no base) with one handler method',
+        notes: 'Bulk: [PostHandlerFor(classStr({DP}), methodStr({DP}, processReport))] with (XppPrePostArgs _args). Per row: [DataEventHandler(tableStr({TmpTable}), DataEventType::Inserting)] with (Common _sender, DataEventArgs _e).',
+      },
+      {
+        role: 'Report / DP / controller',
+        naming: '—',
+        baseOrType: 'standard, UNCHANGED',
+        notes: 'Nothing is duplicated: a platform change to the provider still reaches your column.',
+      },
+    ],
+    scaffold:
+      'generate_object(mode="pattern", pattern="report-dataset-extension", name="AssetBarCodeDP", baseName="AssetBarCodeTmp", params:{datasetAccessor:"geAssetBarCodeTmp"})',
+    methodNotes: [
+      'Bulk vs per row is the one real choice: one pass over the finished temp table for a lookup that serves the whole set, a row handler for a calculation. The row handler needs no accessor, which is why it is what the scaffold emits when datasetAccessor is omitted.',
+      'The bulk handler MUST share the provider\'s temp table instance: tmpUpdate.linkPhysicalTableInstance(dataProvider.<accessor>()). A buffer merely declared in the handler is a DIFFERENT, empty table, and the handler then appears to work while updating nothing.',
+      'The dataset accessor cannot be derived from the table name — read it off the DP. The platform\'s own AssetBarCodeDP spells its getter "geAssetBarCodeTmp", a shipped typo.',
+      '_args.getThis() is typed Object: downcast with `as` and test the result before use.',
+      'A handler whose parameter profile does not match is a COMPILE error, not a runtime surprise.',
+    ],
+    crossChecks: [
+      'The added field must exist before the handler compiles — write the table extension first.',
+      'validate_code(mode="both") on the handler — FN001/FN002 catch a wrong argument count or an AX 2012 function name.',
+      'Build the model: the intrinsics (classStr/methodStr/tableStr) are all compile-time checked, so a wrong DP or table name fails here rather than at run time.',
+      'A new column still has to be placed in the RDL design and the report re-deployed; the X++ alone changes nothing visible.',
+    ],
+    referenceReports: ['AssetBarCode'],
+    relatedTopics: ['report-extension-patterns', 'ssrs-reports', 'event-handlers'],
+  },
+  {
+    id: 'CustomDesign',
+    displayName: 'Custom design for a standard document',
+    aliases: ['report-custom-design', 'replace-design', 'custom-layout'],
+    purpose: 'Replaces the LAYOUT of a standard business document with your own, keeping its data contract and provider.',
+    whenToUse: [
+      'A posted document (invoice, confirmation, packing slip) has to look different',
+      'The data is right and only the presentation is wrong',
+    ],
+    whenNotToUse: [
+      'Only a column is missing → DatasetExtension (much less to own)',
+      'The document type does not exist yet → PrintMgmtFormLetter (a new document, not an override)',
+    ],
+    objects: [
+      {
+        role: 'Report copy',
+        naming: '{Prefix}{Report}',
+        baseOrType: 'AxReport duplicated into your model and renamed',
+        notes: 'Duplicate the DESIGN, not the solution: the copy keeps consuming the standard contract and DP, so platform changes to those still reach it.',
+      },
+      {
+        role: 'Controller',
+        naming: '{Prefix}{Report}Controller',
+        baseOrType: 'class extends the STANDARD report\'s controller',
+        notes: 'main(): parmArgs(_args), parmReportName(ssrsReportStr({Prefix}{Report}, <DesignName>)), startOperation(). There is no initArgs anywhere in the SrsReportRunController hierarchy.',
+      },
+      {
+        role: 'Print-management handler',
+        naming: '{Prefix}{Report}PrintMgmtHandler',
+        baseOrType: 'class with a [SubscribesTo] delegate handler',
+        notes: 'getDefaultReportFormatDelegate(PrintMgmtDocumentType, EventHandlerResult) — answer only the document types you replace. PrintMgmtDocType exposes seven delegates, all with this same shape.',
+      },
+      {
+        role: 'Menu item extension',
+        naming: '{StandardMenuItem}.{Prefix}Extension',
+        baseOrType: 'AxMenuItemOutputExtension',
+        notes: 'Point its Object at your controller. Without it the menu item still starts the standard one and neither class above runs.',
+      },
+    ],
+    scaffold:
+      'generate_object(mode="pattern", pattern="report-custom-design", name="SalesInvoice", baseName="SalesInvoiceController", params:{documentType:"SalesOrderInvoice", designName:"Report"})',
+    methodNotes: [
+      'Duplicate and rename the report FIRST — neither generated class compiles until the copy exists.',
+      'The second argument of ssrsReportStr is the DESIGN inside the report, not the report name repeated. It is compile-time checked; read it off the AxReport rather than assuming "Report".',
+      'Answer only the document types you are replacing in the switch, and let the platform resolve the rest.',
+    ],
+    crossChecks: [
+      ...SHARED_CROSS_CHECKS.slice(0, 1),
+      'The base controller and the design name are both compile-time checked — a wrong one fails the build, which is the cheap way to find out.',
+      'Deploy the report after building; a design change that is not deployed shows the OLD layout with no error at all.',
+    ],
+    referenceReports: ['SalesInvoice', 'SalesConfirm'],
+    relatedTopics: ['report-extension-patterns', 'print-management', 'ssrs-reports'],
+  },
+  {
+    id: 'MenuRedirect',
+    displayName: 'Point an existing report run at your design',
+    aliases: ['report-menu-redirect', 'redirect-report'],
+    purpose: 'Sends an existing report run to your own design without editing the standard report or chasing its callers.',
+    whenToUse: [
+      'The design is already duplicated and only the routing is left',
+      'The report is reached from several places and you do not want to find them all',
+    ],
+    whenNotToUse: [
+      'You also need print-management to resolve the document type → CustomDesign covers both',
+    ],
+    objects: [
+      {
+        role: 'Menu item extension',
+        naming: '{StandardMenuItem}.{Prefix}Extension',
+        baseOrType: 'AxMenuItemOutputExtension',
+        notes: 'The route that works for EVERY report: change the Object (or the report/design) on an extension of the existing output menu item.',
+      },
+      {
+        role: 'Controller handler (alternative)',
+        naming: '{Controller}{Prefix}_EventHandler',
+        baseOrType: 'class with [PostHandlerFor(…, staticMethodStr({Controller}, construct))]',
+        notes: 'Catches every route into the report at once, because they all go through construct(). Requires a STATIC construct() on the controller — SalesInvoiceController has one, AssetBarCodeController does not.',
+      },
+    ],
+    scaffold:
+      'generate_object(mode="pattern", pattern="report-menu-redirect", name="SalesInvoiceController", baseName="MyInvoiceReport", params:{designName:"Report"})',
+    methodNotes: [
+      'Confirm the controller HAS a static construct() with get_object_info before generating — staticMethodStr fails the build otherwise, and roughly half of the shipped report controllers expose only main().',
+      'In the handler: _args.getReturnValue() as SrsReportRunController, test for null, then parmReportName(ssrsReportStr(<YourReport>, <DesignName>)).',
+      'When there is no construct(), the menu item extension is not a fallback but the better answer — it is metadata, so nothing has to compile.',
+    ],
+    crossChecks: [
+      'get_object_info on the controller — does construct() exist, and is it static?',
+      'validate_code(mode="both") on the handler.',
+      'Build: classStr/staticMethodStr/ssrsReportStr are all compile-time checked.',
+    ],
+    referenceReports: ['SalesInvoice'],
+    relatedTopics: ['report-extension-patterns', 'ssrs-reports'],
   },
 ];
