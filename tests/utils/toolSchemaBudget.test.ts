@@ -161,6 +161,14 @@ const CHARS_PER_TOKEN = 4;
 // description that was an essay rather than the two facts the inventory test
 // pins. All three retired names stay ROUTABLE, so an agent holding one still
 // gets an answer. Measured payload after: 44_919.
+// Then the three report-extension patterns (report-dataset-extension,
+// report-custom-design, report-menu-redirect) were published, and paid for
+// twice over inside generate_object's own schema, on the same principle: its
+// `pattern` description opened with a roll-call of five values printed verbatim
+// in the enum immediately above it, and its `params` description repeated the
+// op-spec pointer that the tool description already carries. 73 chars of new
+// enum, 138 chars of restatement removed. Measured payload after: 44_936 —
+// below where it stood before the patterns were added.
 const TOTAL_BUDGET = 45_000;
 const LARGEST_TOOL_BUDGET = 5_700;
 

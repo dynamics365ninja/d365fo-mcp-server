@@ -23,6 +23,71 @@ function assertSafePath(value: string, label: string): void {
   }
 }
 
+/** The four settings that decide which database SysTestConsole opens. */
+const DATA_ACCESS_KEYS = [
+  'DataAccess.Database',
+  'DataAccess.SqlUser',
+  'DataAccess.SqlPwd',
+  'DataAccess.DbServer',
+] as const;
+
+/** One `<add key="…" value="…"/>` out of a .config document. */
+export function readAppSetting(xml: string, key: string): string | undefined {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`<add\\s+key="${escaped}"\\s+value="([^"]*)"`, 'i').exec(xml)?.[1];
+}
+
+export interface DataAccessDrift {
+  key: string;
+  /** Never the secret itself — a password is described, not quoted. */
+  runner: string;
+  aos: string;
+}
+
+/**
+ * Describe a DataAccess value without leaking it. The password is an encrypted
+ * blob hundreds of characters long; what a reader needs to know is whether it
+ * is the shipped placeholder, and whether the two files carry the same one.
+ */
+function describeSetting(key: string, value: string | undefined): string {
+  if (value === undefined) return 'absent';
+  if (!/pwd|password/i.test(key)) return value === '' ? '(empty)' : `\`${value}\``;
+  if (value === '$CREDENTIAL_PLACEHOLDER$') return 'the shipped `$CREDENTIAL_PLACEHOLDER$` — never filled in';
+  return value === '' ? '(empty)' : `set (${value.length} chars, not shown)`;
+}
+
+/**
+ * Compare the test runner's connection settings with the AOS's own.
+ *
+ * Read-only, and it never returns a secret: the password contributes only
+ * "placeholder" / "set" / "differs". Returns undefined when either file cannot
+ * be read, so the caller falls back to generic advice rather than inventing a
+ * diagnosis from a missing file.
+ */
+export async function compareSysTestDataAccess(
+  packagesRoot: string,
+  webConfigPath = path.join(packagesRoot, '..', 'WebRoot', 'web.config'),
+): Promise<DataAccessDrift[] | undefined> {
+  try {
+    const [runnerXml, aosXml] = await Promise.all([
+      fs.readFile(path.join(packagesRoot, 'Bin', 'SysTestConsole.exe.config'), 'utf-8'),
+      fs.readFile(webConfigPath, 'utf-8'),
+    ]);
+
+    const drift: DataAccessDrift[] = [];
+    for (const key of DATA_ACCESS_KEYS) {
+      const runner = readAppSetting(runnerXml, key);
+      const aos = readAppSetting(aosXml, key);
+      // A key the AOS does not carry says nothing about the runner's copy.
+      if (aos === undefined || runner === aos) continue;
+      drift.push({ key, runner: describeSetting(key, runner), aos: describeSetting(key, aos) });
+    }
+    return drift;
+  } catch {
+    return undefined;
+  }
+}
+
 // This handler has no schema of its own — it is reached through a unified
 // tool. Tool registration (name, description, inputSchema) lives in
 // src/server/toolSchemas/, one file per published tool, aggregated by
@@ -31,6 +96,10 @@ function assertSafePath(value: string, label: string): void {
 
 export const sysTestRunnerTool = async (params: any, _context: any) => {
   const { className, testMethod } = params;
+  // Hoisted out of the try: the failure diagnosis in the catch reads the
+  // runner's own .config out of this directory, and a diagnosis that cannot
+  // find the file falls back to generic advice rather than guessing.
+  let packagesRoot = '';
   try {
     const configManager = getConfigManager();
     await configManager.ensureLoaded();
@@ -43,7 +112,7 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
       };
     }
 
-    const packagesRoot = params.packagePath
+    packagesRoot = params.packagePath
       || configManager.getPackagePath()
       || defaultPackagesRoot();
 
@@ -218,21 +287,45 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
     }
 
     // The runner got as far as the database and could not log in. Everything about
-    // the model, the test and the binary is fine at this point; what failed is the
-    // deployment's SQL credential, which no change to the test can fix.
+    // the model, the test and the binary is fine at this point; the fault is in the
+    // connection SysTestConsole opened, which no change to the test can fix.
+    //
+    // Two faults wear this same sentence, and they are not fixed the same way:
+    // a credential that genuinely stopped working, and — far more often — a
+    // SysTestConsole.exe.config that was never configured for this machine at
+    // all. The shipped template carries `$CREDENTIAL_PLACEHOLDER$` for the
+    // password and its own guesses for the database, user and server; the AOS
+    // web.config beside it holds the real four. On this VM every one of the four
+    // differed, and "Login failed for user 'AOSUser'" was read as a rotated
+    // password for weeks when nothing had rotated. So compare them and say which.
     const sqlLogin = /Login failed for user '([^']+)'/i.exec(output);
     if (sqlLogin) {
+      const drift = packagesRoot ? await compareSysTestDataAccess(packagesRoot) : undefined;
+      const diagnosis = drift?.length
+        ? 'The runner\'s own configuration does not match this machine\'s AOS. ' +
+          `\`Bin\\SysTestConsole.exe.config\` disagrees with \`WebRoot\\web.config\` on ` +
+          `${drift.length} of the four DataAccess settings:\n\n` +
+          drift.map(d => `  • \`${d.key}\` — runner: ${d.runner}, AOS: ${d.aos}`).join('\n') +
+          '\n\nThat is a template that was never filled in for this install, not a credential that ' +
+          'stopped working. Copy the four values from web.config into SysTestConsole.exe.config ' +
+          '(keep a backup beside it). It touches the PLATFORM install, so make it deliberately — ' +
+          'and note that the password there is an encrypted blob: copy it verbatim, do not retype it.'
+        : 'SysTestConsole opens the AOS connection itself, using its own configuration in ' +
+          '`Bin\\SysTestConsole.exe.config`. Compare its DataAccess.Database / SqlUser / SqlPwd / ' +
+          'DbServer against `WebRoot\\web.config`: the shipped template ships a placeholder password ' +
+          'and its own guesses for the rest, and a mismatch there reads exactly like a rotated ' +
+          'credential. If they already agree, the login itself is the problem — check that SQL Server ' +
+          'still has it and that the AOS service account can decrypt the stored password.';
+
       return {
         content: [{
           type: 'text',
           text:
             `❌ The test runner reached the database and could not log in as '${sqlLogin[1]}'.\n\n` +
-            'No test ran. This is a deployment credential, not a problem with the test class or the ' +
-            'model: SysTestConsole opens the AOS connection itself, using the connection string in the ' +
-            'AOS configuration. Usual causes are a rotated SQL password, a login that only the AOS ' +
-            'service account can decrypt, or SQL Server not being configured for that login.\n\n' +
-            'Run the test from Visual Studio Test Explorer (which uses the developer session\'s own ' +
-            'connection) while that is sorted out.\n\n' + output,
+            'No test ran, and nothing is wrong with the test class or the model.\n\n' +
+            `${diagnosis}\n\n` +
+            'Until then the tests still run from Visual Studio Test Explorer, which uses the ' +
+            'developer session\'s own connection and does not go through this binary.\n\n' + output,
         }],
         isError: true,
       };

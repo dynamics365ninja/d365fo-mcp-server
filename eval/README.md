@@ -342,10 +342,18 @@ Blocked / declined (not planned):
   Both assembly faults were fixed on this VM by CONFIG edits only, each with a backup
   beside the file: the redirect now names 2.23.0.29, and `ModelUtilDlls` was added to the
   `<probing privatePath>` so the correctly-redirected System.ValueTuple 4.0.3.0 is found.
-  The runner then reaches the DATABASE and stops at `Login failed for user 'AOSUser'` —
-  a deployment credential, outside this repo. `run_systest_class` recognises all three
-  failures and names each one instead of blaming the test.
-  The four cases stay `systest_pending: true` until that is settled
+  The runner then reaches the DATABASE and stops at `Login failed for user 'AOSUser'`.
+  **That was read as a rotated credential for weeks, and it is not one.** Nothing has
+  rotated: `Bin\SysTestConsole.exe.config` is the SHIPPED TEMPLATE, never configured for
+  this machine, and it disagrees with the AOS's own `WebRoot\web.config` on all four
+  DataAccess settings — database (`AxDbRain` vs `AxDB`), user (`AOSUser` vs `axdbadmin`),
+  server (`.` vs the real host) and password (`$CREDENTIAL_PLACEHOLDER$` vs an 828-char
+  encrypted blob). The fix is to copy the four values across, keeping a backup; it edits
+  the PLATFORM install and handles a secret, so it is the owner's call to make, not a
+  tool's. `run_systest_class` now performs that comparison itself and reports which
+  settings differ (never the password — only "placeholder" or "set, N chars"), so the
+  next reader is not sent hunting a password again.
+  The four cases stay `systest_pending: true` until that is applied
   (`L2-coc-extension`, `L3-batch-basic`, `L2-event-handler-basic`,
   `L3-enum-field-form-downgrade-guard`). `vstest.console.exe` +
   `RunnableDropSysTest.TestAdapter.dll` discovers zero tests: still a dead end.

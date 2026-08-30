@@ -38,4 +38,9 @@ No rollback attribute: rollback is the framework default and
 **Not yet executed.** Compiling a test class and running it are different
 claims, and only the first is made here. `SysTestConsole.exe` starts on this VM
 (see the branch notes on the two config fixes) but stops at `Login failed for
-user 'AOSUser'`, a deployment credential deliberately left alone.
+user 'AOSUser'` — which turned out NOT to be a rotated credential.
+`Bin\SysTestConsole.exe.config` is the shipped template, never configured for
+this machine: it names a different database and a different user, with
+`$CREDENTIAL_PLACEHOLDER$` where the password belongs, while the AOS's own
+`WebRoot\web.config` beside it carries all four correctly. Copying them across
+edits the platform install and handles a secret, so it is left to the owner.

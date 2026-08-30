@@ -34,5 +34,11 @@
     "tier_weight": 2
   },
   "classification": "PASS",
-  "root_cause_hypothesis": "Compiles and is BP-clean, but was NOT executed: SysTestConsole.exe reaches the AOS database on this VM and stops at \"Login failed for user 'AOSUser'\", a deployment credential deliberately left alone. The case stays systest_pending."
+  "root_cause_hypothesis": "Compiles and is BP-clean, but was NOT executed. SysTestConsole.exe reaches the AOS database and stops at \"Login failed for user 'AOSUser'\" — diagnosed here as a CONFIG mismatch, not a credential: Bin\\SysTestConsole.exe.config is the shipped template and disagrees with the AOS's own WebRoot\\web.config on all four DataAccess settings (database AxDbRain vs AxDB, user AOSUser vs axdbadmin, server '.' vs the real host, password $CREDENTIAL_PLACEHOLDER$ vs an 828-char encrypted blob). Copying the four across is the fix; it edits the platform install and moves a secret, so it is the owner's call. run_systest_class now makes that comparison itself and names the differing settings without ever printing the password. The case stays systest_pending.",
+  "suggested_fix_area": "environment: PackagesLocalDirectory\\Bin\\SysTestConsole.exe.config",
+  "evidence_refs": [
+    "eval/README.md",
+    "src/tools/sdlc/sysTestRunner.ts",
+    "tests/tools/sysTestRunner.test.ts"
+  ]
 }

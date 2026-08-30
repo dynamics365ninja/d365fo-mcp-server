@@ -6,11 +6,10 @@ this time on goldens that exist. Every language claim in this document was check
 **compiler and the shipped source**, not against Microsoft Learn — the X++ reference is
 incomplete and parts of it still describe AX 2012.
 
-Only the G4 leftovers remain open: the report **generator patterns** and catalog recipes
-(`report-dataset-extension`, `report-custom-design`, `report-menu-redirect`) exist as knowledge
-but not as generator templates, and four cases stay `systest_pending` because
-`SysTestConsole.exe` stops at `Login failed for user 'AOSUser'` — a deployment credential,
-deliberately not touched.
+The G4 leftovers are closed too: `report-dataset-extension`, `report-custom-design` and
+`report-menu-redirect` are now generator patterns AND catalog recipes, with all four emitted
+shapes compiled on the VM. What remains is one thing, and it is not a code change — see
+**The SysTest blocker** below.
 
 ## Implementation status (2026-08-30)
 
@@ -24,9 +23,35 @@ deliberately not touched.
 | G2 new rules | **done** — BP006, MAC001, SEL008, SEL009, SEL010, ATTR001, ATTR002, EXT001, KW001, CS001 expansion | all silent on shipped code |
 | G1 knowledge pack | **done** — `runtime-functions`, `form-event-handlers`, `args-object`, `display-edit-methods`, `sysoperation-ui-attributes`, `report-extension-patterns` | every named API compiled in a probe first |
 | G3 TDD / SysTest | **done** — `pattern="systest"` (compiles clean in the sandbox), `prepare(mode="test")`, per-method result parsing, `/unattended` | |
-| G4 reporting extension patterns | **done as knowledge**; the generator patterns and catalog recipes are still unwritten | |
+| G4 reporting extension patterns | **done** — knowledge, plus 3 generator patterns and 3 catalog recipes; all four emitted shapes compiled on the VM with a negative control | `codeGen.ts`, `reportPatterns/catalog.ts`, `tests/tools/reportExtensionScaffold.test.ts` |
 | G5 taxonomy expansion + cases | **done** — 9 leaves, 9 authored cases, coverage 100% → **86.4% core** honestly | |
 | G5 → G-VM golden capture | **done** — nine cases run on the VM, 15 golden files, coverage 86.4% → **100% core**; three defects found and fixed on the way | `eval/goldens/L2-*`, `eval/goldens/L3-*`, `eval/corpus/runs/2026-08-30T14__*` |
+
+### The SysTest blocker was misdiagnosed
+
+Four cases (`L2-coc-extension`, `L2-event-handler-basic`, `L3-batch-basic`,
+`L3-enum-field-form-downgrade-guard`) still carry `systest_pending`, and the reason recorded for
+it was wrong. `SysTestConsole.exe` stops at `Login failed for user 'AOSUser'`, which this repo
+read as a rotated deployment credential. Nothing has rotated.
+`PackagesLocalDirectory\Bin\SysTestConsole.exe.config` is the **shipped template, never
+configured for this machine**, and it disagrees with the AOS's own `WebRoot\web.config` — which
+sits on the same disk and works — on **all four** DataAccess settings:
+
+| setting | SysTestConsole.exe.config | web.config (the working one) |
+|---|---|---|
+| `DataAccess.Database` | `AxDbRain` | `AxDB` |
+| `DataAccess.SqlUser` | `AOSUser` | `axdbadmin` |
+| `DataAccess.DbServer` | `.` | the real host name |
+| `DataAccess.SqlPwd` | `$CREDENTIAL_PLACEHOLDER$` | an 828-character encrypted blob |
+
+The fix is to copy those four across, keeping a backup beside the file — the same class of
+config-only change as the two that made the runner start in the first place. It was **not made
+here**: it edits the platform install and moves a secret between files, so it is the owner's call.
+**Tracked as its own topic**, not as part of this plan: nothing in the repo can close it, and the
+four cases stay `systest_pending` until someone applies it on the machine.
+`run_systest_class` now performs the comparison itself and reports which settings differ, never
+printing the password (only "the shipped placeholder" or "set, N chars"), so the next reader is
+not sent hunting a password that was never wrong.
 
 ### What the CAPTURE changed — three defects no repo test could see
 

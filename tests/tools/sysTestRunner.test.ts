@@ -31,7 +31,7 @@ vi.mock('../../src/utils/operationLocks.js', () => ({
 }));
 
 import path from 'path';
-import { sysTestRunnerTool } from '../../src/tools/sdlc/sysTestRunner';
+import { sysTestRunnerTool, compareSysTestDataAccess } from '../../src/tools/sdlc/sysTestRunner';
 
 const PKG = 'K:\\AOSService\\PackagesLocalDirectory';
 const SYSTEST_CONSOLE = path.join(PKG, 'Bin', 'SysTestConsole.exe');
@@ -262,8 +262,12 @@ describe('run_systest_class — reaching the database and failing to log in', ()
     allowPaths([SYSTEST_CONSOLE]);
   });
 
-  it('calls it a deployment credential, not a test failure', async () => {
+  it('blames neither the test nor the model, and points at the runner\'s own config', async () => {
     // Third fault on this VM, once both assembly problems were fixed by config.
+    // It used to be reported as a "deployment credential", which sent the reader
+    // hunting a rotated password. Nothing had rotated: SysTestConsole.exe.config
+    // was the shipped template, naming a different database and a different user
+    // with a placeholder password.
     const err = Object.assign(new Error('Command failed'), {
       stdout: "Executing test(s) ....\n\nSystem.Data.SqlClient.SqlException (0x80131904): Login failed for user 'AOSUser'.",
       stderr: '',
@@ -278,7 +282,91 @@ describe('run_systest_class — reaching the database and failing to log in', ()
     const text = result.content[0].text;
     expect(text).toContain("could not log in as 'AOSUser'");
     expect(text).toMatch(/No test ran/);
-    expect(text).toMatch(/deployment credential/);
+    expect(text).toContain('SysTestConsole.exe.config');
+    expect(text).toContain('web.config');
     expect(text).not.toContain('Tests FAILED');
+  });
+});
+
+/**
+ * The comparison behind that diagnosis. It reads two platform config files and
+ * must never put the password in its answer — the value there is an encrypted
+ * blob, and a diagnostic that quotes it would copy a secret into a transcript.
+ */
+describe('compareSysTestDataAccess', () => {
+  const setting = (k: string, v: string) => `  <add key="${k}" value="${v}" />`;
+  const doc = (rows: string[]) => [
+    '<?xml version="1.0"?>',
+    '<configuration>',
+    '<appSettings>',
+    ...rows,
+    '</appSettings>',
+    '</configuration>',
+    '',
+  ].join('\n');
+
+  const RUNNER = doc([
+    setting('DataAccess.Database', 'AxDbRain'),
+    setting('DataAccess.SqlUser', 'AOSUser'),
+    setting('DataAccess.SqlPwd', '$CREDENTIAL_PLACEHOLDER$'),
+    setting('DataAccess.DbServer', '.'),
+  ]);
+  const AOS = doc([
+    setting('DataAccess.Database', 'AxDB'),
+    setting('DataAccess.SqlUser', 'axdbadmin'),
+    setting('DataAccess.SqlPwd', 'x'.repeat(828)),
+    setting('DataAccess.DbServer', 'D365ASLDEV2-1'),
+  ]);
+
+  /** Serve the runner config, the AOS config, or ENOENT for anything else. */
+  const serve = (runner?: string, aos?: string) => {
+    readFileMock.mockImplementation(async (file: string) => {
+      const f = String(file).replace(/\\/g, '/').toLowerCase();
+      if (f.endsWith('systestconsole.exe.config') && runner !== undefined) return runner;
+      if (f.endsWith('web.config') && aos !== undefined) return aos;
+      throw Object.assign(new Error(`ENOENT: ${file}`), { code: 'ENOENT' });
+    });
+  };
+
+  beforeEach(() => { vi.resetAllMocks(); });
+
+  it('reports every setting the runner disagrees with the AOS about', async () => {
+    serve(RUNNER, AOS);
+    const drift = await compareSysTestDataAccess(PKG);
+    expect(drift?.map(d => d.key)).toEqual([
+      'DataAccess.Database', 'DataAccess.SqlUser', 'DataAccess.SqlPwd', 'DataAccess.DbServer',
+    ]);
+    expect(drift?.[0]).toMatchObject({ runner: '`AxDbRain`', aos: '`AxDB`' });
+  });
+
+  it('never puts the password in its answer', async () => {
+    serve(RUNNER, AOS);
+    const rendered = JSON.stringify(await compareSysTestDataAccess(PKG));
+    expect(rendered).not.toContain('x'.repeat(828));
+    // What a reader actually needs: that the runner's is the shipped placeholder,
+    // and that the AOS has a real one — its length, not its bytes.
+    expect(rendered).toContain('$CREDENTIAL_PLACEHOLDER$');
+    expect(rendered).toContain('828 chars, not shown');
+  });
+
+  it('says nothing when the two agree', async () => {
+    serve(AOS, AOS);
+    expect(await compareSysTestDataAccess(PKG)).toEqual([]);
+  });
+
+  it('returns undefined — not an empty drift — when a file is missing', async () => {
+    // An unreadable file is not evidence that the settings match; the caller
+    // must fall back to generic advice instead of claiming they agree.
+    serve(RUNNER, undefined);
+    expect(await compareSysTestDataAccess(PKG)).toBeUndefined();
+  });
+
+  it('ignores a key the AOS config does not carry', async () => {
+    serve(RUNNER, doc([
+      setting('DataAccess.Database', 'AxDbRain'),
+      setting('DataAccess.SqlUser', 'AOSUser'),
+      setting('DataAccess.SqlPwd', '$CREDENTIAL_PLACEHOLDER$'),
+    ]));
+    expect(await compareSysTestDataAccess(PKG)).toEqual([]);
   });
 });
