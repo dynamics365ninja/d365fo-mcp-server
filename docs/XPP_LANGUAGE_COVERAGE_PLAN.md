@@ -1,48 +1,50 @@
 # X++ language & reporting coverage — plan v2.1 (2026-08-30, verified against xppc 7.0.7996.33)
 
-**Status: G0–G4 are IMPLEMENTED** on branch `feat/xpp-compiler-verified` (9 commits). What is left
-is G5 (taxonomy expansion + new eval cases) and G-VM (capturing their goldens). Every language claim
-in this document was checked on this VM against the **compiler and the shipped source**, not against
-Microsoft Learn — the X++ reference is incomplete and parts of it still describe AX 2012.
+**Status: G0–G5 are IMPLEMENTED** on branch `feat/xpp-compiler-verified` (13 commits). All that
+remains is **G-VM**: running the nine authored cases on the VM so their goldens can be captured.
+Every language claim in this document was checked against the **compiler and the shipped source**,
+not against Microsoft Learn — the X++ reference is incomplete and parts of it still describe AX 2012.
 
 ## Implementation status (2026-08-30)
 
 | Phase | State | Where |
 |---|---|---|
-| G0.6 compiler-facts snapshot | **done** | `scripts/capture-compiler-facts.ts` → `eval/compiler-facts.snapshot.json` → `src/knowledge/compilerFacts.generated.ts`, facade `compilerFacts.ts`, ratchet `tests/knowledge/compilerFacts.test.ts` |
+| G0.6 compiler-facts snapshot | **done** | `scripts/capture-compiler-facts.ts` → `eval/compiler-facts.snapshot.json` → `src/knowledge/compilerFacts.generated.ts`, ratchet `tests/knowledge/compilerFacts.test.ts` |
 | G0.4 validator false positives | **done** — 5 error-severity FPs → **0** on 7,649 shipped files | shared lexer `src/utils/xppLexer.ts`; COC001/002/003, TTS001, BP001, SEL001, SEL002, `lintXppSelect` |
 | G0.5 FN001 from the compiler table | **done** — 170 run-time functions + 80 intrinsics with min/max, plus FN002 | `checkBuiltinArity` |
-| G0.3 knowledge corrections | **done** — the entries in §2 | |
+| G0.3 knowledge corrections | **done** | the entries in §2, plus `display static` (which an earlier probe had wrongly cleared) |
 | G0.1 coverage claims | **done** — 6 leaves re-pointed, 3 stale notes fixed, note gate widened | `src/eval/coverage/taxonomy.ts` |
 | G2 new rules | **done** — BP006, MAC001, SEL008, SEL009, SEL010, ATTR001, ATTR002, EXT001, KW001, CS001 expansion | all silent on shipped code |
-| G1 knowledge pack | **done for the verified half** — `runtime-functions`, `form-event-handlers`, `report-extension-patterns`. `args-object`, `display-edit-methods` and `sysoperation-ui-attributes` are NOT written: their APIs were not verified, and an unverified entry is what this branch exists to remove | |
-| G3 TDD / SysTest | **done** — `pattern="systest"` (compiles clean in the sandbox), `prepare(mode="test")`, per-method result parsing, `/unattended` | `codeGen.ts`, `prepareTest.ts`, `sysTestRunner.ts`, `eval/oracle/systest.ts` |
-| G4 reporting extension patterns | **done as knowledge** — the three techniques with compiler-verified shapes. The generator patterns (`report-dataset-extension`, `report-custom-design`, `report-menu-redirect`) and the catalog recipes are NOT written | |
-| G5 taxonomy expansion + new cases | **not started** | |
-| G-VM golden capture for the new cases | **not started** | |
+| G1 knowledge pack | **done** — `runtime-functions`, `form-event-handlers`, `args-object`, `display-edit-methods`, `sysoperation-ui-attributes`, `report-extension-patterns` | every named API compiled in a probe first |
+| G3 TDD / SysTest | **done** — `pattern="systest"` (compiles clean in the sandbox), `prepare(mode="test")`, per-method result parsing, `/unattended` | |
+| G4 reporting extension patterns | **done as knowledge**; the generator patterns and catalog recipes are still unwritten | |
+| G5 taxonomy expansion + cases | **done** — 9 leaves, 9 authored cases, coverage 100% → **86.4% core** honestly | |
+| G-VM golden capture | **not started** — the nine cases need a VM run each | |
 
 ### What the compiler changed about the plan
 
-Four things the plan proposed were **dropped or inverted** once xppc answered:
+Five things the plan proposed were **dropped or inverted** once xppc answered:
 
-- a generics rule — `List<str>` fails in a sandbox model with "does not denote a class, a table, or an
-  extended data type", but that is a *resolution* failure ("Are you missing a module reference?"), not a
-  syntax one, and ApplicationSuite ships `private List<str> operatingUnitNumbers;`.
+- a generics rule — `List<str>` fails in a sandbox model, but that is a *resolution* failure
+  ("Are you missing a module reference?"), not a syntax one, and ApplicationSuite ships it.
 - `*=` and `/=` as C#-isms — they compile (57 and 2 shipped uses).
-- flagging every select expression on a buffer — a buffer named after its table resolves as the table,
-  which is how 180 shipped classes write it; only an *aliased* buffer fails.
-- EVT001 (a `[PostHandlerFor]` whose parameter is not `XppPrePostArgs`) — the compiler already answers
-  "cannot be used as an event handler … because the parameter profile does not match", clearly and at
-  the right moment. A rule would only repeat it.
+- flagging every select expression on a buffer — one named after its table resolves as the table.
+- EVT001 — the compiler already answers "cannot be used as an event handler … because the parameter
+  profile does not match", clearly and at the right moment.
+- `display static` — an EARLIER probe of mine cleared it, and it was wrong: the probe's method name
+  did not match its XML entry, so the body was never compiled. It is "Conflicting modifiers
+  'static display'". A probe that reports nothing is not the same as a probe that passed.
 
-Two blockers recorded in this repo turned out to be wrong:
+Three blockers this repo had recorded turned out to be wrong or incomplete:
 
-- **SysTestConsole is not interactive-only.** `/unattended` skips the debugger-attach prompt. What stops
-  a run on this VM is an assembly binding mismatch — `Bin\SysTestConsole.exe.config` redirects
-  Microsoft.ApplicationInsights to 2.22.0.997 while Bin ships 2.23.0.0. Fixing that edits a
-  Microsoft-owned file in the platform install, so it is described and left as the owner's decision.
-- **"You can't extend RDP classes"** is Microsoft's design guidance, not a compiler restriction: a CoC
-  wrapper on `SrsReportDataProviderBase.processReport` compiles.
+- **SysTestConsole is not interactive-only.** `/unattended` skips the debugger prompt.
+- Two assembly faults then stopped it, both fixed here by CONFIG edits with backups: the
+  ApplicationInsights redirect named a version the install lacks (assembly version is 2.23.0.29, not
+  the file version 2.23.0.00029), and System.ValueTuple 4.0.3.0 was absent from Bin but present in
+  `ModelUtilDlls`, which is now on the `<probing privatePath>`. The runner now reaches the AOS
+  database and stops at `Login failed for user 'AOSUser'` — a deployment credential, left alone.
+- **"You can't extend RDP classes"** is design guidance: a CoC wrapper on
+  `SrsReportDataProviderBase.processReport` compiles.
 
 ---
 
