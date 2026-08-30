@@ -1039,7 +1039,7 @@ MyRentEquipmentId newId = numSeq.num();
       'setUp() / tearDown(): run before/after each test method; setUpTestCase() / tearDownTestCase() run once per class',
       'ATL (Acceptance Test Library): entry point is AtlDataRootNode::construct(); navigate via data.invent()/data.sales()/… and use the Creators/Commands/Queries/Specifications concepts (AtlCommand* family) — there is NO AtlScenario or AtlDataHelper class',
       'Test data: use the ATL data root (AtlDataRootNode) creators or setUp() to create transient test records',
-      'Run with: run_systest_class MCP tool or Visual Studio Test Explorer',
+      'Run with: run_systest_class (it passes SysTestConsole.exe /unattended, which skips the debugger-attach prompt — the runner is NOT interactive-only) or Visual Studio Test Explorer',
       'Naming: <TestedClass>Test (e.g. CustTableTest) — the repo systests use this suffix; pick ONE convention per model and keep it consistent',
       'See the unit-testing topic for the detailed SysTestCase rules (transaction rollback, SysTestSuite, mocking)',
     ],

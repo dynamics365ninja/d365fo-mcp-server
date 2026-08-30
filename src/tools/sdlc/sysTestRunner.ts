@@ -95,8 +95,14 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
     } else {
       // SysTestConsole.exe: /test:<className>[,<className2>,...] /xml:<outFile>
       // No documented per-method filter flag — testMethod is not applicable here.
+      //
+      // /unattended is what makes this usable from a tool at all. This runner was
+      // recorded as blocked ("requires an interactive console session, a platform
+      // limitation") and it is not: with /unattended the binary skips the prompt
+      // and goes straight to "Executing test(s) ....". Its own /? documents the
+      // flag against /devfabric, but it applies here too.
       xmlResultPath = path.join(os.tmpdir(), `systest-${className}-${Date.now()}.xml`);
-      args = [`/test:${className}`, `/xml:${xmlResultPath}`];
+      args = [`/test:${className}`, `/xml:${xmlResultPath}`, '/unattended'];
     }
 
     console.error(`[run_systest_class] Running: "${runnerPath}" ${args.join(' ')}`);
@@ -170,16 +176,43 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
     console.error('Error running test:', error);
     const output = [error.stdout, error.stderr, error.message].filter(Boolean).join('\n');
 
+    // A binding redirect that names a version the install does not have. Seen on
+    // 10.0.4x: SysTestConsole.exe.config redirects Microsoft.ApplicationInsights
+    // to 2.22.0.997 while Bin ships 2.23.0.0, so the telemetry logger the runner
+    // touches on its way into ExecuteTest throws before a single test runs. The
+    // message names an assembly and no test, which reads like a broken test model.
+    const bindingFailure = /Could not load file or assembly '([^']+?),\s*Version=([\d.]+)/i.exec(output);
+    if (bindingFailure && /manifest definition does not match|0x80131040/i.test(output)) {
+      const [, assembly, wanted] = bindingFailure;
+      return {
+        content: [{
+          type: 'text',
+          text:
+            `❌ The test runner could not start: it wants ${assembly} ${wanted}, which this install ` +
+            'does not have.\n\n' +
+            'No test ran, and nothing is wrong with the test class — this is an assembly binding ' +
+            'mismatch in the PLATFORM, not in the model. The runner\'s own config file ' +
+            `(PackagesLocalDirectory\\Bin\\SysTestConsole.exe.config) carries a bindingRedirect for ` +
+            `${assembly} to ${wanted}, while the DLL shipped next to it is a different version. ` +
+            'Compare them:\n' +
+            '  (Get-Item "<PackagesLocalDirectory>\\Bin\\' + assembly + '.dll").VersionInfo.FileVersion\n\n' +
+            'Fixing it means editing that redirect to the version actually present — a change to the ' +
+            'platform installation, so make it deliberately and keep a backup of the .config. Until ' +
+            'then the tests can still be run from Visual Studio\'s Test Explorer, which does not go ' +
+            'through this binary.\n\n' + output,
+        }],
+        isError: true,
+      };
+    }
+
     if (/WaitForDebugger|Cannot read keys when/i.test(output)) {
       return {
         content: [{
           type: 'text',
-          text: '❌ SysTestConsole.exe requires an interactive console session.\n\n' +
-            'It unconditionally prompts for debugger-attach (Console.ReadKey) before running any test, ' +
-            'even in local-AOS mode — this is a platform limitation, not a bug in this tool.\n\n' +
-            'Workaround: run the test from an interactive RDP/console session on the dev VM, or wire up ' +
-            'vstest.console.exe with RunnableDropSysTest.TestAdapter.dll (shipped alongside SysTestConsole.exe), ' +
-            'which is the non-interactive path Microsoft documents for CI.\n\n' + output,
+          text: '❌ SysTestConsole.exe stopped at its debugger-attach prompt (Console.ReadKey).\n\n' +
+            'This tool already passes /unattended, which is what normally skips that prompt. If it ' +
+            'still appears, run the test from an interactive RDP/console session on the dev VM, or ' +
+            'from Visual Studio Test Explorer.\n\n' + output,
         }],
         isError: true,
       };

@@ -319,11 +319,20 @@ Standing queues:
 
 Blocked / declined (not planned):
 
-- `SysTestConsole.exe` requires an interactive console session (unconditional
-  `WaitForDebugger()` / `Console.ReadKey()` even in local-AOS mode) — a platform
-  limitation. Three cases stay `systest_pending: true` (`L2-coc-extension`,
-  `L3-batch-basic`, `L2-event-handler-basic`). `vstest.console.exe` +
-  `RunnableDropSysTest.TestAdapter.dll` discovers zero tests: dead end.
+- ~~`SysTestConsole.exe` requires an interactive console session~~ — **wrong, corrected
+  2026-08-30.** The binary documents `/unattended` in its own `/?` output, and with that
+  flag it skips the debugger-attach prompt and reaches "Executing test(s) ....". The tool
+  passes it now. What blocks a run on THIS VM is a different, and specific, thing: the
+  telemetry logger the runner touches on its way into `ExecuteTest` fails with
+  `Could not load file or assembly 'Microsoft.ApplicationInsights, Version=2.22.0.997'`,
+  because `Bin\SysTestConsole.exe.config` redirects that assembly to 2.22.0.997 while the
+  DLL shipped in `Bin` is 2.23.0.0. Fixing it is a one-line edit to a Microsoft-owned
+  config file — a change to the platform installation, deliberately NOT made here.
+  `run_systest_class` recognises the failure and says so instead of blaming the test.
+  The four cases stay `systest_pending: true` until that is settled
+  (`L2-coc-extension`, `L3-batch-basic`, `L2-event-handler-basic`,
+  `L3-enum-field-form-downgrade-guard`). `vstest.console.exe` +
+  `RunnableDropSysTest.TestAdapter.dll` discovers zero tests: still a dead end.
 - CI-workflow half of the autonomous improver. The VM-free fix-brief generator
   (`npm run eval:brief`) is done; running Claude Code unattended on top of it in
   GitHub Actions was **explicitly declined** as a new autonomous-agent surface
