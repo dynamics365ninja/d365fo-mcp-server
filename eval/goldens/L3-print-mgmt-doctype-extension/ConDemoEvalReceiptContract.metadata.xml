@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoEvalReceiptContract</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Data contract for the @SYS4007767 report.
+/// Defines dialog parameters shown to the user before report execution.
+/// </summary>
+[DataContractAttribute]
+public class ConDemoEvalReceiptContract
+{
+    // No dialog parameters
+
+}
+]]></Declaration>
+		<Methods />
+	</SourceCode>
+</AxClass>

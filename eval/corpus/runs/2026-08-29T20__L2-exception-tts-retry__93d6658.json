@@ -1,0 +1,47 @@
+{
+  "run_id": "2026-08-29T20__L2-exception-tts-retry__93d6658",
+  "case_id": "L2-exception-tts-retry",
+  "tier": 2,
+  "timestamp": "2026-08-29T20:03:27.692Z",
+  "server_git_sha": "93d6658",
+  "generated_artifacts": [
+    "ConCustCreditMaxUpdater.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS",
+  "platform_build": "7.0.7996.33",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "PASS (Phase F golden capture; sandbox fm-mcp, prefix Con). Full build 0 errors, BP 0/0, golden self-match. Facts worth keeping: (1) a LOCAL `const int maxRetries = 5;` compiles under xppc 7.0.7996.33; (2) the first incremental build failed twice on missing module references — CustTable needs Directory and, on this VM, the custom ContactPerson model (it ships a CustTable extension) — so the sandbox Descriptor was extended to the same 12-package set the old Contoso sandbox carried; (3) BPErrorSelectUsingFirstOnly fired on the authored `select forupdate custTable where AccountNum == …` — fixed with `firstonly` (AccountNum is the unique key) and the case instruction was updated; (4) validator negative probes via validate_code confirmed TTS002 fires for a catch nested inside the tts block and TTS003 for an unguarded `retry;`, so a compiling-but-wrong answer cannot pass the static gate. Tool note: the bridge's replaceCode declined the firstonly edit with \"oldCode not found\" (LF vs CRLF inside CDATA) and the XML-writer fallback applied it, leaving a *.backup-* file next to the class that rollback had to delete by hand."
+}

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoCustGroupReportContract</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Data contract for the @TaxTransactionInquiry:HeaderNote report.
+/// Defines dialog parameters shown to the user before report execution.
+/// </summary>
+[
+    DataContractAttribute,
+    SysOperationContractProcessing(classStr(ConDemoCustGroupReportUIBuilder))
+]
+public class ConDemoCustGroupReportContract
+{
+    str custGroup;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmCustGroup</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets or sets the custGroup parameter.
+    /// </summary>
+    /// <param name="_custGroup">The custGroup value.</param>
+    /// <returns>The current custGroup value.</returns>
+    [DataMemberAttribute('custGroup'),
+        SysOperationLabelAttribute('@TaxTransactionInquiry:HeaderNote')]
+        public str parmCustGroup(str _custGroup = custGroup)
+    {
+        custGroup = _custGroup;
+        return custGroup;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

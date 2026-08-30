@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConCustCreditMaxUpdater</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Updates a customer's credit limit under optimistic concurrency with the counter-guarded retry pattern.
+/// </summary>
+public class ConCustCreditMaxUpdater
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>setCreditMax</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Sets the credit limit of the given customer, retrying an OCC update conflict at most five times.
+    /// </summary>
+    /// <param name = "_accountNum">The customer account to update.</param>
+    /// <param name = "_newCreditMax">The new credit limit.</param>
+    public static void setCreditMax(CustAccount _accountNum, AmountMST _newCreditMax)
+    {
+        CustTable custTable;
+        int retryCount = 0;
+        const int maxRetries = 5;
+
+        try
+        {
+            ttsbegin;
+            select firstonly forupdate custTable
+                where custTable.AccountNum == _accountNum;
+            if (custTable.RecId)
+            {
+                custTable.CreditMax = _newCreditMax;
+                custTable.update();
+            }
+            ttscommit;
+        }
+        catch (Exception::UpdateConflict)
+        {
+            retryCount++;
+            if (retryCount >= maxRetries)
+            {
+                throw Exception::UpdateConflictNotRecovered;
+            }
+            retry;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Runs the updater against the standard USMF customer US-001.
+    /// </summary>
+    /// <param name = "_args">The runtime arguments.</param>
+    public static void main(Args _args)
+    {
+        ConCustCreditMaxUpdater::setCreditMax('US-001', 25000);
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

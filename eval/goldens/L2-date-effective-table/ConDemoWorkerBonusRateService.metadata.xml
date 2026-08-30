@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoWorkerBonusRateService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Service over the date-effective <c>ConDemoWorkerBonusRate</c> table: adds versions and reads them as of a date.
+/// </summary>
+public class ConDemoWorkerBonusRateService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>addRate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Inserts one bonus-rate version for the worker, valid over the given period.
+    /// </summary>
+    /// <param name = "_workerId">The worker the rate belongs to.</param>
+    /// <param name = "_rate">The bonus rate of this version.</param>
+    /// <param name = "_validFrom">The first date the version is valid.</param>
+    /// <param name = "_validTo">The last date the version is valid.</param>
+    public static void addRate(Num _workerId, Percent _rate, date _validFrom, date _validTo)
+    {
+        ConDemoWorkerBonusRate bonusRate;
+
+        ttsbegin;
+        bonusRate.clear();
+        bonusRate.WorkerId = _workerId;
+        bonusRate.BonusRate = _rate;
+        bonusRate.ValidFrom = _validFrom;
+        bonusRate.ValidTo = _validTo;
+        bonusRate.insert();
+        ttscommit;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>effectiveRate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the bonus rate of the single version that is valid on the given date.
+    /// </summary>
+    /// <param name = "_workerId">The worker whose rate is read.</param>
+    /// <param name = "_asOfDate">The date the rate must be valid on.</param>
+    /// <returns>The bonus rate valid on <c>_asOfDate</c>, or zero when no version covers it.</returns>
+    public static Percent effectiveRate(Num _workerId, date _asOfDate)
+    {
+        ConDemoWorkerBonusRate bonusRate;
+
+        select firstonly validTimeState(_asOfDate) BonusRate from bonusRate
+            where bonusRate.WorkerId == _workerId;
+
+        return bonusRate.BonusRate;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>versionCount</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Counts every stored version of the worker's rate.
+    /// </summary>
+    /// <param name = "_workerId">The worker whose versions are counted.</param>
+    /// <returns>The number of versions, historical ones included.</returns>
+    /// <remarks>
+    /// Deliberately a plain select without validTimeState: an unfiltered X++ select on a
+    /// date-effective table returns ALL versions — only forms and Query objects filter to
+    /// the current date automatically.
+    /// </remarks>
+    public static int versionCount(Num _workerId)
+    {
+        ConDemoWorkerBonusRate bonusRate;
+
+        select count(RecId) from bonusRate
+            where bonusRate.WorkerId == _workerId;
+
+        return int642int(bonusRate.RecId);
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

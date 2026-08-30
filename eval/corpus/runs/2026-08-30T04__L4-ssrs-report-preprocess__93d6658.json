@@ -1,0 +1,59 @@
+{
+  "run_id": "2026-08-30T04__L4-ssrs-report-preprocess__93d6658",
+  "case_id": "L4-ssrs-report-preprocess",
+  "tier": 4,
+  "timestamp": "2026-08-30T04:50:34.187Z",
+  "server_git_sha": "93d6658",
+  "generated_artifacts": [
+    "ConDemoNoteReportPre.menuitem.metadata.xml",
+    "ConDemoNoteReportPre.metadata.xml",
+    "ConDemoNoteReportPreContract.metadata.xml",
+    "ConDemoNoteReportPreController.metadata.xml",
+    "ConDemoNoteReportPreDP.metadata.xml",
+    "ConDemoNoteReportPreTmp.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 4
+  },
+  "classification": "KNOWLEDGE_GAP",
+  "platform_build": "7.0.7996.33",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "PASS — and the Phase F verification this case doubles as is answered. EVIDENCE: (1) the ORIGINAL scaffold shape (DP extends SrsReportDataProviderPreProcess + TempDB tmp table, NO SrsReportParameterAttribute, invented preProcess() stub) built with 0 errors (full build, xppc 7.0.7996.33) — the compiler does not check the base/table pairing, so compile success is NOT evidence the pairing is right. (2) Framework evidence decided instead: SrsReportDataProviderPreProcessInterface declares only cleanUp/initialize/parmUseDefaultTransactionOnly/parmUserConnection/parmSkipReportTransaction — there is no preProcess() hook anywhere (the only DP method of that name in the whole AOT was the scaffolded one); SrsReportDataProviderPreProcess carries createdTransactionId state (regular-table staging) while SrsReportDataProviderPreProcessTempDB carries takeOwnershipOfTempTable/releaseOwnershipOfTempTable; the symbol index counts 332 shipped DPs on the TempDB base vs 38 on the regular one; every shipped pre-processed DP keeps [SrsReportParameterAttribute] (AssetCardDP, AgreementFollowUpDP, AssetDepreciationSummaryDP, AgreementConfirmationDP). GENERATOR CORRECTED (generateSmartReport.ts): preProcess=true now emits SrsReportDataProviderPreProcessTempDB, keeps SrsReportParameterAttribute and the contract fetch, and emits no preProcess() stub; op-spec, report-pattern catalog (PreProcess), ssrs-reports/ssrs-rdp-preprocess topics and this case's instruction were rewritten to match. The corrected scaffold ALSO built with 0 errors; the golden is that shape with processReport() completed via insert_recordset from the ConDemoNoteHeader fixture. KNOWLEDGE_GAP (not fixed): with a bare fieldsHint the name-based EDT suggestion picked localisation EDTs PlCorrNoteId/smmSubject for NoteId/Subject (BPErrorEDTNotMigrated on PlCorrNoteId) — the case now passes explicit fields mirroring the fixture (Num/Name); the suggestion should prefer an existing same-named field in the workspace model. TOOL note: the scaffolded prePromptModifyContract() declares a contract local it never uses when there are no contract params (BP warning) — pre-existing generator wart, left as is to keep the existing report goldens stable.",
+  "suggested_fix_area": "src/tools/smart/generateSmartReport.ts (fixed: preProcess base/attribute/stub; open: unused contract local in prePromptModifyContract, EDT suggestion for bare fieldsHint)"
+}

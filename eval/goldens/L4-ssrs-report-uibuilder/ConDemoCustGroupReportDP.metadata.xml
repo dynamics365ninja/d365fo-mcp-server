@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoCustGroupReportDP</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Data provider for the @TaxTransactionInquiry:HeaderNote report.
+/// Extends <c>SrsReportDataProviderBase</c> and populates the <c>ConDemoCustGroupReportTmp</c> temporary table.
+/// </summary>
+[
+    SRSReportParameterAttribute(classStr(ConDemoCustGroupReportContract))
+]
+public class ConDemoCustGroupReportDP extends SrsReportDataProviderBase
+{
+    ConDemoCustGroupReportTmp conDemoCustGroupReportTmp;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getConDemoCustGroupReportTmp</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the temporary table buffer used by the report dataset.
+    /// </summary>
+    /// <returns>The <c>ConDemoCustGroupReportTmp</c> table buffer.</returns>
+    [SRSReportDataSetAttribute(tableStr(ConDemoCustGroupReportTmp))]
+    public ConDemoCustGroupReportTmp getConDemoCustGroupReportTmp()
+    {
+        select conDemoCustGroupReportTmp;
+        return conDemoCustGroupReportTmp;
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>processReport</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Main data processing method. Populates the <c>ConDemoCustGroupReportTmp</c> temporary table
+    /// with report data based on the contract parameters.
+    /// </summary>
+    public void processReport()
+    {
+        ConDemoCustGroupReportContract contract  = this.parmDataContract() as ConDemoCustGroupReportContract;
+        str                            custGroup = contract.parmCustGroup();
+        CustGroup                      custGroupTable;
+
+        delete_from conDemoCustGroupReportTmp;
+
+        while select CustGroup, Name from custGroupTable
+            where custGroup == '' || custGroupTable.CustGroup == custGroup
+        {
+            conDemoCustGroupReportTmp.clear();
+            conDemoCustGroupReportTmp.GroupId     = custGroupTable.CustGroup;
+            conDemoCustGroupReportTmp.Description = custGroupTable.Name;
+            conDemoCustGroupReportTmp.insert();
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -8,8 +8,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
-| core | 45 | 51 | **88.2%** |
-| total | 79 | 89 | 88.8% |
+| core | 46 | 51 | **90.2%** |
+| total | 83 | 89 | 93.3% |
 
 ## Data model (12/12)
 
@@ -28,7 +28,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Relations, indexes, field groups | core | ✅ | ✅ | ✅ | L2-table-modify-lifecycle, L3-form-detailstransaction |
 | Table inheritance (SupportInheritance/Extends) | total | ✅ | ✅ | ✅ | L2-table-inheritance-basic |
 
-## Code (22/30)
+## Code (24/30)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -46,8 +46,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Error handling & infolog | core | ✅ | ✅ | ✅ | L2-error-handling-infolog |
 | SysExtension plug-in pattern | total | ✅ | ✅ | ✅ | L2-sysextension-plugin |
 | Performance patterns | core | ✅ | ✅ | ✅ | L2-performance-set-based |
-| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +36 |
-| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +36 |
+| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +37 |
+| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +37 |
 | Optimistic concurrency & UnitOfWork | core | ✅ | ✅ | ✅ | L2-occ-retry-basic |
 | Caching (CacheLookup, SysGlobalObjectCache, RecordViewCache) | total | ✅ | ✅ | ✅ | L2-table-caching-basic |
 | X++ collections & containers (List/Map/Set/Struct) | total | ✅ | ✅ | ✅ | L2-collections-map-list-container |
@@ -58,10 +58,10 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Declarations & scope (var/const/readonly/using) | core | ✅ | — | ✅ | Taught; exercised implicitly by every class case — no dedicated eval case. |
 | Operators & precedence (&&/|| trap, like, is/as) | core | ✅ | — | ✅ | Taught; CS001 blocks the C#-isms. No dedicated eval case. |
 | Statements & flow (switch fallthrough, loops) | core | ✅ | — | ✅ | Taught; BP004 covers removed keywords. No dedicated eval case. |
-| Exceptions inside transactions (catchability, retry) | core | ✅ | — | ✅ | TTS002/TTS003 validators + in-tts catchability matrix; eval case authored, golden pending VM capture. |
+| Exceptions inside transactions (catchability, retry) | core | ✅ | ✅ | ✅ | L2-exception-tts-retry |
 | Attribute authoring & reflection | total | ✅ | — | ✅ | Rules-only topic (examples wait for the Phase F snapshot capture); no eval case. |
 | Compile-time (intrinsic) functions | core | ✅ | — | ✅ | Full catalog taught; references mode resolves the common ones. No dedicated eval case. |
-| Date-effective tables (validTimeState) | total | ✅ | — | ✅ | Eval case authored (table + as-of vs unfiltered select); golden pending VM capture. |
+| Date-effective tables (validTimeState) | total | ✅ | ✅ | ✅ | L2-date-effective-table |
 
 ## UI (7/7)
 
@@ -71,20 +71,20 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Form patterns (ListPage, DetailsMaster, …) | core | ✅ | ✅ | ✅ | L1-form-detailsmaster, L1-form-dialog, L1-form-listpage +5 |
 | Form extension | core | ✅ | ✅ | ✅ | L2-form-extension-basic |
 | FormRun lifecycle & data sources | core | ✅ | ✅ | ✅ | L2-form-modify-controls, L3-form-add-datasource-lines |
-| Menu items (display/action/output) | core | ✅ | ✅ | ✅ | L4-ssrs-report-advanced, L4-ssrs-report-multidataset |
+| Menu items (display/action/output) | core | ✅ | ✅ | ✅ | L4-ssrs-report-advanced, L4-ssrs-report-multidataset, L4-ssrs-report-preprocess +1 |
 | Menus & submenu nesting | core | ✅ | ✅ | ✅ | L4-master-security-slice |
 | Tiles & KPIs | total | ✅ | ✅ | ✅ | L2-tile-cue-over-query |
 
-## Reporting (5/7)
+## Reporting (7/7)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | SSRS report (DP + contract + controller) | core | ✅ | ✅ | ✅ | L4-ssrs-report-advanced, L4-ssrs-report-basic |
 | Multi-dataset SSRS report | total | ✅ | ✅ | ✅ | L4-ssrs-report-multidataset |
-| Print management | total | ✅ | ✅ | ✅ | L3-print-management-report |
+| Print management | total | ✅ | ✅ | ✅ | L3-print-management-report, L3-print-mgmt-doctype-extension |
 | Report contracts (RDP/RDL/print/composite) | core | ✅ | ✅ | ✅ | L4-ssrs-report-advanced |
-| Pre-processed RDP (long-running reports) | total | ✅ | — | ✅ | Eval case authored — doubles as the Phase F verification of the preProcess scaffold pairing; golden pending VM capture. |
-| Report dialog UI builders | total | ✅ | — | ✅ | uiBuilder scaffold option landed in Phase D; eval case authored, golden pending VM capture. |
+| Pre-processed RDP (long-running reports) | total | ✅ | ✅ | ✅ | L4-ssrs-report-preprocess |
+| Report dialog UI builders | total | ✅ | ✅ | ✅ | L4-ssrs-report-uibuilder |
 | Electronic Reporting (ER) | total | ✅ | ✅ | ✅ | L3-electronic-reporting-integration |
 
 ## Frameworks (16/16)
@@ -138,7 +138,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | SysTest unit testing | core | ✅ | ✅ | ✅ | L2-coc-extension, L2-event-handler-basic, L3-batch-basic |
-| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +36 |
+| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +37 |
 
 ## Closure queue (uncovered, by frequency weight)
 
@@ -146,18 +146,14 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | ---: | --- | --- |
 | 5 | Data types, literals & conversions | missing E |
 | 4 | Declarations & scope (var/const/readonly/using) | missing E |
-| 4 | Exceptions inside transactions (catchability, retry) | missing E |
 | 4 | Compile-time (intrinsic) functions | missing E |
 | 4 | Operators & precedence (&&/|| trap, like, is/as) | missing E |
 | 4 | Statements & flow (switch fallthrough, loops) | missing E |
-| 3 | Date-effective tables (validTimeState) | missing E |
 | 2 | Attribute authoring & reflection | missing E |
-| 2 | Pre-processed RDP (long-running reports) | missing E |
-| 2 | Report dialog UI builders | missing E |
 
 ## Orphans
 
 - Knowledge entries no leaf claims (**unproven knowledge**): extensible-enums
 - Eval cases no leaf claims (**unmapped proof**): L0-create-readback-no-reindex, L2-batched-object-reads, L2-object-delete-and-entry-point-cleanup, L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice
 
-_Generated 2026-08-29._
+_Generated 2026-08-30._

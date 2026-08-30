@@ -8,7 +8,7 @@
     "AxClass"
   ],
   "golden_path": "eval/goldens/L2-date-effective-table/",
-  "golden_pending": true,
+  "golden_pending": false,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"
