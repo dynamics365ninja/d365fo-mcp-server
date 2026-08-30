@@ -252,3 +252,33 @@ describe('run_systest_class — a MISSING assembly is not the same fault as a wr
     expect(text).not.toContain('Tests FAILED');
   });
 });
+
+describe('run_systest_class — reaching the database and failing to log in', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    cfgEnsureLoaded.mockResolvedValue(undefined);
+    cfgGetModelName.mockReturnValue('Contoso');
+    cfgGetPackagePath.mockReturnValue(PKG);
+    allowPaths([SYSTEST_CONSOLE]);
+  });
+
+  it('calls it a deployment credential, not a test failure', async () => {
+    // Third fault on this VM, once both assembly problems were fixed by config.
+    const err = Object.assign(new Error('Command failed'), {
+      stdout: "Executing test(s) ....\n\nSystem.Data.SqlClient.SqlException (0x80131904): Login failed for user 'AOSUser'.",
+      stderr: '',
+    });
+    execFileMock.mockImplementation((_f: string, _a: string[], _o: any, cb: Function) => {
+      cb(err);
+    });
+
+    const result = await sysTestRunnerTool({ className: 'ContosoMyTest' }, {});
+
+    expect(result.isError).toBe(true);
+    const text = result.content[0].text;
+    expect(text).toContain("could not log in as 'AOSUser'");
+    expect(text).toMatch(/No test ran/);
+    expect(text).toMatch(/deployment credential/);
+    expect(text).not.toContain('Tests FAILED');
+  });
+});

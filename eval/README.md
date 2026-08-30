@@ -339,7 +339,12 @@ Blocked / declined (not planned):
   because `Bin\SysTestConsole.exe.config` redirects that assembly to 2.22.0.997 while the
   DLL shipped in `Bin` is 2.23.0.0. Fixing it is a one-line edit to a Microsoft-owned
   config file — a change to the platform installation, deliberately NOT made here.
-  `run_systest_class` recognises the failure and says so instead of blaming the test.
+  Both assembly faults were fixed on this VM by CONFIG edits only, each with a backup
+  beside the file: the redirect now names 2.23.0.29, and `ModelUtilDlls` was added to the
+  `<probing privatePath>` so the correctly-redirected System.ValueTuple 4.0.3.0 is found.
+  The runner then reaches the DATABASE and stops at `Login failed for user 'AOSUser'` —
+  a deployment credential, outside this repo. `run_systest_class` recognises all three
+  failures and names each one instead of blaming the test.
   The four cases stay `systest_pending: true` until that is settled
   (`L2-coc-extension`, `L3-batch-basic`, `L2-event-handler-basic`,
   `L3-enum-field-form-downgrade-guard`). `vstest.console.exe` +

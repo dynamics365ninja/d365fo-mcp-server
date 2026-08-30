@@ -217,6 +217,27 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
       }
     }
 
+    // The runner got as far as the database and could not log in. Everything about
+    // the model, the test and the binary is fine at this point; what failed is the
+    // deployment's SQL credential, which no change to the test can fix.
+    const sqlLogin = /Login failed for user '([^']+)'/i.exec(output);
+    if (sqlLogin) {
+      return {
+        content: [{
+          type: 'text',
+          text:
+            `❌ The test runner reached the database and could not log in as '${sqlLogin[1]}'.\n\n` +
+            'No test ran. This is a deployment credential, not a problem with the test class or the ' +
+            'model: SysTestConsole opens the AOS connection itself, using the connection string in the ' +
+            'AOS configuration. Usual causes are a rotated SQL password, a login that only the AOS ' +
+            'service account can decrypt, or SQL Server not being configured for that login.\n\n' +
+            'Run the test from Visual Studio Test Explorer (which uses the developer session\'s own ' +
+            'connection) while that is sorted out.\n\n' + output,
+        }],
+        isError: true,
+      };
+    }
+
     if (/WaitForDebugger|Cannot read keys when/i.test(output)) {
       return {
         content: [{
