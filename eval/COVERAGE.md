@@ -8,8 +8,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
-| core | 51 | 51 | **100%** |
-| total | 89 | 89 | 100% |
+| core | 51 | 59 | **86.4%** |
+| total | 89 | 98 | 90.8% |
 
 ## Data model (12/12)
 
@@ -28,7 +28,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Relations, indexes, field groups | core | ✅ | ✅ | ✅ | L2-table-modify-lifecycle, L3-form-detailstransaction |
 | Table inheritance (SupportInheritance/Extends) | total | ✅ | ✅ | ✅ | L2-table-inheritance-basic |
 
-## Code (30/30)
+## Code (30/33)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -62,8 +62,11 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Attribute authoring & reflection | total | ✅ | ✅ | ✅ | L2-attribute-authoring-reflection |
 | Compile-time (intrinsic) functions | core | ✅ | ✅ | ✅ | L2-intrinsic-functions |
 | Date-effective tables (validTimeState) | total | ✅ | ✅ | ✅ | L2-date-effective-table |
+| Run-time (predefined) functions | core | ✅ | — | ✅ | Arities come from the compiler capture (eval/compiler-facts.snapshot.json); validate_code enforces them as FN001/FN002. |
+| Implicit conversions & explicit converters | core | ✅ | — | ✅ | real -> int is a compile ERROR, not a silent truncation as the language reference describes. |
+| select find options, join kinds and clause order | core | ✅ | — | ✅ | The select-grammar leaf rests on report cases; this one exercises the find options, the three join kinds and the in operator. |
 
-## UI (7/7)
+## UI (7/10)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -74,8 +77,11 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Menu items (display/action/output) | core | ✅ | ✅ | ✅ | L2-config-key-gated-table, L3-batch-basic, L4-ssrs-report-advanced +3 |
 | Menus & submenu nesting | core | ✅ | ✅ | ✅ | L4-master-security-slice |
 | Tiles & KPIs | total | ✅ | ✅ | ✅ | L2-tile-cue-over-query |
+| Args — record, caller and parameters | core | ✅ | — | ✅ | missing E |
+| display / edit methods | core | ✅ | — | ✅ | missing E |
+| Form event handlers | core | ✅ | — | ✅ | missing E |
 
-## Reporting (7/7)
+## Reporting (7/8)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -86,8 +92,9 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Pre-processed RDP (long-running reports) | total | ✅ | ✅ | ✅ | L4-ssrs-report-preprocess |
 | Report dialog UI builders | total | ✅ | ✅ | ✅ | L4-ssrs-report-uibuilder |
 | Electronic Reporting (ER) | total | ✅ | ✅ | ✅ | L3-electronic-reporting-integration |
+| Extending a standard report | core | ✅ | — | ✅ | Dataset expansion via PostHandlerFor is the case; the custom-design and menu-item routes are knowledge only. |
 
-## Frameworks (16/16)
+## Frameworks (16/17)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -107,6 +114,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Inventory (InventTrans / InventDim) | total | ✅ | ✅ | ✅ | L3-inventory-inventdim-onhand |
 | Warehouse management (WHS) | total | ✅ | ✅ | ✅ | L3-warehouse-work-slice |
 | Trade agreements & pricing | total | ✅ | ✅ | ✅ | L3-trade-agreement-price-lookup |
+| SysOperation dialog from contract attributes | total | ✅ | — | ✅ | missing E |
 
 ## Integration (9/9)
 
@@ -133,20 +141,31 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Extensible data security (XDS) | total | ✅ | ✅ | ✅ | L3-xds-policy-constrained-table |
 | License codes | total | ✅ | ✅ | ✅ | L2-license-code-configkey |
 
-## Quality (2/2)
+## Quality (2/3)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | SysTest unit testing | core | ✅ | ✅ | ✅ | L2-coc-extension, L2-event-handler-basic, L3-batch-basic |
 | Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +43 |
+| TDD loop (red-first SysTest authoring) | core | ✅ | — | ✅ | Distinct from the unit-testing leaf: that one proves a SysTest can be authored, this one proves the loop — prepare(test), the failing scaffold, then a run. |
 
 ## Closure queue (uncovered, by frequency weight)
 
-Nothing uncovered.
+| Weight | Leaf | Missing |
+| ---: | --- | --- |
+| 4 | Form event handlers | missing E |
+| 4 | Extending a standard report | missing E |
+| 4 | Run-time (predefined) functions | missing E |
+| 4 | select find options, join kinds and clause order | missing E |
+| 4 | TDD loop (red-first SysTest authoring) | missing E |
+| 3 | Args — record, caller and parameters | missing E |
+| 3 | display / edit methods | missing E |
+| 3 | Implicit conversions & explicit converters | missing E |
+| 3 | SysOperation dialog from contract attributes | missing E |
 
 ## Orphans
 
-- Knowledge entries no leaf claims (**unproven knowledge**): runtime-functions
+- Knowledge entries no leaf claims (**unproven knowledge**): none
 - Eval cases no leaf claims (**unmapped proof**): L0-create-readback-no-reindex, L2-batched-object-reads, L2-entity-query-range-roundtrip, L2-form-control-removal-lifecycle, L2-object-delete-and-entry-point-cleanup, L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice
 
 _Generated 2026-08-30._

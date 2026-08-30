@@ -301,6 +301,17 @@ Standing queues:
   been authored but never run; coverage counts them as uncovered because they
   prove nothing until captured. `eval-run` captures each on the VM — flip the
   flag as each lands.
+
+  Nine of them arrived together on 2026-08-30 with the compiler-verified language
+  work, and they are why core coverage reads 86.4% rather than 100%:
+  `L2-runtime-functions-arity`, `L2-implicit-conversions`,
+  `L2-select-find-options-joins`, `L2-args-record-caller`,
+  `L2-display-edit-methods`, `L3-form-event-handler-class`,
+  `L3-sysoperation-dialog-attributes`, `L2-systest-authoring-basic`,
+  `L3-report-dataset-extension`. Each has a knowledge entry written from a
+  compiler probe and a tool path that can produce it; what none of them has yet is
+  a build that proves the two agree. The number is supposed to fall when the
+  taxonomy grows honestly — it climbs back one captured golden at a time.
 - **Coverage closure loop** (~2–4 leaves/week): `eval-author` drafts a case for
   each leaf missing **E** → `eval-run` captures the golden → MODEL_ERROR
   clusters flow through `knowledgeFeedback` into proposed knowledge entries

@@ -1,0 +1,26 @@
+{
+  "id": "L2-runtime-functions-arity",
+  "title": "Run-time functions: the argument counts that are easy to get wrong, and the names AX 2012 had that this platform does not",
+  "tier": 2,
+  "instruction": "In the sandbox model, create a class DemoTextParts whose methods each use a predefined function at its REAL argument count. Ground it first with get_knowledge(topic=\"runtime-functions\"). All methods public static. (1) `str firstSegment(str _line)` - returns the text before the first comma, using strFind with ALL FOUR arguments (text, characters, start, count) and subStr with THREE (text, position, LENGTH - not an end index, and 1-based). Calling either with fewer arguments is a compile error the offline validator reports as FN001 before any build. (2) `str formatted(date _when)` - formats the date with date2Str. It takes SEVEN arguments (date, sequence, day, separator, month, separator, year) or EIGHT with a trailing DateFlags; the shipped platform calls it with seven in 161 places. Six arguments FAILS this case. (3) `container firstTwo(container _values)` - returns a container holding the first two elements, read with conPeek (TWO arguments, 1-based) and built with conIns, which is VARIADIC and therefore has no fixed count to get wrong. (4) `int changedFlag(int _current)` - must NOT call corrFlagGet: that function existed in AX 2012 and does not exist here (\"does not denote a predefined function, a static method on the Global class nor a previously defined local function\"), and the validator reports it as FN002. Use corrFlagSet, or compute the value plainly. The class must build with zero errors and zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-runtime-functions-arity/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "runtime-functions",
+    "arity",
+    "strfind",
+    "substr",
+    "date2str",
+    "language",
+    "class",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

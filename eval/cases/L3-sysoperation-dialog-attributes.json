@@ -1,0 +1,26 @@
+{
+  "id": "L3-sysoperation-dialog-attributes",
+  "title": "A SysOperation dialog laid out entirely from contract attributes — no dialog code, no UI builder",
+  "tier": 3,
+  "instruction": "In the sandbox model, create a SysOperation trio (contract, service, controller) whose DIALOG is produced only by attributes on the contract. Ground it first with get_knowledge(topic=\"sysoperation-ui-attributes\"). The contract must carry [DataContractAttribute] and a class-level [SysOperationGroupAttribute] declaring one group with a LABEL id and a sequence. It needs at least three parm methods: two visible fields placed in that group with [SysOperationGroupMemberAttribute], each carrying [DataMemberAttribute], [SysOperationLabelAttribute(literalStr(...))] and [SysOperationDisplayOrderAttribute(...)] - the display order is a STRING, not an int - and one member hidden with [SysOperationControlVisibilityAttribute(false)] because the caller sets it in code. Add a validate() on the contract that returns false through checkFailed with a LABEL when a required value is missing. The contract must implement SysOperationInitializable and default a value in initialize(). Do NOT put [SysEntryPointAttribute] on the service method: xppc answers \"'SysEntryPointAttribute' is obsolete: This attribute is deprecated in AX7.\" and it FAILS this case. Everything must build with zero errors and zero BP errors.",
+  "target_artifact_types": [
+    "AxClass",
+    "AxClass",
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L3-sysoperation-dialog-attributes/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "sysoperation",
+    "dialog",
+    "attributes",
+    "batch",
+    "class",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

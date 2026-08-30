@@ -1,15 +1,15 @@
 {
   "core": {
     "tier": "core",
-    "total": 51,
+    "total": 59,
     "covered": 51,
-    "percent": 100
+    "percent": 86.4
   },
   "total": {
     "tier": "all",
-    "total": 89,
+    "total": 98,
     "covered": 89,
-    "percent": 100
+    "percent": 90.8
   },
   "leaves": [
     {
@@ -1423,12 +1423,118 @@
         "L3-custom-service-basic",
         "L3-form-detailstransaction"
       ]
+    },
+    {
+      "id": "runtime-functions",
+      "label": "Run-time (predefined) functions",
+      "domain": "Code",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "implicit-conversions",
+      "label": "Implicit conversions & explicit converters",
+      "domain": "Code",
+      "tier": "core",
+      "weight": 3,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "select-find-options",
+      "label": "select find options, join kinds and clause order",
+      "domain": "Code",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "args-navigation",
+      "label": "Args — record, caller and parameters",
+      "domain": "UI",
+      "tier": "core",
+      "weight": 3,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "display-edit-methods",
+      "label": "display / edit methods",
+      "domain": "UI",
+      "tier": "core",
+      "weight": 3,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "form-event-handlers",
+      "label": "Form event handlers",
+      "domain": "UI",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "sysoperation-ui",
+      "label": "SysOperation dialog from contract attributes",
+      "domain": "Frameworks",
+      "tier": "total",
+      "weight": 3,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "report-extension",
+      "label": "Extending a standard report",
+      "domain": "Reporting",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "tdd-workflow",
+      "label": "TDD loop (red-first SysTest authoring)",
+      "domain": "Quality",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
     }
   ],
   "orphans": {
-    "knowledge": [
-      "runtime-functions"
-    ],
+    "knowledge": [],
     "cases": [
       "L0-create-readback-no-reindex",
       "L2-batched-object-reads",

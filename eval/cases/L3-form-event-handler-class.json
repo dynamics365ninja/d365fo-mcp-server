@@ -1,0 +1,25 @@
+{
+  "id": "L3-form-event-handler-class",
+  "title": "Form event handlers: the four attributes, their four sender types, and replacing a lookup",
+  "tier": 3,
+  "instruction": "In the sandbox model, create a form over a custom table and a separate handler class that extends it from OUTSIDE. Ground it first with get_knowledge(topic=\"form-event-handlers\"). The handler class must carry, each with the sender type the compiler requires: (1) [FormEventHandler(formStr(...), FormEventType::Initialized)] with `(xFormRun _sender, FormEventArgs _e)` - note xFormRun, NOT FormRun; (2) [FormDataSourceEventHandler(formDataSourceStr(...), FormDataSourceEventType::ValidatingWrite)] with `(FormDataSource _sender, FormDataSourceEventArgs _e)`, rejecting an invalid row through the event args; (3) [FormDataFieldEventHandler(formDataFieldStr(...), FormDataFieldEventType::Modified)] with `(FormDataObject _sender, FormDataFieldEventArgs _e)` that derives a second field from the modified one; (4) [FormControlEventHandler(formControlStr(...), FormControlEventType::Lookup)] with `(FormControl _sender, FormControlEventArgs _e)` that builds a SysTableLookup and calls _e.CancelSuperCall() - without that call BOTH the standard and the custom lookup run. A handler whose parameter profile does not match is a compile error, not a runtime surprise. Confirm every control and data source name with get_object_info on the form before writing the intrinsics. Everything must build with zero errors and zero BP errors.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxForm",
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L3-form-event-handler-class/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "form-event-handler",
+    "lookup",
+    "form",
+    "class",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

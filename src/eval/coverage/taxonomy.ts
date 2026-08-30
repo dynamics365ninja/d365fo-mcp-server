@@ -573,4 +573,63 @@ export const TAXONOMY: CoverageLeaf[] = [
     id: 'labels', label: 'Labels & localisation', domain: 'Quality', source: 'topic', tier: 'core', weight: 5,
     aotTypes: ['class'], knowledgeIds: ['labels'], caseTags: ['deterministic'],
   },
+
+  // ── Language surface the artifact-type taxonomy hid ─────────────────────
+  //
+  // These nine leaves exist because the compiler answered questions this server
+  // used to answer from memory (see docs/XPP_LANGUAGE_COVERAGE_PLAN.md §1). Each
+  // has a knowledge entry written from a probe and an eval case that is authored
+  // but NOT captured: golden_pending means E stays false, so the published number
+  // falls until a VM run proves them. That is the intended direction.
+  {
+    id: 'runtime-functions', label: 'Run-time (predefined) functions', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['class'], knowledgeIds: ['runtime-functions'],
+    caseIds: ['L2-runtime-functions-arity'],
+    note: 'Arities come from the compiler capture (eval/compiler-facts.snapshot.json); validate_code enforces them as FN001/FN002.',
+  },
+  {
+    id: 'implicit-conversions', label: 'Implicit conversions & explicit converters', domain: 'Code', source: 'topic', tier: 'core', weight: 3,
+    aotTypes: ['class'], knowledgeIds: ['xpp-data-types', 'operators-precedence'],
+    caseIds: ['L2-implicit-conversions'],
+    note: 'real -> int is a compile ERROR, not a silent truncation as the language reference describes.',
+  },
+  {
+    id: 'select-find-options', label: 'select find options, join kinds and clause order', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['class'], knowledgeIds: ['select-statement'],
+    caseIds: ['L2-select-find-options-joins'],
+    note: 'The select-grammar leaf rests on report cases; this one exercises the find options, the three join kinds and the in operator.',
+  },
+  {
+    id: 'args-navigation', label: 'Args — record, caller and parameters', domain: 'UI', source: 'topic', tier: 'core', weight: 3,
+    aotTypes: ['class'], knowledgeIds: ['args-object'],
+    caseIds: ['L2-args-record-caller'],
+  },
+  {
+    id: 'display-edit-methods', label: 'display / edit methods', domain: 'UI', source: 'topic', tier: 'core', weight: 3,
+    aotTypes: ['table-extension'], knowledgeIds: ['display-edit-methods'],
+    caseIds: ['L2-display-edit-methods'],
+  },
+  {
+    id: 'form-event-handlers', label: 'Form event handlers', domain: 'UI', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['class'], knowledgeIds: ['form-event-handlers'],
+    caseIds: ['L3-form-event-handler-class'],
+  },
+  {
+    id: 'sysoperation-ui', label: 'SysOperation dialog from contract attributes', domain: 'Frameworks', source: 'topic', tier: 'total', weight: 3,
+    aotTypes: ['class'], knowledgeIds: ['sysoperation-ui-attributes'],
+    caseIds: ['L3-sysoperation-dialog-attributes'],
+  },
+  {
+    id: 'report-extension', label: 'Extending a standard report', domain: 'Reporting', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['class'], knowledgeIds: ['report-extension-patterns'],
+    caseIds: ['L3-report-dataset-extension'],
+    note: 'Dataset expansion via PostHandlerFor is the case; the custom-design and menu-item routes are knowledge only.',
+  },
+  {
+    id: 'tdd-workflow', label: 'TDD loop (red-first SysTest authoring)', domain: 'Quality', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['class'], knowledgeIds: ['unit-testing', 'testing'],
+    caseIds: ['L2-systest-authoring-basic'],
+    note: 'Distinct from the unit-testing leaf: that one proves a SysTest can be authored, this one proves the loop — prepare(test), the failing scaffold, then a run.',
+  },
+
 ];

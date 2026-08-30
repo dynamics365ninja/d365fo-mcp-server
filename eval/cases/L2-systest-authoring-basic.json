@@ -1,0 +1,25 @@
+{
+  "id": "L2-systest-authoring-basic",
+  "title": "Writing a SysTest: red first, and only the assert API the framework actually has",
+  "tier": 2,
+  "instruction": "In the sandbox model, create a small class with behaviour worth testing and a SysTest class that covers it. Ground it first with prepare(mode=\"test\", objectName=<the class>) and get_knowledge(topic=\"unit-testing\"). Scaffold the test with generate_object(mode=\"pattern\", pattern=\"systest\", name=<the class>, params:{testMethods:[...]}), then fill in the assertions. The test class must extend SysTestCase, carry [SysTestTarget(classStr(<the class>), UtilElementType::Class)] - the second argument is the element TYPE, and passing a method name FAILS the case with \"Cannot implicitly convert from type 'str' to type 'Enumeration(utilElementType)'\" - and have one [SysTestMethod] per behaviour. Use only asserts that exist (assertEquals, assertNotEqual, assertTrue, assertFalse, assertNull, assertNotNull, assertRealEquals, fail). One method must cover an expected exception, and it must do so by DECLARING it with this.parmExceptionExpected(true) before the call - there is no assertExpectedException in X++, and writing one FAILS the case. Do not add a rollback attribute: rollback is the framework default and SysTestCaseAutoRollback does not exist. Both classes must build with zero errors and zero BP errors.",
+  "target_artifact_types": [
+    "AxClass",
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-systest-authoring-basic/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "systest",
+    "tdd",
+    "unit-test",
+    "runtime",
+    "class",
+    "deterministic"
+  ],
+  "split": "holdout"
+}
