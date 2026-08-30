@@ -80,6 +80,10 @@ those are called out explicitly below.
   connection, budget-capped and never awaited. It buys the session's first
   questions, not the whole session — the two databases are larger than the cache
   they compete for, and a build evicts them again.
+- **A running tool call now says which phase it is in** (`SLOW_CALL_HEARTBEAT_MS`,
+  default 30 s, 0 to turn it off). The phase block in the reply is only ever read
+  afterwards, and the create that took 341 s reported all of it as
+  `(unmeasured)` — so there was nothing to look at either way, during or after.
 - **Op-spec topics for the build/verify/BP overrides.** `packagePath` on
   `build_d365fo_project`, `verify_d365fo_project` and `run_bp_check` was
   unpublished to pay for schema cost and had nowhere to be discovered — it
@@ -133,6 +137,18 @@ those are called out explicitly below.
   `add-index`/`create` could not set `ValidTimeStateKey`/`Mode`, `add-field`
   handed the bridge the root EDT name for a Date EDT (`Data type mismatch`), and
   a `modify-property` with an empty value left an empty element behind.
+- **Options a tool accepted and then quietly dropped.** An option silently
+  ignored is worse than one refused, because the caller draws a conclusion from
+  the absence. `get_object_info(objectType="table", options:{relations:true})`
+  is read only by the bridge renderer; on the symbol-index and disk fallbacks
+  the knobs were parsed, defaulted and dropped, so the answer came back with no
+  relations and nothing to explain it — which reads as "this table has none".
+  Those paths now name what they could not honour, and why. Separately,
+  `workspace://active` and `workspace://files` rendered from the NON-blocking
+  context snapshot and never read its pending flags, so a scan still running was
+  reported as an empty result — at session start, exactly when the caches are
+  cold, a workspace full of recent edits could come back as "no recent edits". A
+  resource read is not on the latency path a tool call is, so it now waits.
 - **A write did not invalidate the workspace scan cache.** `WorkspaceScanner`'s
   own doc comment said its 15s TTL was "paired with invalidate() (called after
   writes)"; `invalidate()` had no production caller at all — only tests and its
