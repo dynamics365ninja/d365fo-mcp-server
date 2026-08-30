@@ -1033,10 +1033,10 @@ MyRentEquipmentId newId = numSeq.num();
     summary:
       'D365FO uses SysTestCase for unit tests and ATL (Acceptance Test Library) for integration tests.',
     rules: [
-      'Test class: extends SysTestCase — must have methods starting with "test"',
+      'Test class: extends SysTestCase (ApplicationFoundation, and it extends SysTestAssert — the asserts are inherited, not a separate class) — methods start with "test" or carry [SysTestMethod]',
       'SysTestMethodAttribute: [SysTestMethod] on each test method',
-      'Assert methods: this.assertEquals(), this.assertTrue(), this.assertFalse(), this.assertNotNull()',
-      'setUp() / tearDown(): run before/after each test method',
+      'Assert methods, the full inherited set: assertEquals, assertNotEqual, assertEquivalent, assertNotEquivalent, assertTrue, assertFalse, assertNull, assertNotNull, assertSame, assertNotSame, assertObjectEquals, assertRealEquals, assertUTCDateTimeEquals, fail. There is NO assertExpectedException — declare the expectation first with this.parmExceptionExpected(true) (optionally with the message), then run the code that should throw',
+      'setUp() / tearDown(): run before/after each test method; setUpTestCase() / tearDownTestCase() run once per class',
       'ATL (Acceptance Test Library): entry point is AtlDataRootNode::construct(); navigate via data.invent()/data.sales()/… and use the Creators/Commands/Queries/Specifications concepts (AtlCommand* family) — there is NO AtlScenario or AtlDataHelper class',
       'Test data: use the ATL data root (AtlDataRootNode) creators or setUp() to create transient test records',
       'Run with: run_systest_class MCP tool or Visual Studio Test Explorer',
@@ -1046,7 +1046,9 @@ MyRentEquipmentId newId = numSeq.num();
     examples: [
       {
         label: 'Basic unit test',
-        code: `[SysTestTarget(classStr(MyHelper), MethodStr(MyHelper, calculateDiscount))]
+        code: `// SysTestTarget(str _name, utilElementType _type = UtilElementType::Class)
+// — the second argument is the element TYPE, not a method name.
+[SysTestTarget(classStr(MyHelper), UtilElementType::Class)]
 class MyHelperTest extends SysTestCase
 {
     [SysTestMethod]
@@ -1055,6 +1057,16 @@ class MyHelperTest extends SysTestCase
         MyHelper helper = new MyHelper();
         Amount result = helper.calculateDiscount(0, 100);
         this.assertEquals(0, result, 'Discount should be 0 for zero quantity');
+    }
+
+    [SysTestMethod]
+    public void testCalculateDiscount_RejectsNegativeQty()
+    {
+        MyHelper helper = new MyHelper();
+
+        // No assertExpectedException in X++: declare the expectation, then call.
+        this.parmExceptionExpected(true);
+        helper.calculateDiscount(-1, 100);
     }
 
     [SysTestMethod]
@@ -1329,13 +1341,15 @@ while select crosscompany : companies
       'Test class: extends SysTestCase, must be in the same model as the code under test (or a test model)',
       'Test methods: public void testXxx() — method name MUST start with "test" (case-insensitive)',
       'Setup/teardown: override setUp() and tearDown() — called before/after EACH test method',
-      'Assertions: assertEquals, assertNotNull, assertNull, assertTrue, assertFalse, fail()',
-      'SysTestSuite: groups multiple SysTestCase classes for batch execution',
+      'Assertions (inherited from SysTestAssert): assertEquals, assertNotEqual, assertEquivalent, assertNotEquivalent, assertTrue, assertFalse, assertNull, assertNotNull, assertSame, assertNotSame, assertObjectEquals, assertRealEquals, assertUTCDateTimeEquals, fail',
+      'Expected exceptions: this.parmExceptionExpected(true [, message [, messageIsRegEx]]) before the call that must throw — assertExpectedException does not exist. clearExceptionExpected() resets it',
+      'SysTestSuite groups SysTestCase classes; override createSuite() on the test case to pick a variant. The ones that exist: SysTestSuite, SysTestSuiteCompanyIsolateClass, SysTestSuiteCompanyIsolateMethod, SysTestSuiteCompIsolateClassWithTts, SysTestSuiteTTS, SysTestSuiteNoCleanup, SysTestSuiteActor, SysTestSuiteProvider',
+      'Filtering and selection attributes that exist: [SysTestMethod], [SysTestCheckInTest] / [SysTestNonCheckInTest], [SysTestInactiveTest], [SysTestTarget], [SysTestGranularity], [SysTestRow(...)] and [SysTestRowInactive(...)] for data-driven rows (10.0.25+), [SysTestCaseDataDependency], [SysTestCaseUseSingleInstance], [SysTestFeatureDependency], [SysTestFixture], [SysTestKey], [SysTestSecurity], [SysTestTransaction]. [SysTestCategory], [SysTestOwner], [SysTestPriority] and [SysTestAreaPath] live in TestEssentials, so the test model must reference it. There is NO SysTestCaseAutoRollback attribute — rollback is the framework default',
       'Transaction rollback: all DML in a test is rolled back after each test — no cleanup needed for DB state',
       'For methods that call ttsbegin internally: wrap test in try/catch and expect a clean state',
       'Mock dependencies: use delegation pattern or extract interfaces — X++ has no built-in mocking framework',
       'Naming convention: <ClassName>Test (e.g. MyServiceTest) — matches the repo systests and the testing topic; avoid mixing the <ClassName>_Test variant in the same model',
-      'Attributes: [SysTestMethodAttribute] optional — but helps categorize tests',
+      'Attributes: [SysTestMethod] is optional when the method name starts with "test", and required otherwise',
       'Run tests: Visual Studio → Test → Run All Tests, or SysTestSuite.run() in a batch job',
     ],
     examples: [
@@ -4136,7 +4150,56 @@ str methodName = methodStr(MyBonusService, calculate);
 str designRef  = ssrsReportStr(MyBonusReport, Report);`,
       },
     ],
-    related: ['select-statement', 'ssrs-reports', 'labels', 'reflection-dict'],
+    related: ['select-statement', 'ssrs-reports', 'labels', 'reflection-dict', 'runtime-functions'],
+  },
+
+  // ── Run-time (predefined) functions ─────────────────────────────────────
+  {
+    id: 'runtime-functions',
+    title: 'Run-Time (Predefined) Functions — the catalog the compiler actually has',
+    keywords: ['runtime function', 'predefined function', 'global function', 'strlen', 'substr', 'strfmt',
+               'conpeek', 'conlen', 'any2str', 'str2int', 'num2str', 'date2str', 'mkdate', 'round', 'decround',
+               'abs', 'power', 'today', 'curext', 'curuserid', 'funcname', 'prmisdefault', 'newguid', 'sleep',
+               'arity', 'argument count', 'does not denote a predefined function', 'strsplit', 'strreplace'],
+    summary:
+      'The ~170 functions that are not members of any class. The compiler is the authority on which ' +
+      'exist and how many arguments each takes (validate_code checks it as FN001/FN002 from a captured ' +
+      'table), and it disagrees with the language reference in both directions.',
+    rules: [
+      'Call them unqualified. X++ requires this./ClassName:: for methods, so a bare name(…) is a predefined function, a Global:: static or a local function — never an instance method',
+      'Conversion: any2Date/Enum/Guid/Int/Int64/Real/Str, str2Date(text, sequence), str2Datetime(text, sequence), str2Enum(typeVar, text), str2Guid, str2Int, str2Int64, str2Num, str2Time, int2Str, int642Str, uint2Str (use it for RecIds — int2Str overflows), num2Str(value, chars, decimals, sep1, sep2) — all five arguments, num2Char, char2Num(text, position), date2Num, num2Date, guid2Str, enum2Str(value), enum2Symbol(enumNum(E), value), symbol2Enum(enumNum(E), text), enum2int, enum2Value',
+      'String: strLen, strUpr, strLwr, subStr(text, position, number) 1-based, strDel, strIns, strRep, strFind/strScan/strNFind (all FOUR arguments: text, chars, start, count), strKeep, strRem, strLTrim, strRTrim, strLRTrim, strAlpha, strCmp, strColSeq, strLine, strPoke, strPrompt, strReplace(text, from, to), strSplit(text, separator) — returns a List, not a container, strStartsWith, strEndsWith, strContains, strLFix/strRFix (2 or 3 args), match(pattern, text)',
+      'Container: conLen, conPeek(container, position) 1-based, conDel(container, start, number), conNull, con2Str, str2Con. conIns, conFind and conPoke are VARIADIC — no argument count to check',
+      'Date: today, timeNow, systemDateGet/systemDateSet, year, mthOfYr, dayOfMth, dayOfWk, dayOfYr, wkOfYr, mkDate(day, month, year), endMth, nextMth/nextQtr/nextYr, prevMth/prevQtr/prevYr, dayName, mthName, dateNull, dateMax, dateMthFwd, dateStartMth, dateEndMth',
+      'Math: abs, round(value, decimals), decRound, power, trunc, frac, exp, exp10, log10, logN, the trigonometric set, corrFlagSet. max and min are VARIADIC. Business/finance: cTerm, ddb, dg, fV, idg, intvMax/intvName/intvNo/intvNorm, pmt, pt, pv, rate, sln, syd, term',
+      'Reflection: classIdGet, dimOf, typeOf, tableId2Name, tableId2PName, tableName2Id, fieldId2Name(tableId, fieldId [, arrayIndex]), fieldId2PName, fieldName2Id, indexId2Name, indexName2Id, classId2Name, className2Id, enumName2Id. Session: curExt, curUserId, funcName, getPrefix, setPrefix, sessionId, getCurrentPartition, getCurrentPartitionRecId, prmIsDefault, runAs (4–7 args)',
+      'OPTIONAL TRAILING ARGUMENTS the reference presents as fixed: date2Str takes 7 or 8 (the 8th is DateFlags; the platform calls it with 7 in 161 places), datetime2Str 1 or 2, fieldId2Name 2 or 3, con2Str 1 or 2, str2Con 1 to 3, strLFix/strRFix 2 or 3, and info/warning/error/checkFailed 1 to 3 (message, helpUrl, SysInfoAction)',
+      'GONE on 10.0.4x, though AX 2012 had them: corrFlagGet, dateMin, int2Enum, refPrintAll, typeName2Id — "The name \'x\' does not denote a predefined function, a static method on the Global class nor a previously defined local function". OBSOLETE (compiles with a warning): dateStartWk, dateEndWk, dateStartYr, dateEndYr',
+      'Getting a count wrong is a compile error caught offline: validate_code reports FN001 with the exact xppc text ("\'subStr\' expects 3 argument(s), but 2 specified" / "is missing argument 3"), and FN002 for a function this version does not have. The table behind both is captured from the compiler itself, not written by hand',
+      'today() compiles but fails BPUpgradeCodeToday — use DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone()); see datetime-timezones',
+    ],
+    examples: [
+      {
+        label: 'The argument counts that are easy to get wrong',
+        code: `// strFind/strScan/strNFind take FOUR arguments — text, characters, start, count
+int pos = strFind(line, ',', 1, strLen(line));
+
+// subStr is 1-based: position, then LENGTH (not an end index)
+str head = subStr(line, 1, pos - 1);
+
+// date2Str: 7 arguments (sequence, day, sep, month, sep, year), or 8 with DateFlags.
+// -1 in a format slot means "use the user's regional settings".
+str shown = date2Str(myDate, 321, 2, 1, 2, 1, 4);
+
+// strSplit returns a List — not a container
+List parts = strSplit('a,b,c', ',');
+
+// conIns is variadic; conPeek is 1-based
+container c = conIns(conNull(), 1, 2, 3);
+int first   = conPeek(c, 1);`,
+      },
+    ],
+    related: ['intrinsic-functions', 'xpp-data-types', 'enum-conversions', 'datetime-timezones', 'xpp-collections'],
   },
   {
     id: 'date-effective',

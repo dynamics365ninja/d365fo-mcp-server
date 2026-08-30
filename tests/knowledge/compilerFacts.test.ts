@@ -330,3 +330,39 @@ describe('the rules added from compiler diagnostics fire on the bad shape', () =
     expect(has('    var l = new System.Collections.Generic.List<str>();', 'CS001')).toBe(false);
   });
 });
+
+describe('knowledge names the testing API the platform actually has', () => {
+  const rulesText = (id: string) =>
+    KNOWLEDGE_BASE.find(e => e.id === id)!.rules.join('\n');
+
+  it('names assertExpectedException only to say it does not exist', () => {
+    for (const id of ['testing', 'unit-testing']) {
+      const text = rulesText(id);
+      expect(text, id).toMatch(/parmExceptionExpected/);
+      // The name may appear, but only inside the sentence that denies it.
+      for (const m of text.matchAll(/.{0,40}assertExpectedException.{0,40}/g)) {
+        expect(m[0], `${id}: ${m[0]}`).toMatch(/There is NO |does not exist/i);
+      }
+    }
+  });
+
+  it('names the suite classes that exist and not the one that does not', () => {
+    const text = rulesText('unit-testing');
+    expect(text).toMatch(/SysTestSuiteCompanyIsolateClass/);
+    expect(text).toMatch(/SysTestSuiteCompanyIsolateMethod/);
+    expect(text).not.toMatch(/SysTestSuiteCompanyIsolateShared/);
+    expect(text).not.toMatch(/SysTestCaseAutoRollback\b(?!\s+attribute)/);
+  });
+
+  it('places SysTestCase where the platform ships it', () => {
+    expect(rulesText('testing')).toMatch(/ApplicationFoundation/);
+  });
+
+  it('carries the run-time function catalog with the compiler-verified ranges', () => {
+    const text = rulesText('runtime-functions');
+    expect(text).toMatch(/date2Str takes 7 or 8/);
+    expect(text).toMatch(/conIns, conFind and conPoke are VARIADIC/);
+    expect(text).toMatch(/corrFlagGet, dateMin, int2Enum, refPrintAll, typeName2Id/);
+    expect(text).toMatch(/strSplit\(text, separator\) — returns a List/);
+  });
+});
