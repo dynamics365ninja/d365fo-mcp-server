@@ -53,12 +53,75 @@ export class PackageResolver {
   /**
    * Resolve a model name to its package name.
    * Returns null if the model cannot be found in any root.
+   *
+   * The direct probe first, because buildMap() is a sweep of the WHOLE metadata
+   * root and every write path calls this. On the reference VM's 214-package
+   * PackagesLocalDirectory the sweep is ~5 s with the directory metadata already
+   * cached, and every write pays it again on a fresh instance — a create in
+   * benchmark run d79f62a3 took 341 s and reported all of it as `(unmeasured)`.
+   * `<root>/<modelName>` answers the same question in two readdirs.
+   *
+   * When two packages declare the same model name the sweep's answer is
+   * whichever directory readdir happened to return first; the probe's is the
+   * package named after the model, which is the better of the two anyway.
    */
   async resolve(modelName: string): Promise<ResolvedPackage | null> {
+    const direct = await this.probeDirect(modelName);
+    if (direct) return direct;
+
     await this.ensureBuilt();
     return this.modelToPackageMap!.get(modelName) ||
       this.lowercaseLookup!.get(modelName.toLowerCase()) ||
       null;
+  }
+
+  /**
+   * `<root>/<modelName>` — the layout every D365FO package uses unless someone
+   * deliberately named the package differently from the model.
+   *
+   * Reads the same two things buildMap() would for that one directory: the
+   * descriptor (authoritative for both names) and, failing that, the presence of
+   * an AOT folder one level down. Anything unexpected returns null and lets the
+   * full sweep decide, so this can only make the common case cheaper — never
+   * change what an unusual layout resolves to.
+   */
+  private async probeDirect(modelName: string): Promise<ResolvedPackage | null> {
+    for (const rawRoot of this.roots) {
+      const root = normalizePathCase(rawRoot);
+      const pkgPath = path.join(root, modelName);
+
+      try {
+        const descriptorFiles = await fs.readdir(path.join(pkgPath, 'Descriptor'));
+        // Exact spelling wins over a case-insensitive one. A package can declare
+        // several models whose names differ only in case (ATLApplicationSuite
+        // and AtlApplicationSuite both live in the reference environment), and
+        // taking whichever file readdir returned first would resolve one to the
+        // other's package.
+        let looseHit: ResolvedPackage | null = null;
+        for (const file of descriptorFiles) {
+          if (!file.endsWith('.xml')) continue;
+          const content = await fs.readFile(path.join(pkgPath, 'Descriptor', file), 'utf-8');
+          const declared = content.match(/<Name>([^<]+)<\/Name>/)?.[1]?.trim();
+          if (!declared || declared.toLowerCase() !== modelName.toLowerCase()) continue;
+          const packageName = content.match(/<ModelModule>([^<]+)<\/ModelModule>/)?.[1]?.trim() || modelName;
+          if (declared === modelName) return { packageName, modelName: declared, rootPath: root };
+          // Case-only difference: keep the caller's spelling, which is also the
+          // directory's. The descriptor is authoritative for the PACKAGE name,
+          // the directory for the model's — `<root>/<package>/<model>/AxEnum`
+          // has to name real directories, and Copilot compares paths as strings.
+          looseHit ??= { packageName, modelName, rootPath: root };
+        }
+        if (looseHit) return looseHit;
+      } catch {
+        // No Descriptor directory here — try the filesystem shape below.
+      }
+
+      // `<root>/<modelName>/<modelName>/AxClass` etc. — package named after the model.
+      if (await this.hasAotTypeFolder(path.join(pkgPath, modelName))) {
+        return { packageName: modelName, modelName, rootPath: root };
+      }
+    }
+    return null;
   }
 
   /**
