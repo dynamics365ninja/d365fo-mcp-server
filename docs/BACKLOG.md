@@ -23,6 +23,57 @@ the design.
 
 ---
 
+## Live SysTest runs — blocked on an unconfigured platform config
+
+**Status:** open, parked as its own topic 2026-08-30. Not a code change; nothing in
+this repo can close it.
+
+**What.** Four eval cases carry `systest_pending: true` — `L2-coc-extension`,
+`L2-event-handler-basic`, `L3-batch-basic`, `L3-enum-field-form-downgrade-guard`.
+Their goldens are captured and they build clean; what has never run is the live
+SysTest, which is the runtime-correctness half of the oracle (§6.3). Until it does,
+those cases prove that the code COMPILES and nothing more.
+
+**Why it is stuck — and why the recorded reason was wrong.** `SysTestConsole.exe`
+now starts (two earlier assembly faults were fixed by config edits, each with a
+backup) and stops at `Login failed for user 'AOSUser'`. That was recorded as a
+rotated deployment credential and it is not one. **Nothing rotated.**
+`PackagesLocalDirectory\Bin\SysTestConsole.exe.config` is the shipped template,
+never configured for this machine, and it disagrees with the AOS's own
+`WebRoot\web.config` — same disk, works — on all four DataAccess settings:
+
+| setting | SysTestConsole.exe.config | web.config (the working one) |
+|---|---|---|
+| `DataAccess.Database` | `AxDbRain` | `AxDB` |
+| `DataAccess.SqlUser` | `AOSUser` | `axdbadmin` |
+| `DataAccess.DbServer` | `.` | the real host name |
+| `DataAccess.SqlPwd` | `$CREDENTIAL_PLACEHOLDER$` | an 828-character encrypted blob |
+
+**Why deferred.** The fix copies four values between platform config files. That
+edits the install and moves a secret, so it is the machine owner's call, not a
+tool's — and an assistant's sandbox classifier blocks it outright, correctly.
+
+**Trigger to un-defer.** Someone applies it on the VM: back up
+`SysTestConsole.exe.config`, copy the four `DataAccess.*` values from
+`WebRoot\web.config` **verbatim** (the password is an encrypted blob — copy, never
+retype), re-run `run_systest_class`. If it then connects, flip the four cases'
+`systest_pending` to false as each one actually runs, and record the runs in the
+corpus.
+
+**What was done instead.** `run_systest_class` performs the comparison itself and
+names the settings that differ, never printing the password — only "the shipped
+`$CREDENTIAL_PLACEHOLDER$`" or "set (N chars, not shown)". So the next person is
+not sent hunting a password that was never wrong.
+`compareSysTestDataAccess` and its five tests are in
+`src/tools/sdlc/sysTestRunner.ts` / `tests/tools/sysTestRunner.test.ts`.
+
+**Unknown.** Whether SysTestConsole can decrypt that blob at all: it is protected
+for the AOS service account, and the runner may execute as a different user. If it
+starts and still fails after the copy, that — not the config — is the real blocker,
+and running from Visual Studio Test Explorer stays the fallback.
+
+---
+
 ## Context pipeline — Phase 3b: live editor focus
 
 **Status:** deferred · **Area:** `src/workspace`, `src/types/context.ts` · **Depends on:** Phase 1–3a (shipped)
