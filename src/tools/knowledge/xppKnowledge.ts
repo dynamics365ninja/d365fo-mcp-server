@@ -4156,6 +4156,82 @@ str designRef  = ssrsReportStr(MyBonusReport, Report);`,
     related: ['select-statement', 'ssrs-reports', 'labels', 'reflection-dict', 'runtime-functions'],
   },
 
+  // ── Extending a report that already exists ──────────────────────────────
+  {
+    id: 'report-extension-patterns',
+    title: 'Extending a STANDARD report (dataset, design, menu item) without overlayering',
+    keywords: ['report extension', 'extend report', 'customize report', 'posthandlerfor', 'prehandlerfor',
+               'xppprepostargs', 'dataset extension', 'custom design', 'printmgmtdoctype',
+               'getdefaultreportformatdelegate', 'menu item extension', 'ssrs customization',
+               'duplicate report', 'report design', 'controller extension'],
+    summary:
+      'Three techniques cover almost every "change a standard report" request: add columns to its dataset, ' +
+      'give it a custom design, or point a menu item at your own report. All three are pure extension — ' +
+      'no overlayering — and each has an exact shape the compiler accepts.',
+    rules: [
+      'ADD COLUMNS TO AN EXISTING DATASET: extend the RDP\'s temp table with your fields (table extension), then fill them either in bulk with [PostHandlerFor(classStr(MyReportDP), methodStr(MyReportDP, processReport))] — one pass over the finished temp table — or per row with [DataEventHandler(tableStr(MyReportTmp), DataEventType::Inserting)]. Bulk for a lookup-per-set, row-by-row for a calculation; avoid a joined query in the row handler',
+      'The post-handler signature is public static void h(XppPrePostArgs _args), and the argument object gives you: _args.getThis() (the DP instance — downcast with as), _args.getReturnValue() / _args.setReturnValue(v), _args.getArg(\'_paramName\') / _args.setArg(\'_paramName\', v). All verified against xppc. For a static target use staticMethodStr in the attribute',
+      'A handler whose parameter profile does not match is a COMPILE error, not a runtime surprise: "Method \'void X.h(str _s)\' cannot be used as an event handler for method \'real Y.calc(int _qty)\' because the parameter profile does not match"',
+      'CUSTOM DESIGN FOR A BUSINESS DOCUMENT: duplicate the report in your model, rename it, then (1) subclass the standard controller and give it a main() that calls initArgs(_args, ssrsReportStr(MyReportExt, Report)), (2) subscribe to the print-management delegate — [SubscribesTo(classStr(PrintMgmtDocType), delegateStr(PrintMgmtDocType, getDefaultReportFormatDelegate))] public static void h(PrintMgmtDocumentType _docType, EventHandlerResult _result) — and _result.result(ssrsReportStr(MyReportExt, Report)) for the document type you are replacing, and (3) create an extension of the menu item and set its Object property to your controller',
+      'PrintMgmtDocType exposes seven delegates, all with the (PrintMgmtDocumentType, EventHandlerResult) shape: getDefaultReportFormatDelegate, getQueryTableIdDelegate, getQueryRangeFieldsDelegate, getPartyTypeDelegate, getPartyRecIdDelegate, getEmailAddressDelegate, getDestinationPartyTypeAndIdDelegate',
+      'REDIRECT A MENU ITEM: create an extension of the existing output menu item and change the report/design or the controller reference. It avoids hunting down every reference to the standard report, and it works for query-based and RDP-based reports alike',
+      'A post-handler on the CONTROLLER\'s construct() is the light-touch variant of the same idea: [PostHandlerFor(classStr(MyReportController), staticMethodStr(MyReportController, construct))] then controller.parmReportName(ssrsReportStr(MyReportExt, Report)) on the returned instance',
+      'Microsoft\'s guidance is that RDP classes are not extended directly — the extension points above exist for that reason. The compiler is less strict than the guidance (a CoC wrapper on SrsReportDataProviderBase.processReport compiles), so treat "use the handler" as a design rule, not something the build will enforce',
+      'Whichever route you take, the duplicated report keeps consuming the STANDARD data contract, so a platform change to the contract or the DP still reaches your report — that is the point of duplicating the design rather than the solution',
+      'Deploy the report after building (Deploy Reports in Visual Studio, or the DeployAllReportsToSsrs script) — a design change that is not deployed shows the old layout with no error',
+    ],
+    examples: [
+      {
+        label: 'Adding a column to a standard report dataset',
+        code: `public final class MyRentalsByCustHandler
+{
+    /// <summary>
+    /// One pass over the finished temp table — cheaper than a per-row lookup.
+    /// </summary>
+    [PostHandlerFor(classStr(FMRentalsByCustDP), methodStr(FMRentalsByCustDP, processReport))]
+    public static void processReportPostHandler(XppPrePostArgs _args)
+    {
+        FMRentalsByCustDP dp        = _args.getThis() as FMRentalsByCustDP;
+        TmpFMRentalsByCust tmpTable = dp.getTmpFMRentalsByCust();
+        FMRentalCharge     charge;
+
+        ttsBegin;
+
+        while select forUpdate tmpTable
+        {
+            select firstOnly Description from charge
+                where charge.RentalId == tmpTable.RentalId;
+
+            tmpTable.MyChargeDescription = charge.Description;
+            tmpTable.update();
+        }
+
+        ttsCommit;
+    }
+}`,
+      },
+      {
+        label: 'Pointing print management at a custom design',
+        code: `public final class MyPrintMgmtDocTypeHandler
+{
+    [SubscribesTo(classStr(PrintMgmtDocType), delegateStr(PrintMgmtDocType, getDefaultReportFormatDelegate))]
+    public static void getDefaultReportFormatDelegate(
+        PrintMgmtDocumentType _docType,
+        EventHandlerResult    _result)
+    {
+        switch (_docType)
+        {
+            case PrintMgmtDocumentType::SalesOrderConfirmation:
+                _result.result(ssrsReportStr(MySalesConfirm, Report));
+                break;
+        }
+    }
+}`,
+      },
+    ],
+    related: ['ssrs-reports', 'print-management', 'event-handlers', 'coc-authoring', 'ssrs-contracts'],
+  },
+
   // ── Form event handlers ─────────────────────────────────────────────────
   {
     id: 'form-event-handlers',

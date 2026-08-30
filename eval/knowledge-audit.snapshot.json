@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-08-30T11:06:14.399Z",
+  "capturedAt": "2026-08-30T12:08:11.717Z",
   "indexedAt": "2026-08-30T07:43:44.317Z",
   "ok": [
     "alerts-business-events|attribute|DataContract",
@@ -225,6 +225,16 @@
     "reflection-dict|new|DictTable",
     "reflection-dict|new|SysDictClass",
     "reflection-dict|static-call|SysDictTable::recordCount",
+    "report-extension-patterns|attribute|PostHandlerFor",
+    "report-extension-patterns|attribute|SubscribesTo",
+    "report-extension-patterns|declaration|FMRentalCharge",
+    "report-extension-patterns|declaration|FMRentalsByCustDP",
+    "report-extension-patterns|declaration|TmpFMRentalsByCust",
+    "report-extension-patterns|intrinsic|FMRentalsByCustDP",
+    "report-extension-patterns|intrinsic|PrintMgmtDocType",
+    "report-extension-patterns|static-call|DataEventType::Inserting",
+    "report-extension-patterns|static-call|FMRentalsByCustDP::processReport",
+    "report-extension-patterns|static-call|PrintMgmtDocumentType::SalesOrderConfirmation",
     "runtime-functions|declaration|List",
     "runtime-functions|static-call|DateTimeUtil::getToday",
     "runtime-functions|static-call|DateTimeUtil::getUserPreferredTimeZone",

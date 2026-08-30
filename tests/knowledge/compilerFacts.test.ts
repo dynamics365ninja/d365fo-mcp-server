@@ -366,3 +366,39 @@ describe('knowledge names the testing API the platform actually has', () => {
     expect(text).toMatch(/strSplit\(text, separator\) — returns a List/);
   });
 });
+
+describe('report-extension knowledge names only compiler-verified shapes', () => {
+  const entry = KNOWLEDGE_BASE.find(e => e.id === 'report-extension-patterns')!;
+  const text = entry.rules.join('\n');
+
+  it('carries the XppPrePostArgs surface a probe compiled', () => {
+    for (const member of ['getThis()', 'getReturnValue()', 'setReturnValue(', 'getArg(', 'setArg(']) {
+      expect(text, member).toContain(member);
+    }
+  });
+
+  it('quotes the compiler message for a mismatched handler signature', () => {
+    expect(text).toMatch(/cannot be used as an event handler/);
+  });
+
+  it('lists the print-management delegates that exist', () => {
+    for (const d of [
+      'getDefaultReportFormatDelegate',
+      'getQueryTableIdDelegate',
+      'getQueryRangeFieldsDelegate',
+      'getPartyTypeDelegate',
+      'getPartyRecIdDelegate',
+      'getEmailAddressDelegate',
+      'getDestinationPartyTypeAndIdDelegate',
+    ]) {
+      expect(text, d).toContain(d);
+    }
+  });
+
+  it('separates the design rule from what the compiler enforces', () => {
+    // "You can't extend RDP classes" is Microsoft's guidance; a CoC wrapper on
+    // SrsReportDataProviderBase.processReport does compile, and the entry says so
+    // rather than presenting the guidance as a compiler restriction.
+    expect(text).toMatch(/design rule, not something the build will enforce/);
+  });
+});
