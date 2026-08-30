@@ -16,9 +16,11 @@ import { getConfigManager } from '../../utils/configManager.js';
 import {
   crossModelLabelWarning,
   formatLabelReference,
+  isCoreLabelFile,
   isLabelLikelyResolvable,
   labelProvenanceWarning,
 } from '../../utils/labelReference.js';
+import { labelsMissingOnDisk } from '../../utils/labelDiskCheck.js';
 import { recordLabelSearch, repeatSearchNotice, searchBudgetNotice } from './labelSearchHistory.js';
 import { createPhaseTimer } from '../../utils/phaseTimer.js';
 
@@ -72,6 +74,80 @@ export const NO_REUSE_ADVICE =
  */
 export const SOME_REUSE_ADVICE =
   `➡️  If none of the hits above says what you need, create your own label and move on:\n` + CREATE_CALL_ADVICE;
+
+/**
+ * Marks a listed row whose label the index has and the .label.txt does not.
+ */
+export const STALE_MARKER = '👻';
+
+/** Row identity for the stale set — the same three columns the index is keyed by. */
+function rowKey(r: { labelId: string; labelFileId: string; model: string }): string {
+  return `${r.labelId}\u0000${r.labelFileId}\u0000${r.model}`;
+}
+
+/**
+ * Which of these rows are phantoms — in the symbol index, absent from disk.
+ *
+ * `labels(action="info")` has confirmed a single id against its .label.txt since
+ * the 2026-08-07 demo; `action="search"` never did, and search is the call an
+ * agent makes BEFORE it reuses a label. Benchmark run d79f62a3 (2026-08-17) took
+ * all three labels it needed from one search — the enum's, the field's and the
+ * error message's — all reported as resolvable [AslFinanceSK] hits, none of them
+ * on disk. `xppc` does not check labels, so the first build passed; the run paid
+ * a second build, a second BP check and ~12 AIU to find out.
+ *
+ * Core label files (SYS, ApplicationSuite, …) are skipped: this server never
+ * writes them, so their rows cannot be phantoms, and proving it would read ~10 MB
+ * per language file on every search.
+ */
+async function findStaleRows(
+  rows: Array<{ labelId: string; labelFileId: string; model: string }>,
+  symbolIndex: XppServerContext['symbolIndex'],
+): Promise<Set<string>> {
+  const stale = new Set<string>();
+  const groups = new Map<string, { labelFileId: string; model: string; ids: string[] }>();
+
+  for (const r of rows) {
+    if (isCoreLabelFile(r.labelFileId)) continue;
+    const key = `${r.labelFileId}\u0000${r.model}`;
+    const group = groups.get(key) ?? { labelFileId: r.labelFileId, model: r.model, ids: [] };
+    if (!group.ids.includes(r.labelId)) group.ids.push(r.labelId);
+    groups.set(key, group);
+  }
+
+  for (const group of groups.values()) {
+    let paths: string[];
+    try {
+      paths = symbolIndex.getLabelFilePaths(group.labelFileId, group.model).map(p => p.filePath);
+    } catch {
+      continue; // No indexed path — no verdict, which is the silent answer.
+    }
+    if (paths.length === 0) continue;
+    // The STORED id goes to the disk check, never a reformatted reference: the
+    // 27 legacy files hold `@GLS4170035=…`, so probing them with the bare id
+    // would report most of the corpus as missing.
+    const verdicts = await labelsMissingOnDisk(group.ids, paths);
+    for (const [labelId, missing] of verdicts) {
+      if (missing === true) stale.add(rowKey({ labelId, labelFileId: group.labelFileId, model: group.model }));
+    }
+  }
+
+  return stale;
+}
+
+/** What to do about the phantoms, once per result set rather than once per row. */
+function staleRowsWarning(
+  rows: Array<{ labelId: string; labelFileId: string; model: string }>,
+): string {
+  const first = rows[0];
+  return `${STALE_MARKER} ${rows.length} result(s) marked ${STALE_MARKER} are in the symbol index but NOT in ` +
+    `their label file on disk — treat them as NOT existing. The index is ahead of the file system ` +
+    `(a rolled-back run, a rebuild outside this server, a checkout). Referencing one compiles clean ` +
+    `and then fails the best-practice check with "Unknown label". Create it for real first:
+` +
+    `      labels(action="create", createIfMissing=true, labelFileId="${first.labelFileId}", ` +
+    `model="${first.model}", labelId="${first.labelId}", translations=[{language:"en-US", text:"…"}])`;
+}
 
 const SearchLabelsArgsSchema = z.object({
   query: z
@@ -207,6 +283,12 @@ export async function searchLabelsTool(request: CallToolRequest, context: XppSer
 
     const normalised = results.slice(0, maxResults).map(normalise);
 
+    // Confirm the rows against disk before recommending any of them — an index
+    // row is not proof the label exists. Timed like every other phase so a slow
+    // check names itself instead of hiding in the total.
+    const stale = await timer.time('label disk check', () => findStaleRows(normalised, symbolIndex));
+    const staleRows = normalised.filter(r => stale.has(rowKey(r)));
+
     // Owners of the flagged rows, in result order — named once below instead of
     // repeating the same sentence on every line (#832).
     const flaggedModels: string[] = [];
@@ -222,8 +304,11 @@ export async function searchLabelsTool(request: CallToolRequest, context: XppSer
         if (!flaggedModels.includes(r.model)) flaggedModels.push(r.model);
       }
 
+      const isStale = stale.has(rowKey(r));
+
       if (verbose) {
-        lines.push(`  ${ref}${resolvable ? '' : `   ${labelProvenanceWarning(r.model)}`}`);
+        lines.push(`  ${ref}${isStale ? `   ${STALE_MARKER} NOT on disk` : ''}` +
+          `${resolvable ? '' : `   ${labelProvenanceWarning(r.model)}`}`);
         lines.push(`  Text    : ${r.text}`);
         if (r.comment) lines.push(`  Comment : ${r.comment}`);
         lines.push(`  Model   : ${r.model}  |  LabelFile: ${r.labelFileId}`);
@@ -232,7 +317,7 @@ export async function searchLabelsTool(request: CallToolRequest, context: XppSer
         // One line per label: @File:Id — "Text" [owner], with ⚠️ marking the rows
         // the hoisted ownership warning below is about.
         const text = (r.text ?? '').replace(/\s+/g, ' ').trim();
-        lines.push(`  ${ref} — "${text}" [${r.model}]${resolvable ? '' : ' ⚠️'}`);
+        lines.push(`  ${ref} — "${text}" [${r.model}]${resolvable ? '' : ' ⚠️'}${isStale ? ` ${STALE_MARKER}` : ''}`);
       }
     }
 
@@ -246,19 +331,31 @@ export async function searchLabelsTool(request: CallToolRequest, context: XppSer
 
     // Once per result set, not once per label (#832).
     if (flaggedCount > 0 && !verbose) lines.push(crossModelLabelWarning(flaggedModels, flaggedCount));
+    if (staleRows.length > 0) lines.push(staleRowsWarning(staleRows));
 
     // Only ever *recommend* a label the model can actually resolve — suggesting an
     // unreferenced one is what produced BPErrorUnknownLabel in the sweep (#33/#41).
-    const recommended = normalised.find(r => isLabelLikelyResolvable(r.labelFileId, r.model, currentModel));
+    // …and never a phantom: a row the .label.txt does not declare is not reusable,
+    // whatever the index says about it.
+    const recommended = normalised.find(
+      r => isLabelLikelyResolvable(r.labelFileId, r.model, currentModel) && !stale.has(rowKey(r)),
+    );
     if (recommended) {
       const ref = formatLabelReference(recommended.labelFileId, recommended.labelId);
       lines.push(`${REUSABLE_MARKER}  literalStr("${ref}")`);
       lines.push(`💡 Or in metadata XML:  <Label>${ref}</Label>`);
     } else {
+      // Two different reasons for "nothing to recommend", and they take different
+      // next steps: a label owned elsewhere needs a package reference, a phantom
+      // needs creating. Saying the first about the second sent a caller looking
+      // for a reference problem that was not there.
       lines.push(
-        `⚠️ None of these labels is in a core label file (SYS/…) or in your own model, so none is ` +
-        `recommended as-is: referencing one raises BPErrorUnknownLabel unless your model references ` +
-        `its package.`,
+        staleRows.length > 0
+          ? `⚠️ Every hit your model could have used is ${STALE_MARKER} — indexed but not on disk. ` +
+            `Nothing here is reusable as-is; create the label (see above) and move on.`
+          : `⚠️ None of these labels is in a core label file (SYS/…) or in your own model, so none is ` +
+            `recommended as-is: referencing one raises BPErrorUnknownLabel unless your model references ` +
+            `its package.`,
       );
       lines.push('');
       lines.push(NO_REUSE_ADVICE.trimEnd());
