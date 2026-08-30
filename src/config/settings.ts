@@ -690,6 +690,49 @@ export const SETTINGS: Setting[] = [
       'Aggregate metrics cannot say which specific call cost five minutes; this can. Set LOG_FILE to keep the lines.',
     default: 10000,
   },
+  {
+    path: 'server.slowCallHeartbeatMs',
+    env: 'SLOW_CALL_HEARTBEAT_MS',
+    section: 'server',
+    tier: 'advanced',
+    type: 'int',
+    label: 'Say what a running call is doing every (ms)',
+    description:
+      'While a tool call is still running, print the phase it is in to stderr at this interval. ' +
+      'The phase block in the reply is only ever read afterwards; a create that took 341 s and ' +
+      'reported all of it as unmeasured left nothing to look at either way. 0 turns it off.',
+    default: 30000,
+  },
+  {
+    path: 'index.warmup',
+    env: 'INDEX_WARMUP',
+    section: 'index',
+    tier: 'advanced',
+    type: 'enum',
+    label: 'Warm the hot indexes at startup',
+    description:
+      'Reads the indexes the request paths use into the OS file cache, on a worker thread, before ' +
+      'the first question needs them. Measured on the reference environment: the first covering scan ' +
+      'of the symbol-name index costs 83 s cold and 0.11 s warm, and the label join behind every ' +
+      'label search 31 s cold. Turn it off where a second reader of the same file is not free.',
+    default: 'on',
+    choices: [
+      { value: 'on', hint: 'warm in the background at startup (default)' },
+      { value: 'off', hint: 'first query pays for the cold cache, as before' },
+    ],
+  },
+  {
+    path: 'index.warmupBudgetMs',
+    env: 'INDEX_WARMUP_BUDGET_MS',
+    section: 'index',
+    tier: 'advanced',
+    type: 'int',
+    label: 'Stop starting warm-up steps after (ms)',
+    description:
+      'The warm-up stops beginning new steps once it has run this long; steps are ordered by what ' +
+      'the request paths wait on longest, so the budget cuts the least useful ones first.',
+    default: 600000,
+  },
 
   // ── bridge ───────────────────────────────────────────────────────────────
   {

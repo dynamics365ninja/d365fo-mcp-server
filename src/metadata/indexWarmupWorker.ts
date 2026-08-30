@@ -21,6 +21,13 @@
  * The OS page cache is process-wide, so warming it here warms it for the
  * server's own connections — the work does not have to happen on them.
  *
+ * What it is not: permanent. The two databases together are larger than the
+ * cache they compete for on the reference VM — a full warm-up measured 102 s
+ * end to end, and a scan of the symbol name index that had cost 0.11 s was back
+ * to 46 s after a build had read enough to evict it. Warming at startup buys the
+ * session's first questions, which is what the benchmark measures; it does not
+ * buy the whole session.
+ *
  * Spawned by warmIndexes(); posts one message per step and a final summary.
  */
 

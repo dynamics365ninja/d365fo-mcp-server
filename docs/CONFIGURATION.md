@@ -93,6 +93,8 @@ What gets extracted into the SQLite index and where it is stored.
 | `index.bpCatalogPath` | advanced | `BP_CATALOG_PATH` | — | Per-instance JSON catalog of real BP-check monikers, extracted from this instance's own D365FO version (scripts/extract-bp-catalog.ps1). Falls back to the compiled-in snapshot when absent — this setting is only written once an instance has regenerated its own catalog. |
 | `index.labelSortOrder` | advanced | `LABEL_SORT_ORDER` | `alphabetical` | Alphabetical keeps .label.txt files sorted (smaller diffs, matches most teams); append adds new labels at the end of the file (preserves manual grouping). Values: `alphabetical` — insert in sorted position; `append` — add at the end of the file. |
 | `index.computeStats` | advanced | `COMPUTE_STATS` | `false` | Adds per-object usage counts used for ranking. Noticeably slows down large builds. |
+| `index.warmup` | advanced | `INDEX_WARMUP` | `on` | Reads the indexes the request paths use into the OS file cache, on a worker thread, before the first question needs them. Measured on the reference environment: the first covering scan of the symbol-name index costs 83 s cold and 0.11 s warm, and the label join behind every label search 31 s cold. Turn it off where a second reader of the same file is not free. Values: `on` — warm in the background at startup (default); `off` — first query pays for the cold cache, as before. |
+| `index.warmupBudgetMs` | advanced | `INDEX_WARMUP_BUDGET_MS` | `600000` | The warm-up stops beginning new steps once it has run this long; steps are ordered by what the request paths wait on longest, so the budget cuts the least useful ones first. |
 
 ### Server runtime
 
@@ -118,6 +120,7 @@ Transport, timeouts and logging of the MCP server process.
 | `server.operationLockPollMs` | advanced | `OPERATION_LOCK_POLL_MS` | `250` | How often the waiting process re-checks the lock. |
 | `server.operationLockStaleMs` | advanced | `OPERATION_LOCK_STALE_MS` | `1200000` | A lock older than this is treated as left behind by a crashed process and broken. |
 | `server.slowCallLogMs` | advanced | `SLOW_CALL_LOG_MS` | `10000` | Writes one line per tool call that exceeds this, with the tool name and a short argument digest. Aggregate metrics cannot say which specific call cost five minutes; this can. Set LOG_FILE to keep the lines. |
+| `server.slowCallHeartbeatMs` | advanced | `SLOW_CALL_HEARTBEAT_MS` | `30000` | While a tool call is still running, print the phase it is in to stderr at this interval. The phase block in the reply is only ever read afterwards; a create that took 341 s and reported all of it as unmeasured left nothing to look at either way. 0 turns it off. |
 | `server.apiKey` | secret | `API_KEY` | — | Every HTTP request must present this key as X-Api-Key (or Authorization: Bearer). Required for any server reachable from the network — without it the listener serves your indexed X++ source to anyone who can reach the port, so with no key set the server binds 127.0.0.1 instead, and refuses to start if HOST asks for a public interface anyway. May be left empty only for a localhost-only development server. Generate with `openssl rand -hex 32`. |
 
 ### C# bridge
@@ -195,7 +198,9 @@ Downloading a pre-built index from blob storage instead of building it locally.
     "metadataPath": "./extracted-metadata",
     "bpCatalogPath": "",
     "labelSortOrder": "alphabetical",
-    "computeStats": false
+    "computeStats": false,
+    "warmup": "on",
+    "warmupBudgetMs": 600000
   },
   "server": {
     "mode": "full",
@@ -214,7 +219,8 @@ Downloading a pre-built index from blob storage instead of building it locally.
     "operationLockTimeoutMs": 900000,
     "operationLockPollMs": 250,
     "operationLockStaleMs": 1200000,
-    "slowCallLogMs": 10000
+    "slowCallLogMs": 10000,
+    "slowCallHeartbeatMs": 30000
   },
   "bridge": {
     "readyTimeoutMs": 30000,
