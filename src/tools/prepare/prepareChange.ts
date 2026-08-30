@@ -426,7 +426,20 @@ async function fetchNamingValidation(
   if (proposedName.length > 81) {
     issues.push(`❌ Name exceeds 81-char AOT limit (${proposedName.length} chars). Shorten it.`);
   }
-  if (!/^[A-Z]/.test(proposedName)) {
+  // PascalCase is a rule for a name you INVENT. An extension name is derived
+  // from one you did not: `{Base}{Prefix}_Extension` inherits its first letter
+  // from the base class, and the product ships camelCase classes
+  // (whsWorkExecuteDisplayChangeBatchDisp, …). Demanding uppercase here made the
+  // two validators unsatisfiable together — prepare rejected
+  // `whs…Con_Extension` for its lowercase w, validate_object_naming rejected
+  // `Whs…Con_Extension` for not starting with the base name and prescribed
+  // exactly the name prepare had just refused. The base's casing wins; only a
+  // name that is not a letter at all is wrong here.
+  const inheritsBaseCasing =
+    !!objectName && proposedName.toLowerCase().startsWith(objectName.toLowerCase());
+  if (!/^[A-Za-z]/.test(proposedName)) {
+    issues.push('❌ Name must start with a letter.');
+  } else if (!/^[A-Z]/.test(proposedName) && !inheritsBaseCasing) {
     issues.push('❌ Name must start with an uppercase letter (PascalCase).');
   }
   try {

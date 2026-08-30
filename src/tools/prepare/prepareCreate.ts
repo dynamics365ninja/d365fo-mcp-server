@@ -114,7 +114,13 @@ async function validateNaming(
   if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(baseName)) {
     issues.push('❌ Name may contain only letters, digits and underscores, and must not start with a digit.');
   }
-  if (!/^[A-Z]/.test(baseName)) {
+  // An extension name is derived from a base name the caller did not choose —
+  // `{Base}{Prefix}_Extension` for a class, `Base.Suffix` for an element — and
+  // the product ships camelCase classes, so the derived name legitimately starts
+  // lowercase. Requiring PascalCase for those contradicts the extension rule
+  // checkObjectNaming enforces below, leaving no name that satisfies both.
+  const isExtensionForm = /_Extension$/.test(baseName) || baseName.includes('.');
+  if (!/^[A-Z]/.test(baseName) && !isExtensionForm) {
     issues.push('❌ Name must start with an uppercase letter (PascalCase).');
   }
   // The charset check above sees the name the CALLER typed. The name that actually
