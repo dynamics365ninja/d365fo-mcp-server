@@ -72,7 +72,7 @@ export const MOBILE_APP_PATTERN_CATALOG: MobileAppPatternSpec[] = [
         role: 'Step (no screen)',
         naming: '{Area}ProcessGuide{Action}Step',
         baseOrType: 'class extends ProcessGuideStepWithoutPrompt',
-        notes: 'The step that DOES the work. Runs silently after the confirm screen; override doExecute() and call addProcessCompletionMessage() so the next screen shows "Work completed".',
+        notes: 'The step that DOES the work. Runs silently after the prompt screen; override doExecute() and call addProcessCompletionMessage() so the next screen shows "Work completed".',
       },
       {
         role: 'Mobile device menu item',
@@ -86,7 +86,7 @@ export const MOBILE_APP_PATTERN_CATALOG: MobileAppPatternSpec[] = [
         label: 'Controller — the process, its first step and its route',
         code: `/// <summary>
 /// Guides a worker through the demo pack process on the mobile device: prompt
-/// for a container, confirm it, then register the pack.
+/// for a container, then register the pack.
 /// </summary>
 [WHSWorkExecuteMode(WHSWorkExecuteMode::MyDemoPack)]
 public class MyDemoProcessGuidePackController extends ProcessGuideController
@@ -102,8 +102,12 @@ public class MyDemoProcessGuidePackController extends ProcessGuideController
 
         // A route is a plain map of "after this step, that step". Conditional
         // branching needs its own navigation agent instead - see methodNotes.
-        navigationRoute.addFollowingStep(classStr(MyDemoProcessGuidePromptContainerStep), classStr(MyDemoProcessGuideConfirmStep));
-        navigationRoute.addFollowingStep(classStr(MyDemoProcessGuideConfirmStep), classStr(MyDemoProcessGuideRegisterPackStep));
+        // Every classStr() here is compile-time checked, so the route may name
+        // ONLY steps this flow actually creates: an edge through a confirm step
+        // you have not written does not compile, and there is no reusable
+        // framework confirm step to borrow (every ProcessGuide*Confirm*Step in
+        // the product is process-specific, with its own page builder).
+        navigationRoute.addFollowingStep(classStr(MyDemoProcessGuidePromptContainerStep), classStr(MyDemoProcessGuideRegisterPackStep));
         navigationRoute.addFollowingStep(classStr(MyDemoProcessGuideRegisterPackStep), classStr(MyDemoProcessGuidePromptContainerStep));
 
         return navigationRoute;
