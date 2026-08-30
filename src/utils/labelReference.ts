@@ -71,6 +71,36 @@ export function parseLabelReference(ref: string): { labelFileId?: string; labelI
   return { labelId: s.startsWith('@') ? s.slice(1) : s };
 }
 
+/**
+ * The label file ids an `@FileId:LabelId` reference can actually name.
+ *
+ * Same charset {@link parseLabelReference} accepts, hoisted so the WRITE side
+ * can refuse what the READ side could never resolve. Defect found on the VM:
+ * a model called `fm-mcp` gets a label file id `fm-mcp`, `labels(create)`
+ * accepted it, wrote the label, reported success and advertised
+ * `literalStr("@fm-mcp:ScanContainer")` — a reference no one can use, because
+ * the hyphen ends the identifier. Two witnesses agreed: `labels(action="info")`
+ * could not find the label it had just created, and xppbp raised
+ * `BPErrorLabelIsText: '@fm-mcp:ScanContainer' is not a label ID`.
+ */
+const VALID_LABEL_FILE_ID = /^[A-Za-z][A-Za-z0-9_]*$/;
+
+/** True when `@<id>:SomeLabel` is a reference X++ and xppbp will accept. */
+export function isValidLabelFileId(labelFileId: string | undefined): boolean {
+  return VALID_LABEL_FILE_ID.test((labelFileId ?? '').trim());
+}
+
+/**
+ * The nearest valid label file id to a rejected one — `fm-mcp` → `fmmcp`.
+ *
+ * Offered as a SUGGESTION only. Deriving it silently would put the label in a
+ * file the caller never named, so the write refuses and prints this instead.
+ */
+export function suggestLabelFileId(labelFileId: string | undefined): string {
+  const stripped = (labelFileId ?? '').replace(/[^A-Za-z0-9_]/g, '');
+  return /^[A-Za-z]/.test(stripped) ? stripped : `Lbl${stripped}`;
+}
+
 /** A legacy AX-era id: 2-4 letters naming the label file, then digits. */
 const LEGACY_LABEL_ID = /^[A-Za-z]{2,4}\d+$/;
 

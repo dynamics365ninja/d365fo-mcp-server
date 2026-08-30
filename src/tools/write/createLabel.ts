@@ -26,7 +26,8 @@ import { crossModelWriteRefusal, standDownNotice } from '../../utils/crossModelW
 import { resolveAnchorModel } from './writeAnchorGuard.js';
 import { detectEol } from '../../utils/eolUtils.js';
 import {
-  deriveLabelIdFromText, formatLabelReference, labelIdSpellings, parseLabelReference,
+  deriveLabelIdFromText, formatLabelReference, isValidLabelFileId, labelIdSpellings,
+  parseLabelReference, suggestLabelFileId,
 } from '../../utils/labelReference.js';
 import { isExtensionLabelFile } from '../../metadata/labelParser.js';
 import { ProjectFileManager, ProjectFileFinder } from '../../workspace/projectFile.js';
@@ -42,7 +43,12 @@ const TranslationSchema = z.object({
   comment: z.string().optional().describe('Optional developer comment for this language'),
 });
 
-const CreateLabelArgsSchema = z.object({
+/**
+ * Exported so argument validation can be tested WITHOUT calling the tool: the
+ * create branch writes real .label.txt files into a live model, so a test that
+ * exercises it through createLabelTool leaves labels behind in the environment.
+ */
+export const CreateLabelArgsSchema = z.object({
   labelId: z
     .string()
     .regex(/^[A-Za-z][A-Za-z0-9_]*$/, 'Label ID must be alphanumeric (no spaces)')
@@ -55,11 +61,19 @@ const CreateLabelArgsSchema = z.object({
     ),
   labelFileId: z
     .string()
+    .regex(
+      /^[A-Za-z][A-Za-z0-9_]*$/,
+      'Label file ID must start with a letter and contain only letters, digits and underscores — ' +
+      'it is the first half of an @LabelFileId:LabelId reference, so a hyphen or dot ends the ' +
+      'identifier and makes every label in the file unreferenceable (BPErrorLabelIsText)',
+    )
     .describe(
       'Label file ID to add the label to (e.g. ContosoExt). Must exist in the model, or be creatable ' +
       '(createLabelFileIfMissing=true, default). ⛔ For a NEW label file this ID is the MODEL name — ' +
       'never the bare EXTENSION_PREFIX (e.g. use "ContosoExt", not "Con"). The file lives inside the ' +
-      'model directory regardless of prefix, so an ID that is not the model name will not resolve.',
+      'model directory regardless of prefix, so an ID that is not the model name will not resolve. ' +
+      'When the model name itself is not a valid identifier (e.g. "fm-mcp"), the label file ID CANNOT ' +
+      'equal it — pass a valid one ("fmmcp"); the file still lives in the model directory.',
     ),
   model: z
     .string()
@@ -423,12 +437,21 @@ const MAX_LABEL_ID_CANDIDATES = 5;
  * The file named after the model is the convention, so it wins; otherwise the
  * one original file the model already has; otherwise the model name, which
  * createLabelFileIfMissing then creates.
+ *
+ * A file whose id cannot appear in an `@FileId:LabelId` reference is skipped
+ * rather than preferred: a model named `fm-mcp` ships a label file `fm-mcp`,
+ * and picking it hands the caller a reference xppbp rejects. When only such
+ * files exist the model name is returned unchanged, and the callers below
+ * refuse on {@link isValidLabelFileId} instead of writing an unusable label.
  */
 export function pickOriginalLabelFileId(model: string, symbolIndex?: XppSymbolIndex): string {
   try {
     const originals = (symbolIndex?.getLabelFileIds(model) ?? [])
       .filter(f => !isExtensionLabelFile(f.labelFileId));
     const named = originals.find(f => f.labelFileId.toLowerCase() === model.toLowerCase());
+    if (named && isValidLabelFileId(named.labelFileId)) return named.labelFileId;
+    const usable = originals.find(f => isValidLabelFileId(f.labelFileId));
+    if (usable) return usable.labelFileId;
     if (named) return named.labelFileId;
     if (originals.length > 0) return originals[0].labelFileId;
   } catch {
@@ -552,6 +575,12 @@ export async function resolveOrCreateLabelRef(
   if (!base) return null;
 
   const labelFileId = target.labelFileId ?? pickOriginalLabelFileId(target.model, symbolIndex);
+
+  // No label file whose id can be referenced: auto-labelling here would hand
+  // back `@fm-mcp:Something`, which reads as a working reference and is not one.
+  // Falling through to null leaves the caller its raw text and the BP advisory
+  // — worse copy, but honest, and the caller can still create a valid file.
+  if (!isValidLabelFileId(labelFileId)) return null;
 
   // An enum field must not carry its enum's own label id.
   const excluded = new Set<string>();
@@ -680,6 +709,14 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       // Detect the common mistake of passing the label-file shape
       // (labelFileId + top-level `language`) instead of labelId + translations[].
       const raw = (request.params.arguments ?? {}) as Record<string, unknown>;
+      // A rejected labelFileId is usually the model name copied verbatim, so
+      // name the id that WOULD work rather than restating the rule.
+      const badFileId =
+        typeof raw.labelFileId === 'string' && !isValidLabelFileId(raw.labelFileId)
+          ? `\n\n💡 "${raw.labelFileId}" cannot be referenced as \`@${raw.labelFileId}:YourLabel\`. ` +
+            `Use labelFileId="${suggestLabelFileId(raw.labelFileId)}" (model stays "${raw.model ?? raw.labelFileId}") — ` +
+            `the label file lives in the model directory either way.`
+          : '';
       const wrongShape =
         (raw.language !== undefined || raw.labelFileId !== undefined) &&
         raw.labelId === undefined &&
@@ -698,6 +735,7 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
             `Required: labelId, labelFileId, model, translations:[{language, text}]. Example:\n` +
             `  labels(action="create", labelId="EquipmentName", labelFileId="ContosoExt", model="ContosoExt", ` +
             `translations=[{language:"en-US", text:"Equipment name"}])` +
+            badFileId +
             shapeHint,
         }],
         isError: true,
