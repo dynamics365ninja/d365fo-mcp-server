@@ -97,7 +97,7 @@ export const TAXONOMY: CoverageLeaf[] = [
   },
   {
     id: 'enum-extension', label: 'Enum extension', domain: 'Data model', source: 'aot', tier: 'core', weight: 4,
-    aotTypes: ['enum-extension'], knowledgeIds: ['coc'],
+    aotTypes: ['enum-extension'], knowledgeIds: ['coc', 'extensible-enums'],
     caseIds: ['L2-enum-extension-empty-values', 'L2-enum-modify-values'],
   },
   {
@@ -160,16 +160,26 @@ export const TAXONOMY: CoverageLeaf[] = [
   },
   {
     id: 'transactions', label: 'Transactions (ttsbegin/ttscommit)', domain: 'Code', source: 'topic', tier: 'core', weight: 5,
-    aotTypes: ['class'], knowledgeIds: ['transactions'], caseTags: ['modify'],
+    aotTypes: ['class'], knowledgeIds: ['transactions'],
+    // 'modify' is a WRITE-OP tag: it matched eight metadata-edit cases and none of
+    // them opens a transaction. The two cases that do are named instead.
+    caseIds: ['L2-exception-tts-retry', 'L2-occ-retry-basic'],
   },
   {
     id: 'select-grammar', label: 'X++ select grammar', domain: 'Code', source: 'topic', tier: 'core', weight: 5,
     aotTypes: ['class'], knowledgeIds: ['select-statement', 'query-patterns'],
-    caseIds: ['L4-ssrs-report-basic', 'L4-ssrs-report-advanced'],
+    // The two report cases carry one insert_recordset between them. The select
+    // surface — joins, find options, date-effective ranges, cross-company — is
+    // exercised by these three, so the leaf rests on them too.
+    caseIds: ['L4-ssrs-report-basic', 'L4-ssrs-report-advanced', 'L2-sysda-fluent-query',
+      'L2-date-effective-table', 'L2-multi-company-changecompany'],
   },
   {
     id: 'set-based', label: 'Set-based operations', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
-    aotTypes: ['class'], knowledgeIds: ['set-based'], caseIds: ['L4-ssrs-report-basic'],
+    aotTypes: ['class'], knowledgeIds: ['set-based'],
+    // L2-performance-set-based is the case written FOR this leaf — its instruction
+    // fails a while-select that inserts row by row, which is the whole point.
+    caseIds: ['L2-performance-set-based', 'L4-ssrs-report-basic'],
   },
   {
     id: 'sysda', label: 'SysDa fluent query API', domain: 'Code', source: 'topic', tier: 'total', weight: 1,
@@ -197,7 +207,10 @@ export const TAXONOMY: CoverageLeaf[] = [
   },
   {
     id: 'bp-rules', label: 'Best-practice (BP) compliance', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
-    aotTypes: ['class'], knowledgeIds: ['bp-rules'], caseTags: ['deterministic'],
+    aotTypes: ['class'], knowledgeIds: ['bp-rules'],
+    // 'deterministic' is an authoring convention (45 cases carry it), not a BP
+    // assertion. The case that exercises the BP machinery is named.
+    caseIds: ['L2-bp-suppression-lifecycle'], caseTags: ['deterministic'],
   },
   {
     id: 'deprecated-apis', label: 'Deprecated APIs & migration', domain: 'Code', source: 'topic', tier: 'core', weight: 3,
@@ -312,7 +325,10 @@ export const TAXONOMY: CoverageLeaf[] = [
   {
     id: 'menu-item', label: 'Menu items (display/action/output)', domain: 'UI', source: 'aot', tier: 'core', weight: 5,
     aotTypes: ['menu-item-display', 'menu-item-action', 'menu-item-output'],
-    knowledgeIds: ['menu-navigation'], caseTags: ['menu-item-output'],
+    knowledgeIds: ['menu-navigation'],
+    // The label promises all three kinds; output came from the report cases, so
+    // display and action are named from the cases that create them.
+    caseIds: ['L2-config-key-gated-table', 'L3-batch-basic'], caseTags: ['menu-item-output'],
   },
   {
     id: 'menu', label: 'Menus & submenu nesting', domain: 'UI', source: 'aot', tier: 'core', weight: 3,
@@ -338,7 +354,7 @@ export const TAXONOMY: CoverageLeaf[] = [
     id: 'print-management', label: 'Print management', domain: 'Reporting', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['report'], knowledgeIds: ['print-management'],
     caseIds: ['L3-print-management-report', 'L3-print-mgmt-doctype-extension'],
-    note: 'Two cases authored (using an existing document type; registering a new one via delegates); goldens pending VM capture.',
+    note: 'Two cases with captured goldens: using an existing document type, and registering a new one through the PrintMgmtDocType delegates.',
   },
   {
     id: 'report-contracts', label: 'Report contracts (RDP/RDL/print/composite)', domain: 'Reporting', source: 'topic', tier: 'core', weight: 3,
@@ -379,7 +395,7 @@ export const TAXONOMY: CoverageLeaf[] = [
   {
     id: 'async-retryable-batch', label: 'Async & retryable batch (BatchRetryable/runAsync)', domain: 'Frameworks', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['class'], knowledgeIds: ['async-retryable-batch'], caseIds: ['L3-batch-retryable-basic'],
-    note: 'Eval case authored (L3-batch-retryable-basic) — golden capture pending on the VM.',
+    note: 'L3-batch-retryable-basic, golden captured.',
   },
   {
     id: 'number-sequences', label: 'Number sequences', domain: 'Frameworks', source: 'topic', tier: 'core', weight: 5,
@@ -470,7 +486,7 @@ export const TAXONOMY: CoverageLeaf[] = [
   {
     id: 'custom-service', label: 'Custom services / OData actions', domain: 'Integration', source: 'aot', tier: 'core', weight: 3,
     aotTypes: ['service', 'service-group'], knowledgeIds: ['custom-services'], caseIds: ['L3-custom-service-basic'],
-    note: 'Knowledge + eval case authored (L3-custom-service-basic, golden pending); full create/validate tool path for services still pending.',
+    note: 'L3-custom-service-basic, golden captured; the full create/validate tool path for AxService is still XML-template only.',
   },
   {
     id: 'dmf', label: 'Data management framework (DMF/DIXF)', domain: 'Integration', source: 'topic', tier: 'total', weight: 2,
@@ -543,6 +559,15 @@ export const TAXONOMY: CoverageLeaf[] = [
   {
     id: 'unit-testing', label: 'SysTest unit testing', domain: 'Quality', source: 'topic', tier: 'core', weight: 4,
     aotTypes: ['class'], knowledgeIds: ['unit-testing', 'testing'], caseTags: ['runtime'],
+    // Read this ✅ narrowly. E comes from three cases that SHIP a SysTest class and
+    // whose goldens are captured — L2-coc-extension, L2-event-handler-basic and
+    // L3-batch-basic — not from a passing test run: all three are systest_pending,
+    // and the systest oracle has never executed once, because SysTestConsole.exe
+    // gates on an interactive console (eval/README.md, "Blocked / declined"). So the
+    // leaf proves the framework is authored correctly, not that a test went green.
+    // The knowledge behind it is now read from the shipped SysTestCase/SysTestAssert
+    // rather than from memory (there is no assertExpectedException).
+    note: 'Authoring is proven by three captured goldens; no SysTest has RUN — the console runner needs an interactive session, so systest scores stay null.',
   },
   {
     id: 'labels', label: 'Labels & localisation', domain: 'Quality', source: 'topic', tier: 'core', weight: 5,
