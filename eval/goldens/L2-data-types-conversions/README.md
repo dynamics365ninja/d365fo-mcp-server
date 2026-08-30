@@ -1,16 +1,28 @@
-# Golden: L2-data-types-conversions — NOT YET CAPTURED
+# Golden: L2-data-types-conversions — CAPTURED, PENDING HUMAN REVIEW (§6.4)
 
-`golden_pending: true`. The case spec is authored; no artifact here yet, which is
-what keeps the `data-types` coverage leaf honestly uncovered (E is derived from a
-captured golden, never from an authored spec).
+Captured 2026-08-30, server SHA d212f3e, xppc 7.0.7996.33 (VM), sandbox model
+`fm-mcp`, `EXTENSION_PREFIX=Con`. One `d365fo_file(action="create")` call, no
+hand-edited XML, no follow-up edit. Full build 0 errors, xppbp 0/0, golden
+self-match. Corpus record:
+`eval/corpus/runs/2026-08-30T07__L2-data-types-conversions__d212f3e.json`.
 
-Capture it with the `eval-run` skill on the VM: implement through the grounded
-tool path, `build_d365fo_project` to 0 errors, `run_bp_check` to 0 error-severity
-warnings, freeze the normalised `AxClass` here, flip `golden_pending`, write the
-corpus record, roll the sandbox back.
+## Artifact
 
-What the capture has to show, beyond "it compiles": the uninitialised locals
-compared against their null-EQUIVALENTS (never `null`), the backslash date
-literal rather than a `str2Date` call, the `str 3` local that silently keeps
-three characters, conversion FUNCTIONS in place of casts, `anytype` locked by its
-first assignment, and an `@`-prefixed verbatim path.
+`ConDemoTypeUtil.metadata.xml` — AxClass, seven static methods:
+
+| Method | What it has to keep showing |
+|---|---|
+| `nullEquivalents` | four uninitialised locals compared to `dateNull()` / `''` / `0` / `false` — never to `null`, which value types do not have |
+| `millenniumEve` | the date LITERAL `31\12\1999`, backslash-separated, not a `str2Date` call |
+| `truncatedCode` | a `str 3` local holding `'ABCDEF'` — the compiler says nothing and three characters come back |
+| `parseCount` | `str2Int`, a conversion FUNCTION; X++ has no casts |
+| `formatAmount` | `num2Str(_amount, 0, 2, 1, 0)` — width, decimals and both separators are positional |
+| `lockedAnytype` | an `anytype` locked to int by its first assignment, read back with `any2Int` |
+| `backupFolder` | an `@`-prefixed verbatim path, backslashes literal |
+
+## Notes from the capture
+
+Nothing went wrong: this is the one case of the five that built and passed BP on
+the first attempt. Worth knowing all the same — the class produces no
+user-visible prose, only `strFmt` placeholder strings, so it needs no label file
+and stays BP-clean without one.

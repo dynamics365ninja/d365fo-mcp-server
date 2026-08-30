@@ -10,7 +10,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-7.0-blue.svg)](https://www.typescriptlang.org/)
 [![Tests](https://img.shields.io/badge/tests-5000%2B-brightgreen.svg)](docs/TESTING.md)
 <!-- coverage-badge:start -->
-[![Core coverage](https://img.shields.io/badge/core_coverage-90.2%25-brightgreen.svg)](eval/COVERAGE.md) [![Total coverage](https://img.shields.io/badge/total_coverage-93.3%25-lightgrey.svg)](eval/COVERAGE.md)
+[![Core coverage](https://img.shields.io/badge/core_coverage-100%25-brightgreen.svg)](eval/COVERAGE.md) [![Total coverage](https://img.shields.io/badge/total_coverage-98.9%25-lightgrey.svg)](eval/COVERAGE.md)
 <!-- coverage-badge:end -->
 
 *Grounded AI development for Dynamics 365 Finance & Operations — works with GitHub Copilot and Claude Code*

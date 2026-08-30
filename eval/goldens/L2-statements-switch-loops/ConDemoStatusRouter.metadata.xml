@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoStatusRouter</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Demonstrates the X++ statement rules that differ from C#: a switch that falls
+/// through unless stopped, comma-separated case lists, a break that leaves only the
+/// switch it sits in, and the three loop forms.
+/// </summary>
+public class ConDemoStatusRouter
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>route</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Maps a sales status to the routing code its documents follow.
+    /// </summary>
+    /// <param name = "_status">The status to route.</param>
+    /// <returns>The routing code for that status.</returns>
+    /// <remarks>
+    /// X++ switch FALLS THROUGH: without a break, execution continues into the next case.
+    /// Every branch below therefore ends with break except one deliberate fallthrough,
+    /// which is commented as such at the point where it happens.
+    /// </remarks>
+    public static int route(SalesStatus _status)
+    {
+        int code;
+
+        switch (_status)
+        {
+            case SalesStatus::Backorder, SalesStatus::Delivered:
+                code = 1;
+                break;
+
+            case SalesStatus::Invoiced:
+                code = 2;
+                // Deliberate fallthrough into Canceled: an invoiced order is closed too,
+                // so it takes the closing surcharge below as well.
+            case SalesStatus::Canceled:
+                code += 10;
+                break;
+
+            default:
+                code = 0;
+        }
+
+        return code;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>countDown</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Counts the steps a countdown takes.
+    /// </summary>
+    /// <param name = "_from">The value to count down from.</param>
+    /// <returns>The number of steps taken, which is at least one.</returns>
+    /// <remarks>
+    /// A do-while runs its body BEFORE the first test, so a countdown from zero still
+    /// reports one step. That is the difference from a plain while.
+    /// </remarks>
+    public static int countDown(int _from)
+    {
+        int steps;
+        int remaining = _from;
+
+        do
+        {
+            steps++;
+            remaining--;
+        }
+        while (remaining > 0);
+
+        return steps;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>sumTo</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Sums the even numbers up to a limit.
+    /// </summary>
+    /// <param name = "_limit">The highest number to consider.</param>
+    /// <returns>The sum of every even number from one to the limit.</returns>
+    /// <remarks>
+    /// continue jumps to the next iteration of the innermost loop, which is what skips the
+    /// odd numbers here without an extra nesting level.
+    /// </remarks>
+    public static int sumTo(int _limit)
+    {
+        int total;
+
+        for (int value = 1; value <= _limit; value++)
+        {
+            if (value MOD 2 != 0)
+            {
+                continue;
+            }
+
+            total += value;
+        }
+
+        return total;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>firstMatchingPosition</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Finds the position of the first wanted status in a list of statuses.
+    /// </summary>
+    /// <param name = "_statuses">The statuses to scan, in order.</param>
+    /// <param name = "_wanted">The status to look for.</param>
+    /// <returns>The one-based position of the first match, or zero when there is none.</returns>
+    /// <remarks>
+    /// The break inside the switch leaves the SWITCH only - never the loop around it. The
+    /// loop is therefore left by a flag tested after the switch, which is the whole reason
+    /// this method is written with one.
+    /// </remarks>
+    public static int firstMatchingPosition(container _statuses, SalesStatus _wanted)
+    {
+        int         position;
+        int         found;
+        boolean     isMatch;
+        SalesStatus current;
+
+        while (position < conLen(_statuses))
+        {
+            position++;
+            current = conPeek(_statuses, position);
+            isMatch = false;
+
+            switch (current)
+            {
+                case SalesStatus::Backorder, SalesStatus::Delivered, SalesStatus::Invoiced:
+                    isMatch = current == _wanted;
+                    break;
+
+                default:
+                    isMatch = false;
+            }
+
+            if (isMatch)
+            {
+                found = position;
+                break;
+            }
+        }
+
+        return found;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

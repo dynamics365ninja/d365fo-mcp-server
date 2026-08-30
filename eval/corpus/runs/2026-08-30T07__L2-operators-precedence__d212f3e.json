@@ -1,0 +1,35 @@
+{
+  "run_id": "2026-08-30T07__L2-operators-precedence__d212f3e",
+  "case_id": "L2-operators-precedence",
+  "tier": 2,
+  "timestamp": "2026-08-30T07:28:00.709Z",
+  "server_git_sha": "d212f3e",
+  "generated_artifacts": [
+    "ConDemoAccessRules.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS"
+}

@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoRetryPolicy</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Demonstrates X++ declaration and scope rules: a compile-time constant instead of a
+/// macro, a readonly field frozen after construction, loop-scoped counters, the
+/// compiler's rejection of shadowing, an optional parameter and type inference.
+/// </summary>
+public class ConDemoRetryPolicy
+{
+    public const int MaxAttempts = 5;
+
+    readonly int timeoutSec;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>new</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Initializes a new instance of the <c>ConDemoRetryPolicy</c> class.
+    /// </summary>
+    /// <param name = "_timeoutSec">Seconds to wait for one attempt.</param>
+    /// <remarks>
+    /// The constructor is the last moment a readonly field can be assigned; that is what
+    /// makes it readonly rather than const, whose value must be known at compile time.
+    /// </remarks>
+    protected void new(int _timeoutSec)
+    {
+        timeoutSec = _timeoutSec;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>construct</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Creates a retry policy with the given per-attempt timeout.
+    /// </summary>
+    /// <param name = "_timeoutSec">Seconds to wait for one attempt.</param>
+    /// <returns>A new policy instance.</returns>
+    public static ConDemoRetryPolicy construct(int _timeoutSec)
+    {
+        return new ConDemoRetryPolicy(_timeoutSec);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>totalBudget</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Sums the timeout budget across every attempt and its backoff steps.
+    /// </summary>
+    /// <returns>The total number of seconds the policy may spend.</returns>
+    /// <remarks>
+    /// The counters are declared in the for-init, so each is scoped to its own loop. The
+    /// inner counter has to carry a different name: X++ REJECTS shadowing an outer
+    /// variable at compile time, so a nested block renames rather than hides.
+    /// </remarks>
+    public int totalBudget()
+    {
+        int total;
+
+        for (int attempt = 0; attempt < MaxAttempts; attempt++)
+        {
+            for (int backoffStep = 0; backoffStep <= attempt; backoffStep++)
+            {
+                total += timeoutSec;
+            }
+        }
+
+        return total;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>describe</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Describes the policy, optionally behind a caller-supplied prefix.
+    /// </summary>
+    /// <param name = "_prefix">Text to put in front of the description; optional.</param>
+    /// <returns>The description.</returns>
+    /// <remarks>
+    /// prmIsDefault is what separates "the caller passed nothing" from "the caller passed
+    /// an empty string" - an equality test against '' cannot tell the two apart.
+    /// </remarks>
+    public str describe(str _prefix = '')
+    {
+        if (prmIsDefault(_prefix))
+        {
+            return strFmt('%1 %2', ConDemoRetryPolicy::MaxAttempts, timeoutSec);
+        }
+
+        return strFmt('%1 %2 %3', _prefix, ConDemoRetryPolicy::MaxAttempts, timeoutSec);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>snapshot</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Packs the policy settings into a container.
+    /// </summary>
+    /// <returns>A container holding the attempt count and the per-attempt timeout.</returns>
+    /// <remarks>
+    /// var requires an initializer and infers its type from it, so it is used only where
+    /// the right-hand side already says what the type is; the second local spells the type
+    /// out because the name of the field alone would not.
+    /// </remarks>
+    public container snapshot()
+    {
+        var attempts = ConDemoRetryPolicy::MaxAttempts;
+        int seconds  = timeoutSec;
+
+        return [attempts, seconds];
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
