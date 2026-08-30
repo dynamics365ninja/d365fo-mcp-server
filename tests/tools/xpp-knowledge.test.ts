@@ -386,6 +386,11 @@ describe('warehouse scanner / barcode routing', () => {
     ['mobile device menu item', 'warehouse-mobile-app'],
     ['license plate', 'warehouse-mobile-app'],
     ['handheld', 'warehouse-mobile-app'],
+    // The action half: a scanner reads a code and then DOES something.
+    ['scan action', 'warehouse-mobile-app'],
+    ['indirect activity', 'warehouse-mobile-app'],
+    ['work confirmation', 'warehouse-mobile-app'],
+    ['activity code', 'warehouse-mobile-app'],
   ];
 
   const titleOf = (id: string) => KNOWLEDGE_BASE.find(e => e.id === id)!.title;
@@ -417,11 +422,19 @@ describe('warehouse scanner / barcode routing', () => {
     }
   });
 
-  it('teaches the two invariants a scanner customization gets wrong', async () => {
+  it('teaches the invariants a scanner customization gets wrong', async () => {
     const step = getText(await xppKnowledgeTool(req({ topic: 'warehouse-mobile-app', format: 'detailed' })));
     // Stateless round trips — state in the container, not in member variables.
     expect(step).toMatch(/stateless/i);
     expect(step).toContain('NEVER in class member variables');
+
+    // The action half. A scanner reads a code and performs an action, so the
+    // topic has to answer what runs (menu item mode + activity, i.e. setup),
+    // in what transaction (one round trip), and what happens on the retry the
+    // device WILL send. Transport-only guidance is what this pins against.
+    expect(step).toContain('ONE ROUND TRIP = ONE TRANSACTION');
+    expect(step).toContain('idempotent');
+    expect(step).toMatch(/menu item binds a MODE/);
 
     const scan = getText(await xppKnowledgeTool(req({ topic: 'barcode-scanning', format: 'detailed' })));
     // A scan is not an item number; AIs are parsed, not sliced at offsets.

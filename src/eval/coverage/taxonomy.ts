@@ -459,7 +459,7 @@ export const TAXONOMY: CoverageLeaf[] = [
     id: 'warehouse-mobile-scanning', label: 'Warehouse app / barcode scanning', domain: 'Frameworks', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['class'], knowledgeIds: ['warehouse-mobile-app', 'barcode-scanning'],
     caseIds: ['L3-warehouse-scan-resolve-slice'],
-    note: 'Knowledge authored (stateless step protocol, GS1 AI parsing, item-barcode resolution); eval case authored, golden pending VM capture.',
+    note: 'Knowledge authored (scan → action dispatch, one-round-trip transaction, idempotency, GS1 AI parsing, item-barcode resolution); eval case authored, golden pending VM capture.',
   },
   {
     id: 'trade-agreements', label: 'Trade agreements & pricing', domain: 'Frameworks', source: 'topic', tier: 'total', weight: 1,

@@ -106,7 +106,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Currency & exchange rates | total | ✅ | ✅ | ✅ | L3-currency-exchange-conversion |
 | Inventory (InventTrans / InventDim) | total | ✅ | ✅ | ✅ | L3-inventory-inventdim-onhand |
 | Warehouse management (WHS) | total | ✅ | ✅ | ✅ | L3-warehouse-work-slice |
-| Warehouse app / barcode scanning | total | ✅ | — | ✅ | Knowledge authored (stateless step protocol, GS1 AI parsing, item-barcode resolution); eval case authored, golden pending VM capture. |
+| Warehouse app / barcode scanning | total | ✅ | — | ✅ | Knowledge authored (scan → action dispatch, one-round-trip transaction, idempotency, GS1 AI parsing, item-barcode resolution); eval case authored, golden pending VM capture. |
 | Trade agreements & pricing | total | ✅ | ✅ | ✅ | L3-trade-agreement-price-lookup |
 
 ## Integration (9/9)

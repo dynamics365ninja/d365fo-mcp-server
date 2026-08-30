@@ -2349,12 +2349,14 @@ else
   // ── Warehouse app / mobile device (scanners) ────────────────────────────
   {
     id: 'warehouse-mobile-app',
-    title: 'Warehouse app & mobile device flows (scanners, work execution)',
+    title: 'Warehouse app & mobile device flows (scan → action, work execution)',
     keywords: ['warehouse app', 'mobile device', 'mobile app', 'scanner', 'scan', 'scanning',
                'handheld', 'rf device', 'rf gun', 'wmdp', 'warehouse mobile device portal',
                'whsworkexecute', 'whsworkexecutedisplay', 'whsrfcontroldata', 'whsrfmenuitemtable',
                'mobile device menu item', 'warehouse app step', 'app field name', 'work user',
-               'whsworkuser', 'license plate', 'undo work', 'device session'],
+               'whsworkuser', 'license plate', 'undo work', 'device session',
+               'scan action', 'indirect activity', 'work confirmation', 'pick confirmation',
+               'adjustment in', 'adjustment out', 'device journal', 'activity code'],
     summary:
       'The warehouse app (and its predecessor the warehouse mobile device portal, WMDP) is NOT a form. ' +
       'It is a stateless request/response protocol: the work-execution display classes build a screen ' +
@@ -2362,7 +2364,9 @@ else
       'land on a different AOS. Menu items, menus, app steps and field names are CONFIGURED data — the ' +
       'only AOT surface you customize is the display/execute class hierarchy plus the extensible ' +
       'activity enum. Treating a step like a form (member state, form events, direct table writes) is ' +
-      'the failure mode this topic exists to prevent.',
+      'the failure mode this topic exists to prevent. What a scan DOES is decided by configuration, not ' +
+      'by code: the device menu item binds a mode and an activity, and that pair picks the class that runs. ' +
+      'The action it runs must complete inside the one server call that received the scan.',
     rules: [
       'A warehouse-app screen is a CONTAINER of controls built server-side by the WHSWorkExecuteDisplay hierarchy — there is no FormRun, no datasource, no control event. Nothing in formrun-lifecycle or form-patterns applies to a scanner step',
       'Every round trip is STATELESS and may be served by a different AOS: carry state in the pass-through data the framework round-trips (the WHSRFControlData / container payload), NEVER in class member variables, static fields or globals. Member state survives a single-box dev machine and silently loses the worker\'s progress under load balancing',
@@ -2376,6 +2380,14 @@ else
       'The work user (WHSWorkUser) is NOT the D365FO user: a device signs in as a work user with its own credentials and menu, while X++ runs under the linked system user. Resolve the current worker through the work-user / session record — reading curUserId() gives you the service account, not the operator',
       'Performance is per screen, not per batch: every step is a server round trip over a handheld network. Keep each query indexed and firstonly, keep display methods off the step path, and never scan a table in a step (see performance)',
       'A scanned string is NOT an item number, a license plate is not a container id by convention, and a GS1 label packs several fields into one scan — resolve it through the barcode setup first (see barcode-scanning)',
+      'WHAT A SCAN DOES is configuration, not code: the device menu item binds a MODE (work-driven vs indirect activity) and an ACTIVITY, and that pair selects the class that runs. "The scanner does nothing" is therefore a setup question first — check the menu item mode/activity before debugging X++',
+      'Pick the action family BEFORE writing anything, because retrofitting is a rewrite. WORK-DRIVEN: the scan confirms a work line and the framework hands back the next one — you execute work, you do not post inventory yourself. INDIRECT (no work at all: adjustment in/out, movement, counting, inquiry): the action is a document you build and post through its own framework, and the work tables are not involved',
+      'ONE ROUND TRIP = ONE TRANSACTION. ttsbegin/ttscommit can never span screens: the device may never come back (battery, out of range, the operator walks away), so an action started on screen 1 and finished on screen 3 leaves a half-posted document nobody is watching. If the action cannot complete in one call, it needs its own recoverable document, not a longer conversation',
+      'The device RETRIES and the operator re-scans: make the action idempotent, keyed on something the device sent, and put the guard INSIDE the transaction — a check-then-act around it double-posts under two sessions on the same license plate. "It never happened in test" is not idempotency',
+      'Validate BEFORE acting and answer as a screen: an unknown code, a blocked batch, a wrong warehouse or work assigned to another worker are normal outcomes — return the same step with a label and the field cleared. A throw inside the transaction rolls back and ends the device session, so the operator also loses the lines already confirmed (see error-handling)',
+      'Most scan actions end in a POSTED document — an inventory journal (movement, adjustment, counting), an arrival registration, a production feedback. Build and post it through the journal/posting framework, never by writing InventTrans or a journal transaction table directly: the framework check/post methods carry the validation the shop floor depends on (see posting-engine, inventory-management)',
+      'Put the action in its own service class and let the display class only render and dispatch. A scanner is ONE caller of the action — an integration, a second flow or a SysTest are others — and only a service class can be tested without a device',
+      'The action answers with the next screen: confirmation or the next work line, in the same response. Deferring the real work to a batch gives the operator no feedback and no error, so the failure surfaces hours later in a journal nobody reads; if it truly must be asynchronous, say so on the device and give the operator the next instruction',
       'Test the step logic VM-side by driving the class with the container the device would post — there is nothing to click. SysTest coverage belongs on the state machine and the resolution logic, not on the rendering (see unit-testing)',
     ],
     examples: [
@@ -2399,8 +2411,52 @@ public static str licensePlateOfState(container _state)
     return conLen(_state) >= 1 ? conPeek(_state, 1) : '';
 }`,
       },
+      {
+        label: 'Scan → action: one round trip, one transaction, idempotent',
+        code: `// The action a scan triggers must finish inside the SINGLE server call that
+// received the scan. The device can vanish between screens (battery, out of
+// range, the operator walks away), so ttsbegin cannot span round trips.
+//
+// The device also retries, and operators re-scan. The same scan arriving twice
+// must not post twice, so the action is keyed on what the device sent and the
+// guard sits INSIDE the transaction - a check-then-act around it double-posts
+// when two sessions work the same license plate.
+public static container executeScanAction(container _state, str _scannedCode)
+{
+    str actionKey;
+    str message;
+
+    // Resolve and validate FIRST. An unknown code, a blocked batch or work that
+    // belongs to another worker is a normal outcome: it goes back as the same
+    // screen with a label. A throw inside the transaction would roll back and
+    // end the session, losing the lines the operator already confirmed.
+    message = MyScanFlow::validateScan(_state, _scannedCode);
+
+    if (message)
+    {
+        return [false, message];
+    }
+
+    actionKey = MyScanFlow::actionKeyFor(_state, _scannedCode);
+
+    ttsbegin;
+
+    if (!MyScanActionService::alreadyExecuted(actionKey))
+    {
+        // The action lives in a service class, not in the display class: the
+        // scanner is one caller of it, an integration or a SysTest is another.
+        // It posts through the journal/work framework - never a raw insert.
+        MyScanActionService::execute(actionKey, _state, _scannedCode);
+    }
+
+    ttscommit;
+
+    // The answer IS the next screen: confirm now, do not defer to a batch.
+    return [true, '@MyModel:ScanConfirmed'];
+}`,
+      },
     ],
-    related: ['warehouse-management', 'barcode-scanning', 'inventory-management', 'extensible-enums'],
+    related: ['warehouse-management', 'barcode-scanning', 'inventory-management', 'posting-engine', 'extensible-enums'],
   },
 
   // ── Barcodes & scanner input ────────────────────────────────────────────

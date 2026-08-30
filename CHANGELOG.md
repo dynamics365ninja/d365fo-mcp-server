@@ -45,16 +45,27 @@ those are called out explicitly below.
   the barcode setup, never against `ItemId`; GS1-128 is parsed application
   identifier by application identifier with the FNC1 separator, never sliced at
   fixed offsets; a GTIN carries unit and pack quantity; an unresolved scan is a
-  business case, not a throw). `warehouse-management` lost its one vague mobile
+  business case, not a throw). `warehouse-mobile-app` also covers the half that
+  makes a scanner a scanner rather than a parser — it reads a code and then DOES
+  something: what runs is chosen by the menu item's mode and activity
+  (configuration, so "the scanner does nothing" is a setup question before it is
+  an X++ one), the action must complete inside the one server call that received
+  the scan (a device that walks out of range mid-conversation must not leave a
+  half-posted document), it must be idempotent with the guard inside the
+  transaction because devices retry and operators re-scan, and it ends in a
+  document posted through the journal/posting framework rather than a raw insert.
+  `warehouse-management` lost its one vague mobile
   line — it named a flow class that the audit could not confirm — and now points
   at both. Routing is pinned by regression tests, in both directions: the scanner
   queries above must land on the new topics, and the neighbours they used to be
   answered by must keep their own.
 - **Eval case `L3-warehouse-scan-resolve-slice`** (`golden_pending`) — GS1-128
   application-identifier parse, item-barcode resolution restricted to input codes,
-  and batch/serial applied through the `InventDim` find-or-create API. Fixed-offset
-  slicing, an `ItemId` string compare and a raw `InventDim` insert each fail the
-  case.
+  batch/serial applied through the `InventDim` find-or-create API, and the action
+  itself: an inventory movement journal posted through the journal framework in a
+  single transaction, idempotent on the action key. Fixed-offset slicing, an
+  `ItemId` string compare, a raw `InventDim` insert, a direct journal-transaction
+  insert and an idempotency guard outside the transaction each fail the case.
 - **Coverage taxonomy leaf `warehouse-mobile-scanning`** (w2, total tier). The
   scanner half of WHS was uncovered while looking covered under `warehouse`, whose
   case exercises wave/work creation only. Total coverage therefore moves 100% →
