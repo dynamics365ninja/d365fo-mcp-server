@@ -1,0 +1,45 @@
+{
+  "run_id": "2026-08-30T14__L3-form-event-handler-class__f01dfa7",
+  "case_id": "L3-form-event-handler-class",
+  "tier": 3,
+  "timestamp": "2026-08-30T14:05:00.000Z",
+  "server_git_sha": "f01dfa7",
+  "platform_build": "7.0.7996.33",
+  "generated_artifacts": [
+    "ConDemoServiceCall.xml",
+    "ConDemoServiceCallForm.xml",
+    "ConDemoServiceCallFormHandler.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "Three defects, none of which any repo test could see, because each produces well-formed XML that only fails inside xppc — and then fails on the WRONG object. (1) d365fo_file(create, table) silently dropped properties.fieldGroups: the <FieldGroups> block in buildAxTableXml was a hardcoded literal holding only the five Auto* groups. Surfaced one step later as \"Metadata Error: AxForm/.../Grid/DataGroup: Field group 'Overview' does not exist\" — on the form, not the table that lost it. (2) d365fo_file(create, form) never resolved field control types, so every grid column came out AxFormStringControl; the date column failed with \"AxForm/.../Grid_ConDueDate/DataField: Data type mismatch\". The templates have accepted a fieldTypes map all along and generate_object supplies one — only this builder did not. (3) The form-event-handlers knowledge entry said to call _e.CancelSuperCall(). xppc: \"Class 'FormControlEventArgs' does not contain a definition for 'CancelSuperCall'\". The args must first be narrowed to FormControlCancelableSuperEventArgs.",
+  "suggested_fix_area": "src/tools/xml/tableXml.ts, src/tools/xml/formXml.ts, src/utils/fieldControlTypes.ts, src/tools/knowledge/xppKnowledge.ts",
+  "evidence_refs": [
+    "eval/goldens/L3-form-event-handler-class/README.md",
+    "tests/tools/xml/formTableCreateFidelity.test.ts",
+    "eval/knowledge-audit.allow.json"
+  ]
+}

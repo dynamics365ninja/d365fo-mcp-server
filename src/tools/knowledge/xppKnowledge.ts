@@ -4418,7 +4418,8 @@ public class MyPostingContract implements SysOperationInitializable
       'Event types that actually occur in shipped handlers — FormEventType: Initializing, Initialized, PostRun, Activated, Closing. FormControlEventType: Clicked, Modified, Lookup, Validating, Validated, Enter, GotFocus, PageActivated, SelectionChanged, TabChanged, JumpRef, Expanded. FormDataSourceEventType: Initialized, Activated, Created, Written, Writing, ValidatingWrite, ValidatedWrite, Deleting, Deleted, ValidatingDelete, ValidatedDelete, InitValue, QueryExecuting, QueryExecuted, SelectionChanged, LeavingRecord, MarkChanged, PostLinkActive. FormDataFieldEventType: Modified, Validating, Validated, JumpRef',
       'The handler is static and lives in any class — one handler class per form is the readable convention; the compiler does not care where it sits',
       'Reach the form from the sender: FormRun formRun = _sender as FormRun (or _sender.formRun() on a control/datasource), then formRun.dataSource(formDataSourceStr(MyForm, MyTable)) and formRun.design().controlName(formControlStr(MyForm, MyControl))',
-      'Lookup is the one event you usually want on a control: subscribe to FormControlEventType::Lookup, build a SysTableLookup and call _e.CancelSuperCall() to replace the standard lookup — without that call BOTH lookups run',
+      'Lookup is the one event you usually want on a control: subscribe to FormControlEventType::Lookup, build a SysTableLookup, then call CancelSuperCall() to replace the standard lookup — without it BOTH lookups run. The method is NOT on the declared parameter: `_e.CancelSuperCall()` is a compile error, "Class \'FormControlEventArgs\' does not contain a definition for \'CancelSuperCall\'" (xppc-verified). Narrow it first: `FormControlCancelableSuperEventArgs cancelArgs = _e as FormControlCancelableSuperEventArgs;` and test the result before calling',
+      'A data source write is cancelled the same way and with its own args type: in a ValidatingWrite handler, `FormDataSourceCancelEventArgs cancelArgs = _e as FormDataSourceCancelEventArgs;` then `cancelArgs.cancel(true)` (xppc-verified)',
       'A datasource event fires per RECORD (Activated, SelectionChanged) or per WRITE (Writing/Written/ValidatingWrite). Validation belongs in ValidatingWrite where returning false through the args stops the write; Written is too late',
       'Prefer a form event handler over Chain of Command on the form when you only need to react. CoC on a FormRun method is possible but couples you to the form\'s internals; the event surface is the supported one — see coc-authoring for the choice',
       'Event handlers on a form have no guaranteed ORDER between subscribers, so never depend on another handler having run first (see event-handlers)',
@@ -4440,13 +4441,18 @@ public class MyPostingContract implements SysOperationInitializable
     [FormControlEventHandler(formControlStr(MyForm, MyFieldControl), FormControlEventType::Lookup)]
     public static void MyFieldControl_OnLookup(FormControl _sender, FormControlEventArgs _e)
     {
-        SysTableLookup lookup = SysTableLookup::newParameters(tableNum(MyTable), _sender);
+        FormControlCancelableSuperEventArgs cancelArgs = _e as FormControlCancelableSuperEventArgs;
+        SysTableLookup                      lookup     = SysTableLookup::newParameters(tableNum(MyTable), _sender);
 
         lookup.addLookupField(fieldNum(MyTable, MyField));
         lookup.performFormLookup();
 
-        // Without this the standard lookup runs as well.
-        _e.CancelSuperCall();
+        // Without this the standard lookup runs as well. The method is not on
+        // FormControlEventArgs, so the args have to be narrowed first.
+        if (cancelArgs)
+        {
+            cancelArgs.CancelSuperCall();
+        }
     }
 }`,
       },

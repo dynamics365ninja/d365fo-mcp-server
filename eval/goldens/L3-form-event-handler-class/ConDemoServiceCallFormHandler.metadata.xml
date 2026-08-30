@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoServiceCallFormHandler</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Extends ConDemoServiceCallForm from outside: four subscriptions, four
+/// different sender types.
+/// </summary>
+/// <remarks>
+/// A handler whose parameter profile does not match is a COMPILE error
+/// ("cannot be used as an event handler ... because the parameter profile does
+/// not match"), not a runtime surprise — which is why the sender type is the
+/// thing to get right.
+/// </remarks>
+public final class ConDemoServiceCallFormHandler
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>ConDemoServiceCallForm_OnInitialized</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Runs once when the form has been initialized.
+    /// </summary>
+    /// <param name = "_sender">The form. Typed xFormRun, not FormRun.</param>
+    /// <param name = "_e">The event arguments.</param>
+    [FormEventHandler(formStr(ConDemoServiceCallForm), FormEventType::Initialized)]
+    public static void ConDemoServiceCallForm_OnInitialized(xFormRun _sender, FormEventArgs _e)
+    {
+        FormRun formRun = _sender as FormRun;
+
+        if (formRun)
+        {
+            formRun.design().caption("@SYS101239");
+        }
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>ConDemoServiceCall_OnValidatingWrite</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Refuses a row that names no customer.
+    /// </summary>
+    /// <param name = "_sender">The data source being written.</param>
+    /// <param name = "_e">The event arguments, which carry the cancellation.</param>
+    /// <remarks>
+    /// ValidatingWrite is where a write can still be stopped. Written is too
+    /// late: the row is already on its way to the database.
+    /// </remarks>
+    [FormDataSourceEventHandler(formDataSourceStr(ConDemoServiceCallForm, ConDemoServiceCall), FormDataSourceEventType::ValidatingWrite)]
+    public static void ConDemoServiceCall_OnValidatingWrite(FormDataSource _sender, FormDataSourceEventArgs _e)
+    {
+        ConDemoServiceCall            record     = _sender.cursor();
+        FormDataSourceCancelEventArgs cancelArgs = _e as FormDataSourceCancelEventArgs;
+
+        if (cancelArgs && !record.ConCustAccount)
+        {
+            checkFailed(strFmt("@SYS110217", "@SYS11904"));
+            cancelArgs.cancel(true);
+        }
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>ConCustAccount_OnModified</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Fills the customer name from the customer that was just chosen.
+    /// </summary>
+    /// <param name = "_sender">The modified data field.</param>
+    /// <param name = "_e">The event arguments.</param>
+    [FormDataFieldEventHandler(formDataFieldStr(ConDemoServiceCallForm, ConDemoServiceCall, ConCustAccount), FormDataFieldEventType::Modified)]
+    public static void ConCustAccount_OnModified(FormDataObject _sender, FormDataFieldEventArgs _e)
+    {
+        FormDataSource     dataSource = _sender.datasource();
+        ConDemoServiceCall record     = dataSource.cursor();
+        CustTable          custTable;
+
+        select firstOnly AccountNum from custTable
+            where custTable.AccountNum == record.ConCustAccount;
+
+        record.ConCustName = custTable.name();
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>Grid_ConCustAccount_OnLookup</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Replaces the standard customer lookup with one that shows two columns.
+    /// </summary>
+    /// <param name = "_sender">The control being looked up.</param>
+    /// <param name = "_e">The event arguments.</param>
+    /// <remarks>
+    /// Without CancelSuperCall() BOTH the standard lookup and this one run.
+    /// The method is NOT on FormControlEventArgs — the parameter has to be
+    /// narrowed to FormControlCancelableSuperEventArgs first, or the compiler
+    /// answers "Class 'FormControlEventArgs' does not contain a definition for
+    /// 'CancelSuperCall'".
+    /// </remarks>
+    [FormControlEventHandler(formControlStr(ConDemoServiceCallForm, Grid_ConCustAccount), FormControlEventType::Lookup)]
+    public static void Grid_ConCustAccount_OnLookup(FormControl _sender, FormControlEventArgs _e)
+    {
+        FormControlCancelableSuperEventArgs cancelArgs = _e as FormControlCancelableSuperEventArgs;
+        SysTableLookup                      lookup     = SysTableLookup::newParameters(tableNum(CustTable), _sender);
+
+        lookup.addLookupField(fieldNum(CustTable, AccountNum), true);
+        lookup.addLookupField(fieldNum(CustTable, CustGroup));
+        lookup.performFormLookup();
+
+        if (cancelArgs)
+        {
+            cancelArgs.CancelSuperCall();
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,9 +1,16 @@
 # X++ language & reporting coverage — plan v2.1 (2026-08-30, verified against xppc 7.0.7996.33)
 
-**Status: G0–G5 are IMPLEMENTED** on branch `feat/xpp-compiler-verified` (13 commits). All that
-remains is **G-VM**: running the nine authored cases on the VM so their goldens can be captured.
-Every language claim in this document was checked against the **compiler and the shipped source**,
-not against Microsoft Learn — the X++ reference is incomplete and parts of it still describe AX 2012.
+**Status: G0–G5 and G-VM are DONE** on branch `feat/xpp-compiler-verified`. All nine authored
+cases were run on the VM and their goldens captured; core coverage is back to **100% (59/59)**,
+this time on goldens that exist. Every language claim in this document was checked against the
+**compiler and the shipped source**, not against Microsoft Learn — the X++ reference is
+incomplete and parts of it still describe AX 2012.
+
+Only the G4 leftovers remain open: the report **generator patterns** and catalog recipes
+(`report-dataset-extension`, `report-custom-design`, `report-menu-redirect`) exist as knowledge
+but not as generator templates, and four cases stay `systest_pending` because
+`SysTestConsole.exe` stops at `Login failed for user 'AOSUser'` — a deployment credential,
+deliberately not touched.
 
 ## Implementation status (2026-08-30)
 
@@ -19,7 +26,31 @@ not against Microsoft Learn — the X++ reference is incomplete and parts of it 
 | G3 TDD / SysTest | **done** — `pattern="systest"` (compiles clean in the sandbox), `prepare(mode="test")`, per-method result parsing, `/unattended` | |
 | G4 reporting extension patterns | **done as knowledge**; the generator patterns and catalog recipes are still unwritten | |
 | G5 taxonomy expansion + cases | **done** — 9 leaves, 9 authored cases, coverage 100% → **86.4% core** honestly | |
-| G-VM golden capture | **not started** — the nine cases need a VM run each | |
+| G5 → G-VM golden capture | **done** — nine cases run on the VM, 15 golden files, coverage 86.4% → **100% core**; three defects found and fixed on the way | `eval/goldens/L2-*`, `eval/goldens/L3-*`, `eval/corpus/runs/2026-08-30T14__*` |
+
+### What the CAPTURE changed — three defects no repo test could see
+
+Running the cases found three things that producing well-formed XML and passing 5,383 tests had
+hidden. Each one only fails inside xppc, and each one fails on the **wrong object**:
+
+- **`d365fo_file(create, table)` silently dropped `properties.fieldGroups`.** The `<FieldGroups>`
+  block was a hardcoded literal holding only the five `Auto*` groups. A table with no groups of its
+  own still builds clean, so it surfaced one step later as
+  `Metadata Error: AxForm/…/Grid/DataGroup: Field group 'Overview' does not exist` — on the FORM.
+- **`d365fo_file(create, form)` never resolved field control types.** Every grid column came out
+  `AxFormStringControl`; the date column then failed with `DataField: Data type mismatch`. The
+  templates have accepted a `fieldTypes` map all along and `generate_object` supplies one — only
+  this builder did not. It now resolves them off disk, which also covers a table written moments
+  earlier in the same call and therefore absent from the symbol index.
+- **The knowledge base was wrong about `CancelSuperCall`.** `form-event-handlers` said to call
+  `_e.CancelSuperCall()`; xppc answers *"Class 'FormControlEventArgs' does not contain a definition
+  for 'CancelSuperCall'"*. The args have to be narrowed to `FormControlCancelableSuperEventArgs`
+  first. Rule, example and the audit allowlist are corrected.
+
+A fourth was in the plan's own case specs: `L2-display-edit-methods` asked for an
+`AxTableExtension`, and an `AxTableExtension` carries no `<Methods>` element at all — not one
+shipped table extension in ApplicationSuite has one. Display and edit methods on a table you do not
+own belong in an `[ExtensionOf(tableStr(…))] final class`. The case was corrected to match.
 
 ### What the compiler changed about the plan
 

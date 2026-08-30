@@ -99,12 +99,15 @@ const AX_TABLE_OMITTED_DEFAULTS: Record<string, readonly string[]> = {
  * element each one lands in.
  *
  * `generateAxTableXml` — the template the create tool falls back to when the bridge
- * is down — emits a hardcoded `<Indexes />`, `<Relations />` and the five standard
- * field groups, so every index, relation and custom field group the caller passed is
- * dropped on the floor while the response stays the same ✅ as a bridge create. The
- * check below is against the XML that was actually written rather than against a
- * list of "what this writer supports", so it cannot drift out of date the way such a
- * list would.
+ * is down — emits a hardcoded `<Indexes />` and `<Relations />`, so every index and
+ * relation the caller passed is dropped on the floor while the response stays the
+ * same ✅ as a bridge create. Custom field groups used to be dropped the same way and
+ * are now written (see `buildAxTableFieldGroupsXml`); this list still names them
+ * because the check below is against the XML that was ACTUALLY written rather than
+ * against a list of "what this writer supports" — so a group that stops being written
+ * is reported again automatically, and one that is written is silently not reported.
+ * That is the whole reason the check is shaped this way instead of as a capability
+ * list that has to be maintained.
  */
 const TABLE_COLLECTIONS: readonly { key: string; container: string; plural: string; repair: string }[] = [
   { key: 'indexes', container: 'Indexes', plural: 'indexes', repair: 'add-index' },

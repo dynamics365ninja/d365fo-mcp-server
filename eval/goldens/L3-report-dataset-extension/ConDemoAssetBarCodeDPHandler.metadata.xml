@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoAssetBarCodeDPHandler</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Adds the asset group to the AssetBarCode report's dataset without touching
+/// the standard RDP class, its temp table or the report.
+/// </summary>
+public final class ConDemoAssetBarCodeDPHandler
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>AssetBarCodeDP_Post_processReport</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Fills the added column after the standard provider has built its rows.
+    /// </summary>
+    /// <param name = "_args">The call the handler is wrapped around.</param>
+    /// <remarks>
+    /// The parameter type is fixed: anything but XppPrePostArgs is a compile
+    /// error, "cannot be used as an event handler ... because the parameter
+    /// profile does not match".
+    /// getThis() is typed Object, so the provider has to be downcast before its
+    /// dataset buffer can be reached; the temp table instance is shared with
+    /// linkPhysicalTableInstance, because a fresh TempDB buffer would otherwise
+    /// be a different, empty table.
+    /// </remarks>
+    [PostHandlerFor(classStr(AssetBarCodeDP), methodStr(AssetBarCodeDP, processReport))]
+    public static void AssetBarCodeDP_Post_processReport(XppPrePostArgs _args)
+    {
+        AssetBarCodeDP  dataProvider = _args.getThis() as AssetBarCodeDP;
+        AssetBarCodeTmp providerRows;
+        AssetBarCodeTmp tmpUpdate;
+        AssetTable      assetTable;
+
+        if (!dataProvider)
+        {
+            return;
+        }
+
+        providerRows = dataProvider.geAssetBarCodeTmp();
+        tmpUpdate.linkPhysicalTableInstance(providerRows);
+
+        ttsbegin;
+
+        while select forupdate tmpUpdate
+        {
+            select firstOnly AssetGroup from assetTable
+                where assetTable.AssetId == tmpUpdate.AssetId;
+
+            tmpUpdate.ConAssetGroup = assetTable.AssetGroup;
+            tmpUpdate.update();
+        }
+
+        ttscommit;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

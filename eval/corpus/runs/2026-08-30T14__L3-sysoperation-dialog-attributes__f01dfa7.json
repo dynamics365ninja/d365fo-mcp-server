@@ -1,0 +1,39 @@
+{
+  "run_id": "2026-08-30T14__L3-sysoperation-dialog-attributes__f01dfa7",
+  "case_id": "L3-sysoperation-dialog-attributes",
+  "tier": 3,
+  "timestamp": "2026-08-30T14:05:00.000Z",
+  "server_git_sha": "f01dfa7",
+  "platform_build": "7.0.7996.33",
+  "generated_artifacts": [
+    "ConDemoRebateContract.xml",
+    "ConDemoRebateService.xml",
+    "ConDemoRebateController.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "PASS",
+  "root_cause_hypothesis": "All six SysOperation dialog attributes stack in one bracket and compile, which is what the sysoperation-ui-attributes knowledge entry claims. No SysEntryPointAttribute on the service method, as that entry also says."
+}

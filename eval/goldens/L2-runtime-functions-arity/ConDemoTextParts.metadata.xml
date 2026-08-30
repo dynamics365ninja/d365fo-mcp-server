@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoTextParts</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Calls predefined functions at the argument counts the compiler actually
+/// accepts, and shows what replaced the one AX 2012 had that this platform
+/// does not.
+/// </summary>
+public class ConDemoTextParts
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>firstSegment</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the part of a line that precedes its first comma.
+    /// </summary>
+    /// <param name = "_line">The line to split.</param>
+    /// <returns>The text before the first comma, or the whole line.</returns>
+    /// <remarks>
+    /// strFind takes four arguments and subStr takes three, where the third is
+    /// a LENGTH and the positions are one-based.
+    /// </remarks>
+    public static str firstSegment(str _line)
+    {
+        int position = strFind(_line, ',', 1, strLen(_line));
+
+        if (position == 0)
+        {
+            return _line;
+        }
+
+        return subStr(_line, 1, position - 1);
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>formatted</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Formats a date as yyyy-MM-dd.
+    /// </summary>
+    /// <param name = "_when">The date to format.</param>
+    /// <returns>The formatted date.</returns>
+    /// <remarks>
+    /// date2Str takes seven arguments, or eight with a trailing DateFlags.
+    /// </remarks>
+    public static str formatted(date _when)
+    {
+        return date2Str(_when,
+            321,
+            DateDay::Digits2,
+            DateSeparator::Hyphen,
+            DateMonth::Digits2,
+            DateSeparator::Hyphen,
+            DateYear::Digits4);
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>firstTwo</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the first two elements of a container.
+    /// </summary>
+    /// <param name = "_values">The container to read.</param>
+    /// <returns>A container holding the first two elements, or an empty one.</returns>
+    /// <remarks>
+    /// conPeek takes exactly two arguments and is one-based; conIns is variadic.
+    /// </remarks>
+    public static container firstTwo(container _values)
+    {
+        container result;
+
+        if (conLen(_values) >= 2)
+        {
+            result = conIns(result, 1, conPeek(_values, 1), conPeek(_values, 2));
+        }
+
+        return result;
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>changedFlag</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Adds a correction flag to a set of flags.
+    /// </summary>
+    /// <param name = "_current">The flags to add to.</param>
+    /// <returns>The flags with the correction bit set.</returns>
+    /// <remarks>
+    /// corrFlagGet existed in AX 2012 and is not a predefined function here.
+    /// </remarks>
+    public static int changedFlag(int _current)
+    {
+        return corrFlagSet(_current, 1);
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

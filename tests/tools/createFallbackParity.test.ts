@@ -143,7 +143,7 @@ const TABLE_PROPERTIES = {
 };
 
 describe('#11 XML fallback must name what it could not apply', () => {
-  it('reports the dropped indexes, relations and field groups instead of a bare ✅', async () => {
+  it('reports the dropped indexes and relations instead of a bare ✅, and stops naming what it now writes', async () => {
     const result = await handleCreateD365File(
       req({
         objectType: 'table',
@@ -160,7 +160,7 @@ describe('#11 XML fallback must name what it could not apply', () => {
     const text = result.content[0].text as string;
     const xml = [...files.values()].join('\n');
 
-    // The write itself still happened, and the template really did drop them —
+    // The write itself still happened, and the template really did drop these —
     // if either stops being true this test is measuring the wrong thing.
     expect(text).toMatch(/^✅ Created /);
     expect(text).not.toContain('via IMetadataProvider');
@@ -170,8 +170,14 @@ describe('#11 XML fallback must name what it could not apply', () => {
     expect(text).toContain('NOT APPLIED');
     expect(text).toContain('SettingIdx');
     expect(text).toContain('ConSettingRel');
-    expect(text).toContain('ConCustomGroup');
     expect(text).toContain('add-index');
+
+    // Field groups are no longer among them: the template writes the caller's
+    // groups now, so the honesty check — which reads the XML that was actually
+    // written rather than a maintained capability list — must fall silent about
+    // them on its own. A report here would mean the group was dropped again.
+    expect(xml).toContain('ConCustomGroup');
+    expect(text).not.toContain('ConCustomGroup');
   });
 
   it('says the bridge is the reason the template ran', async () => {

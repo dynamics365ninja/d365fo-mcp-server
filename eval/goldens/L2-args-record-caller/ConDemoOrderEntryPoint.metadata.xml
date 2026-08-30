@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoOrderEntryPoint</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Reads the record an entry point was opened with, and refuses the callers it
+/// does not understand before it touches anything.
+/// </summary>
+public class ConDemoOrderEntryPoint
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Entry point for a menu item that carries a customer record.
+    /// </summary>
+    /// <param name = "_args">The arguments the menu item was started with.</param>
+    /// <remarks>
+    /// Any caller can pass any table. record() is only safe once dataset() has
+    /// confirmed which table is on the other end; reading it unchecked is how
+    /// an entry point silently acts on the wrong buffer.
+    /// </remarks>
+    public static void main(Args _args)
+    {
+        CustTable custTable;
+        FormRun caller;
+        str note;
+
+        if (!_args || _args.dataset() != tableNum(CustTable))
+        {
+            throw error(strFmt("@SYS118115", staticMethodStr(ConDemoOrderEntryPoint, main)));
+        }
+
+        custTable = _args.record();
+        note = _args.parm();
+
+        // caller() is typed Object, so the downcast can fail. It is late bound:
+        // calling a FormRun method on the wrong object fails at run time, not
+        // here, which is why the result is tested before it is used.
+        caller = _args.caller() as FormRun;
+
+        if (caller)
+        {
+            info(strFmt("@SYS100074", custTable.AccountNum, note));
+        }
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>openFrom</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Opens the customer form on one record.
+    /// </summary>
+    /// <param name = "_record">The customer to open.</param>
+    public static void openFrom(CustTable _record)
+    {
+        Args args = new Args();
+        MenuFunction menuFunction;
+
+        args.record(_record);
+        args.parm(_record.AccountNum);
+
+        menuFunction = new MenuFunction(menuItemDisplayStr(CustTable), MenuItemType::Display);
+        menuFunction.run(args);
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

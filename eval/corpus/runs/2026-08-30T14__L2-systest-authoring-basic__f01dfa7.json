@@ -1,0 +1,38 @@
+{
+  "run_id": "2026-08-30T14__L2-systest-authoring-basic__f01dfa7",
+  "case_id": "L2-systest-authoring-basic",
+  "tier": 2,
+  "timestamp": "2026-08-30T14:05:00.000Z",
+  "server_git_sha": "f01dfa7",
+  "platform_build": "7.0.7996.33",
+  "generated_artifacts": [
+    "ConDemoDiscountCalculator.xml",
+    "ConDemoDiscountCalculatorTest.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS",
+  "root_cause_hypothesis": "Compiles and is BP-clean, but was NOT executed: SysTestConsole.exe reaches the AOS database on this VM and stops at \"Login failed for user 'AOSUser'\", a deployment credential deliberately left alone. The case stays systest_pending."
+}

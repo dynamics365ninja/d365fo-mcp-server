@@ -9,7 +9,7 @@
     "AxClass"
   ],
   "golden_path": "eval/goldens/L3-form-event-handler-class/",
-  "golden_pending": true,
+  "golden_pending": false,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"
