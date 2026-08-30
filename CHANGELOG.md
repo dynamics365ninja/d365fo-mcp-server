@@ -86,7 +86,8 @@ _Nothing released yet._
   knows what the **compiler** accepts inside them — which is where this wave found
   twenty-two wrong knowledge rules and five false-positive validator rules. Adding
   the question dropped core coverage to 86.4% on purpose before the VM goldens
-  took it back to 100% (59/59); total now reads 98/100.
+  took it back to 100% (59/59); total closed to 100/100 once the mobile-app
+  goldens were captured at the end of the cycle (see *Fixed*).
 - **`object_patterns(domain="mobile-app")` — warehouse-app screen recipes, and the
   framework choice they hang on.** D365FO builds the SAME mobile device screens
   with **two frameworks**, and picking the wrong one is a rewrite rather than a
@@ -115,7 +116,8 @@ _Nothing released yet._
 - **Four eval cases for the mobile surface**, one per framework plus the two
   scanning halves: `L3-processguide-flow-slice`, `L2-processguide-page-control`,
   `L3-legacy-workexecutedisplay-extend` and the reframed
-  `L3-warehouse-scan-resolve-slice`. All `golden_pending`. A new VM-free gate,
+  `L3-warehouse-scan-resolve-slice`. All four were captured on the VM before this
+  release shipped — see *Fixed*. A new VM-free gate,
   `tests/eval/mobileAppCaseGrounding.test.ts`, executes each case's own grounding
   calls and asserts the answer names what the case then asks the implementer to
   write — a case whose ground truth is missing now fails here instead of on the
@@ -152,7 +154,7 @@ _Nothing released yet._
   at both. Routing is pinned by regression tests, in both directions: the scanner
   queries above must land on the new topics, and the neighbours they used to be
   answered by must keep their own.
-- **Eval case `L3-warehouse-scan-resolve-slice`** (`golden_pending`) — GS1-128
+- **Eval case `L3-warehouse-scan-resolve-slice`** — GS1-128
   application-identifier parse, item-barcode resolution restricted to input codes,
   batch/serial applied through the `InventDim` find-or-create API, and the action
   itself: an inventory movement journal posted through the journal framework in a
@@ -163,10 +165,11 @@ _Nothing released yet._
   `warehouse-app-screens`** (w2 each, total tier). The scanner half of WHS was
   uncovered while looking covered under `warehouse`, whose case exercises
   wave/work creation only; the screen half was not modelled at all. Both leaves
-  are honest gaps rather than closures, so they reopen the total tier that the
-  golden capture above had just closed: **core 59/59 (100%), total 98/100 (98%)**,
-  with both named in the weight-ordered closure queue. They close when the four
-  `golden_pending` cases are captured on the VM.
+  are honest gaps rather than closures, so they reopened the total tier that the
+  golden capture above had just closed: **core 59/59 (100%), total 98/100 (98%)**
+  at the time, with both named in the weight-ordered closure queue. Both closed
+  before the release — the four cases were captured on the VM and total reads
+  **100/100** (see *Fixed*).
 - **X++ language-core knowledge pack (Phase B).** The knowledge base was strong
   on frameworks and data access and silent on the language itself, so an agent
   could look up `SysOperation` but not how `switch` falls through. Seven new
@@ -539,6 +542,110 @@ _Nothing released yet._
   143; the catalog grew by 35 cases in between, so a third of it got its first
   isolated verdict here). Exactly three cases changed state — the three above.
   Nothing regressed.
+- **`find_references` answered "0 references — symbol might be unused" for a
+  method that is called twice.** With the cross-reference bridge down, the
+  fallback matches call sites against `source_snippet`, which is a method's
+  **first ten lines** by construction — so a call on line 11 or later of any
+  caller is structurally invisible, and `WHSWorkExecuteDisplayAdjustIn.displayForm`
+  (hundreds of lines) calls `buildAdjustIn` twice from well below the cut. An
+  eval run whose scored requirement was "run `find_references` FIRST and record
+  what you found" recorded a confident falsehood. The coverage gap first
+  suspected was not the cause — Foundation has 351,660 method rows and
+  `buildAdjustIn` is one of them. Intra-type calls, the commonest miss and the
+  cheapest to recover, are now read from the declaring type's own source (one
+  indexed lookup, at most three files, size-capped, best-effort); a degraded zero
+  names its own blind spot instead of concluding "unused"; and an `ownerName` the
+  fallback cannot honour is reported rather than swallowed — the note used to
+  print only when no owner was given, so a caller who *did* scope the lookup got
+  an unscoped answer that looked scoped.
+- **`search` returned nothing for a multi-word query whose answer was in the
+  index.** `search(query="ProcessGuide AdjustIn")` found 0 rows while
+  `InventProcessGuideAdjustInController` — a name carrying both tokens — sat in
+  the index and an exact-name search returned it. The substring-scan guard
+  skipped every query containing whitespace, on the premise that "no name can
+  contain a space": right about the SQL it guarded, wrong about the query, which
+  never meant one verbatim string but *a name containing all of these* — one AND
+  of LIKEs over the same single covering scan. A selective token is now defined
+  in one place (at least 3 characters, at most 4 of them), so a query with
+  nothing selective left still does not scan, and the term count is part of the
+  statement-cache key, without which a two-token query would reuse the one-token
+  statement. The eval run that hit this took the empty answer as evidence,
+  targeted an obsolete class instead, caught the `[SysObsolete]` only as a
+  compile warning, and rolled back.
+- **`labels(action="create")` wrote labels under a file id nothing can
+  reference.** A model named `fm-mcp` gets the label file id `fm-mcp`; create
+  accepted it, wrote the label into every language file, reported success and
+  advertised `literalStr("@fm-mcp:ScanContainer")` — a reference that resolves to
+  nothing, because the hyphen ends the identifier. Two witnesses agreed the write
+  was useless: `labels(action="info")` could not find the label it had just
+  created, and xppbp raised `BPErrorLabelIsText`. The charset was never in doubt
+  — `parseLabelReference` has always refused to parse `@fm-mcp:X` — the read side
+  and the write side disagreed and the write side won silently. The create schema
+  now rejects an unusable id and names the one that would work (`fm-mcp` →
+  `fmmcp`) rather than restating the rule, the default pick prefers a
+  referenceable file over the one named after the model, and the auto-label path
+  returns null instead of a broken reference: the caller keeps its raw text and
+  the BP advisory, which is worse copy but true.
+- **`prepare` and `validate_object_naming` demanded opposite things, and no name
+  satisfied both.** Extending `whsWorkExecuteDisplayChangeBatchDisp` — one of the
+  camelCase classes the product ships — `prepare` refused the lowercase extension
+  name ("Name must start with an uppercase letter (PascalCase)") while
+  `validate_object_naming` refused the PascalCase one ("Class extension names
+  must start with the base class name"), prescribing exactly the name `prepare`
+  had just refused. The write succeeded at all only because
+  `d365fo_file(action="create")` ignored the caller's input and derived the
+  correct lowercase form itself. PascalCase is a rule for a name you **invent**;
+  an extension name is derived from one you did not, and `{Base}{Prefix}_Extension`
+  inherits its first letter from the base. `prepare` now defers to the base's
+  casing when the proposed name starts with the object being changed, in both the
+  `_Extension` and the dotted element-extension forms. A name that does not start
+  with a letter at all is still an error, and a name the caller invented is still
+  held to PascalCase. `validate_object_naming` is unchanged — it was the one in
+  the right.
+- **`object_patterns` truncated a recipe in half.** It ran on the generic
+  5,000-character response cap: measured live, the mobile-app `processguide-flow`
+  spec renders 9,328 characters and lost 4,406 of them — the `addActionControls`
+  half of the page-builder skeleton and the entire silent-step skeleton never
+  reached the agent, which rebuilt both from Microsoft source at several round
+  trips each. A pattern recipe is a code skeleton, and half a skeleton is not a
+  smaller answer but a wrong one; a round trip re-bills the whole cached context,
+  so the cut cost more than it saved. The cap is 12,000, which clears the largest
+  recipe in the catalog (next: `app-step-identity` at 3,853, report
+  `PrintMgmtFormLetter` at 3,051) and still bounds a runaway render. The
+  truncation advice is this tool's own now — the generic text pointed at
+  `methodOffset`/`fieldsOffset`, parameters `object_patterns` does not accept, and
+  this file already records that advice naming a knob the tool lacks gets
+  followed. A ratchet test fails when a new recipe outgrows the cap, so the cap is
+  raised deliberately with the measurement in hand rather than discovered by an
+  agent silently reconstructing what it did not receive.
+- **The `processguide-flow` skeleton routed through a confirm step it never
+  creates.** The shipped recipe routed prompt → confirm → register → prompt and
+  the eval case asked for the same cycle, but neither ever creates a confirm
+  screen: the case names five artifacts and the pattern's own object roster four
+  roles, none of them a confirm step. `classStr()` is compile-time checked, so the
+  skeleton does not compile as printed — `classStr(MyDemoProcessGuideConfirmStep)`
+  resolves to nothing — and there is no reusable framework confirm step to borrow,
+  because every `ProcessGuide*Confirm*Step` in the product is process-specific
+  with its own page builder. Both sides now route prompt → register → prompt, and
+  the skeleton says why a route may name only steps the flow actually creates. The
+  `processguide-page-replace` and `processguide-step-insert` recipes are untouched
+  — they reference *standard* Microsoft confirm classes, which is the point of
+  those patterns.
+- **The four warehouse mobile-app goldens are captured**, so this release ships no
+  `golden_pending` case from that wave. All four ran on the VM and passed —
+  `L2-processguide-page-control` (1 artifact), `L3-processguide-flow-slice` (5),
+  `L3-legacy-workexecutedisplay-extend` (1), `L3-warehouse-scan-resolve-slice`
+  (1) — build clean and xppbp clean (0 errors / 0 warnings, incremental and full,
+  plus an object-scoped BP check on every artifact). The two leaves those cases
+  were opened for close with them: **core 59/59 (100%), total 100/100**, and the
+  README badge follows. Their taxonomy notes still claimed "goldens pending VM
+  capture" and are rewritten to what the runs actually showed — `coverage.test.ts`
+  has a gate for exactly that lie, and 37 notes had told it before, one of them in
+  the published `COVERAGE.md`. Two gaps the runs found are recorded in the corpus
+  records and **not** fixed here: `validate_code(mode="references")` accepts
+  `methodStr()` where xppc requires `staticMethodStr()` for a static method, and a
+  stale `visibilityCache` in `metadata/modelDescriptor.ts` makes a `Descriptor`
+  edit invisible for the rest of a server session.
 
 ### Changed
 - **The compiler is the oracle for the validator now.** Measured against the
