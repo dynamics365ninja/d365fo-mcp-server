@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-08-30T10:53:17.373Z",
+  "capturedAt": "2026-08-30T11:06:14.399Z",
   "indexedAt": "2026-08-30T07:43:44.317Z",
   "ok": [
     "alerts-business-events|attribute|DataContract",
@@ -123,6 +123,14 @@
     "financial-dimensions|static-call|DimensionAttributeValue::find",
     "financial-dimensions|static-call|DimensionAttributeValue::findByDimensionAttributeAndValue",
     "financial-dimensions|static-call|DimensionAttributeValueSetStorage::find",
+    "form-event-handlers|declaration|FormDataSource",
+    "form-event-handlers|declaration|SysTableLookup",
+    "form-event-handlers|static-call|FormControlEventType::Clicked",
+    "form-event-handlers|static-call|FormControlEventType::Lookup",
+    "form-event-handlers|static-call|FormDataFieldEventType::Modified",
+    "form-event-handlers|static-call|FormDataSourceEventType::Activated",
+    "form-event-handlers|static-call|FormEventType::Initialized",
+    "form-event-handlers|static-call|SysTableLookup::newParameters",
     "form-patterns|attribute|ExtensionOf",
     "formrun-lifecycle|attribute|ExtensionOf",
     "global-address-book|declaration|DirPartyPostalAddressView",

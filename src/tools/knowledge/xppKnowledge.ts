@@ -4153,6 +4153,59 @@ str designRef  = ssrsReportStr(MyBonusReport, Report);`,
     related: ['select-statement', 'ssrs-reports', 'labels', 'reflection-dict', 'runtime-functions'],
   },
 
+  // ── Form event handlers ─────────────────────────────────────────────────
+  {
+    id: 'form-event-handlers',
+    title: 'Form Event Handlers (the four attributes and their signatures)',
+    keywords: ['formeventhandler', 'formcontroleventhandler', 'formdatasourceeventhandler',
+               'formdatafieldeventhandler', 'form event', 'onclicked', 'onmodified', 'onvalidated',
+               'onactivated', 'oninitialized', 'lookup', 'xformrun', 'formcontrol', 'formdatasource',
+               'formdataobject', 'formeventargs', 'form handler', 'subscribe form'],
+    summary:
+      'A form is extended from OUTSIDE by subscribing to its events: four attributes, four event-type ' +
+      'enums, and four handler signatures that differ in the sender type. Getting the sender type wrong ' +
+      'is the usual failure, and the compiler reports it as a parameter-profile mismatch.',
+    rules: [
+      'The four attributes and their senders (shipped signatures): [FormEventHandler(formStr(MyForm), FormEventType::Initialized)] public static void h(xFormRun _sender, FormEventArgs _e) — note xFormRun, not FormRun; [FormControlEventHandler(formControlStr(MyForm, MyButton), FormControlEventType::Clicked)] public static void h(FormControl _sender, FormControlEventArgs _e); [FormDataSourceEventHandler(formDataSourceStr(MyForm, MyTable), FormDataSourceEventType::Activated)] public static void h(FormDataSource _sender, FormDataSourceEventArgs _e); [FormDataFieldEventHandler(formDataFieldStr(MyForm, MyTable, MyField), FormDataFieldEventType::Modified)] public static void h(FormDataObject _sender, FormDataFieldEventArgs _e)',
+      'Event types that actually occur in shipped handlers — FormEventType: Initializing, Initialized, PostRun, Activated, Closing. FormControlEventType: Clicked, Modified, Lookup, Validating, Validated, Enter, GotFocus, PageActivated, SelectionChanged, TabChanged, JumpRef, Expanded. FormDataSourceEventType: Initialized, Activated, Created, Written, Writing, ValidatingWrite, ValidatedWrite, Deleting, Deleted, ValidatingDelete, ValidatedDelete, InitValue, QueryExecuting, QueryExecuted, SelectionChanged, LeavingRecord, MarkChanged, PostLinkActive. FormDataFieldEventType: Modified, Validating, Validated, JumpRef',
+      'The handler is static and lives in any class — one handler class per form is the readable convention; the compiler does not care where it sits',
+      'Reach the form from the sender: FormRun formRun = _sender as FormRun (or _sender.formRun() on a control/datasource), then formRun.dataSource(formDataSourceStr(MyForm, MyTable)) and formRun.design().controlName(formControlStr(MyForm, MyControl))',
+      'Lookup is the one event you usually want on a control: subscribe to FormControlEventType::Lookup, build a SysTableLookup and call _e.CancelSuperCall() to replace the standard lookup — without that call BOTH lookups run',
+      'A datasource event fires per RECORD (Activated, SelectionChanged) or per WRITE (Writing/Written/ValidatingWrite). Validation belongs in ValidatingWrite where returning false through the args stops the write; Written is too late',
+      'Prefer a form event handler over Chain of Command on the form when you only need to react. CoC on a FormRun method is possible but couples you to the form\'s internals; the event surface is the supported one — see coc-authoring for the choice',
+      'Event handlers on a form have no guaranteed ORDER between subscribers, so never depend on another handler having run first (see event-handlers)',
+    ],
+    examples: [
+      {
+        label: 'Reacting to a field change and replacing a lookup',
+        code: `public final class MyFormEventHandler
+{
+    [FormDataFieldEventHandler(formDataFieldStr(MyForm, MyTable, MyField), FormDataFieldEventType::Modified)]
+    public static void MyField_OnModified(FormDataObject _sender, FormDataFieldEventArgs _e)
+    {
+        FormDataSource dataSource = _sender.datasource();
+        MyTable        record     = dataSource.cursor();
+
+        record.MyDerivedField = MyHelper::derive(record.MyField);
+    }
+
+    [FormControlEventHandler(formControlStr(MyForm, MyFieldControl), FormControlEventType::Lookup)]
+    public static void MyFieldControl_OnLookup(FormControl _sender, FormControlEventArgs _e)
+    {
+        SysTableLookup lookup = SysTableLookup::newParameters(tableNum(MyTable), _sender);
+
+        lookup.addLookupField(fieldNum(MyTable, MyField));
+        lookup.performFormLookup();
+
+        // Without this the standard lookup runs as well.
+        _e.CancelSuperCall();
+    }
+}`,
+      },
+    ],
+    related: ['event-handlers', 'formrun-lifecycle', 'form-patterns', 'coc-authoring'],
+  },
+
   // ── Run-time (predefined) functions ─────────────────────────────────────
   {
     id: 'runtime-functions',

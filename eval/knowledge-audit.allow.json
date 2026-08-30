@@ -8,6 +8,7 @@
   "Exception": "X++ kernel enum (Exception::Error / Info / Warning) — throw argument and infolog severity.",
   "ExportAttribute": "System.ComponentModel.Composition.ExportAttribute (MEF) — reached via `using`, not an AOT element.",
   "FieldId": "X++ kernel system type — field id returned by DictTable::fieldCnt2Id() (no AOT EDT element).",
+  "FormDataSource": "X++ kernel class — the form runtime data source. No AOT element (FormRun has one, FormDataSource and FormControl do not), and it is the declared sender type of every [FormDataSourceEventHandler] in the platform (738 shipped handlers).",
   "InteropKind": "X++ kernel enum — InteropKind::ClrInterop / ComInterop.",
   "InteropPermission": "X++ kernel CAS permission class for CLR interop.",
   "IO_Status": "X++ kernel enum — file IO status.",

@@ -1,13 +1,36 @@
 # X++ language & reporting coverage — plan v2.1 (2026-08-30, verified against xppc 7.0.7996.33)
 
-**Status: PLAN ONLY. Nothing below is implemented.** v2.1 replaces the v2 draft written the same
-morning: every language claim in it was re-checked on this VM against the **compiler and the shipped
-source**, not against Microsoft Learn (which is incomplete — much of X++ is undocumented AX 2012
-heritage). Claims the compiler contradicted were removed or inverted; each fact below names its oracle.
+**Status: G0, G1 (part) and G2 are IMPLEMENTED** on branch `feat/xpp-compiler-verified`; the rest is
+marked below and in §5. Every language claim in this document was checked on this VM against the
+**compiler and the shipped source**, not against Microsoft Learn — the X++ reference is incomplete and
+parts of it still describe AX 2012. Claims the compiler contradicted were removed or inverted, and each
+fact names its oracle.
 
-Base: `origin/main` @ `6f40d7b` (PR #961 merged; the `attributes` case captured; core AND total
-coverage 100 %). The plan lives here while it is executed and is deleted afterwards (v1 lifecycle);
-deferrals go to `docs/BACKLOG.md`.
+## Implementation status (2026-08-30)
+
+| Phase | State | Where |
+|---|---|---|
+| G0.6 compiler-facts snapshot | **done** | `scripts/capture-compiler-facts.ts` → `eval/compiler-facts.snapshot.json` → `src/knowledge/compilerFacts.generated.ts`, facade `src/knowledge/compilerFacts.ts`, ratchet `tests/knowledge/compilerFacts.test.ts` |
+| G0.4 validator false positives | **done** — 5 error-severity FPs → **0** on 7,649 shipped files | shared lexer `src/utils/xppLexer.ts`; COC001/COC002/COC003, TTS001, BP001, SEL001, SEL002, `lintXppSelect` |
+| G0.5 FN001 from the compiler table | **done** — 28 hand-typed entries → 170 run-time functions + 80 intrinsics with min/max ranges, plus FN002 for functions this version removed | `checkBuiltinArity` |
+| G0.3 knowledge corrections | **done** for the language entries in §2 | `dotnet-interop`, `select-statement`, `multi-company`, `switch-loops`, `operators-precedence`, `xpp-class-rules`, `attributes-authoring`, `testing`, `unit-testing` |
+| G0.1 coverage claims | **done** — 6 leaves re-pointed, 3 stale notes fixed, note gate widened | `src/eval/coverage/taxonomy.ts` |
+| G2 new rules | **done** — BP006, MAC001, SEL008, SEL009, SEL010, ATTR001, ATTR002, EXT001, KW001, CS001 expansion; all silent on shipped code | `src/tools/analysis/validateXpp.ts` |
+| G1 knowledge pack | **partial** — `runtime-functions` and `form-event-handlers` written; `args-object`, `display-edit-methods`, `sysoperation-ui-attributes` remain | |
+| G3 TDD / SysTest | **not started** — knowledge is corrected, but the scaffold, `prepare(mode="test")`, per-method result parsing and the ConPTY experiment remain | |
+| G4 reporting extension patterns | **not started** | |
+| G5 taxonomy expansion + new cases | **not started** | |
+| G-VM golden capture for the new cases | **not started** | |
+
+Three shapes this plan proposed were **dropped** once the compiler disagreed with them:
+
+- a generics rule — `List<str>` fails in a sandbox model with "does not denote a class, a table, or an
+  extended data type", but that is a *resolution* failure ("Are you missing a module reference?"), not a
+  syntax one, and ApplicationSuite ships `private List<str> operatingUnitNumbers;`. An offline rule
+  cannot know a model's references, so it stays knowledge.
+- `*=` and `/=` as C#-isms — they compile (57 and 2 shipped uses).
+- flagging every select expression on a buffer — a buffer named after its table resolves as the table,
+  which is how 180 shipped classes write it; only an *aliased* buffer fails.
 
 ---
 
