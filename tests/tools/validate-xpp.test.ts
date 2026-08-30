@@ -730,6 +730,15 @@ describe('FN001 — extended fixed-arity set', () => {
     expect(hits).toBe(2);
   });
 
+  it('does not flag conIns — xppc accepts it with 2 and 4 arguments (variadic, Phase F probe)', async () => {
+    const code = `
+      container c1 = conIns(values, 1, 'a', 'b');
+      container c2 = conIns(values, 1);
+    `;
+    const result = await validateXppTool(req({ code, codeType: 'xpp' }));
+    expect(getText(result)).not.toContain('FN001');
+  });
+
   it('accepts correct arities (subStr 3, conPeek 2, mkDate 3, ssrsReportStr 2)', async () => {
     const code = `
       str part = subStr(fullName, 3, 5);

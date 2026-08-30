@@ -220,6 +220,26 @@ catch
 }
 ttscommit; // ← will crash: tts level mismatch`,
       },
+      {
+        label: 'DuplicateKeyException — the other exception a tts catch may name',
+        code: `public boolean insertGroup(CustGroup _custGroup)
+{
+    try
+    {
+        ttsbegin;
+        _custGroup.insert();
+        ttscommit;
+    }
+    catch (Exception::DuplicateKeyException)
+    {
+        // Only UpdateConflict and DuplicateKeyException may be named for a tts block;
+        // the transaction is already aborted when control gets here
+        return false;
+    }
+
+    return true;
+}`,
+      },
     ],
     related: ['set-based', 'error-handling'],
   },
@@ -1292,7 +1312,7 @@ while select crosscompany : companies
       'For new document types: also add an entry in PrintMgmtReportFormat (links document type to report design)',
       'Original vs copy: the base enum is PrintCopyOriginal (Original/Copy), carried on the report contract as parmPrintCopyOriginal() — there is no PrintCopyType enum or parmPrintCopyType()',
       'Wiring a NEW document type to its report happens through the delegate subscriptions on PrintMgmtDocType — getDefaultReportFormatDelegate answers with the report design reference, getQueryTableIdDelegate with the driving table — plus the module\'s PrintMgmtNode subclass so the type appears in the setup tree',
-      'Scaffold the controller side with generate_object(mode="scaffold", objectType="report", controllerType="printMgmt") — then replace the scaffolded parmPrintMgmtDocType placeholder with the real document type',
+      'Scaffold the controller side with generate_object(mode="scaffold", objectType="report", controllerType="printMgmt") — then replace the PrintMgmtReportRun::construct(hierarchy, node, documentType) placeholders in initPrintMgmtReportRun() with the real ones; runPrintMgmt() is abstract on SrsPrintMgmtController (mandatory) and there is NO parmPrintMgmtDocType (VM-verified)',
     ],
     related: ['ssrs-reports', 'ssrs-contracts'],
   },
@@ -1862,8 +1882,8 @@ if (SecurityRights::hasTableAccess(tableNum(MyCustomTable), AccessType::Read))
       'DP class: [SrsReportParameterAttribute(classStr(MyReportContract))], processReport() fills TmpTable',
       'DP getter: [SRSReportDataSetAttribute(tableStr(MyReportTmp))] public MyReportTmp getMyReportTmp() — one getter per dataset; extra datasets via additionalDatasets=[...] in the scaffold',
       'Controller main(): controller.parmReportName(ssrsReportStr(MyReport, Report)) — every scaffolded AxReport names its design "Report"; ssrsReportStr is compile-time checked, so any other design name (e.g. "Design") fails the build',
-      'Long-running report (>10 min interactive SSRS timeout)? Scaffold with preProcess=true → DP base class becomes SrsReportDataProviderPreProcess (data staged before rendering; contract travels via controller, not the parameter attribute)',
-      'Print-management output: scaffold with controllerType="printMgmt" → controller base becomes SrsPrintMgmtController with parmPrintMgmtDocType() — see print-management topic',
+      'Long-running report (>10 min interactive SSRS timeout)? Scaffold with preProcess=true → DP base class becomes SrsReportDataProviderPreProcessTempDB (data staged on the AOS before rendering, into the TempDB tmp table; [SrsReportParameterAttribute] stays)',
+      'Print-management output: scaffold with controllerType="printMgmt" → controller base becomes SrsPrintMgmtController; the scaffold implements its abstract runPrintMgmt() and an initPrintMgmtReportRun() with PrintMgmtReportRun::construct(...) placeholders — see print-management topic',
       'RDL layout options: designStyle="SimpleList" (default) or "GroupedWithTotals" (row group + SUM totals); query-based DP via aotQuery=...; pre-fill contract from caller record via callerTableName=...',
       'AxReport XML: DataSet with DataSourceType=ReportDataProvider, Query=SELECT * FROM DPClass.TmpTable',
       'For existing reports, use get_object_info(objectType="report", name=...) — NEVER read report XML with PowerShell',
@@ -1933,6 +1953,29 @@ public class MyReportDP extends SrsReportDataProviderBase
       'Dialog persistence is automatic: parameter values round-trip via SysLastValue per user+report — no code needed',
       'Mandatory parameters: enforce in the RDP contract validate() with checkFailed — a false blocks the dialog OK (there is no per-parameter mandatory attribute)',
     ],
+    examples: [
+      {
+        label: 'Controller — mutate the composite\'s parts, never replace it',
+        code: `public class MyRecapController extends SrsReportRunController
+{
+    protected void preRunModifyContract()
+    {
+        SrsReportDataContract       composite     = this.parmReportContract();
+        SRSPrintDestinationSettings printSettings = composite.parmPrintSettings();
+        MyRecapContract             rdpContract   = composite.parmRdpContract() as MyRecapContract;
+        TransDate                   fromDate      = rdpContract.parmFromDate();
+
+        // Print straight to a PDF file: set the print contract's medium/format/name.
+        // The composite stays the one the controller handed out.
+        printSettings.printMediumType(SRSPrintMediumType::File);
+        printSettings.fileFormat(SRSReportFileFormat::PDF);
+        printSettings.fileName(strFmt('Recap_%1.pdf', fromDate));
+
+        super();
+    }
+}`,
+      },
+    ],
     related: ['ssrs-reports', 'sysoperation', 'ssrs-ui-builder', 'print-management'],
   },
   {
@@ -1948,8 +1991,40 @@ public class MyReportDP extends SrsReportDataProviderBase
       'Two staging bases: SrsReportDataProviderPreProcess (stages into a REGULAR table whose rows are keyed by createdTransactionId) and SrsReportDataProviderPreProcessTempDB (stages into TempDB tables)',
       'Regular-table staging: the staging table needs a createdTransactionId column; the platform deletes the rows after rendering, and concurrent runs are isolated by transaction id',
       'Migration from a plain DP: swap the base class, adjust the staging table type to match it, keep the SRSReportDataSetAttribute getters unchanged, and make sure the menu item points at the CONTROLLER',
-      'Scaffold: generate_object(mode="scaffold", objectType="report", preProcess=true) — emits the PreProcess base and a preProcess() stub. NOTE: this pairing is not yet compile-proven by the repo\'s eval goldens — build on the VM before trusting the generated shape',
+      'Scaffold: generate_object(mode="scaffold", objectType="report", preProcess=true) — emits the TempDB pre-process base, keeps [SrsReportParameterAttribute] and adds NO extra hook method: processReport() itself runs before the render request. VM-verified 2026-08-30 — the framework interface SrsReportDataProviderPreProcessInterface has only cleanUp/initialize/parm* members, and xppc accepts either base with either table type, so the pairing is a runtime contract the compiler will not catch',
       'Do NOT default to preprocess — the staging machinery costs complexity; profile processReport() first and try set-based population (insert_recordset) before reaching for it',
+    ],
+    examples: [
+      {
+        label: 'Pre-processed DP over a TempDB staging table (VM-verified shape)',
+        code: `[SrsReportParameterAttribute(classStr(MyRecapContract))]
+public class MyRecapDP extends SrsReportDataProviderPreProcessTempDB
+{
+    MyRecapTmp recapTmp;
+
+    [SRSReportDataSetAttribute(tableStr(MyRecapTmp))]
+    public MyRecapTmp getMyRecapTmp()
+    {
+        select * from recapTmp;
+        return recapTmp;
+    }
+
+    // Runs on the AOS BEFORE the SSRS render request — this method IS the
+    // pre-processing step; the framework has no separate preProcess() hook.
+    public void processReport()
+    {
+        MyRecapContract    contract = this.parmDataContract() as MyRecapContract;
+        TransDate          fromDate = contract.parmFromDate();
+        LedgerJournalTrans journalTrans;
+
+        delete_from recapTmp;
+
+        insert_recordset recapTmp (JournalNum, AmountCurDebit)
+            select JournalNum, AmountCurDebit from journalTrans
+            where journalTrans.TransDate >= fromDate;
+    }
+}`,
+      },
     ],
     related: ['ssrs-reports', 'temp-tables', 'transactions'],
   },
@@ -1970,6 +2045,35 @@ public class MyReportDP extends SrsReportDataProviderBase
       'The automatic dialog needs NO builder — plain parameters render themselves; reach for a builder only for filtered lookups, cascading fields, or layout beyond group attributes',
       'Scaffold: generate_object(mode="scaffold", objectType="report", uiBuilder=true) emits the builder class and binds it on the contract',
       'Identical mechanics drive SysOperation dialogs (SysOperationAutomaticUIBuilder base) — see sysoperation',
+    ],
+    examples: [
+      {
+        label: 'UI builder — filtered lookup on a contract parameter',
+        code: `public class MyRecapUIBuilder extends SrsReportDataContractUIBuilder
+{
+    DialogField custGroupField;
+
+    public void build()
+    {
+        MyRecapContract contract;
+
+        super();
+
+        contract       = this.dataContractObject() as MyRecapContract;
+        custGroupField = this.bindInfo().getDialogField(contract, methodStr(MyRecapContract, parmCustGroup));
+        custGroupField.registerOverrideMethod(methodStr(FormStringControl, lookup), methodStr(MyRecapUIBuilder, custGroupLookup), this);
+    }
+
+    private void custGroupLookup(FormStringControl _control)
+    {
+        SysTableLookup lookup = SysTableLookup::newParameters(tableNum(CustGroup), _control);
+
+        lookup.addLookupfield(fieldNum(CustGroup, CustGroup));
+        lookup.addLookupfield(fieldNum(CustGroup, Name));
+        lookup.performFormLookup();
+    }
+}`,
+      },
     ],
     related: ['ssrs-reports', 'ssrs-contracts', 'sysoperation', 'form-patterns'],
   },
@@ -2358,6 +2462,7 @@ else
       'Each joined buffer gets its own "where" clause immediately after it; order by / group by appear after the full join chain',
       '"in" operator: "where field in container" — container = X++ container type; works with str/int/int64/real/enum/boolean/date/utcDateTime. NOT a Set, List class, or subquery',
       'forceLiterals is FORBIDDEN — SQL injection risk; use forcePlaceholders (default for non-join selects) or omit',
+      'The force* FindOptions are exactly forceLiterals, forcePlaceholders, forceNestedLoop, forceSelectOrder — "forceLaterals" is NOT a keyword (xppc-verified: parsed as a buffer name, "join expected")',
       'No function calls in WHERE — assign result to a local variable first (performance + BP compliance)',
       'outer join is LEFT OUTER only — no RIGHT outer, no "left" keyword; check joined buffer.RecId == 0 to detect "no match"',
       'Join criteria use "where", not "on" — X++ has no "on" keyword',
@@ -2485,6 +2590,7 @@ public void post()
       'Instance fields default = protected — NEVER make them public; expose via parmFoo() accessors',
       'Constructor pattern: new() is protected, public static construct() factory; init() for post-construction setup',
       'Method modifier order: [edit|display] [public|protected|private|internal] [static|abstract|final]',
+      'Combined access modifiers: "protected internal" COMPILES (xppc-verified); "private protected" does NOT — xppc rejects it as "Conflicting modifiers"',
       'Override visibility: must be at least as accessible as the base method. private is not overridable',
       'Optional parameters must come after required ones; all preceding parameters must be supplied. Use prmIsDefault(_x) to detect "was this passed"',
       'All parameters are pass-by-value — mutating a parameter does NOT affect the caller\'s variable',
@@ -3961,6 +4067,31 @@ switch (status)
         code: `// The declaration is a plain class deriving from SysAttribute (one line,
 // a str field, a parm method). Consuming it is reflection — see reflection-dict.
 [MyIntegrationTarget('CustomerSync'), MyPriority(10)]
+public class MyCustomerSyncStrategy
+{
+}`,
+      },
+      {
+        label: 'Declaration — a SysAttribute subclass with one literal argument',
+        code: `public class MyIntegrationTargetAttribute extends SysAttribute
+{
+    str targetName;
+
+    public void new(str _targetName)
+    {
+        super();
+        targetName = _targetName;
+    }
+
+    public str parmTargetName()
+    {
+        return targetName;
+    }
+}`,
+      },
+      {
+        label: 'Deprecating a class — every reference becomes a compile warning (true = error)',
+        code: `[SysObsolete('Use MyCustomerSyncStrategyV2 instead', false)]
 public class MyCustomerSyncStrategy
 {
 }`,

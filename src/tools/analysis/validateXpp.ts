@@ -613,8 +613,10 @@ const FIXED_ARITY_BUILTINS: Record<string, { name: string; arity: number; note: 
   symbol2enum: { name: 'symbol2Enum', arity: 2, note: 'symbol2Enum(enumNum(MyEnum), symbolString) — enum id AND symbol' },
   enumnum:     { name: 'enumNum',     arity: 1, note: 'enumNum(MyEnum) — the enum TYPE name alone, not a value' },
   // Runtime string/container/date/math functions with genuinely fixed arity.
-  // Arities are taken from the X++ language reference; re-verify against xppc
-  // on the VM before extending further (Phase F of the coverage plan).
+  // Every arity below was verified against xppc 7.0.7996.33 on the VM (Phase F,
+  // 2026-08-29): a probe class compiled at N and failed at N+1 ("expects N
+  // argument(s)") and N-1 ("is missing argument N"). conIns was REMOVED — xppc
+  // accepted it with 2 and 4 arguments, so it is variadic, not fixed.
   strlen:      { name: 'strLen',      arity: 1, note: 'strLen(text)' },
   strupr:      { name: 'strUpr',      arity: 1, note: 'strUpr(text)' },
   strlwr:      { name: 'strLwr',      arity: 1, note: 'strLwr(text)' },
@@ -627,7 +629,6 @@ const FIXED_ARITY_BUILTINS: Record<string, { name: string; arity: number; note: 
   conlen:      { name: 'conLen',      arity: 1, note: 'conLen(container)' },
   conpeek:     { name: 'conPeek',     arity: 2, note: 'conPeek(container, position) — 1-based' },
   condel:      { name: 'conDel',      arity: 3, note: 'conDel(container, start, number)' },
-  conins:      { name: 'conIns',      arity: 3, note: 'conIns(container, start, value)' },
   mkdate:      { name: 'mkDate',      arity: 3, note: 'mkDate(day, month, year)' },
   year:        { name: 'year',        arity: 1, note: 'year(date)' },
   mthofyr:     { name: 'mthOfYr',     arity: 1, note: 'mthOfYr(date)' },
