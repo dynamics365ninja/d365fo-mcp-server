@@ -37,6 +37,18 @@
  *   XML006  AxTable elements out of canonical order (silently dropped by the AOT)
  *   XML007  Table-level property that does not exist in the AxTable model
  *
+ * Added from compiler diagnostics (see src/knowledge/compilerFacts.ts):
+ *   FN002   a call to a predefined function this platform version does not have
+ *   BP006   pause / window / tableLock / changeSite — removed from the language
+ *   MAC001  a precompiler directive written without its dot (#define X)
+ *   SEL008  order by / group by after the where of the same segment
+ *   SEL009  the in operator with an inline container literal
+ *   SEL010  a select expression on an aliased buffer; validTimeState given an expression
+ *   ATTR001 an attribute argument that is not a compile-time literal
+ *   ATTR002 [SysObsolete] without message, isError AND date (xppbp moniker)
+ *   EXT001  an extension-method class whose class or methods are not static
+ *   KW001   a variable named after a reserved word
+ *
  * Keyword scans run against a comment/string-masked copy of the source
  * (maskStringsAndComments) to avoid false positives inside literals/comments.
  *
@@ -60,6 +72,7 @@ import {
   acceptsArgumentCount,
   describeArity,
   intrinsicInfo,
+  isReservedKeyword,
   isUnknownFunction,
   runtimeFunctionInfo,
 } from '../../knowledge/compilerFacts.js';
@@ -1128,11 +1141,75 @@ function checkUnbalancedTts(code: string): ValidationViolation[] {
 function checkDevArtifacts(code: string): ValidationViolation[] {
   return matchAll(
     maskStringsAndComments(code),
-    /\b(?:pause|print)\b/g,
+    /^\s*(?:print|breakpoint)\b/gm,
     'BP004',
     'warning',
-    'Remove developer-only statements (pause / print) before shipping. ' +
-    'Use the Infolog (info/warning) or telemetry for diagnostics instead.',
+    'Remove developer-only statements (print / breakpoint) before shipping — they still ' +
+    'compile but go nowhere useful in the cloud. Use the Infolog (info/warning) or telemetry.',
+  );
+}
+
+/**
+ * BP006 — statements that were REMOVED from the language.
+ *
+ * pause, window, tableLock and changeSite are no longer keywords (they are absent
+ * from the parser's reserved-word set), so xppc does not report them as deprecated:
+ * it reports a syntax error, and the message names the token rather than the
+ * statement — "Invalid token '10'" for `window 10, 10;`, "does not denote a class,
+ * a table, or an extended data type" for `tableLock T;`. Code carried over from AX
+ * 2012 fails here first, and the message does not say why.
+ */
+function checkRemovedStatements(code: string): ValidationViolation[] {
+  const masked = maskStringsAndComments(code);
+  const violations: ValidationViolation[] = [];
+  const removed: Array<{ re: RegExp; fix: string }> = [
+    {
+      re: /^\s*pause\s*;/gm,
+      fix: 'pause was removed from X++ (xppc: "Invalid token \';\'"). Delete it — a batch or ' +
+        'a service has no console to pause.',
+    },
+    {
+      re: /^\s*window\s+\d/gm,
+      fix: 'window was removed from X++ (xppc: "Invalid token"). Delete it together with the ' +
+        'print statements it sized.',
+    },
+    {
+      re: /^\s*tableLock\b/gm,
+      fix: 'tableLock was removed from X++ (xppc: "The name \'tableLock\' does not denote a class, ' +
+        'a table, or an extended data type"). Use the select lock hints (pessimisticLock, ' +
+        'optimisticLock) or a transaction scope.',
+    },
+    {
+      re: /\bchangeSite\s*\(/gi,
+      fix: 'changeSite was removed from X++ (xppc: "\';\' expected"). Use changeCompany, or set ' +
+        'the site through the record\'s InventDim.',
+    },
+  ];
+  for (const r of removed) {
+    violations.push(...matchAll(masked, r.re, 'BP006', 'error', r.fix));
+  }
+  return violations;
+}
+
+/**
+ * MAC001 — a precompiler directive written without its dot.
+ *
+ * `#define X(1)` does not define anything: the precompiler reads `#define` as a
+ * macro REFERENCE, and the failure surfaces far away as "The macro 'define' is not
+ * defined". Every directive that names a macro takes the dot form (#define.Name,
+ * #localmacro.Name, #macrolib.Library, #if.Name, #ifnot.Name, #undef.Name).
+ */
+function checkMacroDirectiveForm(code: string): ValidationViolation[] {
+  return matchAll(
+    code,
+    /^\s*#(define|localmacro|macro|macrolib|globaldefine|globalmacro|if|ifnot|undef|defInc|defDec)\s+\w/gim,
+    'MAC001',
+    'error',
+    'Precompiler directives that name a macro use a DOT, not a space: "#define.MyMacro(42)", ' +
+    '"#localmacro.MyBlock", "#macrolib.MyLibrary", "#if.MyMacro". Written with a space the ' +
+    'precompiler reads the directive as a macro reference and reports ' +
+    '"The macro \'define\' is not defined".',
+    false,
   );
 }
 
@@ -1168,6 +1245,41 @@ function checkCSharpIsms(code: string): ValidationViolation[] {
     {
       re: /\bstring\s+\w+\s*[;=]/g,
       fix: 'The X++ string type is str (or an EDT) — "string" is C#.',
+    },
+    {
+      // xppc: "The name 'bool' does not denote a class, a table, or an extended data type."
+      re: /\b(?:bool|decimal|double|long|uint)\s+\w+\s*[;=,)]/g,
+      fix: 'C# primitive names do not exist in X++: use boolean, real, int64 and int. ' +
+        'There are no unsigned types.',
+    },
+    {
+      // xppc: "';' expected." — X++ has no override/virtual; every non-final
+      // instance method is virtual and redeclaring the signature overrides it.
+      re: /\b(?:public|protected|private|internal)\s+(?:override|virtual)\b/g,
+      fix: 'X++ has no override/virtual keywords — redeclare the method with the same signature ' +
+        'to override it, and mark it final to forbid further overriding.',
+    },
+    {
+      // xppc: "Conflicting modifiers 'protected private'."
+      re: /\bprivate\s+protected\b/g,
+      fix: 'private protected is not an X++ access combination ("Conflicting modifiers"). ' +
+        'protected internal does compile.',
+    },
+    // NO generics rule. `List<str>` fails in a sandbox model with "The name 'List<str>'
+    // does not denote a class, a table, or an extended data type" — but that is a
+    // RESOLUTION failure, not a syntax one ("Class 'List<str>' was not found. Are you
+    // missing a module reference?"), and ApplicationSuite ships
+    // `private List<str> operatingUnitNumbers;` plus
+    // `Microsoft.Dynamics.Ax.Xpp.FormObservable<int> tracker;`. An offline rule cannot
+    // tell which references a model has, so this one would report Microsoft's own
+    // compiling code. It stays knowledge (xpp-class-rules) until a probe explains
+    // which reference makes the bare form resolve.
+    {
+      // xppc: "')' expected." — the catch variable must be DECLARED first and then
+      // named alone: `System.Exception ex; … catch (ex)`.
+      re: /\bcatch\s*\(\s*(?:System|Microsoft)\.[\w.]+\s+\w+\s*\)/g,
+      fix: 'X++ cannot declare the exception variable in the catch: declare it first ' +
+        '("System.ArgumentException ex;") and write catch (ex).',
     },
   ];
   for (const p of patterns) {
@@ -1500,6 +1612,445 @@ function checkFieldEdt(code: string, stats?: PropertyStatsProvider): ValidationV
 
 // Runner
 
+/**
+ * Select statements in masked source: from `select` to the `;` or `{` that ends
+ * the statement — the `{` matters because a `while select` body holds statements
+ * of its own and must not be read as part of the header.
+ */
+function selectStatements(masked: string): Array<{ text: string; index: number }> {
+  const out: Array<{ text: string; index: number }> = [];
+  const re = /\bselect\b[^;{]*[;{]/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(masked)) !== null) out.push({ text: m[0], index: m.index });
+  return out;
+}
+
+/**
+ * SEL008 — order by / group by placed after the where of the same segment.
+ *
+ * X++ fixes the clause order inside each segment of a select:
+ *   select [options] buffer [index] [order by | group by] [where] [join …]
+ * and a where before the ordering is a COMPILE error whose message names neither:
+ * xppc answers "'join' expected", because after a where it can only accept another
+ * join. After a join the next segment starts over, so `… join t order by t.f where
+ * t.c` is correct and only the segment-local order is wrong.
+ */
+function checkSelectClauseOrder(code: string): ValidationViolation[] {
+  const masked = maskStringsAndComments(code);
+  const violations: ValidationViolation[] = [];
+
+  for (const stmt of selectStatements(masked)) {
+    // Segment boundaries are the join keywords; each segment orders independently.
+    const segments: Array<{ text: string; offset: number }> = [];
+    let last = 0;
+    const joinRe = /\bjoin\b/gi;
+    let j: RegExpExecArray | null;
+    while ((j = joinRe.exec(stmt.text)) !== null) {
+      segments.push({ text: stmt.text.slice(last, j.index), offset: last });
+      last = j.index;
+    }
+    segments.push({ text: stmt.text.slice(last), offset: last });
+
+    for (const seg of segments) {
+      const where = /\bwhere\b/i.exec(seg.text);
+      const ordering = /\b(?:order|group)\s+by\b/i.exec(seg.text);
+      if (!where || !ordering || where.index >= ordering.index) continue;
+      const at = stmt.index + seg.offset + ordering.index;
+      violations.push({
+        rule: 'SEL008',
+        severity: 'error',
+        line: lineNumber(masked, at),
+        excerpt: `${ordering[0]} after where`,
+        fix: 'Put order by / group by BEFORE the where of the same segment: ' +
+          '"select t order by Field where t.Field != \'\'". Written after the where, xppc ' +
+          'reports "\'join\' expected" — after a where clause it can only accept another join. ' +
+          'Each joined buffer starts a new segment with the same order.',
+      });
+    }
+  }
+  return violations;
+}
+
+/**
+ * SEL009 — the `in` operator with an inline container literal.
+ *
+ * xppc: "Container literals in 'in' expression are not supported. Declare container
+ * variable instead." The operator is narrower still — the left side must be an ENUM
+ * field, and a str/int64/real/date field answers "Types 'str(CustAccount)' and
+ * 'container' are not compatible with operator 'in'" — but that half needs the field
+ * type, which only the index knows, so it stays in the knowledge entry.
+ */
+function checkInOperatorLiteral(code: string): ValidationViolation[] {
+  const masked = maskStringsAndComments(code);
+  const violations: ValidationViolation[] = [];
+  for (const stmt of selectStatements(masked)) {
+    const re = /\bin\s*\[/gi;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(stmt.text)) !== null) {
+      const at = stmt.index + m.index;
+      violations.push({
+        rule: 'SEL009',
+        severity: 'error',
+        line: lineNumber(masked, at),
+        excerpt: stmt.text.slice(Math.max(0, m.index - 40), m.index + 20).trim(),
+        fix: 'The `in` operator needs a container VARIABLE, not an inline literal: ' +
+          'declare "container statuses = [Status::A, Status::B];" and write ' +
+          '"where t.Status in statuses". xppc: "Container literals in \'in\' expression are ' +
+          'not supported. Declare container variable instead." Note the left side must be an ' +
+          'ENUM field — for a string or number field, write the OR chain.',
+      });
+    }
+  }
+  return violations;
+}
+
+/**
+ * SEL010 — a select EXPRESSION that names a buffer variable, and validTimeState
+ * given an expression.
+ *
+ * `(select firstOnly cg).Name` looks like the natural shorthand when `cg` is already
+ * declared, but the expression form takes the TABLE name — xppc answers "Table 'cg'
+ * is not found". Likewise validTimeState takes variables or literals only:
+ * `validTimeState(DateTimeUtil::utcNow())` fails as "Invalid token '::'".
+ */
+function checkSelectExpressionAndValidTimeState(code: string): ValidationViolation[] {
+  const masked = maskStringsAndComments(code);
+  const violations: ValidationViolation[] = [];
+
+  // Scoped per method: `QueryBuildDataSource inventSerial = …` in one method must
+  // not decide what `inventSerial` means in another, where it is the table name.
+  for (const region of topLevelRegions(masked)) {
+    violations.push(...selectExpressionViolations(masked, region.offset, region.text));
+  }
+  violations.push(...validTimeStateViolations(masked));
+  return violations;
+}
+
+/**
+ * Top-level brace blocks of the masked source — one per method when the input is a
+ * method body or a concatenated class. Text outside any block is returned as the
+ * first region so class-declaration fields stay visible.
+ */
+function topLevelRegions(masked: string): Array<{ text: string; offset: number }> {
+  const regions: Array<{ text: string; offset: number }> = [];
+  let depth = 0;
+  let start = 0;
+  let outside = '';
+  for (let i = 0; i < masked.length; i++) {
+    const ch = masked[i];
+    if (ch === '{') {
+      if (depth === 0) { outside += masked.slice(start, i); start = i; }
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+      if (depth <= 0) { regions.push({ text: masked.slice(start, i + 1), offset: start }); start = i + 1; depth = 0; }
+    }
+  }
+  if (start < masked.length) outside += masked.slice(start);
+  if (regions.length === 0) return [{ text: masked, offset: 0 }];
+  // The prelude (class declaration / field list) prefixes every region so a class
+  // field counts as declared in each method.
+  return regions.map(r => ({ text: outside + r.text, offset: r.offset - outside.length }));
+}
+
+function selectExpressionViolations(
+  masked: string,
+  regionOffset: number,
+  regionText: string,
+): ValidationViolation[] {
+  const violations: ValidationViolation[] = [];
+
+  // Buffers declared here as `Type name;` — and only those whose NAME differs from
+  // their TYPE. X++ is case-insensitive, so the common `UserGroupInfo userGroupInfo;`
+  // leaves an identifier that resolves as the table either way and compiles (the
+  // platform relies on this in 180 classes); `CustGroup cg;` does not, and
+  // `(select firstonly cg)` is then "Table 'cg' is not found" in every form —
+  // with or without firstonly, with or without a where, field list or not
+  // (xppc 7.0.7996.33, probe round 4).
+  const aliasedBuffers = new Set<string>();
+  for (const m of regionText.matchAll(/^[ \t]*([A-Za-z_]\w*)[ \t]+([A-Za-z_]\w*)[ \t]*[;,=]/gm)) {
+    const [, type, name] = m;
+    // `flush CustParameters;` is a statement, not a declaration — the type slot has
+    // to be a real type name, and the compiler's own keyword set is what says so.
+    if (isReservedKeyword(type) || CALL_PRECEDING_KEYWORDS.has(type.toLowerCase())) continue;
+    if (type.toLowerCase() === name.toLowerCase()) continue;
+    aliasedBuffers.add(name.toLowerCase());
+  }
+
+  const exprRe = /\(\s*select\b((?:\s+\w+)*?)\s+([A-Za-z_]\w*)\s*[).]/gi;
+  let m: RegExpExecArray | null;
+  while ((m = exprRe.exec(regionText)) !== null) {
+    if (!aliasedBuffers.has(m[2].toLowerCase())) continue;
+    const at = regionOffset + m.index;
+    if (at < 0 || at >= masked.length) continue;
+    violations.push({
+      rule: 'SEL010',
+      severity: 'error',
+      line: lineNumber(masked, at),
+      excerpt: m[0].trim(),
+      fix: `A select EXPRESSION names the TABLE, not a buffer: "(select firstOnly MyTable).Field". ` +
+        `"${m[2]}" is declared as a buffer in this method, so xppc answers "Table '${m[2]}' is not found". ` +
+        'Either name the table, or use an ordinary select statement into the buffer.',
+    });
+  }
+
+  return violations;
+}
+
+function validTimeStateViolations(masked: string): ValidationViolation[] {
+  const violations: ValidationViolation[] = [];
+  let m: RegExpExecArray | null;
+  // validTimeState takes plain identifiers only: a call ("Invalid token '::'"), a
+  // field access ("Invalid token '.'") and even a date literal ("'identifier'
+  // expected") are all parse errors.
+  const vtsRe = /\bvalidTimeState\s*\(([^)]*)\)/gi;
+  while ((m = vtsRe.exec(masked)) !== null) {
+    const operands = m[1].split(',').map(s => s.trim()).filter(Boolean);
+    if (operands.length > 0 && operands.every(o => /^[A-Za-z_]\w*$/.test(o))) continue;
+    violations.push({
+      rule: 'SEL010',
+      severity: 'error',
+      line: lineNumber(masked, m.index),
+      excerpt: m[0].trim(),
+      fix: 'validTimeState takes plain variable names — not a call ("Invalid token \'::\'"), ' +
+        'not a field ("Invalid token \'.\'") and not a date literal ("\'identifier\' expected"). ' +
+        'Assign it first: "utcdatetime asOf = DateTimeUtil::utcNow(); select validTimeState(asOf) t;".',
+    });
+  }
+  return violations;
+}
+
+/** Values an attribute argument may take: the compiler stores literals, nothing else. */
+const ATTRIBUTE_LITERAL_RE =
+  /^(?:-?\d+(?:\.\d+)?|true|false|null|#\w+|\w+\s*::\s*\w+|\d{1,2}\\\d{1,2}\\\d{4}|@?["'][^"']*["'])$/i;
+
+/**
+ * ATTR001 — an attribute argument that is not a compile-time literal.
+ * ATTR002 — [SysObsolete] without all three arguments.
+ *
+ * The compiler does not construct the attribute: it stores the class name and the
+ * literal values, so a variable is "Invalid token ','" and a call is "Invalid token
+ * '('". An intrinsic is fine (it IS a literal after compilation) and so is a macro,
+ * which expands before the compiler sees it. SysObsolete is the one whose optional
+ * arguments are not optional in practice: xppbp answers
+ * BPCheckSysObsoleteAttributeParametersMismatch unless message, isError AND the date
+ * are all given.
+ */
+/**
+ * True when the bracket content is a list of attributes rather than a container
+ * literal or a multi-assignment: at depth 0 an attribute list holds only names and
+ * commas, while `[DatabaseLogType::Update, tableNum(X)]` shows `::` and `[a, b] = c`
+ * shows an assignment.
+ */
+function looksLikeAttributeList(body: string): boolean {
+  let depth = 0;
+  let sawName = false;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (ch === '(' || ch === '[') { depth++; continue; }
+    if (ch === ')' || ch === ']') { depth--; continue; }
+    if (depth > 0) continue;
+    if (/\s|,/.test(ch)) continue;
+    if (/[A-Za-z_]/.test(ch)) {
+      const rest = /^[A-Za-z_]\w*/.exec(body.slice(i))![0];
+      i += rest.length - 1;
+      sawName = true;
+      continue;
+    }
+    return false; // ::, quotes, digits, operators — not an attribute list
+  }
+  return sawName;
+}
+
+function checkAttributeArguments(code: string): ValidationViolation[] {
+  const masked = maskStringsAndComments(code);
+  const lines = code.split('\n');
+  const violations: ValidationViolation[] = [];
+
+  // One bracket may carry several attributes, and they may span lines:
+  //   [DataMemberAttribute('SalesId'),
+  //    BusinessEventsDataMemberAttribute('@Label')]
+  // so the bracket is located first and each Name(args) inside it read separately.
+  // The bracket must BE the line (nothing after the closing ]), must not contain a
+  // statement, and at depth 0 may hold only attribute names and commas. Without the
+  // last test a container literal at the start of a line — `[DatabaseLogType::Update,
+  // tableNum(X), fieldNum(X, Y)]` — and a multi-assignment `[a, b] = f();` read as
+  // attributes, which is 195 shipped classes' worth of noise.
+  const bracketRe = /^[ \t]*\[([^\];=]*(?:\n[^\];=]*){0,5}?)\]\s*$/gm;
+  const attrInBracket = /([A-Za-z_]\w*)\s*\(/g;
+  let bracket: RegExpExecArray | null;
+  const found: Array<{ name: string; argText: string; at: number }> = [];
+  while ((bracket = bracketRe.exec(masked)) !== null) {
+    const body = bracket[1];
+    if (!looksLikeAttributeList(body)) continue;
+    // A container literal of intrinsics — `[fieldNum(T, A), fieldNum(T, B)]` on its
+    // own line — passes the shape test, because an intrinsic name followed by a
+    // parenthesis is exactly what an attribute looks like. An attribute is never an
+    // intrinsic, so the head settles it.
+    const head = /^\s*([A-Za-z_]\w*)/.exec(body)?.[1];
+    if (head && intrinsicInfo(head)) continue;
+    const bodyStart = bracket.index + bracket[0].indexOf('[') + 1;
+    attrInBracket.lastIndex = 0;
+    let a: RegExpExecArray | null;
+    while ((a = attrInBracket.exec(body)) !== null) {
+      // Skip a nested call — only the attribute name sits at depth 0.
+      let depth = 0;
+      let nested = false;
+      for (let i = 0; i < a.index; i++) {
+        if (body[i] === '(') depth++;
+        else if (body[i] === ')') depth--;
+      }
+      if (depth !== 0) nested = true;
+      if (nested) continue;
+      // Read the balanced argument list.
+      let d = 0;
+      let end = a.index + a[0].length - 1;
+      for (let i = end; i < body.length; i++) {
+        if (body[i] === '(') d++;
+        else if (body[i] === ')') { d--; if (d === 0) { end = i; break; } }
+      }
+      found.push({
+        name: a[1],
+        argText: body.slice(a.index + a[0].length, end),
+        at: bodyStart + a.index,
+      });
+      attrInBracket.lastIndex = end;
+    }
+  }
+
+  for (const { name, argText, at } of found) {
+    const lineNo = lineNumber(masked, at);
+    const excerpt = lines[lineNo - 1]?.trim() || `[${name}(…)]`;
+
+    // Split on top-level commas so a nested intrinsic call stays one argument.
+    const args: string[] = [];
+    let depth = 0;
+    let buf = '';
+    for (const ch of argText) {
+      if (ch === '(' || ch === '[') depth++;
+      else if (ch === ')' || ch === ']') depth--;
+      if (ch === ',' && depth === 0) { args.push(buf.trim()); buf = ''; continue; }
+      buf += ch;
+    }
+    if (buf.trim()) args.push(buf.trim());
+
+    for (const arg of args) {
+      if (!arg) continue;
+      if (ATTRIBUTE_LITERAL_RE.test(arg)) continue;
+      const call = /^([A-Za-z_]\w*)\s*\(/.exec(arg);
+      if (call && intrinsicInfo(call[1])) continue; // classStr(...), tableStr(...), …
+      violations.push({
+        rule: 'ATTR001',
+        severity: 'error',
+        line: lineNo,
+        excerpt,
+        fix: `Attribute arguments must be compile-time literals — "${arg}" is not one. ` +
+          'The compiler stores the literal values without constructing the attribute, so a ' +
+          'variable reads as "Invalid token \',\'" and a call as "Invalid token \'(\'". ' +
+          'Allowed: a number, a quoted string, true/false/null, an enum value (MyEnum::Value), ' +
+          'a date literal, an intrinsic (classStr/tableStr/methodStr/…) or a #define macro.',
+      });
+    }
+
+    if (/^SysObsolete(Attribute)?$/i.test(name) && args.length < 3) {
+      violations.push({
+        rule: 'ATTR002',
+        severity: 'warning',
+        line: lineNo,
+        excerpt,
+        fix: 'Give SysObsolete all three arguments — message, isError AND the date: ' +
+          '[SysObsolete("Use MyNewClass instead.", false, 31\\12\\2026)]. The constructor defaults ' +
+          'them, but xppbp answers BPCheckSysObsoleteAttributeParametersMismatch when they are ' +
+          'omitted, and attribute arguments are positional so the date cannot be skipped.',
+      });
+    }
+  }
+  return violations;
+}
+
+/**
+ * EXT001 — an extension-method class whose members do not match its shape.
+ *
+ * A static class holds extension methods; every method in it must be static and the
+ * first parameter is the extended type. The compiler is explicit about both:
+ * "The method 'bad' must be declared as static because it is declared in a static
+ * class" and "Extension class 'X_Extension' must be static and public or internal".
+ */
+function checkExtensionMethodClassShape(code: string): ValidationViolation[] {
+  const masked = maskStringsAndComments(code);
+  const lines = code.split('\n');
+  const violations: ValidationViolation[] = [];
+
+  const classDecl = /\b(?:(public|internal|private)\s+)?(static\s+)?(?:final\s+)?class\s+(\w+_Extension)\b/i
+    .exec(masked);
+  if (!classDecl) return violations;
+  const isStatic = Boolean(classDecl[2]);
+  const isCoc = /\[\s*ExtensionOf/i.test(masked);
+
+  if (!isStatic && !isCoc) {
+    const lineNo = lineNumber(masked, classDecl.index);
+    violations.push({
+      rule: 'EXT001',
+      severity: 'error',
+      line: lineNo,
+      excerpt: lines[lineNo - 1]?.trim() ?? classDecl[0],
+      fix: `An _Extension class is one of two things, and this one is neither: a Chain of Command ` +
+        'class ([ExtensionOf(...)] final class) or an extension-method class (public static class ' +
+        'whose methods are all static and take the extended type first). xppc: "Extension class ' +
+        `'${classDecl[3]}' must be static and public or internal".`,
+    });
+    return violations;
+  }
+  if (!isStatic) return violations;
+
+  masked.split('\n').forEach((line, i) => {
+    const decl = /^\s*(?:public|protected|private|internal)\s+(?!static\b)[A-Za-z_][\w.]*\s+(\w+)\s*\(/.exec(line);
+    if (!decl) return;
+    violations.push({
+      rule: 'EXT001',
+      severity: 'error',
+      line: i + 1,
+      excerpt: lines[i]?.trim() ?? line.trim(),
+      fix: `Every method in a static extension class must be static: "public static <Type> ${decl[1]}` +
+        '(<ExtendedType> _target, …)". xppc: "The method \'' + decl[1] + '\' must be declared as ' +
+        'static because it is declared in a static class".',
+    });
+  });
+  return violations;
+}
+
+/**
+ * KW001 — a variable named after a reserved word.
+ *
+ * The reserved set is the parser's own (115 words, read from the shipped compiler),
+ * and it is not the set the language reference lists: `having`, `foreach`, `async`,
+ * `await` and `namespace` are reserved without being implemented, so a variable
+ * called `having` fails with a syntax error that names the following token instead.
+ * `in` is reserved but exempted and stays legal.
+ */
+function checkReservedIdentifiers(code: string): ValidationViolation[] {
+  const masked = maskStringsAndComments(code);
+  const lines = code.split('\n');
+  const violations: ValidationViolation[] = [];
+  const declRe =
+    /^\s*(?:(?:public|protected|private|internal|static|final|const|readonly)\s+)*(str\s+\d+|str|int64|int|real|boolean|date|utcdatetime|timeOfDay|guid|container|anytype)\s+([A-Za-z_]\w*)\s*[;,=]/gim;
+  let m: RegExpExecArray | null;
+  while ((m = declRe.exec(masked)) !== null) {
+    if (!isReservedKeyword(m[2])) continue;
+    const lineNo = lineNumber(masked, m.index);
+    violations.push({
+      rule: 'KW001',
+      severity: 'error',
+      line: lineNo,
+      excerpt: lines[lineNo - 1]?.trim() ?? m[0].trim(),
+      fix: `"${m[2]}" is a reserved word in X++ (the parser's own keyword set) and cannot name a ` +
+        'variable. Rename it — the compiler reports the failure on the token that follows, not on ' +
+        'the name, so the message will not point here.',
+    });
+  }
+  return violations;
+}
+
 const XPP_RULES = [
   checkTodayDeprecated,
   checkForceLiterals,
@@ -1525,6 +2076,14 @@ const XPP_RULES = [
   checkIndexHint,
   checkForeignJoinSyntax,
   checkReportDpShape,
+  checkRemovedStatements,
+  checkMacroDirectiveForm,
+  checkSelectClauseOrder,
+  checkInOperatorLiteral,
+  checkSelectExpressionAndValidTimeState,
+  checkAttributeArguments,
+  checkExtensionMethodClassShape,
+  checkReservedIdentifiers,
 ];
 
 const REPORT_XML_RULES = [

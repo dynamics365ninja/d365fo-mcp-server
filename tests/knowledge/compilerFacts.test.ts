@@ -242,3 +242,91 @@ describe('knowledge base does not contradict the compiler', () => {
     }
   });
 });
+
+describe('the rules added from compiler diagnostics fire on the bad shape', () => {
+  const rulesOf = (code: string) => runRules(code, 'xpp');
+  const has = (code: string, rule: string) => rulesOf(code).some(v => v.rule === rule);
+
+  it('BP006 — statements the language no longer has', () => {
+    expect(has('    pause;', 'BP006')).toBe(true);
+    expect(has('    window 10, 10;', 'BP006')).toBe(true);
+    expect(has('    tableLock CustGroup;', 'BP006')).toBe(true);
+    expect(has('    changeSite(1) { info("@X:Y"); }', 'BP006')).toBe(true);
+    // print and breakpoint still compile — a warning, not an error.
+    expect(has('    print "x";', 'BP006')).toBe(false);
+  });
+
+  it('MAC001 — a directive written without its dot', () => {
+    expect(has('#define X(1)\nint i = 1;', 'MAC001')).toBe(true);
+    expect(has('#define.X(1)\nint i = #X;', 'MAC001')).toBe(false);
+    expect(has('#localmacro MyBlock\n#endmacro', 'MAC001')).toBe(true);
+  });
+
+  it('SEL008 — order by after the where of the same segment', () => {
+    expect(has('select cg where cg.CustGroup != "" order by CustGroup;', 'SEL008')).toBe(true);
+    expect(has('select cg order by CustGroup where cg.CustGroup != "";', 'SEL008')).toBe(false);
+    // A join opens a new segment: ordering it after the previous where is correct.
+    expect(has(
+      'while select cg where cg.A == 1 join ct order by ct.B where ct.C == cg.C { }',
+      'SEL008',
+    )).toBe(false);
+  });
+
+  it('SEL009 — an inline container literal on the in operator', () => {
+    expect(has('select firstonly ct where ct.Blocked in [CustVendorBlocked::No];', 'SEL009')).toBe(true);
+    expect(has('select firstonly ct where ct.Blocked in blockedStates;', 'SEL009')).toBe(false);
+  });
+
+  it('SEL010 — a select expression on an aliased buffer, and validTimeState with a call', () => {
+    expect(has('CustGroup cg;\nstr s = (select firstonly cg).Name;', 'SEL010')).toBe(true);
+    // The buffer named after its table resolves as the table and compiles.
+    expect(has('CustGroup custGroup;\nstr s = (select firstonly custGroup).Name;', 'SEL010')).toBe(false);
+    expect(has('str s = (select firstonly CustGroup).Name;', 'SEL010')).toBe(false);
+    expect(has('select validTimeState(DateTimeUtil::utcNow()) e;', 'SEL010')).toBe(true);
+    expect(has('select validTimeState(asOf) e;', 'SEL010')).toBe(false);
+    expect(has('select validTimeState(fromDate, toDate) e;', 'SEL010')).toBe(false);
+  });
+
+  it('ATTR001/ATTR002 — attribute arguments', () => {
+    expect(has('[SysObsolete(message, false, 1\\1\\2026)]\npublic void f()\n{\n}', 'ATTR001')).toBe(true);
+    expect(has('[SysObsolete(strFmt("x"), false, 1\\1\\2026)]\npublic void f()\n{\n}', 'ATTR001')).toBe(true);
+    expect(has('[ExtensionOf(classStr(CustTable))]\nfinal class X_Extension\n{\n}', 'ATTR001')).toBe(false);
+    expect(has('[SysObsolete("gone", false, 1\\1\\2026)]\npublic void f()\n{\n}', 'ATTR001')).toBe(false);
+    expect(has('[SysObsolete("gone", false)]\npublic void f()\n{\n}', 'ATTR002')).toBe(true);
+    expect(has('[SysObsolete("gone", false, 1\\1\\2026)]\npublic void f()\n{\n}', 'ATTR002')).toBe(false);
+    // A container literal of intrinsics on its own line is not an attribute list.
+    expect(has('    [fieldNum(MyTable, A),\n     fieldNum(MyTable, B)]', 'ATTR001')).toBe(false);
+  });
+
+  it('EXT001 — an extension-method class whose methods are not static', () => {
+    expect(has(
+      'public static class MyTable_Extension\n{\n    public str name(MyTable _t)\n    {\n        return "";\n    }\n}',
+      'EXT001',
+    )).toBe(true);
+    expect(has(
+      'public static class MyTable_Extension\n{\n    public static str name(MyTable _t)\n    {\n        return "";\n    }\n}',
+      'EXT001',
+    )).toBe(false);
+    expect(has(
+      '[ExtensionOf(tableStr(MyTable))]\nfinal class MyTable_Extension\n{\n    public void insert()\n    {\n        next insert();\n    }\n}',
+      'EXT001',
+    )).toBe(false);
+  });
+
+  it('KW001 — a variable named after a reserved word', () => {
+    expect(has('    int having;', 'KW001')).toBe(true);
+    expect(has('    str namespace = "x";', 'KW001')).toBe(true);
+    // `in` is reserved but exempted — legal as an identifier.
+    expect(has('    int in;', 'KW001')).toBe(false);
+    expect(has('    int counter;', 'KW001')).toBe(false);
+  });
+
+  it('CS001 — C# shapes, but not the .NET generics the platform ships', () => {
+    expect(has('    public override void run()\n    {\n    }', 'CS001')).toBe(true);
+    expect(has('    private protected void f()\n    {\n    }', 'CS001')).toBe(true);
+    expect(has('    bool flag = true;', 'CS001')).toBe(true);
+    expect(has('    try { f(); } catch (System.Exception ex) { }', 'CS001')).toBe(true);
+    expect(has('    private List<str> operatingUnitNumbers;', 'CS001')).toBe(false);
+    expect(has('    var l = new System.Collections.Generic.List<str>();', 'CS001')).toBe(false);
+  });
+});

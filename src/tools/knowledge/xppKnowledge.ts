@@ -4065,7 +4065,7 @@ switch (status)
       'Attribute arguments are positional only — X++ has no named-argument syntax',
       'Instances are constructed LAZILY when reflection reads them — a throwing attribute constructor surfaces at the READER, far from the declaration site',
       'Read back via reflection: DictClass / DictMethod expose getAllAttributes, getAttribute and getAttributedClasses — see reflection-dict. Attribute scanning is the backbone of the SysExtension plug-in pattern (see sysextension)',
-      'SysObsoleteAttribute("message", makeError) on a class/method/field turns every REFERENCE into a compile warning (false) or error (true) — the supported deprecation mechanism (see deprecated)',
+      'SysObsoleteAttribute("message", makeError, date) on a class/method/field turns every REFERENCE into a compile warning (false) or error (true) — the supported deprecation mechanism (see deprecated). Pass ALL THREE arguments even though the constructor defaults them: xppbp answers BPCheckSysObsoleteAttributeParametersMismatch otherwise, and positional arguments mean the date cannot be skipped',
     ],
     examples: [
       {
@@ -4097,7 +4097,7 @@ public class MyCustomerSyncStrategy
       },
       {
         label: 'Deprecating a class — every reference becomes a compile warning (true = error)',
-        code: `[SysObsolete('Use MyCustomerSyncStrategyV2 instead', false)]
+        code: `[SysObsolete('Use MyCustomerSyncStrategyV2 instead', false, 31\\12\\2026)]
 public class MyCustomerSyncStrategy
 {
 }`,
