@@ -154,9 +154,10 @@ Two specific traps:
   hallucinate as obsolete. Add to that block rather than deleting a wrong claim
   outright, so a keyword search still lands on the correction.
 - **Templates the tools emit must obey the rules the topics state.**
-  `get_method`'s CoC template used to copy the base method's default parameter
-  values — exactly what `coc-authoring` forbids and what `validate_code` reports
-  as `COC001`. If you write a rule about generated shape, check the generator.
+  the CoC template behind `get_object_info` (back when it was its own
+  `get_method` tool) used to copy the base method's default parameter values —
+  exactly what `coc-authoring` forbids and what `validate_code` reports as
+  `COC001`. If you write a rule about generated shape, check the generator.
 
 ## 5. Checklist
 
