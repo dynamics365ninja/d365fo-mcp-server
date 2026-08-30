@@ -28,7 +28,127 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Added
+- **X++ language-core knowledge pack (Phase B).** The knowledge base was strong
+  on frameworks and data access and silent on the language itself, so an agent
+  could look up `SysOperation` but not how `switch` falls through. Seven new
+  topics — `xpp-data-types`, `xpp-declarations`, `operators-precedence`,
+  `switch-loops`, `attributes-authoring`, `intrinsic-functions`,
+  `date-effective` — plus six expansions: `select-statement` (firstOnly
+  variants, exists/notexists semi-join semantics), `xpp-class-rules` (no
+  overloading, properties, generics or lambdas), `event-handlers` (delegate
+  declaration vs eventhandler subscription, no firing-order guarantee), `coc`
+  (next-in-try/catch PU21+, implicit system-method wrapping PU22+),
+  `transactions` (the precise in-tts catchability matrix, replacing the
+  overbroad "never try/catch inside tts"), `error-handling` (retry semantics,
+  infolog discard, `finally` — and a correction: the literal is
+  `DuplicateKeyException`, not "DuplicateKeyConflict").
+- **Ten new `validate_code(mode="syntax")` rules (Phase C)**, taking the static
+  set from 20 to 30. `CS001` rejects C# constructs that cannot compile in X++
+  (`$"…"` interpolation, `=>` lambdas, `foreach`, `??`, the `string` type), each
+  with the X++ equivalent in the fix message. `TTS002` catches a dead catch
+  inside an open tts scope — only `Exception::UpdateConflict` and
+  `DuplicateKeyException` reach an inner catch, everything else unwinds outside
+  the transaction. `TTS003` flags a `retry` with no guard in its catch, which
+  loops forever on a deterministic error. `SEL006` (index hint without
+  `allowIndexHint(true)`, silently ignored) and `SEL007` (`left`/`right join`,
+  `join…on` — SQL syntax X++ does not have). `RPT001`/`RPT002` catch SSRS data
+  providers that compile clean and fail at report run time. A new
+  `codeType="xml-report"` runs report-only checks (`RPT101` missing design node,
+  `RPT102` dataset without `<Query>`) and pointedly does not run the X++ keyword
+  rules over RDL CDATA. `FN001`'s fixed-arity catalog grew from 4 builtins to
+  27, including `ssrsReportStr`'s two arguments — the missing-design-argument
+  mistake now fails at write time instead of at build.
+- **`object_patterns(domain="report")` — SSRS implementation recipes (Phase D).**
+  Seven patterns (SimpleList, GroupedWithTotals, HeaderDetail, PreProcess,
+  PrintMgmtFormLetter, QueryBased, UIBuilderDialog). Unlike a form pattern there
+  is no pattern XML to validate, so a report pattern is a *recipe*: the object
+  roster with base classes, the one `generate_object` scaffold call that
+  produces it, method guidance, and the checks to run afterwards. Alongside it:
+  `validate_object_naming(objectType="report")` warns when an AxReport name
+  carries a companion-class suffix and returns the full roster;
+  `generate_object(mode="scaffold", objectType="report")` gained `uiBuilder`,
+  and its op-spec now advertises `aotQuery`, `callerTableName`, `preProcess`,
+  `controllerType` and `uiBuilder` — all implemented already, none of them
+  visible to an agent before.
+- **Index warm-up at startup** (`INDEX_WARMUP`, `INDEX_WARMUP_BUDGET_MS`).
+  87% of a 23-minute benchmark run was tool time over SQL that takes
+  milliseconds once the pages are cached. Measured on the reference VM
+  (1.19M symbols / 2.5 GB): the `idx_symbols_name` covering scan is 83 s cold
+  and 0.11 s warm; the run's own 189 s search batch and 174 s first label search
+  are that same cold cost. A worker thread now reads the hot indexes on its own
+  connection, budget-capped and never awaited. It buys the session's first
+  questions, not the whole session — the two databases are larger than the cache
+  they compete for, and a build evicts them again.
+- **A running tool call now says which phase it is in** (`SLOW_CALL_HEARTBEAT_MS`,
+  default 30 s, 0 to turn it off). The phase block in the reply is only ever read
+  afterwards, and the create that took 341 s reported all of it as
+  `(unmeasured)` — so there was nothing to look at either way, during or after.
+- **Op-spec topics for the build/verify/BP overrides.** `packagePath` on
+  `build_d365fo_project`, `verify_d365fo_project` and `run_bp_check` was
+  unpublished to pay for schema cost and had nowhere to be discovered — it
+  points those tools at metadata outside the configured PackagesLocalDirectory
+  and has no published equivalent, so the capability existed and nothing could
+  tell a caller it was there.
+- **Eval catalog 87 → 98 cases, and both coverage tiers closed at 100%**
+  (core 51/51, total 89/89). Phase E added the grammar and reporting leaves,
+  Phase F captured their goldens on the VM, five language cases and a final
+  attribute/reflection case closed the queue — each built, xppbp-clean,
+  golden-matched and rolled back on the VM.
+
 ### Fixed
+- **`labels(action="search")` recommended labels that are not on disk.**
+  `action="info"` has checked a single id against the `.label.txt` since August;
+  search — the call an agent makes *before* it reuses a label — never did. One
+  benchmark run took all three labels it needed from a single search, every one
+  a resolvable index hit left behind by a rolled-back session and none of them
+  on disk. xppc does not check labels, so the 115 s build passed and
+  `run_bp_check` found them two steps later (`BPErrorUnknownLabel` ×2, plus two
+  bogus `BPUnusedStrFmtArgument` — an unresolvable label reads as a format
+  string with no placeholders). Recovery cost a second build and a second BP
+  run. Search now confirms hits against disk, marks a phantom row, and never
+  picks one as the recommendation.
+- **An EDT read back its constructor default instead of its inherited
+  `StringSize`.** `IMetadataProvider` returns an EDT exactly as its own XML
+  declares it and fills in nothing it inherits, so a derived string EDT that
+  declares no size reported 10: `ItemFreeTxt` is really 1000, `ItemId` and
+  `CustAccount` really 20. The table reader carried the same defect and is the
+  higher-traffic consumer — across ten core tables **310 of 564 string fields
+  (55%) reported the wrong size**. A derived EDT that *declares* its own size is
+  authoritative (228 in the shipped corpus do) and is left untouched; only the
+  unset case is filled in. A follow-up audit also bound the two hand-rolled
+  fallbacks by name: the CLR resolves a method token when it JITs the
+  *containing* method, so the `MissingMethodException` they existed for surfaced
+  one frame up and their inner catch never ran — verified on .NET Framework 4
+  x64 against an assembly with the helper removed.
+- **SSRS scaffolding produced reports that could not compile or bind.** The
+  `ssrs-report-full` pattern emitted `ssrsReportStr(X, Design)` while every
+  scaffolded AxReport names its design `Report`, and `ssrsReportStr` is
+  compile-time checked against that name — so the generated controller could
+  never compile against the generated report; a regression test now pins the two
+  paths together. The pre-process scaffold paired a TempDB table with the wrong
+  data-provider base, and the print-management controller did not implement the
+  abstract `runPrintMgmt`, so it did not compile. Report EDT resolution is now
+  model-aware: a field of that name already in the target model wins, and a
+  candidate that is another model's prefix glued onto the field name is demoted
+  — which is what made a bare `fieldsHint` pick an un-migrated
+  `PlCorrNoteId` (`BPErrorEDTNotMigrated`).
+- **Write-path gaps found while capturing a date-effective case on the VM:**
+  `add-index`/`create` could not set `ValidTimeStateKey`/`Mode`, `add-field`
+  handed the bridge the root EDT name for a Date EDT (`Data type mismatch`), and
+  a `modify-property` with an empty value left an empty element behind.
+- **Options a tool accepted and then quietly dropped.** An option silently
+  ignored is worse than one refused, because the caller draws a conclusion from
+  the absence. `get_object_info(objectType="table", options:{relations:true})`
+  is read only by the bridge renderer; on the symbol-index and disk fallbacks
+  the knobs were parsed, defaulted and dropped, so the answer came back with no
+  relations and nothing to explain it — which reads as "this table has none".
+  Those paths now name what they could not honour, and why. Separately,
+  `workspace://active` and `workspace://files` rendered from the NON-blocking
+  context snapshot and never read its pending flags, so a scan still running was
+  reported as an empty result — at session start, exactly when the caches are
+  cold, a workspace full of recent edits could come back as "no recent edits". A
+  resource read is not on the latency path a tool call is, so it now waits.
 - **A write did not invalidate the workspace scan cache.** `WorkspaceScanner`'s
   own doc comment said its 15s TTL was "paired with invalidate() (called after
   writes)"; `invalidate()` had no production caller at all — only tests and its
@@ -67,7 +187,10 @@ those are called out explicitly below.
   `object_patterns`) were unpacked into bullet lists — same facts, readable
   shape. CUSTOM_EXTENSIONS.md and SETUP_AZURE.md stopped teaching the legacy
   `.env`/`PACKAGES_PATH` configuration as the primary route now that the
-  wizard writes `config/d365fo-mcp.json`.
+  wizard writes `config/d365fo-mcp.json`. Re-run against the Phase B–F work
+  that landed after it: 87 → 98 eval cases, 20 → 30 static rules, coverage
+  44/44 + 78/78 → 51/51 + 89/89, and the `object_patterns` report domain,
+  report naming and `uiBuilder` scaffold documented for the first time.
 - **Writes silently landed in whichever project scanned first.** When workspace
   heuristics resolved nothing, the `D365FO_SOLUTIONS_PATH` fallback pinned
   `all[0]` — so in a solution where several `.rnrproj` build one model (the
@@ -142,6 +265,22 @@ those are called out explicitly below.
   `fs.access` miss and are correctly left alone.
 
 ### Changed
+- **Knowledge claims re-verified against xppc on the VM (Phase F).** `conIns`
+  left `FIXED_ARITY_BUILTINS` (xppc accepts 2 and 4 arguments), `protected
+  internal` compiles while `private protected` does not, `forceLaterals` is not
+  a keyword, and the attribute is spelled `SrsReportParameterAttribute` per its
+  own `<Name>`. Examples added to the SSRS and attribute topics against real
+  symbols — 309 references audited, 0 defects.
+- **A write no longer sweeps the whole metadata root to resolve its package.**
+  `PackageResolver.buildMap()` reads every package directory, every descriptor
+  and every subdirectory again — ~5 s on a 214-package PackagesLocalDirectory,
+  paid on every write because both paths build a fresh resolver. It now probes
+  `<root>/<modelName>` first (two readdirs): **5,073 ms → 6 ms**, agreeing with
+  the full sweep on 211 of 212 models, and the sweep still runs for a package
+  not named after its model. The fallback write path also names its phases, so
+  a slow create can no longer attribute five minutes to `(unmeasured)`.
+- The direct-XML writers moved out of `modifyD365File.ts` into
+  `src/tools/write/directXmlWriters.ts`.
 - An event-loop lag monitor ships behind `DEBUG_LOGGING`. The audit could
   measure the symptom — 268 real `labels` calls averaging 5.6 s server time
   while the FTS query inside them takes 6-11 ms, a first call after the

@@ -26,8 +26,8 @@ import { resetLabelSearchHistory } from '../../src/tools/analysis/labelSearchHis
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 
-const EN = 'K:\Packages\MyModel\AxLabelFile\LabelResources\en-US\MyModel.en-US.label.txt';
-const CS = 'K:\Packages\MyModel\AxLabelFile\LabelResources\cs\MyModel.cs.label.txt';
+const EN = 'K:\\Packages\\MyModel\\AxLabelFile\\LabelResources\\en-US\\MyModel.en-US.label.txt';
+const CS = 'K:\\Packages\\MyModel\\AxLabelFile\\LabelResources\\cs\\MyModel.cs.label.txt';
 
 const req = (args: Record<string, unknown>): CallToolRequest => ({
   method: 'tools/call',
