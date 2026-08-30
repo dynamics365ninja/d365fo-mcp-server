@@ -86,7 +86,7 @@ Generated code must *prove* itself before touching disk. All gates are fail-clos
 |------|------------------|-------------|--------|
 | Provenance | `prepare` (mode=change/create) issues a grounding token (30 min TTL, object-bound). In-memory by default; with `GROUNDING_SECRET` set on both instances the token is HMAC-signed and portable, so the hybrid write-only companion (and scaled-out App Service) can validate it — without the secret, write-only mode bypasses enforcement | write called without a valid token | `GROUNDING_ENFORCE` + `GROUNDING_SECRET` |
 | References | `validate_code(mode="references")` — every type, field, method (incl. arity), enum, label checked against the index | any identifier unresolved | `GROUNDING_ENFORCE` |
-| Best practices | `validate_code(mode="syntax")` — 30 static rules (BP001–005, COC001–006, SEL001–007, TTS001–003, CS001, FN001, RPT001/002/101/102, XML001/006/007) + 4 data-driven XML rules (XML002–XML005) mined from standard models (`property_stats`) | error-severity violations | — (advisory in output) |
+| Best practices | `validate_code(mode="syntax")` — 40 static rules (BP001–006, COC001–006, SEL001–010, TTS001–003, ATTR001/002, CS001, EXT001, FN001/002, KW001, MAC001, RPT001/002/101/102, XML001/006/007) + 4 data-driven XML rules (XML002–XML005) mined from standard models (`property_stats`) | error-severity violations | — (advisory in output) |
 | Form patterns | `object_patterns (domain=form, action=validate)` — rules FP000–FP010 against the curated pattern catalog | structural violations (FP001–FP005, FP007) | `FORM_PATTERN_ENFORCE` |
 
 Supporting reliability mechanisms:
@@ -192,12 +192,12 @@ Two agents, one shared store, **no shared in-memory state** — either can run o
 
 | Element | What it is |
 |---|---|
-| Case catalog | 98 cases in `eval/cases/`, tiered L0–L4, each with a JSON spec validated against `schema.json` |
+| Case catalog | 111 cases in `eval/cases/`, tiered L0–L4, each with a JSON spec validated against `schema.json` |
 | Primary oracle | **golden metadata** — a diff of produced XML against the case's captured golden, not merely "it compiled" |
 | Runtime oracle | `run_systest_class` against `eval/systests/<id>.xml` — a SysTest references only standard objects, so it fails when a CoC wrapper is missing or wrong, which a golden cannot detect |
 | Fixtures | shared INPUT objects (e.g. `ConDemoNoteHeader`) live in `eval/fixtures/`, re-provisioned per run and excluded from rollback — case OUTPUTS are never pre-provisioned |
 | Isolation | every run works in a throwaway sandbox model and rolls back, so runs never pollute each other or the index |
-| Coverage | a taxonomy leaf counts as covered only when **K**nowledge teaches it, an **E**val case with a captured golden proves it, and the **T**ool path can build it — currently core 51/51, total 89/89 ([eval/COVERAGE.md](../eval/COVERAGE.md)) |
+| Coverage | a taxonomy leaf counts as covered only when **K**nowledge teaches it, an **E**val case with a captured golden proves it, and the **T**ool path can build it — currently core 59/59, total 98/100 ([eval/COVERAGE.md](../eval/COVERAGE.md)) |
 
 The loop is an eval and self-improvement harness, **not** a production code generator and **not** auto-merge — the improver opens PRs that humans review.
 
@@ -250,5 +250,5 @@ Index refresh is automated via [Azure DevOps pipelines](SETUP_AZURE.md#azure-dev
 | Transport | MCP SDK — stdio + Express 5 HTTP |
 | Storage | node:sqlite (WAL, FTS5) — core module, no native addon |
 | Bridge | .NET Framework 4.8, Microsoft.Dynamics.AX.Metadata DLLs |
-| Tests | Vitest — ~5,200 tests, golden quality-gate suites |
+| Tests | Vitest — ~5,450 tests, golden quality-gate suites |
 | CI/CD | GitHub Actions — app CI + `eval-gate` (bridge attestation, golden regression, knowledge audit, coverage matrix); Azure DevOps (metadata pipelines) |

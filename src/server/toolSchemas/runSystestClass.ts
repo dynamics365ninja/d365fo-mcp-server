@@ -6,7 +6,7 @@
 
 export const runSystestClassTool = {
     name: 'run_systest_class',
-    description: 'Execute a D365FO unit test class via SysTestConsole.exe. Needs an interactive console session — fails headless.',
+    description: 'Execute a D365FO unit test class via SysTestConsole.exe (/unattended), returning per-method results.',
     inputSchema: {
       type: 'object',
       properties: {
