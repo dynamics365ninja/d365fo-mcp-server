@@ -1,0 +1,25 @@
+{
+  "id": "L3-warehouse-scan-resolve-slice",
+  "title": "Barcode scanning: GS1-128 application-identifier parse + item-barcode resolution + inventory dimensions",
+  "tier": 3,
+  "instruction": "In the sandbox model, build the X++ half of a scanner input slice. Ground it first with get_knowledge(topic=\"barcode-scanning\") and get_knowledge(topic=\"warehouse-mobile-app\"). SCOPE LIMIT: barcode setup records, item barcodes and mobile device menu items are configured data, not AOT elements - they are out of scope, the class only READS them. Create a class DemoScanResolver with public static methods: (1) `container splitGs1(str _scan)` - splits a GS1-128 scan into (application identifier, value) pairs; a fixed-length AI is followed immediately by the next AI, a variable-length AI ends at the FNC1 group separator (ASCII 29) or at end of scan. Slicing the scan at fixed character offsets FAILS this case. (2) `ItemId itemIdFromGtin(str _gtin)` - resolves a GTIN to an item through the standard item-barcode API, restricted to codes flagged for input, and returns an empty ItemId when the code does not resolve (an unresolved scan is a business case, not a throw). Comparing the scanned string against InventTable.ItemId, or any raw select that bypasses the barcode tables, FAILS this case. (3) `InventDimId dimensionsFromScan(str _scan)` - takes the batch (AI 10) and serial (AI 21) out of the parsed pairs and returns the dimension combination through the InventDim find-or-create API; a raw insert on InventDim FAILS this case. Confirm every barcode/inventory class, table, field and member signature with search/get_object_info(options={\"method\":\"<name>\",\"include\":\"signature\"}) before writing it - do not guess, and do not assume a table exists just because a recent version of the product documents it. Any operator-facing message must be a label, not a literal. The class must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L3-warehouse-scan-resolve-slice/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "warehouse",
+    "whs",
+    "barcode",
+    "scanner",
+    "gs1",
+    "inventdim",
+    "class"
+  ],
+  "split": "holdout"
+}

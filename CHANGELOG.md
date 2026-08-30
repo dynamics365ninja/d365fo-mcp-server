@@ -29,6 +29,37 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **Warehouse-scanner knowledge pack (SCM audit).** D365FO drives barcode
+  scanners through Warehouse management, and the base was silent on it: querying
+  `get_knowledge` for `barcode`, `gs1` or `scanning` returned *"No matching
+  knowledge entries found"*, `item barcode` returned the **menus** topic (the
+  token `item` hits the keyword `menu item`), `license plate` returned ISV
+  **license codes**, and `scanner` returned **Electronic Reporting** — `scoreEntry`
+  credits `token.includes(keyword)` and "scanner" contains "er". A wrong topic
+  reads as authoritative, so this was worse than a gap. Two new topics close it:
+  `warehouse-mobile-app` (the warehouse app is a stateless container protocol, not
+  a form: screen state travels in the round-tripped payload and never in member
+  variables; menu items and app steps are configured data, not AOT elements; work
+  is posted through the work-execution hierarchy or it loses its undo) and
+  `barcode-scanning` (printing and scanning share no code; a scan resolves through
+  the barcode setup, never against `ItemId`; GS1-128 is parsed application
+  identifier by application identifier with the FNC1 separator, never sliced at
+  fixed offsets; a GTIN carries unit and pack quantity; an unresolved scan is a
+  business case, not a throw). `warehouse-management` lost its one vague mobile
+  line — it named a flow class that the audit could not confirm — and now points
+  at both. Routing is pinned by regression tests, in both directions: the scanner
+  queries above must land on the new topics, and the neighbours they used to be
+  answered by must keep their own.
+- **Eval case `L3-warehouse-scan-resolve-slice`** (`golden_pending`) — GS1-128
+  application-identifier parse, item-barcode resolution restricted to input codes,
+  and batch/serial applied through the `InventDim` find-or-create API. Fixed-offset
+  slicing, an `ItemId` string compare and a raw `InventDim` insert each fail the
+  case.
+- **Coverage taxonomy leaf `warehouse-mobile-scanning`** (w2, total tier). The
+  scanner half of WHS was uncovered while looking covered under `warehouse`, whose
+  case exercises wave/work creation only. Total coverage therefore moves 100% →
+  **98.9%** (core is unchanged at 100%) and the closure queue now names the gap;
+  it closes when the case's golden is captured on the VM.
 - **X++ language-core knowledge pack (Phase B).** The knowledge base was strong
   on frameworks and data access and silent on the language itself, so an agent
   could look up `SysOperation` but not how `switch` falls through. Seven new

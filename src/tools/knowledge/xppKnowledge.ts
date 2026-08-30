@@ -2324,7 +2324,8 @@ else
     id: 'warehouse-management',
     title: 'Warehouse Management (WHS / WMS)',
     keywords: ['warehouse', 'whs', 'wms', 'wave', 'work', 'location directive', 'whswork',
-               'whsworktable', 'whsworkline', 'whswavetemplate', 'pick', 'put', 'replenishment'],
+               'whsworktable', 'whsworkline', 'whswavetemplate', 'pick', 'put', 'replenishment',
+               'work template', 'work order', 'cycle count', 'wave step'],
     summary:
       'D365FO Warehouse Management (WHS) manages advanced warehouse operations: wave processing, ' +
       'work creation, pick/put execution, location directives, and mobile device flows. ' +
@@ -2335,14 +2336,171 @@ else
       'Wave processing: WHSWaveTemplate defines steps (wave template) — allocate, create work, etc.',
       'Location directives: WHSLocDirTable rules determine where to pick from and put to',
       'Work templates: define the work action sequence (Pick → Put, Count, etc.)',
-      'Mobile device: WHSMobileAppFlow — flows are customizable via extensions',
+      'Mobile device / scanner flows are NOT forms and not part of this topic: the warehouse app is a stateless container protocol over the work-execution display classes — read warehouse-mobile-app before touching a step, and barcode-scanning before treating a scanned string as an ItemId',
       'For custom wave steps: extend WHSWaveStepBase and register in wave template config',
       'NEVER directly update WHSWorkTable.WorkStatus — use the WHSWorkExecute class hierarchy',
       'Use WHSLocationProfile for zone/location type configuration',
       'Performance: wave processing is batch-capable — always use batch for large volumes',
       'For extensions: use CoC on WHSPostEngine* classes for custom post-processing logic',
     ],
-    related: ['inventory-management', 'sysoperation'],
+    related: ['inventory-management', 'sysoperation', 'warehouse-mobile-app', 'barcode-scanning'],
+  },
+
+  // ── Warehouse app / mobile device (scanners) ────────────────────────────
+  {
+    id: 'warehouse-mobile-app',
+    title: 'Warehouse app & mobile device flows (scanners, work execution)',
+    keywords: ['warehouse app', 'mobile device', 'mobile app', 'scanner', 'scan', 'scanning',
+               'handheld', 'rf device', 'rf gun', 'wmdp', 'warehouse mobile device portal',
+               'whsworkexecute', 'whsworkexecutedisplay', 'whsrfcontroldata', 'whsrfmenuitemtable',
+               'mobile device menu item', 'warehouse app step', 'app field name', 'work user',
+               'whsworkuser', 'license plate', 'undo work', 'device session'],
+    summary:
+      'The warehouse app (and its predecessor the warehouse mobile device portal, WMDP) is NOT a form. ' +
+      'It is a stateless request/response protocol: the work-execution display classes build a screen ' +
+      'server-side as a container, the device posts the whole screen back, and the next round trip may ' +
+      'land on a different AOS. Menu items, menus, app steps and field names are CONFIGURED data — the ' +
+      'only AOT surface you customize is the display/execute class hierarchy plus the extensible ' +
+      'activity enum. Treating a step like a form (member state, form events, direct table writes) is ' +
+      'the failure mode this topic exists to prevent.',
+    rules: [
+      'A warehouse-app screen is a CONTAINER of controls built server-side by the WHSWorkExecuteDisplay hierarchy — there is no FormRun, no datasource, no control event. Nothing in formrun-lifecycle or form-patterns applies to a scanner step',
+      'Every round trip is STATELESS and may be served by a different AOS: carry state in the pass-through data the framework round-trips (the WHSRFControlData / container payload), NEVER in class member variables, static fields or globals. Member state survives a single-box dev machine and silently loses the worker\'s progress under load balancing',
+      'Define the layout of the pass-through container in ONE place. Two methods that each hard-code conPeek indexes is the classic cause of "wrong value after the operator pressed back"',
+      'Mobile device menu items (WHSRFMenuItemTable) and mobile device menus are CONFIGURED DATA, not AOT elements. "Add a scanner menu item" is setup or a data package — do not try to create an AOT object for it. The AOT half of a custom flow is the activity value and the display/execute class behind it',
+      'A custom activity goes on the extensible activity enum (WHSWorkActivity) via an enum extension — see extensible-enums for why the XML must not carry <Value> elements. Confirm the exact factory/registration member with get_object_info before writing it: it differs across platform versions and is the single most hallucinated part of a warehouse-app customization',
+      'NEVER write WHSWorkTable / WHSWorkLine directly from a step. Work status, work-line transactions and inventory move together through the WHSWorkExecute hierarchy; a direct update leaves the work header, the inventory transactions and the license plate inconsistent, and the standard undo cannot roll it back',
+      'Undo is a first-class requirement, not a nice-to-have: the worker can undo the last executed work line. A custom step that bypasses the framework has no undo and no compensating transaction — decide that deliberately, do not discover it in production',
+      'License plate and inventory status are WHS-only InventDim fields (LicensePlateId, InventStatusId). A scanning flow resolves item + dimensions through InventDim exactly like any other inventory code — see inventory-management; never carry loose dimension strings from screen to screen',
+      'Prompt and field text shown on the device comes from labels, and in recent versions from the warehouse app field-name configuration. Never emit a raw string literal from a step: BPErrorLabelIsText fails the build and the text cannot be translated for the shop floor',
+      'The work user (WHSWorkUser) is NOT the D365FO user: a device signs in as a work user with its own credentials and menu, while X++ runs under the linked system user. Resolve the current worker through the work-user / session record — reading curUserId() gives you the service account, not the operator',
+      'Performance is per screen, not per batch: every step is a server round trip over a handheld network. Keep each query indexed and firstonly, keep display methods off the step path, and never scan a table in a step (see performance)',
+      'A scanned string is NOT an item number, a license plate is not a container id by convention, and a GS1 label packs several fields into one scan — resolve it through the barcode setup first (see barcode-scanning)',
+      'Test the step logic VM-side by driving the class with the container the device would post — there is nothing to click. SysTest coverage belongs on the state machine and the resolution logic, not on the rendering (see unit-testing)',
+    ],
+    examples: [
+      {
+        label: 'Stateless step state — pack it once, read it once',
+        code: `// A warehouse-app step must survive being served by a different AOS on the
+// next round trip, so the screen state travels in the container the framework
+// passes back - never in a member variable of the display class.
+//
+// One pair of helpers owns the layout. A step added later cannot shift the
+// indexes under an existing step, which is what breaks "operator pressed back".
+public static container packScanState(str _licensePlate, str _itemId, real _qty)
+{
+    return [_licensePlate, _itemId, _qty];
+}
+
+public static str licensePlateOfState(container _state)
+{
+    // conLen guards the container written by an OLDER build of the flow:
+    // a device can post back a screen created before the last deployment.
+    return conLen(_state) >= 1 ? conPeek(_state, 1) : '';
+}`,
+      },
+    ],
+    related: ['warehouse-management', 'barcode-scanning', 'inventory-management', 'extensible-enums'],
+  },
+
+  // ── Barcodes & scanner input ────────────────────────────────────────────
+  {
+    id: 'barcode-scanning',
+    title: 'Barcodes & scanner input (GS1 application identifiers, item barcodes)',
+    keywords: ['barcode', 'bar code', 'barcode setup', 'barcodesetup', 'item barcode',
+               'inventitembarcode', 'gs1', 'gs1-128', 'ean128', 'ean13', 'gtin', 'sscc', 'upc',
+               'code39', 'code128', 'qr code', 'data matrix', 'application identifier',
+               'check digit', 'barcode font', 'keyboard wedge', 'wedge scanner', 'scanned value',
+               'serial number scan', 'batch number scan', 'barcode mask'],
+    summary:
+      'Barcodes are two unrelated problems in D365FO and mixing them is the usual defect. PRINTING goes ' +
+      'through the Barcode class hierarchy, which encodes a value into the font string an SSRS report ' +
+      'renders — it decodes nothing. SCANNING delivers already-decoded text, either as keyboard input in ' +
+      'the rich client or as a field in a warehouse-app step. That text is rarely a bare item number: a ' +
+      'GS1-128 label packs GTIN, batch, serial and expiry into one string with application identifiers, ' +
+      'so code that assigns the scan straight to an ItemId works on the test label and fails on the first ' +
+      'real one.',
+    rules: [
+      'PRINTING: the Barcode class hierarchy (construct by barcode type, then encode the value) returns a FONT-ENCODED string, adding start/stop characters and the check digit. Rendering that string in a normal font produces a label no scanner reads — the matching barcode font must be installed on the report server (see ssrs-reports)',
+      'SCANNING is the opposite direction and shares no code with printing: a scanner hands you decoded text. Never run scanned input back through the encoder to "normalize" it',
+      'Barcode setup (BarcodeSetup) says which symbology a code uses; item barcodes (InventItemBarcode) map a code to item, unit, quantity and inventory dimensions, flagged separately for input and for printing. Resolve a scan through that table — a string compare against ItemId is wrong, because one item legitimately carries many codes (per unit, per pack size, an old vendor code)',
+      'A barcode string is not a key: the same value can resolve under more than one barcode setup, and a print-only code must not resolve on input. Filter on the use-for-input flag and treat "more than one match" as a real branch, not an assert',
+      'GS1-128 (formerly EAN-128) carries application identifiers: (00) SSCC, (01) GTIN, (10) batch/lot, (17) expiry as YYMMDD, (21) serial number, (30)/(37) count. Parse AI by AI — a fixed-length AI runs straight into the next one, a variable-length AI ends at the FNC1 group separator (ASCII 29) or at end of scan. Slicing at fixed offsets is the classic defect',
+      'A GTIN is not an item number: it identifies item + unit and often a pack quantity, so one scan of a case can mean 12 EA. Take the unit and quantity from the barcode record and convert through the unit-of-measure setup — never post the raw scanned quantity',
+      'Batch and serial numbers read off a GS1 label must be applied as inventory dimensions through the dimension API (see inventory-management). Writing batch/serial onto a line without going through findOrCreate leaves an orphan dimension and on-hand that does not add up',
+      'Keyboard-wedge scanners TYPE the value and finish with Enter or Tab: in the rich client the whole string arrives in one modified() call, not keystroke by keystroke. Put the resolution in modified() or the lookup, and make it idempotent — a double trigger must not book the quantity twice',
+      'Scanned strings carry invisible payload: leading zeros that are significant, a trailing CR/LF, the FNC1 separator and a check digit. Strip control characters explicitly and keep the value in a string type — storing a code in an int silently drops leading zeros and changes the code',
+      'An unresolved scan is a normal business case (unknown code, wrong warehouse, blocked batch), not an exception path. Report it with a label and let the operator rescan; an unhandled throw inside a transaction on a device step kills the session and rolls back work the operator already did (see error-handling)',
+      'GS1 setup, GTIN tables and the warehouse barcode-mask configuration differ by version and by whether Warehouse management is enabled. Confirm the tables, fields and methods exist in the installed model with search / get_object_info before writing against them — do not code from the newest documentation screenshot',
+    ],
+    examples: [
+      {
+        label: 'Split a GS1-128 scan by application identifier',
+        code: `// Returns a container of [ai, value] pairs. Fixed-length AIs are followed
+// immediately by the next AI; variable-length ones end at the FNC1 group
+// separator (ASCII 29) or at the end of the scan. Slicing at fixed offsets
+// instead is what breaks on the first real customer label.
+public static container splitGs1(str _scan, container _fixedLengths)
+{
+    str       rest = strLRTrim(_scan);
+    container pairs;
+    str       groupSeparator = num2char(29);
+
+    while (strLen(rest) >= 2)
+    {
+        str ai = subStr(rest, 1, 2);
+        rest   = subStr(rest, 3, strLen(rest) - 2);
+
+        // _fixedLengths maps a two-digit AI to its fixed value length, 0 when
+        // the AI is variable-length. Keep it as setup data, not as a literal
+        // ladder in code - the AI list grows.
+        int fixedLen = conFind(_fixedLengths, ai) ? conPeek(_fixedLengths, conFind(_fixedLengths, ai) + 1) : 0;
+        int endPos   = fixedLen > 0 ? fixedLen : strScan(rest, groupSeparator, 1, strLen(rest)) - 1;
+
+        if (endPos <= 0)
+        {
+            endPos = strLen(rest);
+        }
+
+        pairs = conIns(pairs, conLen(pairs) + 1, [ai, subStr(rest, 1, endPos)]);
+        rest  = subStr(rest, endPos + 1, strLen(rest) - endPos);
+
+        // Drop the separator that terminated a variable-length value.
+        if (subStr(rest, 1, 1) == groupSeparator)
+        {
+            rest = subStr(rest, 2, strLen(rest) - 1);
+        }
+    }
+
+    return pairs;
+}`,
+      },
+      {
+        label: 'Wedge-scanner input on a form field — one value, one resolution',
+        code: `// The scanner types the whole code and presses Enter, so modified() fires
+// ONCE with the complete value. Resolve here, not per keystroke, and make it
+// idempotent: an operator who scans the same label twice must not book twice.
+public boolean modified()
+{
+    boolean ret = super();
+    str     scanned;
+
+    // Control characters ride along with the scan (CR/LF, FNC1). Strip them
+    // before anything looks the value up.
+    scanned = strRem(strLRTrim(this.text()), num2char(13) + num2char(10) + num2char(29));
+
+    if (scanned && scanned != lastResolvedScan)
+    {
+        lastResolvedScan = scanned;
+        // Resolve through the barcode setup - never assign a scan to an ItemId.
+        this.resolveScannedCode(scanned);
+    }
+
+    return ret;
+}`,
+      },
+    ],
+    related: ['warehouse-mobile-app', 'inventory-management', 'warehouse-management', 'ssrs-reports'],
   },
 
   // ── Trade Agreements ────────────────────────────────────────────────────

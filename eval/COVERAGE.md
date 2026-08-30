@@ -9,7 +9,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
 | core | 51 | 51 | **100%** |
-| total | 89 | 89 | 100% |
+| total | 89 | 90 | 98.9% |
 
 ## Data model (12/12)
 
@@ -87,7 +87,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Report dialog UI builders | total | ✅ | ✅ | ✅ | L4-ssrs-report-uibuilder |
 | Electronic Reporting (ER) | total | ✅ | ✅ | ✅ | L3-electronic-reporting-integration |
 
-## Frameworks (16/16)
+## Frameworks (16/17)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -106,6 +106,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Currency & exchange rates | total | ✅ | ✅ | ✅ | L3-currency-exchange-conversion |
 | Inventory (InventTrans / InventDim) | total | ✅ | ✅ | ✅ | L3-inventory-inventdim-onhand |
 | Warehouse management (WHS) | total | ✅ | ✅ | ✅ | L3-warehouse-work-slice |
+| Warehouse app / barcode scanning | total | ✅ | — | ✅ | Knowledge authored (stateless step protocol, GS1 AI parsing, item-barcode resolution); eval case authored, golden pending VM capture. |
 | Trade agreements & pricing | total | ✅ | ✅ | ✅ | L3-trade-agreement-price-lookup |
 
 ## Integration (9/9)
@@ -142,7 +143,9 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 ## Closure queue (uncovered, by frequency weight)
 
-Nothing uncovered.
+| Weight | Leaf | Missing |
+| ---: | --- | --- |
+| 2 | Warehouse app / barcode scanning | missing E |
 
 ## Orphans
 
