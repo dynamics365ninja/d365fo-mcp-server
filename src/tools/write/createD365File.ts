@@ -691,8 +691,12 @@ export async function handleCreateD365File(
       const configManager = getConfigManager();
 
       // Try to auto-detect from workspace (async)
-      projectPathToUse = await configManager.getProjectPath() || undefined;
-      solutionPathToUse = await configManager.getSolutionPath() || undefined;
+      // Timed: auto-detection walks the workspace, and an untimed phase is how a
+      // 341 s create in run d79f62a3 came back reporting `(unmeasured)`.
+      [projectPathToUse, solutionPathToUse] = await timer.time('workspace path detection', async () => [
+        await configManager.getProjectPath() || undefined,
+        await configManager.getSolutionPath() || undefined,
+      ]);
 
       // If model name was not passed as argument, try to resolve from mcp.json config
       if (!actualModelName) {
@@ -718,9 +722,8 @@ export async function handleCreateD365File(
     // If projectPath is available, extract model name from it
     if (projectPathToUse) {
       const projectManager = new ProjectFileManager();
-      const extractedModelName = await projectManager.extractModelName(
-        projectPathToUse
-      );
+      const extractedModelName = await timer.time('model name from .rnrproj', () =>
+        projectManager.extractModelName(projectPathToUse!));
       if (extractedModelName) {
         actualModelName = extractedModelName;
         wasAutoExtracted = true;
@@ -1019,7 +1022,7 @@ export async function handleCreateD365File(
       const roots = [customWritePath, msPath].filter(Boolean) as string[];
 
       const resolver = new PackageResolver(roots);
-      const resolved = await resolver.resolve(actualModelName);
+      const resolved = await timer.time('package resolution', () => resolver.resolve(actualModelName));
 
       if (resolved) {
         resolvedPackageName = resolved.packageName;
@@ -1037,7 +1040,9 @@ export async function handleCreateD365File(
       // matching descriptor; fall back to assuming package == model otherwise.
       const roots = [customWritePath, configPackagePath].filter(Boolean) as string[];
       const resolver = new PackageResolver(roots);
-      const resolved = roots.length ? await resolver.resolve(actualModelName) : null;
+      const resolved = roots.length
+        ? await timer.time('package resolution', () => resolver.resolve(actualModelName))
+        : null;
 
       if (resolved) {
         resolvedPackageName = resolved.packageName;
@@ -1897,7 +1902,7 @@ export async function handleCreateD365File(
 
     // Write file matching D365FO convention: no BOM, CRLF, no trailing newline
     try {
-      await writeFileAtomic(normalizedFullPath, normalizeD365Xml(xmlContent));
+      await timer.time('xml write', () => writeFileAtomic(normalizedFullPath, normalizeD365Xml(xmlContent)));
     } catch (writeError) {
       console.error(`[create_d365fo_file] Failed to write file:`, writeError);
       
@@ -1998,12 +2003,12 @@ export async function handleCreateD365File(
 
           // Add to project
           const projectManager = new ProjectFileManager();
-          const wasAdded = await projectManager.addToProject(
+          const wasAdded = await timer.time('.rnrproj registration', () => projectManager.addToProject(
             projectPath,
             args.objectType,
             finalObjectName,
             absoluteXmlPath
-          );
+          ));
 
           if (wasAdded) {
             console.error(`[create_d365fo_file] Successfully added to project`);
@@ -2064,17 +2069,20 @@ export async function handleCreateD365File(
       });
     }
 
-    // Index the new object in-process — see the bridge paths above.
-    const indexNote = await upsertWrittenFileIntoIndex(normalizedFullPath, context);
+    // Index the new object in-process — see the bridge paths above. Timed like
+    // the bridge path's, which has named its phases since the same audit.
+    const indexNote = await timer.time('symbol index upsert', () =>
+      upsertWrittenFileIntoIndex(normalizedFullPath, context));
     // Verify the write — see the bridge paths above.
     const verifyNote = renderWriteVerification(
-      await verifyWrittenFile(
+      await timer.time('write verification', () => verifyWrittenFile(
         normalizedFullPath,
         args.addToProject ? projectPathToUse : undefined,
         membershipOf(args.objectType, finalObjectName, actualModelName),
-      ),
+      )),
     );
-    const bpNote = await runInlineBpCheck((args as any).bpCheck, args.objectType, finalObjectName, context);
+    const bpNote = await timer.time('inline BP check', () =>
+      runInlineBpCheck((args as any).bpCheck, args.objectType, finalObjectName, context));
     // Offline X++ rules on the source as written. A create hands over the whole
     // class, so the class-scoped rules (COC004, COC005) apply here — the cheap
     // moment to catch what xppbp does not and only a build would.

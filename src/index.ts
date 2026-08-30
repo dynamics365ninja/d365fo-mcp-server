@@ -15,6 +15,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { createXppMcpServer } from './server/mcpServer.js';
 import { createStreamableHttpTransport } from './server/transport.js';
 import { XppSymbolIndex } from './metadata/symbolIndex.js';
+import { shouldWarmIndexes, warmIndexes, renderWarmupReport } from './metadata/indexWarmup.js';
 import { XppMetadataParser } from './metadata/xmlParser.js';
 import { WorkspaceScanner } from './workspace/workspaceScanner.js';
 import { HybridSearch } from './workspace/hybridSearch.js';
@@ -354,6 +355,20 @@ async function initializeServices() {
       }).catch(err => {
         console.error(statusLine('warn', 'Symbol count failed:'), err);
       });
+
+      // Read the indexes the request paths use, on a thread of their own, before
+      // anyone asks a question that needs them. Measured on the reference VM:
+      // the first covering scan of idx_symbols_name costs 83 s cold and 0.11 s
+      // warm, and the labels join behind every label search costs 31 s cold —
+      // which is most of what the benchmark's tool time has ever been. The OS
+      // page cache is process-wide, so a worker warms it for the main thread's
+      // own connections. Never awaited: an unfinished warm-up just leaves the
+      // first query paying for the part not yet read, exactly as it does today.
+      if (shouldWarmIndexes(DB_PATH, LABELS_DB_PATH)) {
+        void warmIndexes({ dbPath: DB_PATH, labelsDbPath: LABELS_DB_PATH })
+          .then(report => { log.detail(renderWarmupReport(report)); })
+          .catch(err => { log.detail(`Index warm-up skipped: ${err}`); });
+      }
     }
 
     serverState.symbolIndex = symbolIndex;

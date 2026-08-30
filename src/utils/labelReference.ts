@@ -111,6 +111,18 @@ const ALWAYS_RESOLVABLE_LABEL_FILES = new Set(
 );
 
 /**
+ * A label file shipped by Microsoft and referenced by every model.
+ *
+ * Used to decide what NOT to confirm against disk: these files are never written
+ * by this server, so an index row for one cannot be a phantom, and reading them
+ * to prove it costs ~10 MB per language file. Everything else — custom models,
+ * shared core models, models this server does not recognise — is worth checking.
+ */
+export function isCoreLabelFile(labelFileId: string | undefined): boolean {
+  return ALWAYS_RESOLVABLE_LABEL_FILES.has((labelFileId ?? '').toLowerCase());
+}
+
+/**
  * True when a label reference is safe to hand to the model as-is: it lives in a
  * core label file or in the caller's own model. Anything else may raise
  * `BPErrorUnknownLabel` because its owning package is not referenced.

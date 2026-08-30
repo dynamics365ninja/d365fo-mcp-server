@@ -61,6 +61,63 @@ function fileDeclaresLabel(content: string, labelId: string): boolean {
 }
 
 /**
+ * Same verdict as labelMissingOnDisk, for several ids at once, reading each file
+ * ONCE instead of once per id.
+ *
+ * `labels(action="search")` checks every candidate row it is about to show, and
+ * those rows share a label file — so the per-id form would read the same 4 MB
+ * .label.txt ten times to answer ten questions the first read already settled.
+ *
+ * Every requested id gets an entry: `true` missing, `false` present, `null` no
+ * verdict. The read budget is shared across the whole batch, so an id left
+ * unanswered when the budget runs out reports `null` rather than "missing".
+ */
+export async function labelsMissingOnDisk(
+  labelIds: string[],
+  filePaths: string[],
+): Promise<Map<string, boolean | null>> {
+  const verdicts = new Map<string, boolean | null>();
+  const pending = new Set(labelIds);
+  if (pending.size === 0) return verdicts;
+
+  let readAny = false;
+  let bytesRead = 0;
+  let overBudget = false;
+
+  for (const filePath of filePaths) {
+    if (pending.size === 0) break;
+    try {
+      const stat = await fs.stat(filePath);
+      if (!stat.isFile() || stat.size > MAX_LABEL_FILE_BYTES) continue;
+      // Over budget before every id has an answer: stop and say nothing about the
+      // rest. Reporting "missing" off a partial sweep would be a verdict the
+      // files never gave.
+      if (bytesRead + stat.size > MAX_TOTAL_READ_BYTES) { overBudget = true; break; }
+      const content = await fs.readFile(filePath, 'utf-8');
+      bytesRead += stat.size;
+      readAny = true;
+
+      for (const labelId of [...pending]) {
+        // Present in ANY language file is present — a label only translated to
+        // one language is normal, and this check is about existence, not
+        // completeness.
+        if (fileDeclaresLabel(content, labelId)) {
+          verdicts.set(labelId, false);
+          pending.delete(labelId);
+        }
+      }
+    } catch {
+      // Missing or unreadable file: no verdict from this path.
+    }
+  }
+
+  for (const labelId of pending) {
+    verdicts.set(labelId, overBudget || !readAny ? null : true);
+  }
+  return verdicts;
+}
+
+/**
  * `true`  — the file was read and does NOT declare the label (index is stale),
  * `false` — the file declares it,
  * `null`  — could not verify; say nothing.
@@ -69,26 +126,5 @@ export async function labelMissingOnDisk(
   labelId: string,
   filePaths: string[],
 ): Promise<boolean | null> {
-  let readAny = false;
-  let bytesRead = 0;
-
-  for (const filePath of filePaths) {
-    try {
-      const stat = await fs.stat(filePath);
-      if (!stat.isFile() || stat.size > MAX_LABEL_FILE_BYTES) continue;
-      // Over budget before we have an answer: stop and say nothing. Reporting
-      // "missing" off a partial sweep would be a verdict the files never gave.
-      if (bytesRead + stat.size > MAX_TOTAL_READ_BYTES) return null;
-      const content = await fs.readFile(filePath, 'utf-8');
-      bytesRead += stat.size;
-      readAny = true;
-      // Present in ANY language file is present — a label only translated to one
-      // language is normal, and this check is about existence, not completeness.
-      if (fileDeclaresLabel(content, labelId)) return false;
-    } catch {
-      // Missing or unreadable file: no verdict from this path.
-    }
-  }
-
-  return readAny ? true : null;
+  return (await labelsMissingOnDisk([labelId], filePaths)).get(labelId) ?? null;
 }

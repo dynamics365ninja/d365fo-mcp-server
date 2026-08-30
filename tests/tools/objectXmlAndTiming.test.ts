@@ -104,4 +104,44 @@ describe('phase timing on a slow write', () => {
     t.add('filler', 20_000);
     expect(t.render(10_000)).toContain('filler');
   });
+
+  // A call that takes minutes is invisible WHILE it takes them: the phase block
+  // is only ever read afterwards. One create in benchmark run d79f62a3 took
+  // 341 s and reported all of it as `(unmeasured)` — nothing to look at, live or
+  // later. The heartbeat puts the phase in flight on stderr as it happens.
+  it('says on stderr what it is still doing', async () => {
+    vi.useFakeTimers();
+    const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const t = createPhaseTimer();
+      let release: () => void = () => {};
+      const pending = t.time('C# bridge Create()', () => new Promise<void>(r => { release = r; }));
+      await vi.advanceTimersByTimeAsync(31_000);
+      release();
+      await pending;
+
+      const said = stderr.mock.calls.map(c => String(c[0])).join(String.fromCharCode(10));
+      expect(said).toContain('[slow-call]');
+      expect(said).toContain('C# bridge Create()');
+    } finally {
+      stderr.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops the heartbeat once the call has answered', async () => {
+    vi.useFakeTimers();
+    const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const t = createPhaseTimer();
+      await t.time('quick', async () => undefined);
+      t.render(10_000);
+      stderr.mockClear();
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(stderr).not.toHaveBeenCalled();
+    } finally {
+      stderr.mockRestore();
+      vi.useRealTimers();
+    }
+  });
 });
