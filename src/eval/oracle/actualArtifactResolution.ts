@@ -26,7 +26,25 @@ import { type PrefixSpec } from './prefix.js';
  * infix) still pairs with the actual file the VM produced
  * (`ConDemoEnumExtProbe.metadata.xml`). See artifactKey.ts and
  * the 2026-07-21 eval sweep, finding #2.
+ *
+ * A bare `<Name>.xml` counts too. Goldens are committed as `*.metadata.xml`,
+ * but AOT files on the VM are plain `.xml`, so pointing `--actual-dir` straight
+ * at `<Model>/<Model>/AxClass` — the obvious thing to do during a capture —
+ * used to match nothing and score every artifact `missing`: a silent zero, not
+ * an error (L2-attribute-authoring-reflection capture, 2026-08-30). A
+ * `.metadata.xml` neighbour still wins when both are present.
  */
+/**
+ * A bare AOT filename in the shape `artifactKey` expects for a golden. Already-
+ * committed `.metadata.xml` names pass through untouched — they end in `.xml` too,
+ * and a blind replace turns them into `.metadata.metadata.xml`.
+ */
+function aotToMetadataName(filename: string): string {
+  return /.metadata.xml$/i.test(filename)
+    ? filename
+    : filename.replace(/.xml$/i, '.metadata.xml');
+}
+
 export function resolveActualFile(
   actualDir: string,
   goldenName: string,
@@ -35,10 +53,18 @@ export function resolveActualFile(
 ): string | undefined {
   const direct = path.join(actualDir, goldenName);
   if (fs.existsSync(direct)) return direct;
+  const asAotFile = path.join(actualDir, goldenName.replace(/.metadata.xml$/i, '.xml'));
+  if (asAotFile !== direct && fs.existsSync(asAotFile)) return asAotFile;
+
   const canonGolden = artifactKey(goldenName, goldenPrefix);
-  const candidate = fs.readdirSync(actualDir)
-    .filter(f => f.endsWith('.metadata.xml'))
-    .find(f => artifactKey(f, actualPrefix) === canonGolden);
+  const files = fs.readdirSync(actualDir);
+  // .metadata.xml first: when a dir holds both shapes of the same object, the
+  // committed-golden shape is the one the caller meant.
+  const candidate =
+    files.filter(f => f.endsWith('.metadata.xml'))
+      .find(f => artifactKey(f, actualPrefix) === canonGolden)
+    ?? files.filter(f => f.endsWith('.xml') && !f.endsWith('.metadata.xml'))
+      .find(f => artifactKey(aotToMetadataName(f), actualPrefix) === canonGolden);
   return candidate ? path.join(actualDir, candidate) : undefined;
 }
 
@@ -81,7 +107,12 @@ export function buildActualArtifactsMap(
     const actualFile = resolveActualFile(actualDir, name, goldenPrefix, actualPrefix);
     if (actualFile) {
       const actualBasename = path.basename(actualFile);
-      actualArtifacts[actualBasename] = fs.readFileSync(actualFile, 'utf8');
+      // Key in the committed-golden filename shape. A bare AOT `.xml` keys to
+      // `.xml`, which never equals the golden side's `.metadata.xml` key, so the
+      // pair diffed as missing + extra even though resolveActualFile had matched
+      // them. The key still carries actualPrefix, which is all canonicalisation
+      // needs; matchedActualFiles keeps the real on-disk name for the caller.
+      actualArtifacts[aotToMetadataName(actualBasename)] = fs.readFileSync(actualFile, 'utf8');
       matchedActualFiles.add(actualBasename);
     } else {
       actualArtifacts[name] = '';

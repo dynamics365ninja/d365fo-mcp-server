@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 89,
-    "covered": 88,
-    "percent": 98.9
+    "covered": 89,
+    "percent": 100
   },
   "leaves": [
     {
@@ -413,6 +413,7 @@
         "L1-macro-library-flight",
         "L1-map-basic",
         "L1-table-basic",
+        "L2-attribute-authoring-reflection",
         "L2-business-event-basic",
         "L2-class-method-ops",
         "L2-coc-inherited-method",
@@ -471,6 +472,7 @@
         "L1-macro-library-flight",
         "L1-map-basic",
         "L1-table-basic",
+        "L2-attribute-authoring-reflection",
         "L2-business-event-basic",
         "L2-class-method-ops",
         "L2-coc-inherited-method",
@@ -665,10 +667,12 @@
       "tier": "total",
       "weight": 2,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-attribute-authoring-reflection"
+      ]
     },
     {
       "id": "intrinsics",
@@ -1385,6 +1389,7 @@
         "L1-macro-library-flight",
         "L1-map-basic",
         "L1-table-basic",
+        "L2-attribute-authoring-reflection",
         "L2-business-event-basic",
         "L2-class-method-ops",
         "L2-coc-inherited-method",

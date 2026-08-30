@@ -471,8 +471,9 @@ describe('generate_object(scaffold, report) controller hook', () => {
     // Pinned wording: the five captured controller goldens carry these exact lines.
     expect(text).toContain('// TODO: set default parameter values here. Fetch the contract where you read it:');
     // Emitted X++ stays ASCII — the AOT goldens are ASCII documents.
-    const hook = text.slice(text.indexOf('protected void prePromptModifyContract()'));
-    expect(/[^\x00-\x7F]/.test(hook.slice(0, 400))).toBe(false);
+    const hookStart = text.indexOf('protected void prePromptModifyContract()');
+    const hook = text.slice(hookStart, hookStart + 400);
+    expect([...hook].filter(c => (c.codePointAt(0) ?? 0) > 127)).toEqual([]);
   });
 
   it('still declares and USES the contract when a caller record pre-fills it', async () => {

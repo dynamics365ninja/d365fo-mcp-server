@@ -270,7 +270,8 @@ export const TAXONOMY: CoverageLeaf[] = [
   {
     id: 'attributes', label: 'Attribute authoring & reflection', domain: 'Code', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['class'], knowledgeIds: ['attributes-authoring', 'reflection-dict'],
-    note: 'Taught with audited examples (the Phase F snapshot re-capture resolved their symbols); no eval case.',
+    caseIds: ['L2-attribute-authoring-reflection'],
+    note: 'Taught with audited examples (the Phase F snapshot re-capture resolved their symbols); eval case authored (SysAttribute subclass, literal-only usage site, SysObsolete, DictClass read-back); golden captured.',
   },
   {
     id: 'intrinsics', label: 'Compile-time (intrinsic) functions', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
