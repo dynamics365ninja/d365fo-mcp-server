@@ -28,6 +28,12 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+_Nothing released yet._
+
+---
+
+## [1.15.0] — 2026-08-30
+
 ### Added
 - **The TDD loop for X++: `prepare(mode="test")` and a red-first SysTest scaffold.**
   The server could teach SysTest and run a class; it could not help write one, and
