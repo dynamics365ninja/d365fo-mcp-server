@@ -8,19 +8,20 @@ export const objectPatternsTool = {
     name: 'object_patterns',
     description:
       'Pattern toolkit. Choose a `domain`:\n' +
-      '• table → common field types, index patterns and relation structures for D365FO tables. Filter by tableGroup (Main, Transaction, …) or similarTo a given table.\n' +
+      '• table → field/index/relation patterns for D365FO tables. Filter by tableGroup or similarTo a given table.\n' +
       '• form → form-pattern toolkit; pick an `action`:\n' +
-      '   - analyze → pattern advisor + usage analysis. RECOMMEND (preferred for a new form): pass recommend={entityKind, hasHeaderLines, fieldCount, usageIntent, tableName} for the right pattern via the Microsoft decision tree + reference forms to clone. Or filter by formPattern / dataSource / similarTo.\n' +
-      '   - spec → full structure spec of a pattern or sub-pattern (required hierarchy/ordering, allowed children, reference forms, lifecycle).\n' +
-      '   - validate → structural validator of AxForm XML: container hierarchy/order, sub-patterns, PatternVersion. Returns FP001-FP010 violations. Call before action=create on d365fo_file.\n' +
-      '• report → SSRS implementation recipes: object roster, scaffold call, checks. Optional pattern=<id> for one recipe.',
+      '   - analyze → pattern advisor + usage analysis. For a NEW form pass `recommend` (preferred): the Microsoft decision tree picks the pattern and names reference forms to clone. Or filter by formPattern / dataSource / similarTo.\n' +
+      '   - spec → structure spec of a pattern/sub-pattern: hierarchy, ordering, allowed children, reference forms, lifecycle.\n' +
+      '   - validate → AxForm XML validator (hierarchy/order, sub-patterns, PatternVersion) → FP001-FP010. Call before d365fo_file action=create.\n' +
+      '• report → SSRS implementation recipes: object roster, scaffold call, checks. Optional pattern=<id>.\n' +
+      '• mobile-app → warehouse-app screen recipes, led by the choice between the two frameworks that build them (ProcessGuide vs WHSWorkExecuteDisplay): create a flow, add or replace one screen, step icon/title, GS1 scan input. Optional pattern=<id>.',
     inputSchema: {
       type: 'object',
       properties: {
         domain: {
           type: 'string',
-          enum: ['table', 'form', 'report'],
-          description: 'Optional — inferred from the other params (action/pattern/xml/formName → form; tableGroup → table). ⚠️ NOT a free-form "pattern type": a concept like "number-sequence"/"SysOperation" belongs to get_knowledge.',
+          enum: ['table', 'form', 'report', 'mobile-app'],
+          description: 'Optional — inferred from the other params (action/pattern/xml/formName → form; tableGroup → table). A concept like "number-sequence" is not a domain: that is get_knowledge.',
         },
         // domain=table
         tableGroup: {
@@ -78,13 +79,13 @@ export const objectPatternsTool = {
         },
         limit: {
           type: 'number',
-          description: '[analyze] Max pattern examples (default 10)',
+          description: '[analyze] Max pattern examples.',
           default: 10,
         },
         // action=spec
         pattern: {
           type: 'string',
-          description: '[spec|report] Pattern name (id, xmlName, or alias) — e.g. "SimpleList", a sub-pattern like "FieldsFieldGroups", or a report recipe like "PrintMgmtFormLetter".',
+          description: '[spec|report|mobile-app] Pattern name (id, xmlName or alias) — e.g. "SimpleList", "FieldsFieldGroups", "PrintMgmtFormLetter", "processguide-flow".',
         },
         // action=validate
         xml: {

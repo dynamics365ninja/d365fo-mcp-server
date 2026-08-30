@@ -5,6 +5,7 @@
  * discriminated by `domain`:
  *   • table → field/index/relation patterns for D365FO tables (get_table_patterns)
  *   • form  → form-pattern toolkit with its own `action` (analyze/spec/validate)
+ *   • mobile-app → warehouse-app screen recipes, led by the two-framework choice
  *
  * The two underlying handlers read their own fields (table: tableGroup/similarTo/
  * limit; form: action/...) and ignore the `domain` discriminator (no strict
@@ -16,8 +17,15 @@ import type { XppServerContext } from '../../types/context.js';
 import { getTablePatternsTool } from './getTablePatterns.js';
 import { formPatternTool } from './formPattern.js';
 import { getReportPatternsTool } from './getReportPatterns.js';
+import { getMobileAppPatternsTool } from './getMobileAppPatterns.js';
 import { resolvePatternExact } from '../../knowledge/formPatterns/index.js';
 import { resolveReportPattern } from '../../knowledge/reportPatterns/index.js';
+import { resolveMobileAppPattern } from '../../knowledge/mobileAppPatterns/index.js';
+
+/** Domains routed below; anything else is inferred or reported. */
+function isKnownDomain(d: unknown): boolean {
+  return d === 'table' || d === 'form' || d === 'report' || d === 'mobile-app';
+}
 
 function err(text: string) {
   return { content: [{ type: 'text' as const, text }], isError: true };
@@ -37,11 +45,14 @@ export async function objectPatternsTool(request: CallToolRequest, context: XppS
   // (exact, case-insensitive), so concept nouns like "number-sequence" still fall
   // through to the get_knowledge redirect below.
   let inferredPattern: string | undefined;
-  if (domain !== 'table' && domain !== 'form' && domain !== 'report' && typeof aliasRaw === 'string') {
+  if (!isKnownDomain(domain) && typeof aliasRaw === 'string') {
     const spec = resolvePatternExact(aliasRaw);
     if (spec) {
       inferredPattern = spec.xmlName;
       domain = 'form';
+    } else if (resolveMobileAppPattern(aliasRaw)) {
+      inferredPattern = aliasRaw;
+      domain = 'mobile-app';
     } else if (resolveReportPattern(aliasRaw)) {
       // A report pattern id (e.g. "PrintMgmtFormLetter") passed as the domain.
       inferredPattern = aliasRaw;
@@ -51,13 +62,13 @@ export async function objectPatternsTool(request: CallToolRequest, context: XppS
 
   // A pattern name that only the report catalog recognizes routes to it even
   // when the caller said nothing about domains.
-  if (domain !== 'table' && domain !== 'form' && domain !== 'report'
+  if (!isKnownDomain(domain)
       && typeof a.pattern === 'string' && !resolvePatternExact(a.pattern) && resolveReportPattern(a.pattern)) {
     domain = 'report';
   }
 
   // Infer the discriminator from form/table-specific params when omitted.
-  if (domain !== 'table' && domain !== 'form' && domain !== 'report') {
+  if (!isKnownDomain(domain)) {
     const formSignals = ['action', 'pattern', 'recommend', 'formPattern', 'similarTo', 'dataSource', 'xml', 'formName'];
     const tableSignals = ['tableGroup'];
     if (formSignals.some(k => a[k] !== undefined)) {
@@ -69,6 +80,13 @@ export async function objectPatternsTool(request: CallToolRequest, context: XppS
 
   if (domain === 'table') {
     return getTablePatternsTool(request, context);
+  }
+
+  if (domain === 'mobile-app') {
+    const mobileRequest: CallToolRequest = inferredPattern !== undefined && a.pattern === undefined
+      ? { ...request, params: { ...request.params, arguments: { ...a, pattern: inferredPattern } } }
+      : request;
+    return getMobileAppPatternsTool(mobileRequest);
   }
 
   if (domain === 'report') {
@@ -102,7 +120,8 @@ export async function objectPatternsTool(request: CallToolRequest, context: XppS
     `object_patterns: could not determine domain (got domain/objectType="${got}"). ` +
     `This tool covers table, form and report patterns — pass domain="table" (field/index/relation patterns), ` +
     `domain="form" (form-pattern toolkit; with action=analyze|spec|validate) ` +
-    `or domain="report" (SSRS implementation recipes; optional pattern=<id>). ` +
+    `domain="report" (SSRS implementation recipes; optional pattern=<id>) ` +
+    `or domain="mobile-app" (warehouse-app screens: ProcessGuide vs WHSWorkExecuteDisplay, create and modify). ` +
     `Domain is also inferred from action/pattern/xml/formName (→ form) or tableGroup (→ table).\n\n` +
     `If you were after a feature/concept (e.g. "number-sequence", SysOperation, RunBase, data events), ` +
     `that is a knowledge topic — use get_knowledge(topic="${typeof got === 'string' && got ? got : '<topic>'}") instead.`,

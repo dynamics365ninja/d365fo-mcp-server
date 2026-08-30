@@ -29,6 +29,86 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`object_patterns(domain="mobile-app")` — warehouse-app screen recipes, and the
+  framework choice they hang on.** D365FO builds the SAME mobile device screens
+  with **two frameworks**, and picking the wrong one is a rewrite rather than a
+  refactor: `ProcessGuide` (current — controller → step → page builder → data
+  processor → navigation agent → action, each one an extension point, and no
+  `WHS` prefix because production and inventory flows use it too) and the legacy
+  `WHSWorkExecuteDisplay` hierarchy (one `displayForm()` per `WHSWorkExecuteMode`
+  that processes input, runs logic, increments the step and builds the next
+  screen). Both are instantiated by `SysExtension` off the same attribute, so the
+  only way to tell which owns a flow is what the registered class derives from —
+  the new domain's list view leads with exactly that, then offers 7 recipes:
+  `processguide-flow` (create a flow), `processguide-page-control` (add a control
+  to a standard screen), `processguide-page-replace`, `processguide-step-insert`,
+  `app-step-identity` (the step ID, icon and title the app shows — the step ID is
+  the control name of the screen's primary input), `legacy-workexecutedisplay`,
+  and `gs1-scan-input`. Each ships copy-ready X++, and every skeleton is run
+  through the offline BP validator in CI — a template that emits BP-failing X++
+  is worse than no template. The addition was paid for inside the same schema
+  (redundant prose trimmed), so the ListTools budget is unchanged.
+- **Knowledge topic `process-guide-framework`.** The class model and its traps:
+  registration is by attribute, so a class with the right base and no attribute
+  compiles and never runs; the base marks a screen complete on OK alone, so a
+  screen that collects a value without overriding `isComplete` moves on before
+  its validation ran; inserting a step means re-pointing BOTH edges of the route;
+  an exception is the framework's rollback, not yours to catch.
+- **Four eval cases for the mobile surface**, one per framework plus the two
+  scanning halves: `L3-processguide-flow-slice`, `L2-processguide-page-control`,
+  `L3-legacy-workexecutedisplay-extend` and the reframed
+  `L3-warehouse-scan-resolve-slice`. All `golden_pending`. A new VM-free gate,
+  `tests/eval/mobileAppCaseGrounding.test.ts`, executes each case's own grounding
+  calls and asserts the answer names what the case then asks the implementer to
+  write — a case whose ground truth is missing now fails here instead of on the
+  VM after a paid run. Coverage taxonomy gains `warehouse-app-screens`, the
+  second of the two leaves this release adds to the closure queue.
+
+- **Warehouse-scanner knowledge pack (SCM audit).** D365FO drives barcode
+  scanners through Warehouse management, and the base was silent on it: querying
+  `get_knowledge` for `barcode`, `gs1` or `scanning` returned *"No matching
+  knowledge entries found"*, `item barcode` returned the **menus** topic (the
+  token `item` hits the keyword `menu item`), `license plate` returned ISV
+  **license codes**, and `scanner` returned **Electronic Reporting** — `scoreEntry`
+  credits `token.includes(keyword)` and "scanner" contains "er". A wrong topic
+  reads as authoritative, so this was worse than a gap. Two new topics close it:
+  `warehouse-mobile-app` (the warehouse app is a stateless container protocol, not
+  a form: screen state travels in the round-tripped payload and never in member
+  variables; menu items and app steps are configured data, not AOT elements; work
+  is posted through the work-execution hierarchy or it loses its undo) and
+  `barcode-scanning` (printing and scanning share no code; a scan resolves through
+  the barcode setup, never against `ItemId`; GS1-128 is parsed application
+  identifier by application identifier with the FNC1 separator, never sliced at
+  fixed offsets; a GTIN carries unit and pack quantity; an unresolved scan is a
+  business case, not a throw). `warehouse-mobile-app` also covers the half that
+  makes a scanner a scanner rather than a parser — it reads a code and then DOES
+  something: what runs is chosen by the menu item's mode and activity
+  (configuration, so "the scanner does nothing" is a setup question before it is
+  an X++ one), the action must complete inside the one server call that received
+  the scan (a device that walks out of range mid-conversation must not leave a
+  half-posted document), it must be idempotent with the guard inside the
+  transaction because devices retry and operators re-scan, and it ends in a
+  document posted through the journal/posting framework rather than a raw insert.
+  `warehouse-management` lost its one vague mobile
+  line — it named a flow class that the audit could not confirm — and now points
+  at both. Routing is pinned by regression tests, in both directions: the scanner
+  queries above must land on the new topics, and the neighbours they used to be
+  answered by must keep their own.
+- **Eval case `L3-warehouse-scan-resolve-slice`** (`golden_pending`) — GS1-128
+  application-identifier parse, item-barcode resolution restricted to input codes,
+  batch/serial applied through the `InventDim` find-or-create API, and the action
+  itself: an inventory movement journal posted through the journal framework in a
+  single transaction, idempotent on the action key. Fixed-offset slicing, an
+  `ItemId` string compare, a raw `InventDim` insert, a direct journal-transaction
+  insert and an idempotency guard outside the transaction each fail the case.
+- **Coverage taxonomy leaves `warehouse-mobile-scanning` and
+  `warehouse-app-screens`** (w2 each, total tier). The scanner half of WHS was
+  uncovered while looking covered under `warehouse`, whose case exercises
+  wave/work creation only; the screen half was not modelled at all. Both leaves
+  are honest gaps rather than closures, so they reopen the total tier that the
+  golden capture above had just closed: **core 59/59 (100%), total 98/100 (98%)**,
+  with both named in the weight-ordered closure queue. They close when the four
+  `golden_pending` cases are captured on the VM.
 - **X++ language-core knowledge pack (Phase B).** The knowledge base was strong
   on frameworks and data access and silent on the language itself, so an agent
   could look up `SysOperation` but not how `switch` falls through. Seven new
@@ -135,6 +215,18 @@ those are called out explicitly below.
   `[ExtensionOf(tableStr(…))] final class`.
 
 ### Fixed
+- **`barcode-scanning` told the agent to write a GS1 parser it must not write.**
+  Inside a warehouse-app flow the platform parses GS1 before the scan reaches the
+  flow — global prefix/group-separator/unknown-identifier options on Warehouse
+  management parameters, the application-identifier list, and a bar-code data
+  policy on the mobile device menu item for one scan filling several fields. The
+  topic now leads with that, keeps the hand-written parser only for the paths
+  with no menu item behind them (rich client, integrations), and adds the two
+  facts that decide whether scanning works at all: the scanner hardware must add
+  a recognised AIM prefix and convert the ASCII 29 group separator to a printable
+  character, and multiple-field scanning changes *when* a flow has its values, so
+  a custom step can be skipped. The eval case was reframed to match. Sourced from
+  Microsoft's own documentation rather than recall.
 - **`labels(action="search")` recommended labels that are not on disk.**
   `action="info"` has checked a single id against the `.label.txt` since August;
   search — the call an agent makes *before* it reuses a label — never did. One

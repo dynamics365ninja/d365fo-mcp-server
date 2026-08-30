@@ -1,0 +1,24 @@
+{
+  "id": "L2-processguide-page-control",
+  "title": "ProcessGuide: add one control to a standard screen without owning it",
+  "tier": 2,
+  "instruction": "In the sandbox model, add one extra label to a screen that Microsoft already ships, using the extension point the framework provides. Ground it first with object_patterns(domain=\"mobile-app\", pattern=\"processguide-page-control\") and get_knowledge(topic=\"coc-authoring\"). Target the production-start prompt screen: locate the real page-builder class for it with search/find_references (the documented name is ProdProcessGuidePromptProductionIdPageBuilder - confirm it exists in this deployment before writing, and stop with a report if it does not). Create a Chain of Command extension class over that page builder that wraps addDataControls(), calls next FIRST so the standard controls keep their position, and then appends one label control carrying a value read from the session pass-through. Scored: the wrapper repeats the base signature exactly and copies no default parameter values (COC001); next is called and its result is not discarded; the added value is read from the pass-through, never from a base-class member or a class field; the label text is a label reference, not a literal. Do NOT create a new page builder and do NOT modify the standard class - the point of this case is the additive extension. Confirm the class name, the method signature and the page API member you call with get_object_info(options={\"method\":\"<name>\",\"include\":\"signature\"}) before writing. Must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-processguide-page-control/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "warehouse",
+    "mobile-app",
+    "processguide",
+    "screen",
+    "coc",
+    "class"
+  ],
+  "split": "holdout"
+}

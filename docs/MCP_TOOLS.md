@@ -106,7 +106,7 @@ Mode-specific parameters go in a single `params` object (flat top-level keys sti
 
 | Tool | What it does | Example prompt |
 |------|--------------|----------------|
-| `object_patterns` | Mined + curated structure patterns: `domain="table"` for table shapes, `domain="form"` for the full form-pattern toolkit, `domain="report"` for SSRS implementation recipes | *"What do parameter tables typically look like?"* · *"Which form pattern fits a header+lines order entity?"* · *"Validate this form XML before I create it"* · *"Repair the missing controls on MyInquiryForm"* · *"What objects does a pre-processed SSRS report need?"* |
+| `object_patterns` | Mined + curated structure patterns: `domain="table"` for table shapes, `domain="form"` for the full form-pattern toolkit, `domain="report"` for SSRS implementation recipes, `domain="mobile-app"` for warehouse-app screens (which of the two frameworks owns the flow, then create or modify one screen) | *"What do parameter tables typically look like?"* · *"Which form pattern fits a header+lines order entity?"* · *"Validate this form XML before I create it"* · *"Repair the missing controls on MyInquiryForm"* · *"What objects does a pre-processed SSRS report need?"* · *"Add a field to a warehouse mobile app screen"* |
 
 `object_patterns` in detail:
 
@@ -116,6 +116,7 @@ Mode-specific parameters go in a single `params` object (flat top-level keys sti
 - **`domain="form"`, `action="validate"`** — structural validation FP001–FP010; errors **block form writes** via `FORM_PATTERN_ENFORCE`.
 - **`domain="form"`, `action="repair"`** — auto-fill a form's **missing required controls** from its declared pattern (turns the FP003 report into a fix; existing controls preserved verbatim).
 - **`domain="report"`** — SSRS implementation recipes (7 patterns: SimpleList, GroupedWithTotals, HeaderDetail, PreProcess, PrintMgmtFormLetter, QueryBased, UIBuilderDialog). Unlike a form pattern there is no pattern XML to validate, so each is a *recipe*: the object roster with its base classes, the one `generate_object` scaffold call that produces it, method guidance, and the checks to run afterwards. `pattern=<id>` returns a single recipe.
+- **`domain="mobile-app"`** — warehouse-app (mobile device / scanner) screen recipes. The list view leads with the decision the platform forces on you: the SAME screens are built by **two frameworks** — `ProcessGuide` (current: controller → step → page builder → data processor → navigation agent → action, every one an extension point) and the legacy `WHSWorkExecuteDisplay` hierarchy (one `displayForm()` per mode doing all of it) — and picking the wrong one is a rewrite. 7 recipes: `processguide-flow` (create a flow), `processguide-page-control` (add a control to a standard screen), `processguide-page-replace`, `processguide-step-insert`, `app-step-identity` (the step ID, icon and title the app shows), `legacy-workexecutedisplay`, `gs1-scan-input` (scanning is configuration, not a hand-written parser). Each ships copy-ready X++ that is gated by the offline BP validator in CI.
 
 ## 📝 File Operations (1)
 

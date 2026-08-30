@@ -465,6 +465,32 @@ export const TAXONOMY: CoverageLeaf[] = [
     note: 'Eval case authored for the X++ half (work creation through the WHS framework); templates/directives stay configured data. Golden captured.',
   },
   {
+    // Split out of `warehouse` deliberately. That leaf is green on wave/work
+    // creation, and the scanner half of WHS is a different surface with its own
+    // failure modes: a stateless container protocol instead of a form, and a
+    // scanned string that is not an item number. Auditing the base for
+    // "barcode"/"scanner"/"gs1" returned nothing, one match, and nothing —
+    // "scanner" resolved to Electronic Reporting on a substring hit — so it was
+    // uncovered while looking covered under `warehouse`.
+    id: 'warehouse-mobile-scanning', label: 'Warehouse app / barcode scanning', domain: 'Frameworks', source: 'topic', tier: 'total', weight: 2,
+    aotTypes: ['class'], knowledgeIds: ['warehouse-mobile-app', 'barcode-scanning'],
+    caseIds: ['L3-warehouse-scan-resolve-slice'],
+    note: 'Knowledge authored (scan → action dispatch, one-round-trip transaction, idempotency, GS1 AI parsing, item-barcode resolution); eval case authored, golden pending VM capture.',
+  },
+  {
+    // The screens themselves, which is a different job from the flow invariants
+    // in `warehouse-mobile-scanning`: the platform builds the same screens with
+    // TWO frameworks (ProcessGuide and the legacy WHSWorkExecuteDisplay
+    // hierarchy), and picking the wrong one is a rewrite. Both halves need a
+    // case, which is why this leaf claims three: create a flow, extend one
+    // screen additively, and change a legacy screen without breaking the modes
+    // that share its methods.
+    id: 'warehouse-app-screens', label: 'Warehouse-app screens (ProcessGuide / legacy)', domain: 'Frameworks', source: 'topic', tier: 'total', weight: 2,
+    aotTypes: ['class'], knowledgeIds: ['process-guide-framework'],
+    caseIds: ['L3-processguide-flow-slice', 'L2-processguide-page-control', 'L3-legacy-workexecutedisplay-extend'],
+    note: 'Knowledge + object_patterns(domain="mobile-app") recipes authored for both frameworks; three eval cases authored, goldens pending VM capture.',
+  },
+  {
     id: 'trade-agreements', label: 'Trade agreements & pricing', domain: 'Frameworks', source: 'topic', tier: 'total', weight: 1,
     aotTypes: ['class'], knowledgeIds: ['trade-agreements'],
     caseIds: ['L3-trade-agreement-price-lookup'],
