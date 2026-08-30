@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoAccessRules</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Demonstrates the X++ operator rules that differ from C#: equal precedence between
+/// the logical operators, DIV and MOD as keywords, the like wildcards, is/as on a
+/// table hierarchy, and strFmt where C# would interpolate.
+/// </summary>
+public class ConDemoAccessRules
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>canPost</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Decides whether a caller may post: an administrator always may, an owner only when
+    /// posting is enabled.
+    /// </summary>
+    /// <param name = "_isAdmin">Whether the caller is an administrator.</param>
+    /// <param name = "_isOwner">Whether the caller owns the document.</param>
+    /// <param name = "_isEnabled">Whether posting is enabled for the document.</param>
+    /// <returns>true when the caller may post; otherwise false.</returns>
+    /// <remarks>
+    /// The parentheses are load-bearing, not decoration. In X++ the AND and OR operators
+    /// have EQUAL precedence and evaluate left to right, so the unparenthesized C#
+    /// spelling of this expression groups the OR first and silently denies a plain
+    /// administrator. (Doc comments are parsed as XML, so the operators are spelled out
+    /// here: a bare ampersand makes the comment malformed - BPXmlDocMalformed.)
+    /// </remarks>
+    public static boolean canPost(boolean _isAdmin, boolean _isOwner, boolean _isEnabled)
+    {
+        return _isAdmin || (_isOwner && _isEnabled);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pagesFor</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Counts the pages a number of rows fills.
+    /// </summary>
+    /// <param name = "_rows">Total number of rows.</param>
+    /// <param name = "_rowsPerPage">Rows one page holds.</param>
+    /// <returns>The number of pages, counting a partly filled last page.</returns>
+    /// <remarks>
+    /// DIV and MOD are keywords and are the only integer division in the language: plain /
+    /// divides as real even between two ints, so it would round the page count wrong.
+    /// </remarks>
+    public static int pagesFor(int _rows, int _rowsPerPage)
+    {
+        int wholePages;
+
+        if (_rowsPerPage <= 0)
+        {
+            return 0;
+        }
+
+        wholePages = _rows DIV _rowsPerPage;
+
+        if (_rows MOD _rowsPerPage > 0)
+        {
+            wholePages++;
+        }
+
+        return wholePages;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>matchesFilter</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Matches text against a wildcard pattern.
+    /// </summary>
+    /// <param name = "_text">The text to test.</param>
+    /// <param name = "_pattern">The pattern, with * for any run and ? for one character.</param>
+    /// <returns>true when the text matches the pattern; otherwise false.</returns>
+    /// <remarks>
+    /// like is an operator, so the same expression works in a where clause, where it is
+    /// translated to SQL LIKE.
+    /// </remarks>
+    public static boolean matchesFilter(str _text, str _pattern)
+    {
+        return _text like _pattern;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>describeBuffer</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Reads the account number off a buffer when, and only when, it is a customer.
+    /// </summary>
+    /// <param name = "_record">Any table buffer.</param>
+    /// <returns>The customer account number, or an empty string for any other table.</returns>
+    /// <remarks>
+    /// is tests the runtime type and as downcasts, yielding null rather than throwing when
+    /// the buffer is something else - so the result is checked before a field is read.
+    /// </remarks>
+    public static str describeBuffer(Common _record)
+    {
+        CustTable custTable;
+
+        if (_record is CustTable)
+        {
+            custTable = _record as CustTable;
+
+            if (custTable)
+            {
+                return custTable.AccountNum;
+            }
+        }
+
+        return '';
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>summarise</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Joins two values into one line of text.
+    /// </summary>
+    /// <param name = "_left">The left value.</param>
+    /// <param name = "_right">The right value.</param>
+    /// <returns>The two values separated by a space.</returns>
+    /// <remarks>
+    /// X++ has no string interpolation - there is no $"..." form - so the placeholders live
+    /// in a format string that a label can carry.
+    /// </remarks>
+    public static str summarise(str _left, str _right)
+    {
+        return strFmt('%1 %2', _left, _right);
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,28 @@
+{
+  "id": "L2-attribute-authoring-reflection",
+  "title": "X++ attributes: a SysAttribute subclass, literal-only arguments at the usage site, SysObsolete, and reading them back through reflection",
+  "tier": 2,
+  "instruction": "In the sandbox model, author an attribute and read it back. Ground it first with get_knowledge(topic=\"attributes-authoring\") and get_knowledge(topic=\"reflection-dict\"). Create three classes, in this order, because the attribute must exist before anything can be decorated with it. (1) `DemoRouteTargetAttribute` - a non-abstract class extending SysAttribute with one `str` field, a `public void new(str _targetName)` that calls super() first, and a parm method returning the field. The \"Attribute\" suffix is a convention, and it is exactly what makes rule (2) work. (2) `DemoCustomerSyncStrategy` - a plain class decorated with the attribute from (1) written WITHOUT the Attribute suffix and with a compile-time string LITERAL as its only argument. A variable, a concatenation or a constructor call in that bracket is a compile error and FAILS this case; X++ also has no named-argument syntax, so the argument is positional. The class must also carry one method marked `[SysObsolete('<message>', false)]` - false meaning every reference to it is a compile WARNING, true meaning an error - and nothing in this case may reference that method, so the build stays warning-free. ALL THREE of its arguments must be given - explanation, isError AND the created date - even though the constructor defaults all three: xppbp answers BPCheckSysObsoleteAttributeParametersMismatch otherwise, and because attribute arguments are positional the date cannot be skipped. (3) `DemoAttributeReader` - a `public static str targetOf(ClassId _classId)` that reads the attribute back: seed a DictClass from the class id, call getAllAttributes(), and walk the returned Array from index 1 to lastIndex(), downcasting each entry with `as` and checking the result before use. Return the target name from the first entry that is a DemoRouteTargetAttribute, and an empty string when there is none. Confirm getAllAttributes and the Array members against the real platform with get_object_info before writing them - DictClass and Array are KERNEL types with no AOT metadata row, so a symbol-index miss on those two names is not evidence they do not exist, while SysDictClass (the application-layer subclass) does have one. Seed the DictClass from an intrinsic, never from a name string. All three classes must build with zero errors and zero BP errors.",
+  "target_artifact_types": [
+    "AxClass",
+    "AxClass",
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-attribute-authoring-reflection/",
+  "golden_pending": false,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "attributes",
+    "sysattribute",
+    "reflection",
+    "dictclass",
+    "sysobsolete",
+    "language",
+    "class",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

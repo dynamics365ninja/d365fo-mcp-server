@@ -1,0 +1,25 @@
+{
+  "id": "L2-data-types-conversions",
+  "title": "X++ data types: null-equivalents, date and verbatim literals, silent truncation, conversion functions, anytype locking",
+  "tier": 2,
+  "instruction": "In the sandbox model, create a class DemoTypeUtil that exercises the X++ type system correctly. Ground it first with get_knowledge(topic=\"xpp-data-types\"). All methods public static. (1) `str nullEquivalents()` - declares an uninitialised `date`, `str`, `int` and `boolean` local and returns a strFmt of all four. X++ value types have NO null: they start at their null-EQUIVALENT (1900-01-01, empty string, 0, false). Comparing any of them to `null`, or testing a date with `!someDate` instead of `someDate == dateNull()`, FAILS this case. (2) `date millenniumEve()` - returns the DATE LITERAL for 31 December 1999 written the X++ way, with backslashes between day, month and year. A str2Date call here FAILS the case: the literal is the point. (3) `str truncatedCode()` - assigns 'ABCDEF' to a local declared `str 3` and returns it; the value that comes back is three characters and the compiler says nothing, which is why the doc comment on this method must state that a declared length truncates silently and that an EDT-typed variable is the fix. (4) `int parseCount(str _text)` - converts with the str-to-int conversion FUNCTION (X++ has no casts). (5) `str formatAmount(real _amount)` - formats with num2Str to two decimals. Its numeric arguments are positional and easy to get wrong, so confirm the signature with get_knowledge or validate_code(mode=\"references\") before writing it - do not guess. (6) `int lockedAnytype()` - assigns an int to an `anytype` local, then converts it back out with the any-to-int function and returns it; the doc comment must state that anytype locks to the type first assigned. (7) `str backupFolder()` - returns a Windows path as a VERBATIM string literal (@ prefix), so the backslashes stay literal. Every user-visible string this class produces must come from strFmt with a label, never a hardcoded English sentence. The class must build with zero errors and zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-data-types-conversions/",
+  "golden_pending": false,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "data-types",
+    "literals",
+    "conversions",
+    "anytype",
+    "language",
+    "class",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

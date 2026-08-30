@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoAttributeReader</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Reads the route-target attribute back off a class through reflection.
+/// </summary>
+/// <remarks>
+/// Attribute scanning like this is the backbone of the SysExtension plug-in pattern:
+/// the decorated classes are found at runtime instead of being listed in an if/else
+/// chain. It also defeats the cross-reference - a class reached only this way survives
+/// a rename as a runtime error - so the reflective surface is kept small.
+/// </remarks>
+public class ConDemoAttributeReader
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>targetOf</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the integration target a class is tagged with.
+    /// </summary>
+    /// <param name = "_classId">The class to inspect.</param>
+    /// <returns>The target name, or an empty string when the class carries no route-target attribute.</returns>
+    /// <remarks>
+    /// The attribute instances are constructed by this very call: they exist lazily, on
+    /// read. Each entry is downcast with as and checked, because the array holds every
+    /// attribute on the class, not only this one.
+    /// </remarks>
+    public static str targetOf(ClassId _classId)
+    {
+        DictClass dictClass = new DictClass(_classId);
+        Array     attributes;
+
+        if (!dictClass)
+        {
+            return '';
+        }
+
+        attributes = dictClass.getAllAttributes();
+
+        for (int i = 1; i <= attributes.lastIndex(); i++)
+        {
+            ConDemoRouteTargetAttribute routeTarget = attributes.value(i) as ConDemoRouteTargetAttribute;
+
+            if (routeTarget)
+            {
+                return routeTarget.parmTargetName();
+            }
+        }
+
+        return '';
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>customerSyncTarget</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the integration target the customer synchronization strategy is tagged with.
+    /// </summary>
+    /// <returns>The target name read off the strategy class.</returns>
+    /// <remarks>
+    /// The class id comes from an intrinsic, never from a name string: classNum is checked
+    /// at compile time, className2Id is not.
+    /// </remarks>
+    public static str customerSyncTarget()
+    {
+        return ConDemoAttributeReader::targetOf(classNum(ConDemoCustomerSyncStrategy));
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

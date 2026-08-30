@@ -5,6 +5,7 @@
  *   npx tsx scripts/verify-goldens-build.ts            # all captured cases
  *   npx tsx scripts/verify-goldens-build.ts --baseline # sandbox only, no goldens
  *   npx tsx scripts/verify-goldens-build.ts --limit 5  # smoke test
+ *   npx tsx scripts/verify-goldens-build.ts --case L1-map-basic  # one case (repeatable)
  *
  * Writes the committed record eval/golden-build-verification.json (run
  * `--baseline` first: if the sandbox does not compile clean on its own, no
@@ -141,9 +142,21 @@ function main(): void {
   }
   const limitIdx = argv.indexOf('--limit');
   const limit = limitIdx >= 0 ? Number(argv[limitIdx + 1]) : 0;
+  // --case <id> (repeatable): verify just these. Always a partial run, so a
+  // targeted check can never overwrite the committed all-cases record.
+  const only = argv.flatMap((a, i) => (a === '--case' ? [argv[i + 1]] : [])).filter(Boolean);
 
   let ids = capturedCases();
-  const partial = limit > 0 && limit < ids.length;
+  if (only.length > 0) {
+    const unknown = only.filter(id => !ids.includes(id));
+    if (unknown.length > 0) {
+      console.log(`no captured golden for: ${unknown.join(', ')}`);
+      process.exitCode = 1;
+      return;
+    }
+    ids = ids.filter(id => only.includes(id));
+  }
+  const partial = only.length > 0 || (limit > 0 && limit < ids.length);
   if (limit > 0) ids = ids.slice(0, limit);
   const out = partial ? PARTIAL_OUT : OUT;
   const compiler = compilerVersion();

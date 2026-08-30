@@ -2,14 +2,14 @@
   "core": {
     "tier": "core",
     "total": 51,
-    "covered": 46,
-    "percent": 90.2
+    "covered": 51,
+    "percent": 100
   },
   "total": {
     "tier": "all",
     "total": 89,
-    "covered": 83,
-    "percent": 93.3
+    "covered": 89,
+    "percent": 100
   },
   "leaves": [
     {
@@ -413,13 +413,16 @@
         "L1-macro-library-flight",
         "L1-map-basic",
         "L1-table-basic",
+        "L2-attribute-authoring-reflection",
         "L2-business-event-basic",
         "L2-class-method-ops",
         "L2-coc-inherited-method",
         "L2-collections-map-list-container",
         "L2-config-key-gated-table",
+        "L2-data-types-conversions",
         "L2-date-effective-table",
         "L2-datetime-timezone-range",
+        "L2-declarations-scope",
         "L2-delegate-basic",
         "L2-dimension-basic",
         "L2-direct-sql-connection",
@@ -427,10 +430,13 @@
         "L2-edt-extension-basic",
         "L2-feature-management-flight",
         "L2-interface-abstract-basic",
+        "L2-intrinsic-functions",
         "L2-license-code-configkey",
         "L2-numberseq-basic",
         "L2-occ-retry-basic",
+        "L2-operators-precedence",
         "L2-reflection-dict-fieldwalk",
+        "L2-statements-switch-loops",
         "L2-sysda-fluent-query",
         "L2-sysextension-plugin",
         "L2-table-caching-basic",
@@ -466,13 +472,16 @@
         "L1-macro-library-flight",
         "L1-map-basic",
         "L1-table-basic",
+        "L2-attribute-authoring-reflection",
         "L2-business-event-basic",
         "L2-class-method-ops",
         "L2-coc-inherited-method",
         "L2-collections-map-list-container",
         "L2-config-key-gated-table",
+        "L2-data-types-conversions",
         "L2-date-effective-table",
         "L2-datetime-timezone-range",
+        "L2-declarations-scope",
         "L2-delegate-basic",
         "L2-dimension-basic",
         "L2-direct-sql-connection",
@@ -480,10 +489,13 @@
         "L2-edt-extension-basic",
         "L2-feature-management-flight",
         "L2-interface-abstract-basic",
+        "L2-intrinsic-functions",
         "L2-license-code-configkey",
         "L2-numberseq-basic",
         "L2-occ-retry-basic",
+        "L2-operators-precedence",
         "L2-reflection-dict-fieldwalk",
+        "L2-statements-switch-loops",
         "L2-sysda-fluent-query",
         "L2-sysextension-plugin",
         "L2-table-caching-basic",
@@ -585,10 +597,12 @@
       "tier": "core",
       "weight": 5,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-data-types-conversions"
+      ]
     },
     {
       "id": "declarations-scope",
@@ -597,10 +611,12 @@
       "tier": "core",
       "weight": 4,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-declarations-scope"
+      ]
     },
     {
       "id": "operators",
@@ -609,10 +625,12 @@
       "tier": "core",
       "weight": 4,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-operators-precedence"
+      ]
     },
     {
       "id": "statements-flow",
@@ -621,10 +639,12 @@
       "tier": "core",
       "weight": 4,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-statements-switch-loops"
+      ]
     },
     {
       "id": "exceptions-tts",
@@ -647,10 +667,12 @@
       "tier": "total",
       "weight": 2,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-attribute-authoring-reflection"
+      ]
     },
     {
       "id": "intrinsics",
@@ -659,10 +681,12 @@
       "tier": "core",
       "weight": 4,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-intrinsic-functions"
+      ]
     },
     {
       "id": "date-effective",
@@ -1365,13 +1389,16 @@
         "L1-macro-library-flight",
         "L1-map-basic",
         "L1-table-basic",
+        "L2-attribute-authoring-reflection",
         "L2-business-event-basic",
         "L2-class-method-ops",
         "L2-coc-inherited-method",
         "L2-collections-map-list-container",
         "L2-config-key-gated-table",
+        "L2-data-types-conversions",
         "L2-date-effective-table",
         "L2-datetime-timezone-range",
+        "L2-declarations-scope",
         "L2-delegate-basic",
         "L2-dimension-basic",
         "L2-direct-sql-connection",
@@ -1379,10 +1406,13 @@
         "L2-edt-extension-basic",
         "L2-feature-management-flight",
         "L2-interface-abstract-basic",
+        "L2-intrinsic-functions",
         "L2-license-code-configkey",
         "L2-numberseq-basic",
         "L2-occ-retry-basic",
+        "L2-operators-precedence",
         "L2-reflection-dict-fieldwalk",
+        "L2-statements-switch-loops",
         "L2-sysda-fluent-query",
         "L2-sysextension-plugin",
         "L2-table-caching-basic",

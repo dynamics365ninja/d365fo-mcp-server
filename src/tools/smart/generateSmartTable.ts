@@ -401,7 +401,7 @@ export async function handleGenerateSmartTable(
       // neither was given and the caller did not name one.
       const edt = spec.enumType || spec.type
         ? spec.edt
-        : (spec.edt ?? resolveBestEdt(spec.name, specDb));
+        : (spec.edt ?? resolveBestEdt(spec.name, specDb, { model: targetModelName(modelName) }));
       fields.push({ ...spec, edt });
     }
     console.log(`[generateSmartTable] Added ${explicitFields.length} fields from fields[]`);
@@ -423,7 +423,7 @@ export async function handleGenerateSmartTable(
         console.warn(`[generateSmartTable] Duplicate hint "${hint}" → renamed to "${fieldName}"`);
       }
 
-      const edt = resolveBestEdt(hint, hintDb);
+      const edt = resolveBestEdt(hint, hintDb, { model: targetModelName(modelName) });
       const hintLower = hint.toLowerCase();
       // Mandatory only when the name IS an identifier (ends with 'Id', or a known PK pattern) —
       // not when it merely contains 'id' mid-word (e.g. ValidFrom, Description).
@@ -1404,6 +1404,19 @@ function isGenericFieldWord(fieldName: string): boolean {
   return GENERIC_FIELD_WORDS.has(fieldName.toLowerCase());
 }
 
+/** True when `edt` is some OTHER model's prefix glued onto the field name. */
+function isForeignPrefixedMatch(
+  fieldName: string,
+  edtName: string,
+  edtModel: string | undefined,
+  targetModel: string | undefined,
+): boolean {
+  if (!targetModel || !edtModel || edtModel === targetModel) return false;
+  const f = fieldName.toLowerCase();
+  const e = edtName.toLowerCase();
+  return e.length > f.length && e.endsWith(f);
+}
+
 /** Confidence (0–1) that an EDT name matches a field name, by containment. */
 function edtNameConfidence(field: string, edt: string): number {
   const f = field.toLowerCase();
@@ -1414,12 +1427,86 @@ function edtNameConfidence(field: string, edt: string): number {
   return 0;
 }
 
+/** The model being written into: the explicit argument, else the configured workspace model. */
+export function targetModelName(explicit?: string): string | undefined {
+  if (explicit) return explicit;
+  try {
+    return getConfigManager().getModelName() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Ranking context for {@link resolveBestEdt}. Without `model` it ranks by name alone, as before. */
+export interface EdtResolutionContext {
+  model?: string;
+  /** Table-XML reader, injectable so the model-field probe is testable without a disk. */
+  readFile?: (filePath: string) => string;
+}
+
+/**
+ * The EDT a field of this exact name already carries in the TARGET model — the
+ * strongest signal there is: same name, same model, same concept.
+ *
+ * The index stores a field's PRIMITIVE in `symbols.signature`, not its EDT, so
+ * the EDT is read from the owning table's XML. Best-effort: an unreadable file
+ * just means "no answer".
+ */
+export function lookupModelFieldEdt(
+  fieldName: string,
+  db: any,
+  model: string,
+  readFile: (filePath: string) => string = (p) => fs.readFileSync(p, 'utf-8'),
+): string | undefined {
+  try {
+    const owners = db.prepare(
+      `SELECT parent_name, file_path FROM symbols
+        WHERE type = 'field' AND name = ? COLLATE NOCASE AND model = ?
+        LIMIT 5`
+    ).all(fieldName, model) as Array<{ parent_name: string; file_path: string }>;
+
+    for (const owner of owners) {
+      if (!owner?.file_path) continue;
+      let xml: string;
+      try {
+        xml = readFile(owner.file_path);
+      } catch {
+        continue;
+      }
+      const edt = extendedDataTypeOfField(xml, fieldName);
+      if (edt) return edt;
+    }
+  } catch {
+    /* index unusable — the caller falls through to name-based resolution */
+  }
+  return undefined;
+}
+
+/**
+ * `<ExtendedDataType>` of one named field in an AxTable document. Each
+ * `<AxTableField>` block is read only up to its own closing tag, so the field
+ * groups and indexes further down the file (which repeat `<Name>`) cannot leak
+ * an answer into a field that has none.
+ */
+function extendedDataTypeOfField(tableXml: string, fieldName: string): string | undefined {
+  const target = fieldName.toLowerCase();
+  for (const chunk of tableXml.split('<AxTableField').slice(1)) {
+    const block = chunk.split('</AxTableField>')[0];
+    const name = /<Name>([^<]+)<\/Name>/.exec(block)?.[1];
+    if (!name || name.toLowerCase() !== target) continue;
+    const edt = /<ExtendedDataType>([^<]+)<\/ExtendedDataType>/.exec(block)?.[1];
+    return edt?.trim() || undefined;
+  }
+  return undefined;
+}
+
 /**
  * Resolve the best EDT for a field name, preferring real indexed EDTs over name
- * heuristics. Order: exact EDT-name match → strong fuzzy match (≥0.8) → heuristic
- * that exists in this environment → weaker fuzzy match (≥0.6) → raw heuristic.
+ * heuristics. Order: exact EDT-name match → a field of that name already in the
+ * target model → strong fuzzy match (≥0.8) → heuristic that exists in this
+ * environment → weaker fuzzy match (≥0.6) → raw heuristic.
  */
-export function resolveBestEdt(fieldName: string, db: any): string {
+export function resolveBestEdt(fieldName: string, db: any, ctx?: EdtResolutionContext): string {
   try {
     // Exact-case probe on idx_edt_metadata_name; a differently-cased name is
     // canonicalized through the symbols index (edt_metadata has no FTS) — the
@@ -1436,18 +1523,31 @@ export function resolveBestEdt(fieldName: string, db: any): string {
     }
     if (exact) return exact.edt_name;
 
+    // A field of this name in the target model outranks every name-based guess.
+    if (ctx?.model) {
+      const own = lookupModelFieldEdt(fieldName, db, ctx.model, ctx.readFile);
+      if (own) return own;
+    }
+
     // Generic single-word fields don't accept fuzzy matches — a prefixed EDT
     // (CovStatus for "Status") is a different concept. Only their exact match
     // above counts; otherwise fall through to the heuristic / string default.
     const acceptFuzzy = !isGenericFieldWord(fieldName);
 
     const candidates = db.prepare(
-      `SELECT edt_name FROM edt_metadata WHERE edt_name LIKE ? COLLATE NOCASE ORDER BY LENGTH(edt_name) ASC LIMIT 30`
-    ).all(`%${fieldName}%`) as Array<{ edt_name: string }>;
+      `SELECT edt_name, model FROM edt_metadata WHERE edt_name LIKE ? COLLATE NOCASE ORDER BY LENGTH(edt_name) ASC LIMIT 30`
+    ).all(`%${fieldName}%`) as Array<{ edt_name: string; model?: string }>;
     let best = '';
     let bestConf = 0;
     for (const c of candidates) {
-      const conf = edtNameConfidence(fieldName, c.edt_name);
+      let conf = edtNameConfidence(fieldName, c.edt_name);
+      // Another module's prefix + this field name is that module's concept, not
+      // this field's type (NoteId → PlCorrNoteId, GroupId → ReqGroupId). Demote it
+      // below the strong tier; a prefixed EDT from the target model itself keeps
+      // its score, which is the case this guard must not regress.
+      if (isForeignPrefixedMatch(fieldName, c.edt_name, c.model, ctx?.model)) {
+        conf = Math.min(conf, 0.79);
+      }
       if (conf > bestConf) { bestConf = conf; best = c.edt_name; }
     }
     if (acceptFuzzy && best && bestConf >= 0.8) return best;
@@ -1495,6 +1595,10 @@ export function suggestEdtFromFieldName(fieldName: string): string {
   if (nameLower.includes('amount')) return 'AmountMST';
   if (nameLower.includes('rate')) return 'AmountMST';
   if (nameLower.includes('quantity') || nameLower.includes('qty')) return 'Qty';
+  // A count is an integer, and a string one costs the report its SSRS numeric
+  // formatting. Anchored on the CamelCase boundary: "Discount" and "Account" merely
+  // end in the same five letters.
+  if (nameLower === 'count' || /[a-z]Count$/.test(fieldName)) return 'Counter';
   if (nameLower.includes('price')) return 'PriceUnit';
   // Only the bare effectivity names map to the *DateTime EDTs; other "*date" → TransDate.
   if (nameLower === 'validfrom') return 'ValidFromDateTime';

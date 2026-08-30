@@ -61,7 +61,11 @@ export const GENERATE_OBJECT_PARAM_SPECS: Record<string, { type: string; descrip
   label: { type: 'string', description: 'Optional label for the generated object.' },
   caption: {
     type: 'string',
-    description: 'Optional caption/title (form: window title; report: human-readable report title).',
+    description: 'Optional caption/title (form: window title; report: human-readable report title). ' +
+      'Pass a label ID ("@Module:LabelId") to also label the objects: for a report it becomes the ' +
+      'Label of the tmp table and the output menu item. Prose titles the RDL header only — a Label ' +
+      'property must hold a label ID, so anything else leaves those objects unlabelled rather than ' +
+      'earning them a BPErrorLabelIsText.',
   },
   packagePath: { type: 'string', description: 'Base packages directory path.' },
   tableGroup: {

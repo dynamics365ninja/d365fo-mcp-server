@@ -8,8 +8,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
-| core | 46 | 51 | **90.2%** |
-| total | 83 | 89 | 93.3% |
+| core | 51 | 51 | **100%** |
+| total | 89 | 89 | 100% |
 
 ## Data model (12/12)
 
@@ -28,7 +28,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Relations, indexes, field groups | core | ✅ | ✅ | ✅ | L2-table-modify-lifecycle, L3-form-detailstransaction |
 | Table inheritance (SupportInheritance/Extends) | total | ✅ | ✅ | ✅ | L2-table-inheritance-basic |
 
-## Code (24/30)
+## Code (30/30)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -46,21 +46,21 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Error handling & infolog | core | ✅ | ✅ | ✅ | L2-error-handling-infolog |
 | SysExtension plug-in pattern | total | ✅ | ✅ | ✅ | L2-sysextension-plugin |
 | Performance patterns | core | ✅ | ✅ | ✅ | L2-performance-set-based |
-| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +37 |
-| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +37 |
+| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +43 |
+| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +43 |
 | Optimistic concurrency & UnitOfWork | core | ✅ | ✅ | ✅ | L2-occ-retry-basic |
 | Caching (CacheLookup, SysGlobalObjectCache, RecordViewCache) | total | ✅ | ✅ | ✅ | L2-table-caching-basic |
 | X++ collections & containers (List/Map/Set/Struct) | total | ✅ | ✅ | ✅ | L2-collections-map-list-container |
 | Date/time & time zones (utcdatetime, DateTimeUtil) | total | ✅ | ✅ | ✅ | L2-datetime-timezone-range |
 | .NET interop (CLRInterop, using alias, CLRError) | total | ✅ | ✅ | ✅ | L2-dotnet-interop-clrerror |
 | Reflection / Dict* metadata API | total | ✅ | ✅ | ✅ | L2-reflection-dict-fieldwalk |
-| Data types, literals & conversions | core | ✅ | — | ✅ | Taught (xpp-data-types) and partially validator-enforced (FN001 arities, CS001 string type); no dedicated eval case. |
-| Declarations & scope (var/const/readonly/using) | core | ✅ | — | ✅ | Taught; exercised implicitly by every class case — no dedicated eval case. |
-| Operators & precedence (&&/|| trap, like, is/as) | core | ✅ | — | ✅ | Taught; CS001 blocks the C#-isms. No dedicated eval case. |
-| Statements & flow (switch fallthrough, loops) | core | ✅ | — | ✅ | Taught; BP004 covers removed keywords. No dedicated eval case. |
+| Data types, literals & conversions | core | ✅ | ✅ | ✅ | L2-data-types-conversions |
+| Declarations & scope (var/const/readonly/using) | core | ✅ | ✅ | ✅ | L2-declarations-scope |
+| Operators & precedence (&&/|| trap, like, is/as) | core | ✅ | ✅ | ✅ | L2-operators-precedence |
+| Statements & flow (switch fallthrough, loops) | core | ✅ | ✅ | ✅ | L2-statements-switch-loops |
 | Exceptions inside transactions (catchability, retry) | core | ✅ | ✅ | ✅ | L2-exception-tts-retry |
-| Attribute authoring & reflection | total | ✅ | — | ✅ | Rules-only topic (examples wait for the Phase F snapshot capture); no eval case. |
-| Compile-time (intrinsic) functions | core | ✅ | — | ✅ | Full catalog taught; references mode resolves the common ones. No dedicated eval case. |
+| Attribute authoring & reflection | total | ✅ | ✅ | ✅ | L2-attribute-authoring-reflection |
+| Compile-time (intrinsic) functions | core | ✅ | ✅ | ✅ | L2-intrinsic-functions |
 | Date-effective tables (validTimeState) | total | ✅ | ✅ | ✅ | L2-date-effective-table |
 
 ## UI (7/7)
@@ -138,18 +138,11 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | SysTest unit testing | core | ✅ | ✅ | ✅ | L2-coc-extension, L2-event-handler-basic, L3-batch-basic |
-| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +37 |
+| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +43 |
 
 ## Closure queue (uncovered, by frequency weight)
 
-| Weight | Leaf | Missing |
-| ---: | --- | --- |
-| 5 | Data types, literals & conversions | missing E |
-| 4 | Declarations & scope (var/const/readonly/using) | missing E |
-| 4 | Compile-time (intrinsic) functions | missing E |
-| 4 | Operators & precedence (&&/|| trap, like, is/as) | missing E |
-| 4 | Statements & flow (switch fallthrough, loops) | missing E |
-| 2 | Attribute authoring & reflection | missing E |
+Nothing uncovered.
 
 ## Orphans
 

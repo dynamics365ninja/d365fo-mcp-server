@@ -1,0 +1,35 @@
+{
+  "run_id": "2026-08-30T07__L2-declarations-scope__d212f3e",
+  "case_id": "L2-declarations-scope",
+  "tier": 2,
+  "timestamp": "2026-08-30T07:25:00.476Z",
+  "server_git_sha": "d212f3e",
+  "generated_artifacts": [
+    "ConDemoRetryPolicy.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS"
+}

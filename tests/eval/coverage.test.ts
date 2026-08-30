@@ -103,3 +103,30 @@ describe('shipped taxonomy', () => {
     expect(unexplained.map(r => r.leaf.id)).toEqual([]);
   });
 });
+
+/**
+ * The flags are derived, so a leaf's `note` is the one part of the matrix that can
+ * lie — and 37 of them did, still claiming "golden pending VM capture" months after
+ * the capture, one of them in the published COVERAGE.md.
+ */
+describe('taxonomy notes match the catalog', () => {
+  const cases = new Map(loadCases().map(c => [c.id, c]));
+
+  it('no note claims a pending golden for a case that is captured', () => {
+    const lying = TAXONOMY
+      .filter(l => /golden pending VM capture/i.test(l.note ?? ''))
+      .filter(l => (l.caseIds ?? []).every(id => cases.get(id)?.goldenPending === false))
+      .map(l => l.id);
+
+    expect(lying).toEqual([]);
+  });
+
+  it('no note claims a captured golden for a case that is still pending', () => {
+    const lying = TAXONOMY
+      .filter(l => /golden captured/i.test(l.note ?? ''))
+      .filter(l => (l.caseIds ?? []).some(id => cases.get(id)?.goldenPending === true))
+      .map(l => l.id);
+
+    expect(lying).toEqual([]);
+  });
+});

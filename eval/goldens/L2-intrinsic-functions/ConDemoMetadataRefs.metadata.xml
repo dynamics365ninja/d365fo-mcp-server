@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoMetadataRefs</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Demonstrates the compile-time intrinsics that replace hardcoded metadata names.
+/// Every argument below is a literal element name the compiler checks, so a rename or
+/// a typo breaks the BUILD instead of production.
+/// </summary>
+public class ConDemoMetadataRefs
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>tableReferences</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// References a table and one of its fields by name and by id.
+    /// </summary>
+    /// <returns>The table name, the field name, the table id and the field id.</returns>
+    /// <remarks>
+    /// The member forms take the owner first, which is what lets the compiler check that
+    /// the field really belongs to that table - a plain string could not be checked at all.
+    /// </remarks>
+    public static container tableReferences()
+    {
+        return [
+            tableStr(CustTable),
+            fieldStr(CustTable, AccountNum),
+            tableNum(CustTable),
+            fieldNum(CustTable, AccountNum)];
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ownReferences</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// References this class and one of its own methods.
+    /// </summary>
+    /// <returns>The class name and the method name.</returns>
+    /// <remarks>
+    /// Self-references are the clearest demonstration of what the intrinsics buy: renaming
+    /// either element breaks this build immediately. The static form is required here
+    /// because the method is static - methodStr covers instance methods.
+    /// </remarks>
+    public static container ownReferences()
+    {
+        return [
+            classStr(ConDemoMetadataRefs),
+            staticMethodStr(ConDemoMetadataRefs, ownReferences)];
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>enumReferences</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// References an enum, one of its literals and its value count.
+    /// </summary>
+    /// <returns>The enum name, the literal name and the number of values in the enum.</returns>
+    /// <remarks>
+    /// enumCnt is resolved at compile time too, so a loop bound taken from it follows the
+    /// enum when values are added.
+    /// </remarks>
+    public static container enumReferences()
+    {
+        return [
+            enumStr(SalesStatus),
+            enumLiteralStr(SalesStatus, Backorder),
+            enumCnt(SalesStatus)];
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>indexReference</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// References an index on a table.
+    /// </summary>
+    /// <returns>The index name.</returns>
+    /// <remarks>
+    /// Index names are the kind of string that rots quietly in a query hint; this form is
+    /// checked against the table's real indexes.
+    /// </remarks>
+    public static str indexReference()
+    {
+        return indexStr(CustTable, AccountIdx);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>menuItemReferences</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// References one display menu item and one action menu item.
+    /// </summary>
+    /// <returns>The display menu item name and the action menu item name.</returns>
+    /// <remarks>
+    /// There is no single menuItemStr: the kinds live in separate AOT folders and each has
+    /// its own intrinsic, so handing a display item to the action form - or the reverse -
+    /// fails the build. That check is the reason to look the kind up rather than assume it.
+    /// </remarks>
+    public static container menuItemReferences()
+    {
+        return [
+            menuItemDisplayStr(CustTableListPage),
+            menuItemActionStr(CustWriteOff)];
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>edtReference</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// References an extended data type.
+    /// </summary>
+    /// <returns>The EDT name.</returns>
+    public static str edtReference()
+    {
+        return extendedTypeStr(CustAccount);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>hardLimits</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the largest integer the platform represents.
+    /// </summary>
+    /// <returns>The maximum int value.</returns>
+    /// <remarks>
+    /// A compile-time constant, not a computed value: nothing runs at call time.
+    /// </remarks>
+    public static int hardLimits()
+    {
+        return maxInt();
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

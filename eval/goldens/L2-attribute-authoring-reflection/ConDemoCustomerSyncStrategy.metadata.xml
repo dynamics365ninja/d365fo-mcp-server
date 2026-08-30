@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoCustomerSyncStrategy</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// A routing strategy tagged with the integration target it serves.
+/// </summary>
+/// <remarks>
+/// The attribute is spelled without its "Attribute" suffix, which is allowed at the
+/// usage site, and its argument is a compile-time LITERAL - a variable, an expression
+/// or a constructor call there does not compile. Arguments are positional; X++ has no
+/// named-argument syntax.
+/// </remarks>
+[ConDemoRouteTarget('CustomerSync')]
+public class ConDemoCustomerSyncStrategy
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>batchSize</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the number of records one synchronization batch carries.
+    /// </summary>
+    /// <returns>The batch size.</returns>
+    public static int batchSize()
+    {
+        return 500;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>legacyEndpoint</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the legacy endpoint this strategy used before the target attribute existed.
+    /// </summary>
+    /// <returns>The legacy endpoint name.</returns>
+    /// <remarks>
+    /// SysObsolete is the supported deprecation mechanism: with false, every REFERENCE to
+    /// this method becomes a compile warning; with true it becomes an error. Nothing in
+    /// this model references it, so the build stays warning-free.
+    /// ALL THREE arguments have to be given even though the constructor defaults them:
+    /// xppbp answers BPCheckSysObsoleteAttributeParametersMismatch otherwise, and since
+    /// attribute arguments are positional the date cannot be skipped.
+    /// </remarks>
+    [SysObsolete('Read the target from the ConDemoRouteTarget attribute instead', false, 30\08\2026)]
+    public static str legacyEndpoint()
+    {
+        return 'CustomerSync';
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoTypeUtil</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Demonstrates the X++ type system: null-equivalent values, literals, silent
+/// truncation of declared-length strings, conversion functions and anytype locking.
+/// </summary>
+public class ConDemoTypeUtil
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>nullEquivalents</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Shows that X++ value types start at their null-EQUIVALENT value, never at null.
+    /// </summary>
+    /// <returns>One string reporting whether each uninitialised local equals its null-equivalent.</returns>
+    /// <remarks>
+    /// Only class references and table buffers can be genuinely null, so a value type is
+    /// compared to its own empty value: a date to dateNull(), never to null and never
+    /// with a plain boolean test.
+    /// </remarks>
+    public static str nullEquivalents()
+    {
+        date    emptyDate;
+        str     emptyText;
+        int     zero;
+        boolean flag;
+
+        return strFmt('%1 %2 %3 %4',
+            emptyDate == dateNull(),
+            emptyText == '',
+            zero == 0,
+            flag == false);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>millenniumEve</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns 31 December 1999 as an X++ date LITERAL.
+    /// </summary>
+    /// <returns>The date 1999-12-31.</returns>
+    /// <remarks>
+    /// Date literals are written day\month\year with backslashes. A str2Date call would
+    /// move the same work to runtime and lose the compiler's range check.
+    /// </remarks>
+    public static date millenniumEve()
+    {
+        return 31\12\1999;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>truncatedCode</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Shows that a declared string length truncates on assignment.
+    /// </summary>
+    /// <returns>The first three characters of a six-character literal.</returns>
+    /// <remarks>
+    /// The truncation is SILENT - no error, no warning. Declaring the local over an EDT
+    /// instead keeps the length in metadata, where it can be reviewed and extended.
+    /// </remarks>
+    public static str truncatedCode()
+    {
+        str 3 shortCode = 'ABCDEF';
+
+        return shortCode;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parseCount</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Converts text to an integer.
+    /// </summary>
+    /// <param name = "_text">The text to convert.</param>
+    /// <returns>The integer value, or 0 when the text holds no number.</returns>
+    /// <remarks>
+    /// X++ has no casts: every conversion is a named function.
+    /// </remarks>
+    public static int parseCount(str _text)
+    {
+        return str2Int(_text);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>formatAmount</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Formats an amount with two decimals.
+    /// </summary>
+    /// <param name = "_amount">The amount to format.</param>
+    /// <returns>The formatted amount.</returns>
+    /// <remarks>
+    /// num2Str takes its width, decimals and two separators POSITIONALLY, which is the
+    /// easiest signature in the language to get wrong: character width first, decimals
+    /// second, decimal separator third, thousand separator last.
+    /// </remarks>
+    public static str formatAmount(real _amount)
+    {
+        return num2Str(_amount, 0, 2, 1, 0);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>lockedAnytype</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Shows that an anytype locks to the type it is first assigned.
+    /// </summary>
+    /// <returns>The integer that was stored in the anytype.</returns>
+    /// <remarks>
+    /// After the first assignment the variable is an int for good; any2Int converts it
+    /// back out. A concrete type is preferable wherever one is known.
+    /// </remarks>
+    public static int lockedAnytype()
+    {
+        anytype value = 42;
+
+        return any2Int(value);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>backupFolder</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns a Windows path as a verbatim string.
+    /// </summary>
+    /// <returns>The backup folder path.</returns>
+    /// <remarks>
+    /// The @ prefix makes the backslashes literal, so a path or a regular expression
+    /// needs no doubling.
+    /// </remarks>
+    public static str backupFolder()
+    {
+        return @'K:\Temp\ConDemoBackup';
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

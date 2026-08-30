@@ -1,0 +1,25 @@
+{
+  "id": "L2-statements-switch-loops",
+  "title": "X++ statements: switch fallthrough and comma case lists, break scope inside a loop, while/do-while/for",
+  "tier": 2,
+  "instruction": "In the sandbox model, create a class DemoStatusRouter that pins the X++ statement rules that differ from C#. Ground it first with get_knowledge(topic=\"switch-loops\"). Confirm the SalesStatus enum values with get_object_info before writing them - do not guess. All methods public static. (1) `int route(SalesStatus _status)` - a switch over SalesStatus that returns a routing code. It must use a COMMA-SEPARATED case list for the two statuses that share a code, must end every branch with `break`, and must contain exactly ONE deliberate fallthrough whose comment says it is deliberate and what it falls into. X++ switch FALLS THROUGH without break - the opposite of C# - so an accidental missing break FAILS this case; a `default:` branch is required here. (2) `int firstMatchingPosition(container _statuses, SalesStatus _wanted)` - a `while` loop over the container with the switch from rule (1) inside it. When the switch decides an entry is the wanted one it must set a flag, and the loop must be left by testing that flag AFTER the switch: a `break` written inside the switch leaves only the SWITCH, not the loop, and FAILS this case. (Capture note: an earlier draft looped over SalesTable and cost the case a build - a SalesTable buffer drags a Dynamics.AX.Retail module reference the sandbox does not carry. A container keeps the case on its own leaf, which is statements, not data access.) (3) `int countDown(int _from)` - a `do { } while (...);` loop, which runs its body once even when _from is already zero, and a comment saying that is the difference from `while`. (4) `int sumTo(int _limit)` - a `for` loop using `continue` to skip odd numbers. Nothing in this class may use `pause` or `window` (removed keywords, they are compile errors) or carry a `client`/`server` modifier (parsed but ignored - delete them in new code). Every user-visible string must come from strFmt with a label. The class must build with zero errors and zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-statements-switch-loops/",
+  "golden_pending": false,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "statements",
+    "switch",
+    "fallthrough",
+    "loops",
+    "language",
+    "class",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

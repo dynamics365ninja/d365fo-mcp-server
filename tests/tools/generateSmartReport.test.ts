@@ -375,3 +375,122 @@ describe('generate_object(scaffold, report) controllerType="printMgmt" — Phase
     expect(text).toContain('ssrsReportStr(ConsignmentNote, Report)');
   });
 });
+
+/**
+ * Regression: without a `caption` the scaffold labelled the tmp table and menu item
+ * "<Name> (temp)" / "<Name>" — prose in a slot that must hold a label ID, so every
+ * scaffolded report started life with a BPErrorLabelIsText
+ * (eval/corpus/runs/2026-08-30T05__L3-print-mgmt-doctype-extension).
+ */
+describe('generate_object(scaffold, report) labels', () => {
+  const originalPlatform = process.platform;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform });
+  });
+
+  const scaffold = (args: Record<string, unknown>) =>
+    handleGenerateSmartReport(
+      {
+        name: 'DemoNoteReport',
+        fieldsHint: 'NoteId, Subject',
+        generateController: true,
+        modelName: 'MyModel',
+        ...args,
+      } as any,
+      createSymbolIndexStub()
+    );
+
+  it('writes no Label at all when no caption is given, and says so', async () => {
+    const text = (await scaffold({})).content[0].text as string;
+
+    expect(text).not.toContain('(temp)');
+    expect(text).not.toContain('<Label>DemoNoteReport');
+    expect(text).not.toContain('@TODO:LabelId');
+    expect(text).toContain('BPErrorLabelIsText');
+    expect(text).toContain('caption="@Model:LabelId"');
+  });
+
+  it('keeps prose out of the Label slot but still titles the RDL with it', async () => {
+    const text = (await scaffold({ caption: 'Inventory by Zones' })).content[0].text as string;
+
+    expect(text).not.toContain('<Label>Inventory by Zones</Label>');
+    // The caption is not lost — it is the RDL page-header title and the doc comments.
+    expect(text).toContain('Inventory by Zones');
+    expect(text).toContain('is prose, not a label ID');
+  });
+
+  it('uses a label reference everywhere when one is given', async () => {
+    const text = (await scaffold({ caption: '@TaxTransactionInquiry:HeaderNote' })).content[0].text as string;
+
+    // Both the tmp table and the menu item — the shape every captured report golden holds.
+    expect(text.match(/<Label>@TaxTransactionInquiry:HeaderNote<\/Label>/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(text).not.toContain('BPErrorLabelIsText');
+  });
+});
+
+/**
+ * Regression: `prePromptModifyContract()` opened with a contract local followed by a
+ * TODO that never read it — a BPLocalVariableNotUsed on all three Phase F report
+ * captures (eval/corpus/runs/2026-08-30T04+).
+ */
+describe('generate_object(scaffold, report) controller hook', () => {
+  const originalPlatform = process.platform;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform });
+  });
+
+  it('does not declare an unused contract local when there is nothing to pre-fill', async () => {
+    const result = await handleGenerateSmartReport(
+      {
+        name: 'DemoNoteReport',
+        fieldsHint: 'NoteId, Subject',
+        contractParams: [{ name: 'subjectFilter', type: 'str' }],
+        generateController: true,
+        modelName: 'MyModel',
+      } as any,
+      createSymbolIndexStub()
+    );
+    const text = result.content[0].text as string;
+
+    expect(text).toContain('protected void prePromptModifyContract()');
+    // The fetch survives as an example, never as a live declaration.
+    expect(text).not.toContain('        DemoNoteReportContract contract = this.parmReportContract()');
+    expect(text).toContain('//     DemoNoteReportContract contract = this.parmReportContract()');
+    // Pinned wording: the five captured controller goldens carry these exact lines.
+    expect(text).toContain('// TODO: set default parameter values here. Fetch the contract where you read it:');
+    // Emitted X++ stays ASCII — the AOT goldens are ASCII documents.
+    const hookStart = text.indexOf('protected void prePromptModifyContract()');
+    const hook = text.slice(hookStart, hookStart + 400);
+    expect([...hook].filter(c => (c.codePointAt(0) ?? 0) > 127)).toEqual([]);
+  });
+
+  it('still declares and USES the contract when a caller record pre-fills it', async () => {
+    const result = await handleGenerateSmartReport(
+      {
+        name: 'DemoNoteReport',
+        fieldsHint: 'NoteId, Subject',
+        contractParams: [{ name: 'CustAccount', type: 'str' }],
+        callerTableName: 'CustTable',
+        generateController: true,
+        modelName: 'MyModel',
+      } as any,
+      createSymbolIndexStub()
+    );
+    const text = result.content[0].text as string;
+
+    expect(text).toContain('        DemoNoteReportContract contract = this.parmReportContract()');
+    expect(text).toContain('contract.parmCustAccount(custTable.CustAccount);');
+  });
+});

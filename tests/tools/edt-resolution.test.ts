@@ -35,6 +35,58 @@ function fakeDb(edts: string[]) {
   };
 }
 
+/** Like fakeDb, plus EDT models and a `symbols` probe for field-name ownership. */
+function modelAwareDb(
+  edts: Array<{ name: string; model: string }>,
+  fields: Array<{ name: string; model: string; table: string; file: string }> = [],
+) {
+  return {
+    prepare(sql: string) {
+      return {
+        get(arg: string) {
+          if (/= \?/.test(sql)) {
+            const hit = edts.find(e => e.name.toLowerCase() === String(arg).toLowerCase());
+            if (/SELECT 1/.test(sql)) return hit ? { 1: 1 } : undefined;
+            return hit ? { edt_name: hit.name } : undefined;
+          }
+          return undefined;
+        },
+        all(...args: string[]) {
+          if (/FROM symbols/.test(sql)) {
+            const [fieldName, model] = args;
+            return fields
+              .filter(f => f.name.toLowerCase() === String(fieldName).toLowerCase() && f.model === model)
+              .map(f => ({ parent_name: f.table, file_path: f.file }));
+          }
+          const needle = String(args[0]).replace(/%/g, '').toLowerCase();
+          return edts
+            .filter(e => e.name.toLowerCase().includes(needle))
+            .map(e => ({ edt_name: e.name, model: e.model }));
+        },
+      };
+    },
+  };
+}
+
+const NOTE_HEADER_XML = [
+  '<AxTable>',
+  '  <Name>ConDemoNoteHeader</Name>',
+  '  <Fields>',
+  '    <AxTableField i:type="AxTableFieldString">',
+  '      <Name>NoteId</Name>',
+  '      <ExtendedDataType>Num</ExtendedDataType>',
+  '    </AxTableField>',
+  '    <AxTableField i:type="AxTableFieldString">',
+  '      <Name>Subject</Name>',
+  '      <ExtendedDataType>Name</ExtendedDataType>',
+  '    </AxTableField>',
+  '  </Fields>',
+  '  <FieldGroups>',
+  '    <AxTableFieldGroup><Name>NoteId</Name></AxTableFieldGroup>',
+  '  </FieldGroups>',
+  '</AxTable>',
+].join('\n');
+
 describe('suggestEdtFromFieldName (heuristic)', () => {
   it('maps a *date field to TransDate, not a non-existent *DateTime EDT', () => {
     expect(suggestEdtFromFieldName('FromDate')).toBe('TransDate');
@@ -277,5 +329,83 @@ describe('isInfrastructureField', () => {
   it('does not flag ordinary business fields', () => {
     expect(isInfrastructureField('Name')).toBe(false);
     expect(isInfrastructureField('DailyRate')).toBe(false);
+  });
+});
+
+/**
+ * Model-aware ranking. It exists because a bare fieldsHint resolved NoteId to the
+ * un-migrated PlCorrNoteId (BPErrorEDTNotMigrated), Subject to smmSubject and
+ * GroupId to ReqGroupId — eval/corpus/runs/2026-08-30T04__L4-ssrs-report-preprocess
+ * and __L4-ssrs-report-uibuilder.
+ */
+describe('resolveBestEdt (model-aware)', () => {
+  const foreign = [
+    { name: 'PlCorrNoteId', model: 'Foundation' },
+    { name: 'smmSubject', model: 'Foundation' },
+    { name: 'ReqGroupId', model: 'Foundation' },
+    { name: 'String255', model: 'ApplicationPlatform' },
+    { name: 'Name', model: 'ApplicationPlatform' },
+    { name: 'Num', model: 'ApplicationPlatform' },
+  ];
+
+  it('reuses the EDT a field of that name already has in the target model', () => {
+    const db = modelAwareDb(foreign, [
+      { name: 'NoteId', model: 'fm-mcp', table: 'ConDemoNoteHeader', file: 'ConDemoNoteHeader.xml' },
+    ]);
+    const edt = resolveBestEdt('NoteId', db, {
+      model: 'fm-mcp',
+      readFile: () => NOTE_HEADER_XML,
+    });
+    expect(edt).toBe('Num');
+  });
+
+  it('reads the EDT off the right field, not off a same-named field group', () => {
+    const db = modelAwareDb(foreign, [
+      { name: 'Subject', model: 'fm-mcp', table: 'ConDemoNoteHeader', file: 'ConDemoNoteHeader.xml' },
+    ]);
+    expect(resolveBestEdt('Subject', db, { model: 'fm-mcp', readFile: () => NOTE_HEADER_XML }))
+      .toBe('Name');
+  });
+
+  it('does NOT take a foreign-model prefixed EDT for a plain field name', () => {
+    const db = modelAwareDb(foreign);
+    // Without the target model this is the old (measured wrong) answer...
+    expect(resolveBestEdt('NoteId', db)).toBe('PlCorrNoteId');
+    // ...and with it, the foreign-module specialisation is demoted.
+    expect(resolveBestEdt('NoteId', db, { model: 'fm-mcp' })).toBe('String255');
+    expect(resolveBestEdt('GroupId', db, { model: 'fm-mcp' })).toBe('String255');
+    // Subject still reaches the name heuristic, which answers with a real EDT.
+    expect(resolveBestEdt('Subject', db, { model: 'fm-mcp' })).toBe('Name');
+  });
+
+  it('keeps a prefixed EDT that belongs to the target model itself', () => {
+    // The guard must not regress "prefers a real model-prefixed EDT": an EDT in
+    // the model being written into is this model's own concept, not a foreign one.
+    const db = modelAwareDb([
+      { name: 'ContosoRentEquipmentId', model: 'Contoso' },
+      { name: 'String255', model: 'ApplicationPlatform' },
+    ]);
+    expect(resolveBestEdt('RentEquipmentId', db, { model: 'Contoso' })).toBe('ContosoRentEquipmentId');
+  });
+
+  it('survives an unreadable table file', () => {
+    const db = modelAwareDb(foreign, [
+      { name: 'NoteId', model: 'fm-mcp', table: 'ConDemoNoteHeader', file: 'gone.xml' },
+    ]);
+    const readFile = () => { throw new Error('ENOENT'); };
+    expect(resolveBestEdt('NoteId', db, { model: 'fm-mcp', readFile })).toBe('String255');
+  });
+});
+
+describe('suggestEdtFromFieldName — counts are integers', () => {
+  it('maps a *Count field to Counter', () => {
+    expect(suggestEdtFromFieldName('LineCount')).toBe('Counter');
+    expect(suggestEdtFromFieldName('Count')).toBe('Counter');
+  });
+
+  it('leaves Discount and Account alone', () => {
+    // Both end in the same five letters; neither is a count.
+    expect(suggestEdtFromFieldName('Discount')).toBe('String255');
+    expect(suggestEdtFromFieldName('Account')).toBe('LedgerAccount');
   });
 });

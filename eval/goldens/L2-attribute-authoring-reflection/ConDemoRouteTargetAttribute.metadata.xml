@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoRouteTargetAttribute</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Marks a class with the integration target it routes to.
+/// </summary>
+/// <remarks>
+/// A plain class deriving from <c>SysAttribute</c> is all an attribute is. The
+/// "Attribute" suffix is a convention, and it is what lets the usage site spell the
+/// attribute without it. Instances are constructed LAZILY, when reflection reads them,
+/// so anything that throws in here surfaces at the reader rather than at the
+/// declaration.
+/// </remarks>
+public class ConDemoRouteTargetAttribute extends SysAttribute
+{
+    str targetName;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>new</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Initializes a new instance of the <c>ConDemoRouteTargetAttribute</c> class.
+    /// </summary>
+    /// <param name = "_targetName">The integration target the decorated class routes to.</param>
+    /// <remarks>
+    /// The argument reaching this constructor is always a compile-time literal: the usage
+    /// site cannot pass a variable, an expression or a new object.
+    /// </remarks>
+    public void new(str _targetName)
+    {
+        super();
+
+        targetName = _targetName;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmTargetName</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets the integration target the decorated class routes to.
+    /// </summary>
+    /// <returns>The target name given at the usage site.</returns>
+    public str parmTargetName()
+    {
+        return targetName;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
