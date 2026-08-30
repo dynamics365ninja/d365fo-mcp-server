@@ -1,0 +1,65 @@
+{
+  "run_id": "2026-08-30T05__L3-print-mgmt-doctype-extension__93d6658",
+  "case_id": "L3-print-mgmt-doctype-extension",
+  "tier": 3,
+  "timestamp": "2026-08-30T05:10:22.970Z",
+  "server_git_sha": "93d6658",
+  "generated_artifacts": [
+    "ConDemoEvalReceipt.menuitem.metadata.xml",
+    "ConDemoEvalReceipt.metadata.xml",
+    "ConDemoEvalReceiptContract.metadata.xml",
+    "ConDemoEvalReceiptController.metadata.xml",
+    "ConDemoEvalReceiptDP.metadata.xml",
+    "ConDemoEvalReceiptDocTypeHandler.metadata.xml",
+    "ConDemoEvalReceiptTmp.metadata.xml",
+    "PrintMgmtDocumentType.ConExtension.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "KNOWLEDGE_GAP",
+  "platform_build": "7.0.7996.33",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "PASS on the third build, after a TOOL_DEFECT in the generator was found and FIXED: the controllerType=\"printMgmt\" scaffold did not compile — xppc: \"Class ConDemoEvalReceiptController does not implement the abstract method runPrintMgmt from the class SrsPrintMgmtController\" and \"does not contain a definition for method parmPrintMgmtDocType\". SrsPrintMgmtController (read on the VM) is abstract on runPrintMgmt() and has NO parmPrintMgmtDocType; all 24 shipped direct subclasses construct the run in initPrintMgmtReportRun() via PrintMgmtReportRun::construct(PrintMgmtHierarchyType, PrintMgmtNodeType, PrintMgmtDocumentType) + parmReportRunController(this) + super(), and implement runPrintMgmt() as printMgmtReportRun.load(record, record, language) + outputReports() (BankPaymAdviceCustController, CustAccountStatementController_FR, TMSLoadTenderController …). The generator, op-spec, PrintMgmtFormLetter catalog entry, print-management/ssrs-reports topics and this case's instruction were corrected; the corrected scaffold built with 0 errors. Second deviation: without a caption the scaffold writes raw-text labels (\"ConDemoEvalReceipt (temp)\") — BPErrorLabelIsText — so the case now passes caption=\"@SYS4007767\" (\"Receipt\"). Third: a bare fieldsHint would again pick name-based EDTs; the case passes fields mirroring SalesTable (SalesIdBase/CustAccount). Enum extension: create wrote a NON-EMPTY EnumValues (read back via get_object_info include=xml) — the old empty-values defect did not reappear. TOOL note (fixed): run_bp_check advertised enum-extension as translatable but xppbp has no such element type (its own rejection lists Class…MenuExtension) — the table row was removed and the non-run message now says to check the BASE enum. Handler: both [SubscribesTo(classStr(PrintMgmtDocType), delegateStr(PrintMgmtDocType, …))] handlers validated (references: 11 OK, incl. ssrsReportStr(ConDemoEvalReceipt, Report) once the report existed) and are BP-clean. BP: 0 errors / 9 warnings (Tmp EDT-relation/PK/FormRef family, unused contract local in prePromptModifyContract, menu item not covered by privilege).",
+  "suggested_fix_area": "src/tools/smart/generateSmartReport.ts (fixed: printMgmt controller shape; open: caption default, unused contract local), src/tools/sdlc/runBpCheck.ts (fixed: enum-extension non-run message)"
+}

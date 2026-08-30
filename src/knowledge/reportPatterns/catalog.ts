@@ -153,10 +153,13 @@ export const REPORT_PATTERN_CATALOG: ReportPatternSpec[] = [
         o.role === 'Data provider'
           ? {
               ...o,
-              baseOrType: 'class extends SrsReportDataProviderPreProcess',
+              baseOrType: 'class extends SrsReportDataProviderPreProcessTempDB',
               notes:
-                'Scaffolded WITHOUT [SRSReportParameterAttribute] (contract travels via the controller) and WITH a preProcess() stub. ' +
-                'VERIFY ON VM: the TempDB-table pairing (SrsReportDataProviderPreProcessTempDB) is not yet compile-proven by this repo — see the coverage plan.',
+                'Scaffolded WITH [SRSReportParameterAttribute] (every shipped pre-processed DP carries it) and NO extra hook method — ' +
+                'processReport() IS the pre-processing step, run on the AOS before the render request. ' +
+                'VM-verified 2026-08-30 (L4-ssrs-report-preprocess): xppc accepts either pre-process base with a TempDB table, but 332 of the 370 ' +
+                'shipped pre-processed DPs pair TempDB staging tables with SrsReportDataProviderPreProcessTempDB; SrsReportDataProviderPreProcess is ' +
+                'the REGULAR-table variant (rows keyed by createdTransactionId).',
             }
           : o,
       ),
@@ -190,7 +193,7 @@ export const REPORT_PATTERN_CATALOG: ReportPatternSpec[] = [
           ? {
               ...o,
               baseOrType: 'class extends SrsPrintMgmtController',
-              notes: 'main() sets parmPrintMgmtDocType(PrintMgmtDocumentType::…) — replace the scaffolded placeholder with the real document type.',
+              notes: 'initPrintMgmtReportRun() constructs PrintMgmtReportRun::construct(PrintMgmtHierarchyType::…, PrintMgmtNodeType::…, PrintMgmtDocumentType::…) and hands it the controller; runPrintMgmt() (abstract on the base — mandatory) loads the settings for the record and calls outputReports(). Replace the three scaffolded placeholders with the real hierarchy/node/document type. SrsPrintMgmtController has NO parmPrintMgmtDocType (VM-verified 2026-08-30).',
             }
           : o,
       ),
@@ -199,7 +202,7 @@ export const REPORT_PATTERN_CATALOG: ReportPatternSpec[] = [
       'generate_object(mode="scaffold", objectType="report", name="ConsignmentNote", fieldsHint="SalesId, DeliveryAddress", controllerType="printMgmt")',
     methodNotes: [
       'A NEW document type needs hand work the scaffold does not do: extend the PrintMgmtDocumentType base enum, subscribe to the getDefaultReportFormatDelegate to map it to ssrsReportStr({Name}, Report), and add the module\'s PrintMgmtNode handling — see the print-management knowledge topic.',
-      'For an EXISTING document type, set parmPrintMgmtDocType to it and Print management setup takes over destinations/copies.',
+      'For an EXISTING document type, name it in PrintMgmtReportRun::construct(...) inside initPrintMgmtReportRun() and Print management setup takes over destinations/copies.',
     ],
     crossChecks: SHARED_CROSS_CHECKS,
     referenceReports: ['SalesInvoice', 'PurchPurchaseOrder'],

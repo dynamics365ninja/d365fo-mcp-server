@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoEvalReceiptController</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Controller for the @SYS4007767 report.
+/// Extends <c>SrsPrintMgmtController</c> to provide menu item integration
+/// and pre-prompt contract initialization.
+/// </summary>
+public class ConDemoEvalReceiptController extends SrsPrintMgmtController
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Entry point. Creates a print-management controller and starts the report.
+    /// </summary>
+    /// <param name="_args">The <c>Args</c> object from the menu item caller.</param>
+    public static void main(Args _args)
+    {
+        ConDemoEvalReceiptController controller = new ConDemoEvalReceiptController();
+        controller.parmArgs(_args);
+        controller.parmReportName(ssrsReportStr(ConDemoEvalReceipt, Report));
+        controller.startOperation();
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>prePromptModifyContract</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Modifies the contract before the dialog is shown to the user.
+    /// Override to set default parameter values or pre-fill from the caller record.
+    /// </summary>
+    protected void prePromptModifyContract()
+    {
+        ConDemoEvalReceiptContract contract = this.parmReportContract().parmRdpContract() as ConDemoEvalReceiptContract;
+        // TODO: Set default parameter values here
+        // Example: contract.parmFromDate(DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone()));
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>initPrintMgmtReportRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Creates the print-management run for this document type and hands it the controller.
+    /// </summary>
+    protected void initPrintMgmtReportRun()
+    {
+        printMgmtReportRun = PrintMgmtReportRun::construct(
+            PrintMgmtHierarchyType::Sales,
+            PrintMgmtNodeType::SalesTable,
+            PrintMgmtDocumentType::DemoEvalReceipt);
+        printMgmtReportRun.parmReportRunController(this);
+
+        super();
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>runPrintMgmt</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Loads the print-management settings for the record being printed and outputs the report.
+    /// </summary>
+    protected void runPrintMgmt()
+    {
+        // TODO: pass the query buffer, the referenced buffer and the language the settings are resolved for
+        printMgmtReportRun.load(this.parmArgs().record(), this.parmArgs().record(), Global::currentUserLanguage());
+
+        this.outputReports();
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

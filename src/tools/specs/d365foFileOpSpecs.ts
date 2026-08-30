@@ -206,6 +206,13 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
   indexAllowDuplicates: { type: 'boolean', description: 'Allow duplicates (default: false = unique).' },
   indexAlternateKey: { type: 'boolean', description: 'Mark the index as an alternate key.' },
   indexEnabled: { type: 'boolean', description: 'Whether the index is enabled (default: true).' },
+  indexValidTimeStateKey: {
+    type: 'boolean',
+    description:
+      'Date-effective tables only: mark this index as the ValidTimeStateKey (ValidTimeStateFieldType = Date/UtcDateTime ' +
+      'requires a unique AlternateKey index over the business key + ValidFrom + ValidTo carrying this flag — xppc rejects the table without it).',
+  },
+  indexValidTimeStateMode: { type: 'string', description: '"Gap" or "NoGap" — the valid-time-state mode of that key index.' },
   // relations
   relationName: { type: 'string', description: 'Relation name.' },
   relatedTable: { type: 'string', description: 'Related (foreign key) table name.' },
@@ -539,7 +546,7 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   },
   'add-index': {
     required: ['indexName', 'indexFields'],
-    optional: ['indexAllowDuplicates', 'indexAlternateKey', 'indexEnabled'],
+    optional: ['indexAllowDuplicates', 'indexAlternateKey', 'indexEnabled', 'indexValidTimeStateKey', 'indexValidTimeStateMode'],
   },
   'remove-index': { required: ['indexName'], optional: [] },
   'add-full-text-index': {
@@ -754,7 +761,9 @@ export const D365FO_FILE_CREATE_PROPERTY_SPECS: Record<string, string> = {
     'label, tableGroup, tableType, titleField1/2, cacheLookup?, primaryIndex?, ' +
     'allowRowVersionChangeTracking? (dual-write), created/modifiedBy/DateTime?, ' +
     'fields[{name,type?|edt?|fieldType?,enumType?,label?,mandatory?}] — enum fields need enumType ' +
-    '(+ optionally fieldType:"AxTableFieldEnum")',
+    '(+ optionally fieldType:"AxTableFieldEnum"), validTimeStateFieldType? (Date|UtcDateTime — then ADD the ValidFrom/ValidTo ' +
+    'fields yourself and give the key index validTimeStateKey:true), ' +
+    'indexes?[{name,fields[],allowDuplicates?,alternateKey?,validTimeStateKey?,validTimeStateMode?("Gap"|"NoGap")}]',
   enum:
     'label, useEnumValue, configurationKey, isExtensible, enumValues[{name,value?,label?,helpText?}] — ' +
     'an explicit value: sets UseEnumValue=Yes for you; an OFF-POSITIONAL one (a number differing from the ' +

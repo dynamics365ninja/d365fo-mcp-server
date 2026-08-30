@@ -1,0 +1,52 @@
+{
+  "run_id": "2026-08-30T04__L2-date-effective-table__93d6658",
+  "case_id": "L2-date-effective-table",
+  "tier": 2,
+  "timestamp": "2026-08-30T04:37:41.168Z",
+  "server_git_sha": "93d6658",
+  "generated_artifacts": [
+    "ConDemoWorkerBonusRate.metadata.xml",
+    "ConDemoWorkerBonusRateService.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "KNOWLEDGE_GAP",
+  "platform_build": "7.0.7996.33",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "PASS after two TOOL_DEFECTs were found and FIXED in this session (both blocked the grounded path for a date-effective table): (1) neither create(properties.indexes[]) nor add-index could set ValidTimeStateKey/ValidTimeStateMode, and modify-property rejects BonusRateIdx.ValidTimeStateKey as an unknown AxTable property — fixed by a TS post-write (directXmlSetIndexValidTimeState) wired into both create and add-index; NoGap proved to be the SDK default (a bridge round-trip dropped <ValidTimeStateMode>NoGap</…>; shipped indexes only ever spell out Gap), so NoGap removes the element and Gap writes it. (2) add-field fieldType=FromDate wrote i:type=AxTableFieldString → xppc \"Data type mismatch\" on ValidFrom/ValidTo; the resolver handed the bridge the ROOT EDT NAME (TransDate) because the index records no primitive for root EDTs — fixed by using create's ladder (bridgeEdtBaseType → resolveEdtBaseType → heuristicEdtBaseType); re-adding the fields through the fixed tool produced AxTableFieldDate. Also: modify-property PrimaryIndex=\"\" wrote an empty <PrimaryIndex></PrimaryIndex> (BPErrorTableNoPrimaryIndex) — a third post-write (directXmlClearEmptyProperty) removes the empty element, after which the table has the surrogate-key primary index like every shipped date-effective table (HcmPositionDetail) and xppbp is down to DeveloperDocumentation + FormRef warnings. Platform facts: no ValidFromDate/ValidToDate EDTs exist on 10.0.x — FromDate/ToDate (Date, ApplicationPlatform) were used; the valid-time-state key index must list WorkerId + ValidFrom + ValidTo.",
+  "suggested_fix_area": "src/tools/write/modifyD365File.ts (add-field base type, modify-property empty value), src/tools/write/directXmlWriters.ts (index valid-time-state + clear-empty post-writes), src/tools/write/createD365File.ts (properties.indexes[].validTimeStateKey/Mode)"
+}

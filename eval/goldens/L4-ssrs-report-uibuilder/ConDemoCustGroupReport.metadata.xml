@@ -1,0 +1,456 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxReport xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V2">
+	<Name>ConDemoCustGroupReport</Name>
+	<DataMethods />
+	<DataSets>
+		<AxReportDataSet xmlns="">
+			<Name>ConDemoCustGroupReportTmp</Name>
+			<DataSourceType>ReportDataProvider</DataSourceType>
+			<Query>SELECT * FROM ConDemoCustGroupReportDP.ConDemoCustGroupReportTmp</Query>
+			<FieldGroups />
+			<Fields>
+			<AxReportDataSetField>
+				<Name>GroupId</Name>
+				<Alias>ConDemoCustGroupReportTmp.1.GroupId</Alias>
+				<DataType>System.String</DataType>
+				<DisplayWidth>Auto</DisplayWidth>
+				<UserDefined>false</UserDefined>
+			</AxReportDataSetField>
+			<AxReportDataSetField>
+				<Name>Description</Name>
+				<Alias>ConDemoCustGroupReportTmp.1.Description</Alias>
+				<DataType>System.String</DataType>
+				<DisplayWidth>Auto</DisplayWidth>
+				<UserDefined>false</UserDefined>
+			</AxReportDataSetField>
+			</Fields>
+			<Parameters>
+				<AxReportDataSetParameter>
+					<Name>AX_PartitionKey</Name>
+					<Alias>AX_PartitionKey</Alias>
+					<DataType>System.String</DataType>
+					<Parameter>AX_PartitionKey</Parameter>
+				</AxReportDataSetParameter>
+				<AxReportDataSetParameter>
+					<Name>AX_CompanyName</Name>
+					<Alias>AX_CompanyName</Alias>
+					<DataType>System.String</DataType>
+					<Parameter>AX_CompanyName</Parameter>
+				</AxReportDataSetParameter>
+				<AxReportDataSetParameter>
+					<Name>AX_UserContext</Name>
+					<Alias>AX_UserContext</Alias>
+					<DataType>System.String</DataType>
+					<Parameter>AX_UserContext</Parameter>
+				</AxReportDataSetParameter>
+				<AxReportDataSetParameter>
+					<Name>AX_RenderingCulture</Name>
+					<Alias>AX_RenderingCulture</Alias>
+					<DataType>System.String</DataType>
+					<Parameter>AX_RenderingCulture</Parameter>
+				</AxReportDataSetParameter>
+				<AxReportDataSetParameter>
+					<Name>AX_ReportContext</Name>
+					<Alias>AX_ReportContext</Alias>
+					<DataType>System.String</DataType>
+					<Parameter>AX_ReportContext</Parameter>
+				</AxReportDataSetParameter>
+				<AxReportDataSetParameter>
+					<Name>AX_RdpPreProcessedId</Name>
+					<Alias>AX_RdpPreProcessedId</Alias>
+					<DataType>System.String</DataType>
+					<Parameter>AX_RdpPreProcessedId</Parameter>
+				</AxReportDataSetParameter>
+				<AxReportDataSetParameter>
+					<Name>ConDemoCustGroupReportTmp_ds_custGroup</Name>
+					<Alias>ConDemoCustGroupReportTmp_ds_custGroup</Alias>
+					<DataType>System.String</DataType>
+					<Parameter>ConDemoCustGroupReportTmp_ds_custGroup</Parameter>
+				</AxReportDataSetParameter>
+				<AxReportDataSetParameter>
+					<Name>CONDEMOCUSTGROUPREPORTDP_DynamicParameter</Name>
+					<Alias>CONDEMOCUSTGROUPREPORTDP_DynamicParameter</Alias>
+					<DataType>Microsoft.Dynamics.AX.Framework.Services.Client.QueryMetadata</DataType>
+					<Parameter>CONDEMOCUSTGROUPREPORTDP_DynamicParameter</Parameter>
+				</AxReportDataSetParameter>
+			</Parameters>
+		</AxReportDataSet>
+	</DataSets>
+	<DefaultParameterGroup>
+		<Name xmlns="">Parameters</Name>
+		<ReportParameterBases xmlns="">
+			<AxReportParameterBase xmlns=""
+					i:type="AxReportParameter">
+				<Name>AX_PartitionKey</Name>
+				<AllowBlank>true</AllowBlank>
+				<Nullable>true</Nullable>
+				<UserVisibility>Hidden</UserVisibility>
+				<DefaultValue />
+				<Values />
+			</AxReportParameterBase>
+			<AxReportParameterBase xmlns=""
+					i:type="AxReportParameter">
+				<Name>AX_CompanyName</Name>
+				<UserVisibility>Hidden</UserVisibility>
+				<DefaultValue />
+				<Values />
+			</AxReportParameterBase>
+			<AxReportParameterBase xmlns=""
+					i:type="AxReportParameter">
+				<Name>AX_UserContext</Name>
+				<AllowBlank>true</AllowBlank>
+				<Nullable>true</Nullable>
+				<UserVisibility>Hidden</UserVisibility>
+				<DefaultValue />
+				<Values />
+			</AxReportParameterBase>
+			<AxReportParameterBase xmlns=""
+					i:type="AxReportParameter">
+				<Name>AX_RenderingCulture</Name>
+				<AllowBlank>true</AllowBlank>
+				<Nullable>true</Nullable>
+				<UserVisibility>Hidden</UserVisibility>
+				<DefaultValue />
+				<Values />
+			</AxReportParameterBase>
+			<AxReportParameterBase xmlns=""
+					i:type="AxReportParameter">
+				<Name>AX_ReportContext</Name>
+				<AllowBlank>true</AllowBlank>
+				<Nullable>true</Nullable>
+				<UserVisibility>Hidden</UserVisibility>
+				<DefaultValue />
+				<Values />
+			</AxReportParameterBase>
+			<AxReportParameterBase xmlns=""
+					i:type="AxReportParameter">
+				<Name>AX_RdpPreProcessedId</Name>
+				<AllowBlank>true</AllowBlank>
+				<Nullable>true</Nullable>
+				<UserVisibility>Hidden</UserVisibility>
+				<DefaultValue />
+				<Values />
+			</AxReportParameterBase>
+			<AxReportParameterBase xmlns=""
+					i:type="AxReportParameter">
+				<Name>ConDemoCustGroupReportTmp_ds_custGroup</Name>
+				<DataType>System.String</DataType>
+				<PromptString>@TaxTransactionInquiry:HeaderNote</PromptString>
+				<DefaultValue />
+				<Values />
+			</AxReportParameterBase>
+			<AxReportParameterBase xmlns=""
+					i:type="AxReportParameter">
+				<Name>CONDEMOCUSTGROUPREPORTDP_DynamicParameter</Name>
+				<AllowBlank>true</AllowBlank>
+				<DataType>Microsoft.Dynamics.AX.Framework.Services.Client.QueryMetadata</DataType>
+				<Nullable>true</Nullable>
+				<UserVisibility>Hidden</UserVisibility>
+				<DefaultValue />
+				<Values />
+			</AxReportParameterBase>
+		</ReportParameterBases>
+	</DefaultParameterGroup>
+	<Designs>
+		<AxReportDesign xmlns=""
+				i:type="AxReportPrecisionDesign">
+			<Name>Report</Name>
+			<Caption>@TaxTransactionInquiry:HeaderNote</Caption>
+			<Text><![CDATA[<?xml version="1.0" encoding="utf-8"?>
+<Report xmlns="http://schemas.microsoft.com/sqlserver/reporting/2016/01/reportdefinition" xmlns:rd="http://schemas.microsoft.com/SQLServer/reporting/reportdesigner">
+  <AutoRefresh>0</AutoRefresh>
+  <DataSources>
+    <DataSource Name="AutoGen__ReportDataProvider">
+      <Transaction>true</Transaction>
+      <ConnectionProperties>
+        <DataProvider>AXREPORTDATAPROVIDER</DataProvider>
+        <ConnectString />
+        <IntegratedSecurity>true</IntegratedSecurity>
+      </ConnectionProperties>
+      <rd:DataSourceID>3cb95fcd-ed7f-47bd-b084-3d3330bd4ef2</rd:DataSourceID>
+    </DataSource>
+  </DataSources>
+  <DataSets>
+    <DataSet Name="ConDemoCustGroupReportTmp">
+      <rd:DataSetID>a8fbfd07-ef07-4869-8d71-cf89de4f224b</rd:DataSetID>
+      <Query>
+        <DataSourceName>AutoGen__ReportDataProvider</DataSourceName>
+        <QueryParameters>
+          <QueryParameter Name="AX_PartitionKey">
+            <Value>=Parameters!AX_PartitionKey.Value</Value>
+          </QueryParameter>
+          <QueryParameter Name="AX_CompanyName">
+            <Value>=Parameters!AX_CompanyName.Value</Value>
+          </QueryParameter>
+          <QueryParameter Name="AX_UserContext">
+            <Value>=Parameters!AX_UserContext.Value</Value>
+          </QueryParameter>
+          <QueryParameter Name="AX_RenderingCulture">
+            <Value>=Parameters!AX_RenderingCulture.Value</Value>
+          </QueryParameter>
+          <QueryParameter Name="AX_ReportContext">
+            <Value>=Parameters!AX_ReportContext.Value</Value>
+          </QueryParameter>
+          <QueryParameter Name="AX_RdpPreProcessedId">
+            <Value>=Parameters!AX_RdpPreProcessedId.Value</Value>
+          </QueryParameter>
+          <QueryParameter Name="ConDemoCustGroupReportTmp_ds_custGroup">
+            <Value>=Parameters!ConDemoCustGroupReportTmp_ds_custGroup.Value</Value>
+          </QueryParameter>
+          <QueryParameter Name="CONDEMOCUSTGROUPREPORTDP_DynamicParameter">
+            <Value>=Parameters!CONDEMOCUSTGROUPREPORTDP_DynamicParameter.Value</Value>
+          </QueryParameter>
+        </QueryParameters>
+        <CommandText>SELECT * FROM ConDemoCustGroupReportDP.ConDemoCustGroupReportTmp</CommandText>
+        <rd:UseGenericDesigner>true</rd:UseGenericDesigner>
+      </Query>
+      <Fields>
+        <Field Name="GroupId">
+          <DataField>ConDemoCustGroupReportTmp.1.GroupId</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="Description">
+          <DataField>ConDemoCustGroupReportTmp.1.Description</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+      </Fields>
+      <rd:DataSetInfo>
+        <rd:DataSetName>ConDemoCustGroupReportTmp</rd:DataSetName>
+        <rd:TableName>Fields</rd:TableName>
+        <rd:TableAdapterFillMethod>Fill</rd:TableAdapterFillMethod>
+        <rd:TableAdapterGetDataMethod>GetData</rd:TableAdapterGetDataMethod>
+        <rd:TableAdapterName>FieldsTableAdapter</rd:TableAdapterName>
+      </rd:DataSetInfo>
+    </DataSet>
+  </DataSets>
+  <ReportSections>
+    <ReportSection>
+            <PageHeader>
+        <PrintOnFirstPage>true</PrintOnFirstPage>
+        <PrintOnLastPage>true</PrintOnLastPage>
+        <Height>0.5in</Height>
+        <ReportItems>
+          <Textbox Name="CompanyName">
+            <CanGrow>true</CanGrow>
+            <Value>=Parameters!AX_CompanyName.Value</Value>
+            <Style><FontWeight>Bold</FontWeight><FontSize>10pt</FontSize></Style>
+            <Top>0in</Top><Left>0in</Left><Width>4in</Width><Height>0.25in</Height>
+          </Textbox>
+          <Textbox Name="ReportTitle">
+            <CanGrow>true</CanGrow>
+            <Value>@TaxTransactionInquiry:HeaderNote</Value>
+            <Style><FontSize>9pt</FontSize></Style>
+            <Top>0.25in</Top><Left>0in</Left><Width>4in</Width><Height>0.25in</Height>
+          </Textbox>
+          <Textbox Name="ExecutionTime">
+            <CanGrow>true</CanGrow>
+            <Value>=Globals!ExecutionTime</Value>
+            <Style><TextAlign>Right</TextAlign><FontSize>8pt</FontSize></Style>
+            <Top>0in</Top><Left>4in</Left><Width>3in</Width><Height>0.25in</Height>
+          </Textbox>
+        </ReportItems>
+      </PageHeader>
+      <Body>
+        <ReportItems>
+        <Tablix Name="Tablix_ConDemoCustGroupReportTmp">
+          <TablixBody>
+            <TablixColumns>
+            <TablixColumn><Width>1.5in</Width></TablixColumn>
+            <TablixColumn><Width>1.5in</Width></TablixColumn>
+            </TablixColumns>
+            <TablixRows>
+              <TablixRow><Height>0.25in</Height><TablixCells>
+            <TablixCell><CellContents>
+              <Textbox Name="Textbox_GroupId_H">
+                <CanGrow>true</CanGrow><Value>GroupId</Value>
+                <Style><FontWeight>Bold</FontWeight>
+                  <BackgroundColor>LightGrey</BackgroundColor>
+                  <Border><Style>Solid</Style></Border>
+                  <PaddingLeft>2pt</PaddingLeft><PaddingRight>2pt</PaddingRight>
+                  <PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom>
+                </Style></Textbox>
+            </CellContents></TablixCell>
+            <TablixCell><CellContents>
+              <Textbox Name="Textbox_Description_H">
+                <CanGrow>true</CanGrow><Value>Description</Value>
+                <Style><FontWeight>Bold</FontWeight>
+                  <BackgroundColor>LightGrey</BackgroundColor>
+                  <Border><Style>Solid</Style></Border>
+                  <PaddingLeft>2pt</PaddingLeft><PaddingRight>2pt</PaddingRight>
+                  <PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom>
+                </Style></Textbox>
+            </CellContents></TablixCell>
+              </TablixCells></TablixRow>
+              <TablixRow><Height>0.25in</Height><TablixCells>
+            <TablixCell><CellContents>
+              <Textbox Name="Textbox_GroupId">
+                <CanGrow>true</CanGrow><Value>=Fields!GroupId.Value</Value>
+                <Style><Border><Style>Solid</Style></Border>
+                  <PaddingLeft>2pt</PaddingLeft><PaddingRight>2pt</PaddingRight>
+                  <PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom>
+                </Style></Textbox>
+            </CellContents></TablixCell>
+            <TablixCell><CellContents>
+              <Textbox Name="Textbox_Description">
+                <CanGrow>true</CanGrow><Value>=Fields!Description.Value</Value>
+                <Style><Border><Style>Solid</Style></Border>
+                  <PaddingLeft>2pt</PaddingLeft><PaddingRight>2pt</PaddingRight>
+                  <PaddingTop>2pt</PaddingTop><PaddingBottom>2pt</PaddingBottom>
+                </Style></Textbox>
+            </CellContents></TablixCell>
+              </TablixCells></TablixRow>
+            </TablixRows>
+          </TablixBody>
+          <TablixColumnHierarchy><TablixMembers>
+          <TablixMember />
+          <TablixMember />
+          </TablixMembers></TablixColumnHierarchy>
+          <TablixRowHierarchy><TablixMembers>
+            <TablixMember>
+              <KeepWithGroup>After</KeepWithGroup>
+              <RepeatOnNewPage>true</RepeatOnNewPage>
+            </TablixMember>
+            <TablixMember><Group Name="Details_ConDemoCustGroupReportTmp"><DataGroupName>Details_ConDemoCustGroupReportTmp</DataGroupName></Group></TablixMember>
+          </TablixMembers></TablixRowHierarchy>
+          <DataSetName>ConDemoCustGroupReportTmp</DataSetName>
+          <Top>0.5in</Top><Left>0.5in</Left>
+          <Height>0.5in</Height><Width>3in</Width>
+          <Style><Border><Style>Solid</Style></Border></Style>
+        </Tablix>
+        </ReportItems>
+        <Height>1in</Height>
+        <Style>
+          <Border>
+            <Style>None</Style>
+          </Border>
+        </Style>
+      </Body>
+      <Width>7.5in</Width>
+      <Page>
+        <PageHeight>11.69in</PageHeight>
+        <PageWidth>8.27in</PageWidth>
+        <InteractiveHeight>11in</InteractiveHeight>
+        <InteractiveWidth>8.5in</InteractiveWidth>
+        <LeftMargin>0.2in</LeftMargin>
+        <TopMargin>0.2in</TopMargin>
+        <Style />
+      </Page>
+    </ReportSection>
+  </ReportSections>
+  <ReportParameters>
+    <ReportParameter Name="AX_PartitionKey">
+      <DataType>String</DataType>
+      <Nullable>true</Nullable>
+      <AllowBlank>true</AllowBlank>
+      <Prompt>AX_PartitionKey</Prompt>
+      <Hidden>true</Hidden>
+    </ReportParameter>
+    <ReportParameter Name="AX_CompanyName">
+      <DataType>String</DataType>
+      <Prompt>AX_CompanyName</Prompt>
+      <Hidden>true</Hidden>
+    </ReportParameter>
+    <ReportParameter Name="AX_UserContext">
+      <DataType>String</DataType>
+      <Nullable>true</Nullable>
+      <AllowBlank>true</AllowBlank>
+      <Prompt>AX_UserContext</Prompt>
+      <Hidden>true</Hidden>
+    </ReportParameter>
+    <ReportParameter Name="AX_RenderingCulture">
+      <DataType>String</DataType>
+      <Nullable>true</Nullable>
+      <AllowBlank>true</AllowBlank>
+      <Prompt>AX_RenderingCulture</Prompt>
+      <Hidden>true</Hidden>
+    </ReportParameter>
+    <ReportParameter Name="AX_ReportContext">
+      <DataType>String</DataType>
+      <Nullable>true</Nullable>
+      <AllowBlank>true</AllowBlank>
+      <Prompt>AX_ReportContext</Prompt>
+      <Hidden>true</Hidden>
+      <UsedInQuery>true</UsedInQuery>
+    </ReportParameter>
+    <ReportParameter Name="AX_RdpPreProcessedId">
+      <DataType>String</DataType>
+      <Nullable>true</Nullable>
+      <AllowBlank>true</AllowBlank>
+      <Prompt>AX_RdpPreProcessedId</Prompt>
+      <Hidden>true</Hidden>
+    </ReportParameter>
+    <ReportParameter Name="CONDEMOCUSTGROUPREPORTDP_DynamicParameter">
+      <DataType>String</DataType>
+      <Nullable>true</Nullable>
+      <AllowBlank>true</AllowBlank>
+      <Prompt>CONDEMOCUSTGROUPREPORTDP_DynamicParameter</Prompt>
+      <Hidden>true</Hidden>
+    </ReportParameter>
+    <ReportParameter Name="ConDemoCustGroupReportTmp_ds_custGroup">
+      <DataType>String</DataType>
+      <Nullable>true</Nullable>
+      <AllowBlank>true</AllowBlank>
+      <Prompt>ConDemoCustGroupReportTmp_ds_custGroup</Prompt>
+      <Hidden>true</Hidden>
+      <UsedInQuery>true</UsedInQuery>
+    </ReportParameter>
+  </ReportParameters>
+  <ReportParametersLayout>
+    <GridLayoutDefinition>
+      <NumberOfColumns>8</NumberOfColumns>
+      <NumberOfRows>1</NumberOfRows>
+      <CellDefinitions>
+        <CellDefinition>
+          <ColumnIndex>0</ColumnIndex>
+          <RowIndex>0</RowIndex>
+          <ParameterName>AX_PartitionKey</ParameterName>
+        </CellDefinition>
+        <CellDefinition>
+          <ColumnIndex>1</ColumnIndex>
+          <RowIndex>0</RowIndex>
+          <ParameterName>AX_CompanyName</ParameterName>
+        </CellDefinition>
+        <CellDefinition>
+          <ColumnIndex>2</ColumnIndex>
+          <RowIndex>0</RowIndex>
+          <ParameterName>AX_UserContext</ParameterName>
+        </CellDefinition>
+        <CellDefinition>
+          <ColumnIndex>3</ColumnIndex>
+          <RowIndex>0</RowIndex>
+          <ParameterName>AX_RenderingCulture</ParameterName>
+        </CellDefinition>
+        <CellDefinition>
+          <ColumnIndex>4</ColumnIndex>
+          <RowIndex>0</RowIndex>
+          <ParameterName>AX_ReportContext</ParameterName>
+        </CellDefinition>
+        <CellDefinition>
+          <ColumnIndex>5</ColumnIndex>
+          <RowIndex>0</RowIndex>
+          <ParameterName>AX_RdpPreProcessedId</ParameterName>
+        </CellDefinition>
+        <CellDefinition>
+          <ColumnIndex>6</ColumnIndex>
+          <RowIndex>0</RowIndex>
+          <ParameterName>CONDEMOCUSTGROUPREPORTDP_DynamicParameter</ParameterName>
+        </CellDefinition>
+        <CellDefinition>
+          <ColumnIndex>7</ColumnIndex>
+          <RowIndex>0</RowIndex>
+          <ParameterName>ConDemoCustGroupReportTmp_ds_custGroup</ParameterName>
+        </CellDefinition>
+      </CellDefinitions>
+    </GridLayoutDefinition>
+  </ReportParametersLayout>
+  <Language>en-US</Language>
+  <rd:ReportUnitType>Inch</rd:ReportUnitType>
+  <rd:ReportID>85bd446c-64e4-4e15-af33-388c69edefba</rd:ReportID>
+</Report>]]></Text>
+			<DisableIndividualTransformation>
+				<Name>DisableIndividualTransformation</Name>
+			</DisableIndividualTransformation>
+		</AxReportDesign>
+	</Designs>
+	<EmbeddedImages />
+</AxReport>

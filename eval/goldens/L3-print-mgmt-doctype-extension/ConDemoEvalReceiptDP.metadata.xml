@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoEvalReceiptDP</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Data provider for the @SYS4007767 report.
+/// Extends <c>SrsReportDataProviderBase</c> and populates the <c>ConDemoEvalReceiptTmp</c> temporary table.
+/// </summary>
+[
+    SRSReportParameterAttribute(classStr(ConDemoEvalReceiptContract))
+]
+public class ConDemoEvalReceiptDP extends SrsReportDataProviderBase
+{
+    ConDemoEvalReceiptTmp conDemoEvalReceiptTmp;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getConDemoEvalReceiptTmp</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the temporary table buffer used by the report dataset.
+    /// </summary>
+    /// <returns>The <c>ConDemoEvalReceiptTmp</c> table buffer.</returns>
+    [SRSReportDataSetAttribute(tableStr(ConDemoEvalReceiptTmp))]
+    public ConDemoEvalReceiptTmp getConDemoEvalReceiptTmp()
+    {
+        select conDemoEvalReceiptTmp;
+        return conDemoEvalReceiptTmp;
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>processReport</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Main data processing method. Populates the <c>ConDemoEvalReceiptTmp</c> temporary table
+    /// with report data based on the contract parameters.
+    /// </summary>
+    public void processReport()
+    {
+        // No contract parameters
+
+        // TODO: Replace with actual query / business logic
+        // Example pattern:
+        //   while select sourceTable
+        //       where sourceTable.Field == paramValue
+        //   {
+        //       conDemoEvalReceiptTmp.clear();
+        //       conDemoEvalReceiptTmp.SalesId = ''; // TODO: populate from data source
+        //       conDemoEvalReceiptTmp.CustAccount = ''; // TODO: populate from data source
+        //       conDemoEvalReceiptTmp.insert();
+        //   }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

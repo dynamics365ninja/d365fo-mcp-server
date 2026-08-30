@@ -4,6 +4,7 @@
  */
 
 import * as fs from 'fs/promises';
+import { directXmlSetIndexValidTimeState, coerceNoYesFlag } from './directXmlWriters.js';
 import { writeFileAtomic } from '../../utils/atomicFileWrite.js';
 import { XmlTemplateGenerator } from '../xml/xmlTemplateGenerator.js';
 import * as path from 'path';
@@ -176,6 +177,8 @@ export function renderEquivalentModifyCall(
     }
     put(op, 'indexAllowDuplicates', idx?.allowDuplicates);
     put(op, 'indexAlternateKey', idx?.alternateKey);
+    put(op, 'indexValidTimeStateKey', idx?.validTimeStateKey);
+    put(op, 'indexValidTimeStateMode', idx?.validTimeStateMode);
     ops.push(op);
   }
 
@@ -362,6 +365,34 @@ export function normalizeFieldSpecsForBridge(
  * Unrecognized keys are silently ignored by System.Text.Json, so any unmapped
  * shape produces an index with an empty Name/Fields that xppc rejects at build time.
  */
+/**
+ * `properties.indexes[].validTimeStateKey / validTimeStateMode` are dropped by the
+ * bridge (normalizeIndexSpecsForBridge forwards only name/fields/alternateKey/
+ * allowDuplicates), so a date-effective table's key index came back without them.
+ * Stamp them into the written XML and report what was written, in the same
+ * "written after the create" voice as the property-honesty report.
+ */
+async function stampIndexValidTimeState(filePath: string, props: any): Promise<string> {
+  const indexes = Array.isArray(props?.indexes) ? props.indexes : [];
+  const notes: string[] = [];
+  for (const idx of indexes) {
+    const name = idx?.name ?? idx?.indexName;
+    if (!name || (idx?.validTimeStateKey === undefined && idx?.validTimeStateMode === undefined)) continue;
+    const r = await directXmlSetIndexValidTimeState(
+      filePath,
+      String(name),
+      coerceNoYesFlag(idx.validTimeStateKey),
+      idx.validTimeStateMode,
+    );
+    if (r) {
+      notes.push(r.success
+        ? `🔧 Written after the create (the bridge's AddIndex dropped it): ${r.message.replace(/^✅ /, '')}`
+        : `❌ ${r.message}`);
+    }
+  }
+  return notes.length ? `\n${notes.join('\n')}` : '';
+}
+
 export function normalizeIndexSpecsForBridge(
   indexes: Record<string, unknown>[],
 ): Record<string, unknown>[] {
@@ -1506,7 +1537,7 @@ export async function handleCreateD365File(
               const honestyReport = await reconcileCreatedTableProperties(
                 smartResult.filePath,
                 args.properties,
-              );
+              ) + await stampIndexValidTimeState(smartResult.filePath, args.properties);
               const bp = smartResult.bpDefaults;
               const bpSummary = bp
                 ? `\n📋 BP defaults: CacheLookup=${bp.cacheLookup ?? '(n/a)'}, TitleField1=${bp.titleField1 ?? '(none)'}, ` +
@@ -1622,6 +1653,7 @@ export async function handleCreateD365File(
           // smart path and ignores its return value just as thoroughly.
           const honestyReport = args.objectType === 'table'
             ? await reconcileCreatedTableProperties(bridgeResult.filePath, args.properties)
+              + await stampIndexValidTimeState(bridgeResult.filePath, args.properties)
             : '';
 
           // Record the freshly-created file for non-git undo (see smart-table path).

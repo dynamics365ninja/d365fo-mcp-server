@@ -298,3 +298,80 @@ describe('generate_object(scaffold, report) uiBuilder option', () => {
     expect(text).toContain('[DataContractAttribute]');
   });
 });
+
+describe('generate_object(scaffold, report) preProcess option — Phase F VM-verified shape', () => {
+  const originalPlatform = process.platform;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform });
+  });
+
+  it('pairs the TempDB tmp table with SrsReportDataProviderPreProcessTempDB, keeps the parameter attribute and invents no hook', async () => {
+    const result = await handleGenerateSmartReport(
+      {
+        name: 'HeavyLedgerRecap',
+        fieldsHint: 'AccountNum, Amount',
+        contractParams: [{ name: 'FromDate', type: 'TransDate' }],
+        preProcess: true,
+        modelName: 'MyModel',
+      } as any,
+      createSymbolIndexStub()
+    );
+    const text = result.content[0].text as string;
+
+    // 332 of the 370 shipped pre-processed DPs pair a TempDB staging table with this base;
+    // SrsReportDataProviderPreProcess is the regular-table (createdTransactionId) variant.
+    expect(text).toContain('extends SrsReportDataProviderPreProcessTempDB');
+    expect(text).not.toMatch(/extends SrsReportDataProviderPreProcess(?!TempDB)/);
+    expect(text).toContain('<TableType>TempDB</TableType>');
+    // Every shipped pre-processed DP binds its contract this way (AssetCardDP, AgreementFollowUpDP …).
+    expect(text).toContain('SRSReportParameterAttribute(classStr(HeavyLedgerRecapContract))');
+    expect(text).toContain('parmFromDate()');
+    // SrsReportDataProviderPreProcessInterface has only cleanUp/initialize/parm* members —
+    // processReport() IS the pre-processing step, so no invented preProcess() method.
+    expect(text).not.toContain('void preProcess()');
+  });
+});
+
+describe('generate_object(scaffold, report) controllerType="printMgmt" — Phase F VM-verified shape', () => {
+  const originalPlatform = process.platform;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform });
+  });
+
+  it('implements the abstract runPrintMgmt, constructs the PrintMgmtReportRun in initPrintMgmtReportRun, and never calls parmPrintMgmtDocType', async () => {
+    const result = await handleGenerateSmartReport(
+      {
+        name: 'ConsignmentNote',
+        fieldsHint: 'SalesId, CustAccount',
+        controllerType: 'printMgmt',
+        generateController: true,
+        modelName: 'MyModel',
+      } as any,
+      createSymbolIndexStub()
+    );
+    const text = result.content[0].text as string;
+
+    expect(text).toContain('extends SrsPrintMgmtController');
+    // xppc on the VM: "Class 'X' does not implement the abstract method 'runPrintMgmt'"
+    expect(text).toContain('protected void runPrintMgmt()');
+    expect(text).toContain('this.outputReports();');
+    expect(text).toContain('protected void initPrintMgmtReportRun()');
+    expect(text).toContain('PrintMgmtReportRun::construct(');
+    expect(text).toContain('printMgmtReportRun.parmReportRunController(this);');
+    // xppc on the VM: "does not contain a definition for method 'parmPrintMgmtDocType'"
+    expect(text).not.toContain('parmPrintMgmtDocType');
+    expect(text).toContain('ssrsReportStr(ConsignmentNote, Report)');
+  });
+});

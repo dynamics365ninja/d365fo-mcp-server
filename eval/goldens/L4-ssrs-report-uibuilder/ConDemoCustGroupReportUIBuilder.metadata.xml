@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoCustGroupReportUIBuilder</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// UI builder for the @TaxTransactionInquiry:HeaderNote report dialog.
+/// Customizes dialog fields (lookups, dependent fields, events).
+/// </summary>
+public class ConDemoCustGroupReportUIBuilder extends SrsReportDataContractUIBuilder
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>build</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Builds the dialog and customizes its fields.
+    /// </summary>
+    public void build()
+    {
+        ConDemoCustGroupReportContract contract;
+        DialogField                    custGroupField;
+
+        super();
+
+        contract       = this.dataContractObject() as ConDemoCustGroupReportContract;
+        custGroupField = this.bindInfo().getDialogField(contract, methodStr(ConDemoCustGroupReportContract, parmCustGroup));
+        custGroupField.registerOverrideMethod(methodStr(FormStringControl, lookup), methodStr(ConDemoCustGroupReportUIBuilder, custGroupLookup), this);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>custGroupLookup</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Restricts the customer-group lookup to the groups that have payment terms.
+    /// </summary>
+    /// <param name = "_control">The dialog control being looked up.</param>
+    private void custGroupLookup(FormStringControl _control)
+    {
+        SysTableLookup       sysTableLookup = SysTableLookup::newParameters(tableNum(CustGroup), _control);
+        Query                query          = new Query();
+        QueryBuildDataSource qbds           = query.addDataSource(tableNum(CustGroup));
+
+        sysTableLookup.addLookupfield(fieldNum(CustGroup, CustGroup));
+        sysTableLookup.addLookupfield(fieldNum(CustGroup, Name));
+        qbds.addRange(fieldNum(CustGroup, PaymTermId)).value(SysQuery::valueNotEmptyString());
+        sysTableLookup.parmQuery(query);
+        sysTableLookup.performFormLookup();
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

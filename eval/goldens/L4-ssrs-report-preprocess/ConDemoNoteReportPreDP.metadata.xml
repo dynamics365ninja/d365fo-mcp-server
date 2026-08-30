@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNoteReportPreDP</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Data provider for the @TaxTransactionInquiry:HeaderNote report.
+/// Extends <c>SrsReportDataProviderPreProcessTempDB</c> and populates the <c>ConDemoNoteReportPreTmp</c> temporary table.
+/// </summary>
+[
+    SRSReportParameterAttribute(classStr(ConDemoNoteReportPreContract))
+]
+public class ConDemoNoteReportPreDP extends SrsReportDataProviderPreProcessTempDB
+{
+    ConDemoNoteReportPreTmp conDemoNoteReportPreTmp;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getConDemoNoteReportPreTmp</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the temporary table buffer used by the report dataset.
+    /// </summary>
+    /// <returns>The <c>ConDemoNoteReportPreTmp</c> table buffer.</returns>
+    [SRSReportDataSetAttribute(tableStr(ConDemoNoteReportPreTmp))]
+    public ConDemoNoteReportPreTmp getConDemoNoteReportPreTmp()
+    {
+        select conDemoNoteReportPreTmp;
+        return conDemoNoteReportPreTmp;
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>processReport</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Main data processing method. Populates the <c>ConDemoNoteReportPreTmp</c> temporary table
+    /// with report data based on the contract parameters.
+    /// </summary>
+    public void processReport()
+    {
+        ConDemoNoteHeader noteHeader;
+
+        delete_from conDemoNoteReportPreTmp;
+
+        insert_recordset conDemoNoteReportPreTmp (NoteId, Subject)
+            select NoteId, Subject from noteHeader;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoEvalReceiptDocTypeHandler</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Registers the DemoEvalReceipt document type with print management by answering the PrintMgmtDocType delegates.
+/// </summary>
+public class ConDemoEvalReceiptDocTypeHandler
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getDefaultReportFormatDelegateHandler</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Answers the default report design for the DemoEvalReceipt document type.
+    /// </summary>
+    /// <param name = "_docType">The document type the framework is resolving.</param>
+    /// <param name = "_result">The delegate result carrying the report design reference.</param>
+    [SubscribesTo(classStr(PrintMgmtDocType), delegateStr(PrintMgmtDocType, getDefaultReportFormatDelegate))]
+    public static void getDefaultReportFormatDelegateHandler(PrintMgmtDocumentType _docType, EventHandlerResult _result)
+    {
+        if (_docType == PrintMgmtDocumentType::DemoEvalReceipt)
+        {
+            _result.result(ssrsReportStr(ConDemoEvalReceipt, Report));
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getQueryTableIdDelegateHandler</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Answers the driving table for the DemoEvalReceipt document type.
+    /// </summary>
+    /// <param name = "_docType">The document type the framework is resolving.</param>
+    /// <param name = "_result">The delegate result carrying the table id.</param>
+    [SubscribesTo(classStr(PrintMgmtDocType), delegateStr(PrintMgmtDocType, getQueryTableIdDelegate))]
+    public static void getQueryTableIdDelegateHandler(PrintMgmtDocumentType _docType, EventHandlerResult _result)
+    {
+        if (_docType == PrintMgmtDocumentType::DemoEvalReceipt)
+        {
+            _result.result(tableNum(SalesTable));
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

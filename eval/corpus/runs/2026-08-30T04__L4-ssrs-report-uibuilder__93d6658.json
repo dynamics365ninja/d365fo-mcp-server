@@ -1,0 +1,64 @@
+{
+  "run_id": "2026-08-30T04__L4-ssrs-report-uibuilder__93d6658",
+  "case_id": "L4-ssrs-report-uibuilder",
+  "tier": 4,
+  "timestamp": "2026-08-30T04:55:42.965Z",
+  "server_git_sha": "93d6658",
+  "generated_artifacts": [
+    "ConDemoCustGroupReport.menuitem.metadata.xml",
+    "ConDemoCustGroupReport.metadata.xml",
+    "ConDemoCustGroupReportContract.metadata.xml",
+    "ConDemoCustGroupReportController.metadata.xml",
+    "ConDemoCustGroupReportDP.metadata.xml",
+    "ConDemoCustGroupReportTmp.metadata.xml",
+    "ConDemoCustGroupReportUIBuilder.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 4
+  },
+  "classification": "KNOWLEDGE_GAP",
+  "platform_build": "7.0.7996.33",
+  "static_gate": {
+    "references": {
+      "passed": false,
+      "unresolved": [
+        "SysQuery::valueNotEmpty (authored instruction named a non-existent static; validate_code(references) flagged it AFTER the first build failed because the implementer skipped the static gate on hand-written source)"
+      ]
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "PASS on the second build. Build 1 failed with 1 error: \"Class SysQuery does not contain the static method valueNotEmpty\" — the CASE INSTRUCTION named it (authoring error, MODEL_ERROR-class in the spec, not in the tool); the real member is SysQuery::valueNotEmptyString(). validate_code(mode=\"references\") on the hand-written lookup method flags exactly that (unknown-static-member) — the implementer had skipped the static gate for the three hand-written method bodies, which is the process lapse; the instruction was corrected at capture. Scaffold notes: uiBuilder=true emitted the UIBuilder class bound on the contract via [SysOperationContractProcessing] and a build() stub whose comment already showed the dataContractObject/bindInfo/registerOverrideMethod pattern — the stub was replaced verbatim through replace-code and custGroupLookup() added through add-method (SysTableLookup.addLookupfield is the real member — lower-case f). KNOWLEDGE_GAP (same as L4-ssrs-report-preprocess): a bare fieldsHint=\"GroupId, Description\" let the name-based EDT suggestion pick the master-planning EDT ReqGroupId for GroupId; the case now passes explicit fields mirroring CustGroup (CustGroupId/Description). BP 0 errors / 7 warnings: Tmp (BPErrorEDTNotMigrated on CustGroupId, PK editable/not mandatory, FormRef, EDT-relation note), controller (unused contract local in scaffolded prePromptModifyContract — pre-existing generator wart), menu item (not covered by privilege).",
+  "suggested_fix_area": "eval/cases/L4-ssrs-report-uibuilder.json (fixed); src/tools/smart/generateSmartReport.ts (EDT suggestion for bare fieldsHint; unused contract local) — open"
+}

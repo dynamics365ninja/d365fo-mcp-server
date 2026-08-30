@@ -1,6 +1,24 @@
 # X++ Language & Reporting Coverage Plan
 
-Status: **Phases A–E done (2026-08-29); only Phase F (VM) remains.**
+Status: **Phases A–F done (Phase F executed on the VM 2026-08-29/30).**
+Phase F deltas: the knowledge-audit snapshot was re-captured (309 refs, 0 defects) after the four
+rules-only topics (ssrs-contracts, ssrs-rdp-preprocess, ssrs-ui-builder, attributes-authoring) and
+`transactions` gained audited examples with real symbols. xppc-verified: every FN001 arity holds except
+`conIns` (variadic — removed); `protected internal` compiles, `private protected` is "Conflicting
+modifiers"; `forceLaterals` is not a keyword; the attribute is spelled `SrsReportParameterAttribute`
+(`<Name>`, not the file name) and `SRSReportDataSetAttribute`. Two scaffold shapes were WRONG against
+the real framework and are corrected in the generator, op-specs, catalog and topics: `preProcess=true`
+now pairs the TempDB tmp table with `SrsReportDataProviderPreProcessTempDB`, keeps
+`[SrsReportParameterAttribute]` and emits no invented `preProcess()` hook (xppc accepted BOTH bases —
+the pairing is a runtime contract; the 332:38 shipped precedent decided it); `controllerType="printMgmt"`
+now implements the abstract `runPrintMgmt()` and constructs the `PrintMgmtReportRun` in
+`initPrintMgmtReportRun()` — `SrsPrintMgmtController` has no `parmPrintMgmtDocType` (the old scaffold did
+not compile). Three write-tool defects found while capturing L2-date-effective-table were fixed with
+tests (valid-time-state index properties, add-field base type for Date EDTs, empty-value
+modify-property). Five goldens captured (L2-exception-tts-retry, L2-date-effective-table,
+L4-ssrs-report-preprocess, L4-ssrs-report-uibuilder, L3-print-mgmt-doctype-extension) — each with a
+README marked for human review (§6.4) and a corpus record; L3-print-management-report and
+L3-electronic-reporting-integration already had FROZEN goldens (2026-07-29) and were left as they are.
 Phase E deltas: no separate "Language" domain — the 8 grammar leaves live in the existing `Code`
 domain (data-types, declarations-scope, operators, statements-flow, exceptions-tts, attributes,
 intrinsics, date-effective), Reporting gained report-contracts / rdp-preprocess / report-ui-builder.

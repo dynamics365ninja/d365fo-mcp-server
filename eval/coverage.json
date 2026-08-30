@@ -2,14 +2,14 @@
   "core": {
     "tier": "core",
     "total": 51,
-    "covered": 45,
-    "percent": 88.2
+    "covered": 46,
+    "percent": 90.2
   },
   "total": {
     "tier": "all",
     "total": 89,
-    "covered": 79,
-    "percent": 88.8
+    "covered": 83,
+    "percent": 93.3
   },
   "leaves": [
     {
@@ -418,6 +418,7 @@
         "L2-coc-inherited-method",
         "L2-collections-map-list-container",
         "L2-config-key-gated-table",
+        "L2-date-effective-table",
         "L2-datetime-timezone-range",
         "L2-delegate-basic",
         "L2-dimension-basic",
@@ -470,6 +471,7 @@
         "L2-coc-inherited-method",
         "L2-collections-map-list-container",
         "L2-config-key-gated-table",
+        "L2-date-effective-table",
         "L2-datetime-timezone-range",
         "L2-delegate-basic",
         "L2-dimension-basic",
@@ -631,10 +633,12 @@
       "tier": "core",
       "weight": 4,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-exception-tts-retry"
+      ]
     },
     {
       "id": "attributes",
@@ -667,10 +671,12 @@
       "tier": "total",
       "weight": 3,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-date-effective-table"
+      ]
     },
     {
       "id": "form",
@@ -748,7 +754,9 @@
       "covered": true,
       "cases": [
         "L4-ssrs-report-advanced",
-        "L4-ssrs-report-multidataset"
+        "L4-ssrs-report-multidataset",
+        "L4-ssrs-report-preprocess",
+        "L4-ssrs-report-uibuilder"
       ]
     },
     {
@@ -819,7 +827,8 @@
       "t": true,
       "covered": true,
       "cases": [
-        "L3-print-management-report"
+        "L3-print-management-report",
+        "L3-print-mgmt-doctype-extension"
       ]
     },
     {
@@ -843,10 +852,12 @@
       "tier": "total",
       "weight": 2,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L4-ssrs-report-preprocess"
+      ]
     },
     {
       "id": "report-ui-builder",
@@ -855,10 +866,12 @@
       "tier": "total",
       "weight": 2,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L4-ssrs-report-uibuilder"
+      ]
     },
     {
       "id": "electronic-reporting",
@@ -1357,6 +1370,7 @@
         "L2-coc-inherited-method",
         "L2-collections-map-list-container",
         "L2-config-key-gated-table",
+        "L2-date-effective-table",
         "L2-datetime-timezone-range",
         "L2-delegate-basic",
         "L2-dimension-basic",
