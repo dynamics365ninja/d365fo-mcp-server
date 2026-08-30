@@ -240,22 +240,26 @@ export const TAXONOMY: CoverageLeaf[] = [
   {
     id: 'data-types', label: 'Data types, literals & conversions', domain: 'Code', source: 'topic', tier: 'core', weight: 5,
     aotTypes: ['class'], knowledgeIds: ['xpp-data-types', 'enum-conversions'],
-    note: 'Taught (xpp-data-types) and partially validator-enforced (FN001 arities, CS001 string type); no dedicated eval case.',
+    caseIds: ['L2-data-types-conversions'],
+    note: 'Taught (xpp-data-types) and partially validator-enforced (FN001 arities, CS001 string type); eval case authored (null-equivalents, date/verbatim literals, silent truncation, conversion functions, anytype locking); golden pending VM capture.',
   },
   {
     id: 'declarations-scope', label: 'Declarations & scope (var/const/readonly/using)', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
     aotTypes: ['class'], knowledgeIds: ['xpp-declarations'],
-    note: 'Taught; exercised implicitly by every class case — no dedicated eval case.',
+    caseIds: ['L2-declarations-scope'],
+    note: 'Taught, and exercised implicitly by every class case; the authored case pins what implicit use never shows — const vs readonly, the shadowing rejection, loop scope, prmIsDefault. Golden pending VM capture.',
   },
   {
     id: 'operators', label: 'Operators & precedence (&&/|| trap, like, is/as)', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
     aotTypes: ['class'], knowledgeIds: ['operators-precedence'],
-    note: 'Taught; CS001 blocks the C#-isms. No dedicated eval case.',
+    caseIds: ['L2-operators-precedence'],
+    note: 'Taught; CS001 blocks the C#-isms. Eval case authored around the one trap no validator can catch — a mixed &&/|| chain that compiles and means the other thing. Golden pending VM capture.',
   },
   {
     id: 'statements-flow', label: 'Statements & flow (switch fallthrough, loops)', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
     aotTypes: ['class'], knowledgeIds: ['switch-loops'],
-    note: 'Taught; BP004 covers removed keywords. No dedicated eval case.',
+    caseIds: ['L2-statements-switch-loops'],
+    note: 'Taught; BP004 covers removed keywords. Eval case authored (switch fallthrough, comma case lists, and a break that leaves only the switch). Golden pending VM capture.',
   },
   {
     id: 'exceptions-tts', label: 'Exceptions inside transactions (catchability, retry)', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
@@ -271,7 +275,8 @@ export const TAXONOMY: CoverageLeaf[] = [
   {
     id: 'intrinsics', label: 'Compile-time (intrinsic) functions', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
     aotTypes: ['class'], knowledgeIds: ['intrinsic-functions'],
-    note: 'Full catalog taught; references mode resolves the common ones. No dedicated eval case.',
+    caseIds: ['L2-intrinsic-functions'],
+    note: 'Full catalog taught; references mode resolves the common ones. Eval case authored (element/member/num forms, kind-specific menu items, identifierStr banned). Golden pending VM capture.',
   },
   {
     id: 'date-effective', label: 'Date-effective tables (validTimeState)', domain: 'Code', source: 'topic', tier: 'total', weight: 3,

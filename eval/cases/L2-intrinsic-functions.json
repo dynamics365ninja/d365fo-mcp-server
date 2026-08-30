@@ -1,0 +1,24 @@
+{
+  "id": "L2-intrinsic-functions",
+  "title": "X++ intrinsics: compile-time metadata assertions over string literals, member forms, menu-item kinds, identifierStr as last resort",
+  "tier": 2,
+  "instruction": "In the sandbox model, create a class DemoMetadataRefs that replaces hardcoded metadata names with compile-time intrinsics. Ground it first with get_knowledge(topic=\"intrinsic-functions\"). Every intrinsic argument must be a LITERAL element name that really exists - the compiler validates it, which is the entire value of the exercise - so confirm each element with search or get_object_info before you write it, and never pass a variable. All methods public static. (1) `container tableReferences()` - returns the CustTable name and its AccountNum field through the element-name and MEMBER forms (the member form takes the owner table first), plus their numeric ids through the matching num intrinsics; a plain string literal like 'CustTable' anywhere in this class FAILS the case. (2) `container ownReferences()` - references THIS class and one of its own methods through the class and method intrinsics; because they are self-references the build breaks the moment either is renamed, which is what the doc comment must say. (3) `container enumReferences()` - the SalesStatus enum name, one of its literals through the enum-literal form, and the value COUNT of the enum through enumCnt. Confirm the literal name with get_object_info first. (4) `str indexReference()` - one real index on CustTable through the index member form; read the index name off the table with get_object_info rather than guessing it. (5) `container menuItemReferences()` - one DISPLAY menu item and one ACTION menu item, each through the intrinsic for ITS OWN KIND. The kinds are not interchangeable: the display form fails the build when handed an action item, so confirm each item's kind before writing it, and say in the doc comment why one generic menuItemStr does not exist. (6) `str edtReference()` - the CustAccount extended data type through the extended-type intrinsic. (7) `int hardLimits()` - returns maxInt, a compile-time constant, and nothing computed. identifierStr must NOT appear anywhere in this class: it does no existence check, and every name here has a checked intrinsic. The class must build with zero errors and zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-intrinsic-functions/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "intrinsics",
+    "compile-time",
+    "metadata-references",
+    "language",
+    "class",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

@@ -1,0 +1,26 @@
+{
+  "id": "L2-declarations-scope",
+  "title": "X++ declarations: const vs readonly, var inference, loop scope, the shadowing rejection, prmIsDefault",
+  "tier": 2,
+  "instruction": "In the sandbox model, create a class DemoRetryPolicy that shows how X++ declarations and scope actually work. Ground it first with get_knowledge(topic=\"xpp-declarations\"). Shape: (1) a `public const int MaxAttempts = 5;` field - a compile-time constant with its initializer at the declaration, which is what replaces a macro here; a `#define` FAILS this case. (2) a `readonly int timeoutSec;` field assigned in `new()` and never again - the doc comment must say why readonly and not const (the value is only known per instance). (3) a `protected void new(int _timeoutSec)` plus a `public static DemoRetryPolicy construct(int _timeoutSec)` factory. (4) `public int totalBudget()` - a `for (int i = 0; i < MaxAttempts; i++)` loop whose counter is declared in the for-init, so it is scoped to the loop; summing timeoutSec into a local. Then, INSIDE the same method and after that loop, a second loop that needs its own counter: it must NOT reuse the name `i` in a nested block, because the X++ compiler rejects shadowing outright - rename it and say so in a comment. (5) `public str describe(str _prefix = '')` - an optional parameter. It must distinguish \"caller passed an empty string\" from \"caller passed nothing\" with prmIsDefault, and build its result with strFmt from a label. (6) `public container snapshot()` - uses `var` for one local whose type is obvious from its initializer, and a plainly typed declaration for one where it is not; `var` without an initializer is a compile error and FAILS this case. Confirm every member signature you are unsure of with get_object_info before writing it. The class must build with zero errors and zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-declarations-scope/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "declarations",
+    "scope",
+    "const",
+    "readonly",
+    "var",
+    "language",
+    "class",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

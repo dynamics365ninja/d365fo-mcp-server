@@ -54,13 +54,13 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Date/time & time zones (utcdatetime, DateTimeUtil) | total | ✅ | ✅ | ✅ | L2-datetime-timezone-range |
 | .NET interop (CLRInterop, using alias, CLRError) | total | ✅ | ✅ | ✅ | L2-dotnet-interop-clrerror |
 | Reflection / Dict* metadata API | total | ✅ | ✅ | ✅ | L2-reflection-dict-fieldwalk |
-| Data types, literals & conversions | core | ✅ | — | ✅ | Taught (xpp-data-types) and partially validator-enforced (FN001 arities, CS001 string type); no dedicated eval case. |
-| Declarations & scope (var/const/readonly/using) | core | ✅ | — | ✅ | Taught; exercised implicitly by every class case — no dedicated eval case. |
-| Operators & precedence (&&/|| trap, like, is/as) | core | ✅ | — | ✅ | Taught; CS001 blocks the C#-isms. No dedicated eval case. |
-| Statements & flow (switch fallthrough, loops) | core | ✅ | — | ✅ | Taught; BP004 covers removed keywords. No dedicated eval case. |
+| Data types, literals & conversions | core | ✅ | — | ✅ | Taught (xpp-data-types) and partially validator-enforced (FN001 arities, CS001 string type); eval case authored (null-equivalents, date/verbatim literals, silent truncation, conversion functions, anytype locking); golden pending VM capture. |
+| Declarations & scope (var/const/readonly/using) | core | ✅ | — | ✅ | Taught, and exercised implicitly by every class case; the authored case pins what implicit use never shows — const vs readonly, the shadowing rejection, loop scope, prmIsDefault. Golden pending VM capture. |
+| Operators & precedence (&&/|| trap, like, is/as) | core | ✅ | — | ✅ | Taught; CS001 blocks the C#-isms. Eval case authored around the one trap no validator can catch — a mixed &&/|| chain that compiles and means the other thing. Golden pending VM capture. |
+| Statements & flow (switch fallthrough, loops) | core | ✅ | — | ✅ | Taught; BP004 covers removed keywords. Eval case authored (switch fallthrough, comma case lists, and a break that leaves only the switch). Golden pending VM capture. |
 | Exceptions inside transactions (catchability, retry) | core | ✅ | ✅ | ✅ | L2-exception-tts-retry |
 | Attribute authoring & reflection | total | ✅ | — | ✅ | Taught with audited examples (the Phase F snapshot re-capture resolved their symbols); no eval case. |
-| Compile-time (intrinsic) functions | core | ✅ | — | ✅ | Full catalog taught; references mode resolves the common ones. No dedicated eval case. |
+| Compile-time (intrinsic) functions | core | ✅ | — | ✅ | Full catalog taught; references mode resolves the common ones. Eval case authored (element/member/num forms, kind-specific menu items, identifierStr banned). Golden pending VM capture. |
 | Date-effective tables (validTimeState) | total | ✅ | ✅ | ✅ | L2-date-effective-table |
 
 ## UI (7/7)
@@ -154,6 +154,6 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 ## Orphans
 
 - Knowledge entries no leaf claims (**unproven knowledge**): extensible-enums
-- Eval cases no leaf claims (**unmapped proof**): L0-create-readback-no-reindex, L2-batched-object-reads, L2-data-types-conversions, L2-declarations-scope, L2-intrinsic-functions, L2-object-delete-and-entry-point-cleanup, L2-operators-precedence, L2-oracle-discriminator-random-wrapper-name, L2-statements-switch-loops, L4-headerlines-document-slice
+- Eval cases no leaf claims (**unmapped proof**): L0-create-readback-no-reindex, L2-batched-object-reads, L2-object-delete-and-entry-point-cleanup, L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice
 
 _Generated 2026-08-30._

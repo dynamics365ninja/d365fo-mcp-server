@@ -1401,13 +1401,8 @@
     "cases": [
       "L0-create-readback-no-reindex",
       "L2-batched-object-reads",
-      "L2-data-types-conversions",
-      "L2-declarations-scope",
-      "L2-intrinsic-functions",
       "L2-object-delete-and-entry-point-cleanup",
-      "L2-operators-precedence",
       "L2-oracle-discriminator-random-wrapper-name",
-      "L2-statements-switch-loops",
       "L4-headerlines-document-slice"
     ]
   }
