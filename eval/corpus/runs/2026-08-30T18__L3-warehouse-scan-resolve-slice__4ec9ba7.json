@@ -1,0 +1,64 @@
+{
+  "run_id": "2026-08-30T18__L3-warehouse-scan-resolve-slice__4ec9ba7",
+  "case_id": "L3-warehouse-scan-resolve-slice",
+  "tier": 3,
+  "timestamp": "2026-08-30T18:47:27.150Z",
+  "server_git_sha": "4ec9ba7",
+  "generated_artifacts": [
+    "ConDemoScanResolver.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": null,
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": null,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "VALIDATOR_GAP",
+  "static_gate": {
+    "references": {
+      "passed": false,
+      "unresolved": [
+        "ConDemoScanResolver::gs1FixedValueLengths (unknown-type, EXPECTED - self-reference, class not yet created)",
+        "ConDemoScanResolver::gs1FixedValueLength (unknown-type, EXPECTED - self-reference)",
+        "ConDemoScanResolver::splitGs1 (unknown-type, EXPECTED - self-reference)",
+        "50 references verified OK; 0 not-visible-from-model (the known stale-visibilityCache gap did not bite this run)"
+      ]
+    },
+    "syntax": {
+      "passed": true,
+      "violations": [
+        {
+          "rule": "TTS001",
+          "severity": "warning",
+          "note": "ttsbegin x1 vs ttscommit x2 - counting heuristic; the two commits sit on mutually exclusive paths of ONE transaction. Removed anyway by the later single-exit restructure."
+        }
+      ]
+    }
+  },
+  "root_cause_hypothesis": "VERDICT IS A PASS (build 1, bp_clean 1, first golden capture); the gap below cost one extra build round trip and is the actionable signal. validate_code(mode=\"references\") verified `methodStr(ConDemoScanResolver, postScanAction)` as resolvable and validate_code(mode=\"syntax\") raised nothing, but xppc rejected it: 'The intrinsic argument postScanAction must not specify a static method.' X++ requires staticMethodStr() for a static method and methodStr() only for an instance method; neither the reference resolver (which checks that the member EXISTS, not that its static-ness matches the intrinsic) nor the offline BP/syntax rule set encodes that distinction, so a compile error that is fully decidable from the indexed metadata reached the compiler. Same class of miss as the compiler-verified ratchet rules already captured for real->int and `in`. Secondary, lower confidence: the TTS001 counting heuristic counts ttscommit occurrences rather than pairing them per control-flow path, so an early-return-inside-transaction shape (one ttsbegin, one commit per exclusive branch) is reported as unbalanced; xppbp's own BPErrorMethodUnbalancedTtsbeginCommit flagged the same shape, so this one is arguably a true positive about style, not a false positive.",
+  "suggested_fix_area": "src/validation/references (intrinsic argument checking): when the intrinsic is methodStr/staticMethodStr/tableMethodStr, compare the resolved member's static modifier against the intrinsic and emit an error naming the correct intrinsic; add the pair to the compiler-verified fact set + ratchet test (docs/XPP_LANGUAGE_COVERAGE_PLAN.md G-series) and to get_knowledge(topic=\"intrinsic-functions\"/\"reflection\") so generation picks the right one up front.",
+  "evidence_refs": [
+    "build_d365fo_project(fm-mcp, incremental) #1 => FAILED, 1 error: ConDemoScanResolver.Method/postScanAction (188,17) 'The intrinsic argument postScanAction must not specify a static method.'",
+    "validate_code(mode=both) on the same source BEFORE that build => syntax 0 errors / 1 TTS001 warning; references 3 unknown-type (self-references only), 50 references verified OK, 0 not-visible-from-model",
+    "after replacing methodStr with staticMethodStr: build_d365fo_project(fm-mcp, incremental) => Errors: 0, Warnings: 0",
+    "build_d365fo_project(fm-mcp, fullBuild=true, bpCheck=true) => xppc Errors: 0 Warnings: 0; xppbp Errors: 0, Warnings: 6 - all 6 on the ConDemoNoteHeader FIXTURE table, 0 on ConDemoScanResolver",
+    "run_bp_check(class ConDemoScanResolver) => BP Check passed, 1 elements processed, Warnings: 0 Errors: 0",
+    "first BP pass had 5 warnings on the class (BPCheckSelectForUpdateAbsent, BPErrorMethodUnbalancedTtsbeginCommit x2, BPUpgradeCodeRunBaseRunCalled); fixed by a single-exit transaction, dropping a forupdate that locked nothing, and runOperation() instead of run()",
+    "known-defect check: labels(create) NOT used - operator messages reuse standard @SYS72727 and @SYS335854, so the hyphenated fm-mcp label-file id defect did not bite",
+    "known-defect check: validate_code(references) emitted ZERO not-visible-from-model errors this run - the stale visibilityCache gap did not bite",
+    "golden first capture: eval/goldens/L3-warehouse-scan-resolve-slice/ConDemoScanResolver.metadata.xml (golden_pending stays true, awaiting human sign-off per AGENT_EVAL_LOOP 6.4)"
+  ]
+}

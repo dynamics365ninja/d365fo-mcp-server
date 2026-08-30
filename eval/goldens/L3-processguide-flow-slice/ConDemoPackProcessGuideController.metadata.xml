@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoPackProcessGuideController</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The <c>ConDemoPackProcessGuideController</c> class is the controller class for the demo pack
+/// process on the warehouse mobile app.
+/// </summary>
+[WHSWorkExecuteMode(WHSWorkExecuteMode::DemoPack)]
+public class ConDemoPackProcessGuideController extends ProcessGuideController
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>initialStepName</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets the name of the step the demo pack process starts with.
+    /// </summary>
+    /// <returns>
+    /// The name of the initial step.
+    /// </returns>
+    protected ProcessGuideStepName initialStepName()
+    {
+        return classStr(ConDemoPackProcessGuidePromptContainerStep);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>initializeNavigationRoute</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Builds the navigation route of the demo pack process.
+    /// </summary>
+    /// <returns>
+    /// The <c>ProcessGuideNavigationRoute</c> class that holds the route.
+    /// </returns>
+    protected ProcessGuideNavigationRoute initializeNavigationRoute()
+    {
+        ProcessGuideNavigationRoute navigationRoute = new ProcessGuideNavigationRoute();
+
+        navigationRoute.addFollowingStep(classStr(ConDemoPackProcessGuidePromptContainerStep), classStr(ConDemoPackProcessGuideRegisterStep));
+        navigationRoute.addFollowingStep(classStr(ConDemoPackProcessGuideRegisterStep), classStr(ConDemoPackProcessGuidePromptContainerStep));
+
+        return navigationRoute;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -158,4 +158,41 @@ describe('prepare(mode="change") validates an extension name for real', () => {
     // A class extension is not required to use dot notation.
     expect(prep).not.toMatch(/must use dot notation/i);
   });
+
+  /**
+   * Reported on the VM while extending `whsWorkExecuteDisplayChangeBatchDisp` —
+   * one of the camelCase classes the product ships. The two validators demanded
+   * opposite things and NO name satisfied both:
+   *   prepare(proposedName="whs…Con_Extension")  -> "must start with an uppercase letter"
+   *   validate_object_naming("Whs…Con_Extension") -> "must start with the base class name",
+   *                                                  prescribing the name prepare had refused.
+   * PascalCase is a rule for a name you invent; an extension name inherits its
+   * first letter from a base name the caller did not choose.
+   */
+  it('does not demand PascalCase from an extension of a camelCase base class', async () => {
+    const prep = textOf(await prepareChangeTool(
+      req('prepare_change', {
+        goal: 'agreement probe', objectName: 'whsWorkExecuteDisplayChangeBatchDisp', objectType: 'class',
+        proposedName: 'whsWorkExecuteDisplayChangeBatchDispCR_Extension',
+      }), buildContext()));
+    expect(prep).not.toMatch(/uppercase letter/i);
+  });
+
+  it('still demands PascalCase from a name the caller invented', async () => {
+    const prep = textOf(await prepareChangeTool(
+      req('prepare_change', {
+        goal: 'agreement probe', objectName: 'CustTable', objectType: 'table',
+        proposedName: 'lowerStartHelper',
+      }), buildContext()));
+    expect(prep).toMatch(/uppercase letter/i);
+  });
+
+  it('rejects a name that does not start with a letter at all', async () => {
+    const prep = textOf(await prepareChangeTool(
+      req('prepare_change', {
+        goal: 'agreement probe', objectName: 'CustTable', objectType: 'table',
+        proposedName: '1Thing',
+      }), buildContext()));
+    expect(prep).toMatch(/must start with a letter/i);
+  });
 });

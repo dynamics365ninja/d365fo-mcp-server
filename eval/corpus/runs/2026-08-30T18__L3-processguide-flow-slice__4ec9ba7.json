@@ -1,0 +1,63 @@
+{
+  "run_id": "2026-08-30T18__L3-processguide-flow-slice__4ec9ba7",
+  "case_id": "L3-processguide-flow-slice",
+  "tier": 3,
+  "timestamp": "2026-08-30T18:04:43.398Z",
+  "server_git_sha": "4ec9ba7",
+  "generated_artifacts": [
+    "/EnumExtensions/WHSWorkExecuteMode.ConExtension",
+    "/Classes/ConDemoPackProcessGuideController",
+    "/Classes/ConDemoPackProcessGuidePromptContainerStep",
+    "/Classes/ConDemoPackProcessGuidePromptContainerPageBuilder",
+    "/Classes/ConDemoPackProcessGuideRegisterStep"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": null,
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": null,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "VALIDATOR_GAP",
+  "static_gate": {
+    "references": {
+      "passed": false,
+      "unresolved": [
+        "ProcessGuideNavigationRoute (not-visible-from-model, FALSE POSITIVE - controller)",
+        "ProcessGuideDataTypeNames (not-visible-from-model, FALSE POSITIVE - prompt step, page builder, register step)",
+        "ProcessGuidePage (not-visible-from-model, FALSE POSITIVE - page builder)"
+      ]
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "PRIMARY (recurrence of the L2 finding, same server session): validate_code(mode=references) again reported not-visible-from-model for ProcessGuide types (ProcessGuideNavigationRoute, ProcessGuideDataTypeNames, ProcessGuidePage) although the fm-mcp Descriptor lists ProcessGuide (13 module refs) and xppc compiled all five artifacts with 0 errors / 0 warnings on a FULL build. Same root cause as run 2026-08-30T16__L2-processguide-page-control: the process-lifetime visibilityCache in src/metadata/modelDescriptor.ts is never invalidated, so a Descriptor edit made earlier in the session stays invisible. Every other reference check was correct: once the four classes existed on disk all classStr() forward references resolved, and the 6-argument WHSContainerTable::closeContainer call plus both WHSRFPassthrough lookup overloads verified OK. | SECONDARY (new, TOOL_DEFECT): labels(action=create) wrote two labels into the sandbox AxLabelFile whose LabelFileId is fm-mcp, reported success, and printed the usage hint literalStr(@fm-mcp:DemoPackScanContainer) - but that reference is not resolvable, because a label file id containing a hyphen is not a valid @LabelFileId:LabelId identifier. Two independent witnesses: labels(action=info) could not match the id it had just created (and equally failed on the pre-existing @fm-mcp:AuditProbe, so the defect predates this run), and xppbp raised BPErrorLabelIsText (@fm-mcp:DemoPackScanContainer is not a label ID) on the page builder. The label tools should reject or warn when the target label file id is not a legal X++ identifier instead of recommending an unusable reference. There is also no supported way to create a label file with a different id (d365fo_file has no label-file objectType), so the only grounded workaround was to fall back to standard labels (@WAX1422 Container ID for the text box, @WAX2096 for the enum value), after which BP was clean. | THIRD (KNOWLEDGE_GAP / case-definition defect, no build impact): the case text and the shipped object_patterns(domain=mobile-app, pattern=processguide-flow) skeleton both route the flow prompt -> confirm -> register -> prompt, but neither the case artifact list (target_artifact_types = 5) nor the pattern object roster ever creates a confirm step. classStr() is compile-time checked, so the skeleton as printed does NOT compile: classStr(MyDemoProcessGuideConfirmStep) resolves to nothing. No reusable framework confirm step exists (every ProcessGuide*Confirm*Step in the install is process-specific and carries its own page builder). Implemented the compiling 2-edge cycle prompt -> register -> prompt rather than inventing a 6th and 7th class outside the case contract.",
+  "suggested_fix_area": "src/metadata/modelDescriptor.ts (visibilityCache - mtime-stamp the Descriptor XML or expose clearModelVisibilityCache(), wired into the update_symbol_index refresh path) - same fix area as the L2 record, now with a second recurrence in the same session ; src/tools/labels create/search/info: validate that labelFileId is a legal X++ identifier before writing, and before printing the literalStr(@id:Label) usage hint; surface the BPErrorLabelIsText risk at create time ; src/knowledge object_patterns mobile-app processguide-flow: the copy-ready controller skeleton routes through a confirm step that its own object roster never creates, so the snippet does not compile as printed - either add the confirm step plus its page builder to the roster or drop that edge; also the pattern response truncates at 5000 chars and loses addActionControls and the entire silent-step skeleton",
+  "evidence_refs": [
+    "validate_code(mode=both) on all 4 classes before writing: syntax 0 violations (32 rule groups) on every class; references reported ONLY not-visible-from-model on ProcessGuide types plus the expected forward references to classes not yet on disk",
+    "validate_code(references) re-run once all 4 classes existed: controller 7 refs OK, prompt step 4 refs OK, page builder 6 refs OK, register step 9 refs OK - only the ProcessGuide not-visible-from-model false positives remained",
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/Descriptor/fm-mcp.xml contains ProcessGuide in ModuleReferences (13 module references)",
+    "build_d365fo_project(fm-mcp, incremental, bpCheck) 197s => Build succeeded, xppc Errors: 0 Warnings: 0; BP flagged BPErrorLabelIsText on ConDemoPackProcessGuidePromptContainerPageBuilder/addDataControls for @fm-mcp:DemoPackScanContainer",
+    "after switching to standard labels: build_d365fo_project(fm-mcp, fullBuild:true, bpCheck) 30s => Build succeeded, xppc Errors: 0 Warnings: 0; BP 6 warnings, ALL on the pre-existing fixture table ConDemoNoteHeader, 0 on any artifact of this case",
+    "run_bp_check(objects=[4 classes + enum extension]) => all 4 classes clean (Warnings 0 / Errors 0); enum extension NOT CHECKABLE - xppbp has no enumextension element type, which the tool reported explicitly rather than silently passing",
+    "grounding path: get_knowledge(process-guide-framework) + object_patterns(mobile-app/processguide-flow), then get_object_info members/signatures for ProcessGuideController, ProcessGuideStep, ProcessGuideStepWithoutPrompt, ProcessGuidePageBuilder, ProcessGuidePage, ProcessGuideNavigationRoute, macro ProcessGuideActionNames, class ProcessGuideDataTypeNames, enum WHSWorkExecuteMode, EDT WHSContainerId, WHSContainerTable::closeContainer and findByContainerId, WHSRFPassthrough lookup overloads",
+    "shipped-code oracles read before writing: WHSProcessGuideCreateContainerStep (controller member, pass.lookupStr, addProcessCompletionMessage, super()), InventProcessGuideAdjustInController (WHSWorkExecuteMode attribute plus route), ITMProcessGuidePromptContainerIdPageBuilder (step.createAction, addTextBox), InventProcessGuideCaptureCatchWeightTagAdjustInPageBuilder (ProcessGuideActionNames include form and ActionOK / ActionCancelExitProcess)",
+    "object_patterns(mobile-app/processguide-flow) response truncated at 5000 chars (4406 omitted): the addActionControls half of the page-builder skeleton and the whole silent-step skeleton never reached the agent and had to be reconstructed from Microsoft source via get_object_info",
+    "golden FIRST capture: eval/goldens/L3-processguide-flow-slice/ (5 .metadata.xml files); golden_pending stays true awaiting human sign-off per AGENT_EVAL_LOOP 6.4",
+    "labels(action=info, @fm-mcp:AuditProbe) also fails to resolve - the hyphenated label file id was already unusable before this run, so no case needing a NEW label can satisfy a labels-not-literals criterion in this sandbox"
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "run_id": "2026-08-30T18__L3-legacy-workexecutedisplay-extend__4ec9ba7",
+  "case_id": "L3-legacy-workexecutedisplay-extend",
+  "tier": 3,
+  "timestamp": "2026-08-30T18:26:48.106Z",
+  "server_git_sha": "4ec9ba7",
+  "generated_artifacts": [
+    "/Classes/whsWorkExecuteDisplayChangeBatchDispCon_Extension"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": null,
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": null,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "TOOL_DEFECT",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "Case PASSED (build 1, bp_clean 1) but only after one wrong-target write-and-build cycle that the tools should have prevented, and the case's own scored requirement - find_references on the method to be wrapped - could not be satisfied by find_references at all. THREE defects. (1) find_references is unusable when the xref bridge is down: it silently degrades to a \"name-based index scan (heuristic; not scoped to a declaring type)\" that MISSES intra-class this.method() call sites entirely. WHSWorkExecuteDisplayAdjustIn.buildAdjustIn returned 0 references although displayForm calls it twice; whsWorkExecuteDisplayChangeBatchDisp.buildChangeBatchDisposition returned 1 reference whose named \"caller\" is the target method itself, although displayForm calls it four times; WHSWorkExecuteDisplay.processWorkLine returned two same-named methods on unrelated types (WHSWorkTypeCustom, WHSProcessWorkLineInstrumentationActivities) as \"callers\". Every answer had to be re-derived by reading displayForm source via get_object_info. For a case scored on find_references this is a total functional failure of the tool, masked by a confident-looking report. (2) search recall on multi-token queries: search(query=\"ProcessGuide AdjustIn\") returned only InventProcessGuidePromptAndConfirmQtyAdjustOutPageBuilder and NOT InventProcessGuideAdjustInController, even though that name contains both tokens and search(query=\"InventProcessGuideAdjustInController\") matches it exactly. The mobile-app pattern explicitly instructs \"check for the ProcessGuide classes first\"; that check was run and returned a FALSE NEGATIVE, so WhsWorkExecuteDisplayAdjustIn was selected as a legacy target when it is in fact [SysObsolete] and redirects to InventProcessGuideAdjustInController. xppc caught it as a compile warning; the extension was rolled back and re-targeted at whsWorkExecuteDisplayChangeBatchDisp, which is genuinely unconverted. Contributing AGENT_ERROR, owned by the agent: get_object_info(options={method:\"buildAdjustIn\"}) was fetched but get_object_info(options={method:\"classDeclaration\"}) was not, and classDeclaration is the only view that surfaces [SysObsolete] - the obsolete banner IS rendered correctly there, so the grounded path existed and was not walked. (3) naming validators contradict each other when the base class AOT name is not PascalCase: for base whsWorkExecuteDisplayChangeBatchDisp, prepare(mode=\"change\") rejects whsWorkExecuteDisplayChangeBatchDispCon_Extension with \"Name must start with an uppercase letter (PascalCase)\" while validate_object_naming rejects WhsWorkExecuteDisplayChangeBatchDispCon_Extension with \"Class extension names must start with the base class name\" and prescribes exactly the name prepare rejected. Both cannot be satisfied; d365fo_file(create) ignored the passed name and chose the correct lowercase form itself. Minor, non-blocking: the class-extension writer dropped the // comment lines sitting between the class opening brace and the #define members in <Declaration> (observed on the first, rolled-back write). The known VALIDATOR_GAP (stale visibilityCache producing false not-visible-from-model) did NOT fire this run - validate_code(references) passed 9/9 and 12/12 - because this case required no Descriptor edit (ApplicationSuite was already among the 13 module references).",
+  "suggested_fix_area": "src/tools/analysis/findReferences: when the xref bridge is unavailable, (a) scan the declaring object's own method bodies for this.<name>( and ::<name>( so intra-class call sites are reported, (b) scope name matches to the declaring type when an owner is supplied instead of returning same-named methods on unrelated types as callers, and (c) demote the verdict - a heuristic 0/1-hit answer must be reported as INCONCLUSIVE with an explicit \"read the declaring source to confirm\" instruction, never as \"Total References Found: 0\" with \"Symbol might be unused\". src/tools/search (multi-token recall): a space-separated query should AND its tokens against the symbol name as substrings, so \"ProcessGuide AdjustIn\" matches InventProcessGuideAdjustInController. src/tools/read/getObjectInfo + src/tools/prepare: surface the target's [SysObsolete] banner from classDeclaration in prepare(mode=\"change\") and in the options={method:...} view, so choosing an obsolete CoC target is blocked at grounding time rather than at xppc. src/naming (shared rules extracted per PR #938): make the PascalCase rule yield to the \"must start with the base object name\" rule when the base object's AOT name is not PascalCase, so prepare and validate_object_naming cannot disagree.",
+  "evidence_refs": [
+    "find_references(WHSWorkExecuteDisplayAdjustIn.buildAdjustIn) => \"Total References Found: 0 ... Symbol might be unused\"; source of WHSWorkExecuteDisplayAdjustIn.displayForm shows 2 x this.buildAdjustIn(...)",
+    "find_references(whsWorkExecuteDisplayChangeBatchDisp.buildChangeBatchDisposition) => 1 hit, caller named as the target method itself; source of displayForm shows 4 x this.buildChangeBatchDisposition(...) across case #InitializeBatchDispChange and case #ProcessBatchDispChange",
+    "find_references(WHSWorkExecuteDisplay.buildBatchDisposition) => 1 hit in a DIFFERENT package: ITMProcessGuideGoodsInTransitHelper (InboundTransportationManagement) - used in the doc comment as the reason not to wrap the shared base helper",
+    "search(query=\"ProcessGuide AdjustIn\") => 1 result, InventProcessGuidePromptAndConfirmQtyAdjustOutPageBuilder only; search(query=\"InventProcessGuideAdjustInController\", type=\"class\") => exact match in model ProcessGuide",
+    "xppc on first attempt: Compile Warning: Class WHSWorkExecuteDisplayAdjustInCon_Extension: 'WhsWorkExecuteDisplayAdjustIn' is obsolete: 'This class has been refactored. Refer class InventProcessGuideAdjustInController instead.' (Errors: 0, Warnings: 1) -> write rolled back via d365fo_file(action=\"undo\")",
+    "get_object_info(class WHSWorkExecuteDisplayAdjustIn, method=\"classDeclaration\") renders the obsolete banner and the [SysObsolete(...InventProcessGuideAdjustInController..., false, 30-06-2020)] attribute; the same class's method-level view for buildAdjustIn does not",
+    "get_object_info(class whsWorkExecuteDisplayChangeBatchDisp, method=\"classDeclaration\") => [WHSWorkExecuteMode(WHSWorkExecuteMode::ChangeBatchDisposition)] public class ... extends WHSWorkExecuteDisplay, NO SysObsolete; no ProcessGuide controller/step/page-builder registered on the mode (only WHSMobileAppFlowChangeBatchDisposition and WHSMobileAppStepInfoBuilderChangeBatchDisposition, which are app field-name/step-title config)",
+    "prepare(mode=\"change\") naming verdict vs validate_object_naming verdict on the same pair of candidate names - mutually exclusive (see root_cause_hypothesis item 3)",
+    "validate_code(mode=\"both\") on the final class => syntax 0 violations (32 rule groups), references 12/12 resolved",
+    "build_d365fo_project(fm-mcp, bpCheck) incremental => Errors: 0, Warnings: 0; build_d365fo_project(fm-mcp, fullBuild) => Errors: 0, Warnings: 0",
+    "run_bp_check(class whsWorkExecuteDisplayChangeBatchDispCon_Extension) => 1 element processed, Warnings: 0, Errors: 0 (the 6 model-wide BP warnings all belong to the pre-existing fixture table ConDemoNoteHeader)",
+    "labels: reused existing core label @SYS54367 (\"Expiration date\", SYS/ApplicationPlatform), resolved from the InventBatchExpDate EDT Label property - no new label created, per the known fm-mcp hyphenated-label-file-id defect",
+    "golden first capture: eval/goldens/L3-legacy-workexecutedisplay-extend/whsWorkExecuteDisplayChangeBatchDispCon_Extension.metadata.xml (golden_pending stays true, awaiting human sign-off per AGENT_EVAL_LOOP 6.4)"
+  ]
+}

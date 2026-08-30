@@ -475,7 +475,7 @@ export const TAXONOMY: CoverageLeaf[] = [
     id: 'warehouse-mobile-scanning', label: 'Warehouse app / barcode scanning', domain: 'Frameworks', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['class'], knowledgeIds: ['warehouse-mobile-app', 'barcode-scanning'],
     caseIds: ['L3-warehouse-scan-resolve-slice'],
-    note: 'Knowledge authored (scan → action dispatch, one-round-trip transaction, idempotency, GS1 AI parsing, item-barcode resolution); eval case authored, golden pending VM capture.',
+    note: 'Knowledge authored (scan → action dispatch, one-round-trip transaction, idempotency, GS1 AI parsing, item-barcode resolution); eval case captured on the VM — builds clean, posts through the journal framework with the idempotency guard inside the transaction.',
   },
   {
     // The screens themselves, which is a different job from the flow invariants
@@ -488,7 +488,7 @@ export const TAXONOMY: CoverageLeaf[] = [
     id: 'warehouse-app-screens', label: 'Warehouse-app screens (ProcessGuide / legacy)', domain: 'Frameworks', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['class'], knowledgeIds: ['process-guide-framework'],
     caseIds: ['L3-processguide-flow-slice', 'L2-processguide-page-control', 'L3-legacy-workexecutedisplay-extend'],
-    note: 'Knowledge + object_patterns(domain="mobile-app") recipes authored for both frameworks; three eval cases authored, goldens pending VM capture.',
+    note: 'Knowledge + object_patterns(domain="mobile-app") recipes authored for both frameworks; three eval cases captured on the VM — ProcessGuide flow, a page-control CoC extension, and a legacy WHSWorkExecuteDisplay extension.',
   },
   {
     id: 'trade-agreements', label: 'Trade agreements & pricing', domain: 'Frameworks', source: 'topic', tier: 'total', weight: 1,

@@ -9,6 +9,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
 import { buildObjectTypeMismatchMessage, detectObjectTypeInDb } from '../../utils/metadataResolver.js';
 import { tryBridgeReferences } from '../../bridge/bridgeAdapter.js';
+import * as fs from 'fs';
 
 const FindReferencesArgsSchema = z.object({
   // "name" is accepted as an alias for "targetName"
@@ -221,6 +222,16 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
       references.push(...enumRefs);
     }
 
+    // 6. The previews cannot show a call site past line 10 of its caller, and
+    // intra-type calls are where that bites hardest. Recover them from the
+    // declaring type's own source — one indexed lookup and up to three files.
+    const intraTypeRefs = wantsMethod
+      ? scanDeclaringTypeSource(symbolIndex, ftsName, limit).filter(
+          r => !references.some(existing => existing.file === r.file && existing.context === r.context),
+        )
+      : [];
+    references.push(...intraTypeRefs);
+
     totalReferences = references.length;
     const limitedReferences = references.slice(0, limit);
     const summary = generateReferenceSummary(limitedReferences);
@@ -233,8 +244,19 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
     }
     output += `**Scope:** ${scope}\n`;
     output += `_Source: name-based index scan (xref bridge unavailable) — heuristic; not scoped to a declaring type._\n`;
-    if (wantsMethod && !owner && !isAotPath) {
-      output += `> ℹ️ This counts every method named \`${ftsName}\` regardless of owner. For a type-scoped where-used, pass \`ownerName\` or qualify as \`Owner.${ftsName}\`.\n`;
+    if (intraTypeRefs.length > 0) {
+      output += `_${intraTypeRefs.length} of these came from reading the declaring type's source directly — ` +
+        `the index only previews a method's first 10 lines, so calls below that are invisible to the scan above._\n`;
+    }
+    if (wantsMethod && !isAotPath) {
+      // The note used to print only when no owner was given, so a caller who DID
+      // scope the lookup got an unscoped answer that looked scoped — the worse of
+      // the two cases, and the one silently ignoring the parameter it accepted.
+      output += owner
+        ? `> ⚠️ \`ownerName\` could NOT be honoured: this fallback matches the bare method name, ` +
+          `so a same-named method on an unrelated type is counted as a hit. Only the xref bridge ` +
+          `can scope a member to its declaring type.\n`
+        : `> ℹ️ This counts every method named \`${ftsName}\` regardless of owner. For a type-scoped where-used, pass \`ownerName\` or qualify as \`Owner.${ftsName}\`.\n`;
     }
     output += `\n`;
 
@@ -244,11 +266,22 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
       : '';
 
     if (limitedReferences.length === 0) {
-      output += `No references found for \`${targetName}\`.\n\n`;
-      output += `**Possible reasons:**\n`;
-      output += `- Symbol might be unused\n`;
-      output += `- Symbol might be defined but not yet indexed\n`;
-      output += `- Try search without targetType to broaden results\n`;
+      // A zero from this path is NOT evidence of anything. The xref bridge is
+      // down, so the answer comes from a name scan over whatever source the index
+      // extracted — and if the target's own source was never extracted, the scan
+      // had nothing to match in the first place. Reported live on the VM: an
+      // agent read `Total References Found: 0 … Symbol might be unused` for a
+      // method with two real call sites, and acted on it.
+      output += `No references found for \`${targetName}\` — **this is not evidence that it is unused.**\n\n`;
+      output += `⚠️ With the xref bridge down, call sites are matched against each method's indexed ` +
+        `\`source_snippet\`, which holds only its FIRST TEN LINES. A call on line 11 or later of its ` +
+        `caller cannot be seen from here, and long methods are exactly where calls hide. The declaring ` +
+        `type's own source was read directly and had none either, which is the strongest statement ` +
+        `this run can make.\n\n`;
+      output += `**Before treating this as "unused":**\n`;
+      output += `- Re-run once the xref bridge (DYNAMICSXREFDB) is available; it is the only authoritative where-used\n`;
+      output += `- Read the callers you suspect — a caller in another type is still invisible past its tenth line\n`;
+      output += `- Confirm the name and spelling with \`search\`/\`get_object_info\` — a wrong name also returns zero here\n`;
       if (typeMismatchSection) {
         output += `\n${typeMismatchSection}`;
       }
@@ -337,6 +370,73 @@ function ftsMethodSearch(db: any, term: string, limit: number, extraColumns?: st
   } catch {
     return [];
   }
+}
+
+/**
+ * The blind spot this fallback cannot see out of, and the one read that covers
+ * the commonest case.
+ *
+ * `source_snippet` is the method's FIRST TEN LINES — a preview, by construction
+ * (xmlParser.ts, enhancedParser.ts: "First 10 lines for preview"). The FTS
+ * fallback matches against those previews, so a call site on line 11 or later of
+ * ANY caller is structurally invisible to it. Measured on the VM:
+ * `find_references(buildAdjustIn)` returned `Total References Found: 0 … Symbol
+ * might be unused` while `WHSWorkExecuteDisplayAdjustIn.displayForm` — hundreds
+ * of lines long — calls it twice; the single "hit" the tool did report on a
+ * sibling method was that method's own declaration, which of course sits in its
+ * own first ten lines.
+ *
+ * Intra-type calls are both the commonest miss and the cheapest to recover: the
+ * declaring type is one indexed lookup away and its source is ONE file. This
+ * reads that file and returns the real call sites, rather than telling the
+ * caller to go and do it by hand.
+ */
+function scanDeclaringTypeSource(symbolIndex: any, methodName: string, limit: number): Reference[] {
+  const found: Reference[] = [];
+  if (!methodName) return found;
+  try {
+    const db = symbolIndex?.getReadDb?.();
+    if (!db) return found;
+    // Declaring types for this member — indexed by name, never a scan. Bounded:
+    // a name shared by many types is exactly the unscoped case, and reading
+    // every one of their files would cost more than the answer is worth.
+    const owners = db
+      .prepare(
+        `SELECT DISTINCT parent_name, file_path FROM symbols
+         WHERE name = ? AND type = 'method' AND parent_name IS NOT NULL AND file_path IS NOT NULL
+         LIMIT 3`,
+      )
+      .all(methodName) as Array<{ parent_name: string; file_path: string }>;
+
+    for (const owner of owners) {
+      let source: string;
+      try {
+        const stat = fs.statSync(owner.file_path);
+        // An AOT class file is source; anything enormous is not worth the read.
+        if (!stat.isFile() || stat.size > 8_000_000) continue;
+        source = fs.readFileSync(owner.file_path, 'utf-8');
+      } catch {
+        continue;
+      }
+      const lines = source.split('\n');
+      for (let i = 0; i < lines.length && found.length < limit; i++) {
+        // `this.m(` and `Type::m(` are calls; `m(` alone would match the
+        // declaration and every same-named member in the file.
+        if (!/\bthis\.(\w+)\(/.test(lines[i]) && !new RegExp(`::${methodName}\\s*\\(`).test(lines[i])) continue;
+        if (!lines[i].includes(methodName + '(')) continue;
+        found.push({
+          file: owner.file_path,
+          model: '',
+          context: lines.slice(Math.max(0, i - 1), Math.min(lines.length, i + 2)).join('\n').trim(),
+          referenceType: 'call',
+          caller: owner.parent_name,
+        });
+      }
+    }
+  } catch {
+    // Best-effort recovery — it must never turn a degraded answer into no answer.
+  }
+  return found;
 }
 
 function findMethodReferences(symbolIndex: any, methodName: string, _scope: string, limit: number): Reference[] {

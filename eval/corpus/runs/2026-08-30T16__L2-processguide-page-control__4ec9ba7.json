@@ -1,0 +1,53 @@
+{
+  "run_id": "2026-08-30T16__L2-processguide-page-control__4ec9ba7",
+  "case_id": "L2-processguide-page-control",
+  "tier": 2,
+  "timestamp": "2026-08-30T16:52:41.605Z",
+  "server_git_sha": "4ec9ba7",
+  "generated_artifacts": [
+    "/Classes/ProdProcessGuidePromptProductionIdPageBuilderCon_Extension"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": null,
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": null,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "VALIDATOR_GAP",
+  "static_gate": {
+    "references": {
+      "passed": false,
+      "unresolved": [
+        "ProcessGuideDataTypeNames (not-visible-from-model, FALSE POSITIVE)",
+        "ProcessGuidePage (not-visible-from-model, FALSE POSITIVE)"
+      ]
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "validate_code(mode=\"references\") reported 2 not-visible-from-model errors for ProcessGuidePage/ProcessGuideDataTypeNames AFTER the ProcessGuide package had been added to fm-mcp Descriptor ModuleReferences on disk. buildModelVisibility() run fresh over the same descriptor returns hasProcessGuide=true, and xppc compiled the class with 0 errors/0 warnings, so the gate verdict and the build disagree (false positive). Cause: src/metadata/modelDescriptor.ts holds the Descriptor answer in a process-lifetime Map (visibilityCache, line 93) that is never invalidated - no code path anywhere in src/ clears it, and update_symbol_index (which does refresh the bridge provider and invalidate the workspace scan cache) does not touch it. Any out-of-band Descriptor edit is therefore invisible for the rest of the server session.",
+  "suggested_fix_area": "src/metadata/modelDescriptor.ts (visibilityCache: mtime-stamp the Descriptor XML or expose clearModelVisibilityCache()), wired into the update_symbol_index cache-refresh path in src/tools/write/updateSymbolIndex (bridge/cache refresh) so a Descriptor edit is picked up without a server restart.",
+  "evidence_refs": [
+    "validate_code(references) response: 2 x not-visible-from-model on ProcessGuidePage / ProcessGuideDataTypeNames, issued after the descriptor edit and after update_symbol_index bridge/cache refresh",
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/Descriptor/fm-mcp.xml contains <d2p1:string>ProcessGuide</d2p1:string> (13 module refs)",
+    "buildModelVisibility(PackagesLocalDirectory, fm-mcp) fresh => model: fm-mcp, hasProcessGuide: true, count: 14",
+    "build_d365fo_project(fm-mcp, fullBuild) => Build succeeded, xppc Errors: 0 Warnings: 0",
+    "run_bp_check(class ProdProcessGuidePromptProductionIdPageBuilderCon_Extension) => Warnings: 0 Errors: 0",
+    "golden first capture: eval/goldens/L2-processguide-page-control/ProdProcessGuidePromptProductionIdPageBuilderCon_Extension.metadata.xml (golden_pending stays true, awaiting human sign-off per AGENT_EVAL_LOOP 6.4)"
+  ]
+}

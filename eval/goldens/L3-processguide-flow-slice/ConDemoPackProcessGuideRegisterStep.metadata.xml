@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoPackProcessGuideRegisterStep</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The <c>ConDemoPackProcessGuideRegisterStep</c> class registers the packed container without
+/// showing a screen to the worker.
+/// </summary>
+[ProcessGuideStepName(classStr(ConDemoPackProcessGuideRegisterStep))]
+public class ConDemoPackProcessGuideRegisterStep extends ProcessGuideStepWithoutPrompt
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>doExecute</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Registers the container the worker scanned on the previous screen.
+    /// </summary>
+    protected void doExecute()
+    {
+        WhsrfPassthrough pass = controller.parmSessionState().parmPass();
+
+        WHSContainerId containerId = pass.lookupStr(ProcessGuideDataTypeNames::ContainerId);
+        WHSContainerTable containerTable = WHSContainerTable::findByContainerId(containerId);
+
+        WHSContainerTable::closeContainer(
+            containerTable.ShipmentId,
+            containerId,
+            pass.lookupNum(ProcessGuideDataTypeNames::Weight),
+            pass.lookupStr(ProcessGuideDataTypeNames::WHSWeightUOM),
+            pass.lookupStr(ProcessGuideDataTypeNames::PutLocationId),
+            false);
+
+        this.addProcessCompletionMessage();
+
+        super();
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

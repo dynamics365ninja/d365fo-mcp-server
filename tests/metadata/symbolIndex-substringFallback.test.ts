@@ -61,8 +61,34 @@ describe('searchSymbols substring fallback', () => {
     expect(index.searchSymbols('   ', 20)).toEqual([]);
   });
 
-  it('does not scan for a query containing whitespace — no name can contain one', () => {
-    expect(scanned(() => index.searchSymbols('procurement category propert', 20))).toBe(false);
+  /**
+   * The whitespace guard was right about the SQL it was guarding and wrong about
+   * the query. `name LIKE '%procurement category propert%'` is indeed guaranteed
+   * empty — but a multi-word query never meant that. It means "a name containing
+   * all of these", which is one AND of LIKEs over the same single scan.
+   *
+   * Measured on the VM: `search(query="ProcessGuide AdjustIn")` returned nothing
+   * while `InventProcessGuideAdjustInController` sat in the index, and an eval
+   * run took the empty answer as proof and targeted an obsolete class instead.
+   */
+  it('answers a multi-word query with names carrying every token', () => {
+    const names = index.searchSymbols('procurement category propert', 20).map(s => s.name);
+
+    expect(names).toContain('ProcurementProductCategoryPropertyEntity');
+  });
+
+  it('requires ALL tokens, not any of them', () => {
+    const names = index.searchSymbols('procurement custtable', 20).map(s => s.name);
+
+    // Each token matches a different symbol; no single name carries both.
+    expect(names).toEqual([]);
+  });
+
+  it('does not scan for a whitespace query with no selective token left', () => {
+    // Tokens under 3 chars are dropped, so this AND would collapse to a
+    // corpus-wide match — exactly what the original guard existed to prevent.
+    expect(scanned(() => index.searchSymbols('a b c', 20))).toBe(false);
+    expect(scanned(() => index.searchSymbols('of  a', 20))).toBe(false);
   });
 
   it('does not scan for a query too short to be a useful substring probe', () => {
