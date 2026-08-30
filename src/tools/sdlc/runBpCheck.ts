@@ -36,9 +36,14 @@ const INDEX_TYPE_TO_ELEMENT_TYPE: Record<string, string> = {
   form:              'form',
   'form-extension':  'formextension',
   enum:              'enum',
-  'enum-extension':  'enumextension',
   edt:               'edt',
-  'edt-extension':   'edtextension',
+  // No enum-extension / edt-extension rows: xppbp has no element type for them.
+  // Its own rejection lists every type it knows — "Class, Table, Form, View, Enum,
+  // ExtendedDataType, …, TableExtension, FormExtension, MenuExtension" — and an
+  // enum or EDT extension is not among them (Phase F, L3-print-mgmt-doctype-extension,
+  // 2026-08-30: 'enumextension' came back "The element type 'enumextension' is
+  // invalid"). Advertising them as translatable sent callers in a circle; see
+  // XPPBP_UNCHECKABLE_EXTENSIONS for the message they get instead.
   view:              'view',
   // xppbp calls a data entity by its AOT element name, DataEntityView — the
   // fall-through spelling `dataentity` is rejected outright. Grounded on a live
@@ -55,6 +60,21 @@ const INDEX_TYPE_TO_ELEMENT_TYPE: Record<string, string> = {
 };
 
 const RESOLVABLE_INDEX_TYPES = Object.keys(INDEX_TYPE_TO_ELEMENT_TYPE);
+
+/**
+ * Extension kinds xppbp cannot check at all (no element type exists for them), keyed
+ * by the squashed token they would otherwise reach xppbp as, with the advice that
+ * actually helps: the values/properties an enum or EDT extension contributes are
+ * validated by the BUILD, and the base object is what xppbp can look at.
+ */
+const XPPBP_UNCHECKABLE_EXTENSIONS: Record<string, string> = {
+  enumextension:
+    'xppbp has no element type for enum extensions, so an enum extension cannot be BP-checked on its own — ' +
+    'its values are validated by the build (xppc); run the check on the BASE enum (objectType "enum") if you need its rules.',
+  edtextension:
+    'xppbp has no element type for EDT extensions, so an EDT extension cannot be BP-checked on its own — ' +
+    'its property modifications are validated by the build (xppc); run the check on the BASE EDT (objectType "edt") if you need its rules.',
+};
 
 /**
  * The verdict line for a run that found nothing, given what has compiled the model.
@@ -114,6 +134,8 @@ export function normalizeElementType(raw: string): string {
 export function describeNonRun(output: string, targetName?: string): string {
   const invalidType = output.match(/The element type '([^']*)' is invalid/i);
   if (invalidType) {
+    const uncheckable = XPPBP_UNCHECKABLE_EXTENSIONS[invalidType[1].toLowerCase().replace(/[-_\s]/g, '')];
+    if (uncheckable) return uncheckable;
     // The old wording said "use the kebab-case objectType the other tools take"
     // — which is what the caller had just passed when the translation table had
     // no row for it, so the advice was circular and unactionable. Name the

@@ -1111,6 +1111,19 @@ describe('normalizeElementType', () => {
 });
 
 describe('describeNonRun', () => {
+  it('explains that xppbp cannot check an enum or EDT extension instead of listing "translatable" types', async () => {
+    // Phase F (L3-print-mgmt-doctype-extension): xppbp's own rejection lists every element
+    // type it knows and neither EnumExtension nor an EDT extension is among them.
+    const { describeNonRun, normalizeElementType } = await import('../../src/tools/sdlc/runBpCheck');
+    const out = "The element type 'enumextension' is invalid. Supported types are Class, Table, Form, View, Enum, ExtendedDataType, TableExtension, FormExtension, MenuExtension.";
+    expect(describeNonRun(out)).toMatch(/has no element type for enum extensions/);
+    expect(describeNonRun(out)).toMatch(/BASE enum/);
+    expect(describeNonRun(out)).not.toMatch(/Translatable objectTypes/);
+    expect(describeNonRun("The element type 'edtextension' is invalid.")).toMatch(/has no element type for EDT extensions/);
+    // The kebab-case token still squashes the same way — the table no longer claims it.
+    expect(normalizeElementType('enum-extension')).toBe('enumextension');
+  });
+
   it('recognises a rejected element type', async () => {
     const { describeNonRun } = await import('../../src/tools/sdlc/runBpCheck');
     const out = "The element type 'table-extension' is invalid. Supported types are Class, Table.";

@@ -5,7 +5,7 @@
  * Generates up to 7+ D365FO objects in a single call:
  *   1. TmpTable(s) (AxTable, TableType=TempDB) — holds report rows; extras for additionalDatasets
  *   2. Contract class (DataContractAttribute) — dialog parameters, optional validate()
- *   3. DP class (SrsReportDataProviderBase/PreProcess) — fills TmpTable, query-based or manual
+ *   3. DP class (SrsReportDataProviderBase/PreProcessTempDB) — fills TmpTable, query-based or manual
  *   4. Controller class (SrsReportRunController/SrsPrintMgmtController) — optional
  *   5. Output menu item (AxMenuItemOutput) — generated together with Controller
  *   6. Report (AxReport + RDL) — multi-dataset, page header, optional GroupedWithTotals tablix
@@ -90,7 +90,13 @@ interface GenerateSmartReportArgs {
   aotQuery?: string;
   /** Table name of the caller record (e.g. "CustTable") — generates parmArgs() pre-fill in Controller prePromptModifyContract() */
   callerTableName?: string;
-  /** When true, DP extends SrsReportDataProviderPreProcess instead of SrsReportDataProviderBase */
+  /**
+   * When true, DP extends SrsReportDataProviderPreProcessTempDB instead of SrsReportDataProviderBase.
+   * The TempDB variant is the one that pairs with the TempDB tmp table this scaffold always emits
+   * (332 of the 370 shipped pre-processed DPs); SrsReportDataProviderPreProcess is the REGULAR-table
+   * (createdTransactionId) variant. xppc accepts either base with either table type — the pairing is a
+   * runtime contract, not a compile-time one (VM-verified 2026-08-30, L4-ssrs-report-preprocess).
+   */
   preProcess?: boolean;
   /** Controller variant: "simple" (SrsReportRunController) or "printMgmt" (SrsPrintMgmtController) */
   controllerType?: 'simple' | 'printMgmt';
@@ -116,7 +122,7 @@ export const generateSmartReportTool: Tool = {
 Generates:
 1. TmpTable(s) (TempDB) — report data rows; extra tables for each additionalDatasets entry
 2. Contract class — dialog parameters with optional auto-generated validate()
-3. DP class (SrsReportDataProviderBase or PreProcess) — with query-based or manual processReport()
+3. DP class (SrsReportDataProviderBase or SrsReportDataProviderPreProcessTempDB) — with query-based or manual processReport()
 4. Controller class (SrsReportRunController or SrsPrintMgmtController) — optional
 5. Output menu item (AxMenuItemOutput) — generated together with Controller
 6. AxReport XML + RDL — multi-dataset, page header (company/title/date), optional GroupedWithTotals tablix
@@ -130,7 +136,7 @@ Strategies:
 - aotQuery: query-based DP using this.parmQuery() instead of manual while-select
 - callerTableName: pre-fill contract from args.record() in prePromptModifyContract()
 - controllerType: "simple" (default) or "printMgmt" (SrsPrintMgmtController)
-- preProcess: true → SrsReportDataProviderPreProcess with preProcess() stub
+- preProcess: true → DP extends SrsReportDataProviderPreProcessTempDB (data staged on the AOS before the render request; processReport() IS that step — no extra hook method exists)
 - uiBuilder: true → <Name>UIBuilder class bound via [SysOperationContractProcessing]
 - additionalDatasets: extra TmpTables + DP getters for multi-dataset reports
 
@@ -223,11 +229,11 @@ Examples:
       },
       preProcess: {
         type: 'boolean',
-        description: 'When true, DP extends SrsReportDataProviderPreProcess instead of SrsReportDataProviderBase. Generates a preProcess() stub and removes [SRSReportParameterAttribute] (contract passed via Controller).',
+        description: 'When true, DP extends SrsReportDataProviderPreProcessTempDB instead of SrsReportDataProviderBase — a pre-processed report stages its data on the AOS before the SSRS render request, which is how a DP escapes the ~10-minute interactive timeout. The TempDB base matches the TempDB tmp table this scaffold emits; [SRSReportParameterAttribute] stays (every shipped pre-processed DP carries it) and there is no extra hook method — processReport() is the pre-processing step.',
       },
       controllerType: {
         type: 'string',
-        description: '"simple" (default — SrsReportRunController) or "printMgmt" (SrsPrintMgmtController with parmPrintMgmtDocType). Only relevant when generateController=true.',
+        description: '"simple" (default — SrsReportRunController) or "printMgmt" (SrsPrintMgmtController: the abstract runPrintMgmt() is implemented for you and initPrintMgmtReportRun() constructs the PrintMgmtReportRun — replace its hierarchy/node/document-type placeholders). Only relevant when generateController=true.',
       },
       uiBuilder: {
         type: 'boolean',
@@ -723,20 +729,25 @@ export async function handleGenerateSmartReport(
   const contractVarName = 'contract';
 
   // Determine base class
-  const dpBaseClass = preProcess ? 'SrsReportDataProviderPreProcess' : 'SrsReportDataProviderBase';
+  // PreProcessTempDB, not PreProcess: the tmp table above is TempDB, and that is the base
+  // the shipped code pairs it with (332 of 370 pre-processed DPs). Phase F built both
+  // pairings on the VM — xppc accepts either, so the compiler is no guard here.
+  const dpBaseClass = preProcess ? 'SrsReportDataProviderPreProcessTempDB' : 'SrsReportDataProviderBase';
 
   // Class-level attributes
-  // PreProcess: no [SRSReportParameterAttribute] — contract is passed via Controller
+  // [SRSReportParameterAttribute] on EVERY variant: a pre-processed DP still binds its
+  // contract this way (AssetCardDP, AgreementFollowUpDP, AgreementConfirmationDP …) —
+  // dropping it "because the controller passes the contract" left parmDataContract() empty.
   // aotQuery: add [SRSReportQueryAttribute]
   const dpAttrLines: string[] = [];
-  if (!preProcess) dpAttrLines.push(`    SRSReportParameterAttribute(classStr(${contractClassName}))`);
+  dpAttrLines.push(`    SRSReportParameterAttribute(classStr(${contractClassName}))`);
   if (aotQuery)   dpAttrLines.push(`    SRSReportQueryAttribute(queryStr(${aotQuery}))`);
   const dpClassAttr = dpAttrLines.length > 0
     ? `[\n${dpAttrLines.join(',\n')}\n]`
     : '';
 
-  // Contract parameter fetch (skip for PreProcess — contract accessed differently)
-  const contractFetchLines = (contractParms.length > 0 && !preProcess)
+  // Contract parameter fetch — identical for the pre-processed variant
+  const contractFetchLines = (contractParms.length > 0)
     ? [
         `        ${contractClassName} ${contractVarName} = this.parmDataContract() as ${contractClassName};`,
         ...contractParms.map(p => {
@@ -797,18 +808,11 @@ export async function handleGenerateSmartReport(
     ].join('\n');
   }
 
-  // preProcess() stub (Improvement 6)
-  const preProcessMethodLines = preProcess ? [
-    ``,
-    `    /// <summary>`,
-    `    /// Called before the report dialog is shown. Use for heavy pre-processing.`,
-    `    /// </summary>`,
-    `    public void preProcess()`,
-    `    {`,
-    `        // TODO: Implement pre-processing logic (called BEFORE the report dialog).`,
-    `        // Prepare data, validate prerequisites, or set session-scoped variables.`,
-    `    }`,
-  ] : [];
+  // No preProcess() stub: the framework has no such hook. SrsReportDataProviderPreProcessInterface
+  // declares only cleanUp/initialize/parm* members, and the only "preProcess" method on a DP class
+  // in the whole AOT was the one this scaffold used to invent. processReport() runs on the AOS
+  // before the render request — it IS the pre-processing step (Phase F, 2026-08-30).
+  const preProcessMethodLines: string[] = [];
 
   // Additional member variable declarations for extra datasets
   const extraDpMembers = resolvedExtraDatasets
@@ -885,7 +889,12 @@ export async function handleGenerateSmartReport(
     const isPrintMgmt = controllerType === 'printMgmt';
     const ctrlBaseClass = isPrintMgmt ? 'SrsPrintMgmtController' : 'SrsReportRunController';
 
-    // Build main() — differs between simple and printMgmt
+    // Build main() — differs between simple and printMgmt.
+    // printMgmt: SrsPrintMgmtController has NO parmPrintMgmtDocType (the earlier scaffold
+    // invented it — xppc: "does not contain a definition for method 'parmPrintMgmtDocType'");
+    // the document type is fixed in initPrintMgmtReportRun() below, the way every shipped
+    // direct subclass does it (BankPaymAdviceCustController, CustAccountStatementController_FR,
+    // TMSLoadTenderController …). Phase F, L3-print-mgmt-doctype-extension, 2026-08-30.
     const mainMethod = isPrintMgmt ? [
       `    /// <summary>`,
       `    /// Entry point. Creates a print-management controller and starts the report.`,
@@ -895,8 +904,6 @@ export async function handleGenerateSmartReport(
       `    {`,
       `        ${controllerClassName} controller = new ${controllerClassName}();`,
       `        controller.parmArgs(_args);`,
-      `        // TODO: Replace SalesOrderConfirmation with the correct PrintMgmtDocumentType`,
-      `        controller.parmPrintMgmtDocType(PrintMgmtDocumentType::SalesOrderConfirmation);`,
       `        controller.parmReportName(ssrsReportStr(${finalName}, Report));`,
       `        controller.startOperation();`,
       `    }`,
@@ -956,6 +963,40 @@ export async function handleGenerateSmartReport(
       `    }`,
     ].join('\n');
 
+    // SrsPrintMgmtController is abstract on runPrintMgmt() — a subclass that does not
+    // implement it does not compile. initPrintMgmtReportRun() is where the shipped
+    // subclasses construct the PrintMgmtReportRun for their hierarchy/node/document type
+    // and hand the controller to it before super(); runPrintMgmt() loads the settings
+    // for the record being printed and outputs. The placeholders are the ones to replace.
+    const printMgmtMethods = isPrintMgmt ? [
+      ``,
+      `    /// <summary>`,
+      `    /// Creates the print-management run for this document type and hands it the controller.`,
+      `    /// </summary>`,
+      `    protected void initPrintMgmtReportRun()`,
+      `    {`,
+      `        // TODO: replace the hierarchy, node and document type with the ones this document belongs to`,
+      `        printMgmtReportRun = PrintMgmtReportRun::construct(`,
+      `            PrintMgmtHierarchyType::Sales,`,
+      `            PrintMgmtNodeType::SalesTable,`,
+      `            PrintMgmtDocumentType::SalesOrderConfirmation);`,
+      `        printMgmtReportRun.parmReportRunController(this);`,
+      ``,
+      `        super();`,
+      `    }`,
+      ``,
+      `    /// <summary>`,
+      `    /// Loads the print-management settings for the record being printed and outputs the report.`,
+      `    /// </summary>`,
+      `    protected void runPrintMgmt()`,
+      `    {`,
+      `        // TODO: pass the query buffer, the referenced buffer and the language the settings are resolved for`,
+      `        printMgmtReportRun.load(this.parmArgs().record(), this.parmArgs().record(), Global::currentUserLanguage());`,
+      ``,
+      `        this.outputReports();`,
+      `    }`,
+    ].join('\n') : '';
+
     const controllerSourceCode = [
       `/// <summary>`,
       `/// Controller for the ${reportCaption} report.`,
@@ -969,6 +1010,7 @@ export async function handleGenerateSmartReport(
       mainMethod,
       ``,
       prePromptMethod,
+      printMgmtMethods,
     ].join('\n');
 
     const controllerXml = XmlTemplateGenerator.generateAxClassXml(

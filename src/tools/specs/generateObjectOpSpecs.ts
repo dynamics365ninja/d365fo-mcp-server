@@ -130,11 +130,11 @@ export const GENERATE_OBJECT_PARAM_SPECS: Record<string, { type: string; descrip
   },
   preProcess: {
     type: 'boolean',
-    description: 'DP extends SrsReportDataProviderPreProcess (long-running reports; preProcess() stub, contract via Controller instead of [SRSReportParameterAttribute]).',
+    description: 'DP extends SrsReportDataProviderPreProcessTempDB (long-running reports: data staged on the AOS before the render request; TempDB pairing, [SRSReportParameterAttribute] kept, no extra hook method — processReport() is the pre-processing step).',
   },
   controllerType: {
     type: 'string',
-    description: '"simple" (default — SrsReportRunController) or "printMgmt" (SrsPrintMgmtController + parmPrintMgmtDocType placeholder).',
+    description: '"simple" (default — SrsReportRunController) or "printMgmt" (SrsPrintMgmtController with the abstract runPrintMgmt() implemented and an initPrintMgmtReportRun() whose PrintMgmtReportRun::construct(hierarchy, node, documentType) placeholders you replace — there is no parmPrintMgmtDocType).',
   },
   uiBuilder: {
     type: 'boolean',
