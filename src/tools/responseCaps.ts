@@ -43,6 +43,14 @@ const TOOL_CAP_SIZES: Record<string, number | 'uncapped'> = {
   extension_info:                   6000,
   prepare:                          12000,
   get_knowledge:                    16000,
+  // A pattern recipe is a code skeleton, and half a skeleton is not a smaller
+  // answer — it is a wrong one. Measured live: the mobile-app `processguide-flow`
+  // spec renders 9,328 chars and lost 4,406 of them to the 5,000 default, taking
+  // the addActionControls half and the whole silent-step skeleton with it; the
+  // agent then rebuilt both from Microsoft source, at several round trips each.
+  // 12,000 clears the largest recipe in the catalog (next: app-step-identity
+  // 3,853, report PrintMgmtFormLetter 3,051) and still bounds a runaway render.
+  object_patterns:                  12000,
   // Default output is ~1 KB. The higher cap exists for diagnostics=true, whose
   // whole point is the full dump — truncating that at 5000 hid the stdio
   // handshake section behind the project table.
@@ -81,6 +89,10 @@ const TRUNCATION_ADVICE: Record<string, string> = {
     'search has no paging parameters. Narrow it instead: pass `type` to scope to one object kind ' +
     '(also far faster), lower `limit`, or make the query more specific. `queries[]` runs several ' +
     'narrow searches in one call rather than one broad one.',
+  // object_patterns pages by asking for ONE recipe, not by offset.
+  object_patterns:
+    'Ask for one thing at a time: pass `pattern` to get a single recipe instead of the domain index, ' +
+    'and `domain` to stay in one toolkit. For form work, `action="spec"` with one pattern is the narrow call.',
   security_info:
     'Narrow it: one artifact per call (mode="artifact", name, artifactType), ' +
     'includeChain=false to skip the hierarchy walk, or mode="coverage" with a single objectName.',
