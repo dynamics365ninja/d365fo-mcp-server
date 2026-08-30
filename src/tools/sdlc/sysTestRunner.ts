@@ -1,4 +1,5 @@
 import { execFile } from 'child_process';
+import { parseSysTestXml } from '../../eval/oracle/systest.js';
 import util from 'util';
 import path from 'path';
 import os from 'os';
@@ -119,12 +120,38 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
     }
 
     const output = [stdout, stderr, xmlResult].filter(Boolean).join('\n').trim();
-    const hasFailed = /failed|error|exception/i.test(output);
-    const passed = /passed|success/i.test(output);
+
+    // The XML document the runner writes is authoritative and per METHOD. The
+    // regex fallback below reads the combined stdout, where the word "error" in a
+    // test name is enough to report a green run as failed.
+    const outcomes = parseSysTestXml(xmlResult);
+    const failedOutcomes = outcomes.filter(o => !o.passed);
+    const hasFailed = outcomes.length > 0
+      ? failedOutcomes.length > 0
+      : /failed|error|exception/i.test(output);
+    const passed = outcomes.length > 0
+      ? failedOutcomes.length === 0
+      : /passed|success/i.test(output);
 
     const status = hasFailed ? '❌ Tests FAILED' : passed ? '✅ Tests passed' : '⚠️ Tests completed (check output)';
     const methodNote = testMethod && runnerPath === sysTestConsolePath
       ? `\n⚠️ testMethod="${testMethod}" was requested but SysTestConsole.exe has no per-method filter — the whole class ran.`
+      : '';
+
+    // Per-method lines first: which test failed and why is the answer being asked
+    // for, and it is otherwise buried in the raw document.
+    const perMethod = outcomes.length > 0
+      ? '\n\n' + outcomes
+        .map(o => `${o.passed ? '✅' : '❌'} ${o.name}${o.message ? ` — ${o.message}` : ''}`)
+        .join('\n') +
+        `\n\n${outcomes.length - failedOutcomes.length}/${outcomes.length} passed.`
+      : '';
+
+    // A test method the caller asked about that never appears in the results is
+    // worth saying out loud: a misspelt name otherwise reads as a clean run.
+    const focus = testMethod?.trim();
+    const focusNote = focus && outcomes.length > 0 && !outcomes.some(o => o.name.toLowerCase().includes(focus.toLowerCase()))
+      ? `\n\n⚠️ No test named "${focus}" ran. Check the spelling against the list above.`
       : '';
 
     return {
@@ -134,6 +161,8 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
           (testMethod && runnerPath === sysTestRunnerPath ? `::${testMethod}` : '') +
           `\nModel: ${resolvedModelName}` +
           methodNote +
+          perMethod +
+          focusNote +
           `\n\n${output || '(no output)'}`
       }]
     };

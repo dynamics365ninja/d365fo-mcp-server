@@ -1,0 +1,72 @@
+
+/// <summary>
+/// Unit tests for <c>ConScaffoldTarget</c>.
+/// </summary>
+/// <remarks>
+/// Every test method runs inside its own transaction, which the framework rolls
+/// back afterwards — created records need no cleanup.
+/// </remarks>
+[SysTestTarget(classStr(ConScaffoldTarget), UtilElementType::Class)]
+class ConScaffoldTargetTest extends SysTestCase
+{
+    /// <summary>
+    /// Runs before EACH test method. setUpTestCase() runs once for the class.
+    /// </summary>
+    public void setUp()
+    {
+        super();
+
+        // TODO: arrange shared fixtures here, or delete this method.
+    }
+
+    /// <summary>
+    /// TODO: state the behaviour this pins down, in one sentence.
+    /// </summary>
+    [SysTestMethod]
+    public void testCalculateDiscount()
+    {
+        // Arrange
+        ConScaffoldTarget instance = new ConScaffoldTarget();
+
+        // Act
+        // TODO: call ConScaffoldTarget.calculateDiscount(...) and capture the result.
+
+        // Assert
+        // TODO: replace with the assertion this test exists for, e.g.
+        //   this.assertEquals(expected, actual, 'what should hold');
+        this.fail('testCalculateDiscount is not implemented yet.');
+    }
+
+    /// <summary>
+    /// TODO: state the behaviour this pins down, in one sentence.
+    /// </summary>
+    [SysTestMethod]
+    public void testValidate()
+    {
+        // Arrange
+        ConScaffoldTarget instance = new ConScaffoldTarget();
+
+        // Act
+        // TODO: call ConScaffoldTarget.validate(...) and capture the result.
+
+        // Assert
+        // TODO: replace with the assertion this test exists for, e.g.
+        //   this.assertEquals(expected, actual, 'what should hold');
+        this.fail('testValidate is not implemented yet.');
+    }
+
+    /// <summary>
+    /// Expected exceptions are DECLARED, not asserted: there is no
+    /// assertExpectedException in X++.
+    /// </summary>
+    [SysTestMethod]
+    public void testRejectsInvalidInput()
+    {
+        ConScaffoldTarget instance = new ConScaffoldTarget();
+
+        this.parmExceptionExpected(true);
+
+        // TODO: call the method with input that must be rejected.
+        this.fail('testRejectsInvalidInput is not implemented yet.');
+    }
+}

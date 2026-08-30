@@ -71,12 +71,8 @@ export const labelsTool = {
           items: {
             type: 'object',
             properties: {
-              labelId: { type: 'string', description: 'Label ID for this entry — alphanumeric, no model prefix.' },
-              translations: {
-                type: 'array',
-                description: 'Same entries as the top-level translations[].',
-                items: { type: 'object' },
-              },
+              labelId: { type: 'string' },
+              translations: { type: 'array', items: { type: 'object' } },
             },
             required: ['labelId', 'translations'],
           },
@@ -88,8 +84,8 @@ export const labelsTool = {
             type: 'object',
             properties: {
               language: { type: 'string', description: 'Locale code, e.g. en-US, cs, de, sk' },
-              text: { type: 'string', description: 'Label text' },
-              comment: { type: 'string', description: 'Developer comment (optional)' },
+              text: { type: 'string' },
+              comment: { type: 'string' },
             },
             required: ['language', 'text'],
           },
@@ -100,7 +96,7 @@ export const labelsTool = {
         },
         newLabelId: {
           type: 'string',
-          description: '[rename] REQUIRED. New label ID — must be alphanumeric, no spaces.',
+          description: '[rename] REQUIRED. New label ID.',
         },
         dryRun: {
           type: 'boolean',

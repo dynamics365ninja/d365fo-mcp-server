@@ -18,7 +18,7 @@ const CodeGenArgsSchema = z.object({
            'dialog-box', 'dimension-controller', 'number-seq-handler',
            'display-menu-controller', 'data-entity-staging', 'service-class-ais',
            'form-datasource-extension', 'form-control-extension', 'map-extension',
-           'business-event', 'custom-telemetry', 'feature-class',
+           'business-event', 'custom-telemetry', 'feature-class', 'systest',
            'composite-entity', 'custom-service', 'er-custom-function'])
     .describe('Code pattern to generate'),
   name: z.string().describe(
@@ -39,6 +39,12 @@ const CodeGenArgsSchema = z.object({
       'For event-handler pattern: base class or table name whose events to handle. ' +
       'For form-datasource-extension: data source name within the form (e.g. "CustTable"). Defaults to form name if omitted. ' +
       'For form-control-extension: control name within the form (e.g. "AccountNum", "CustAccount").'
+    ),
+  testMethods: z.array(z.string()).optional()
+    .describe(
+      'For the systest pattern: the target class methods to write a test for. ' +
+      'One [SysTestMethod] per entry, each failing until its assertion is written. ' +
+      'Read them from get_object_info(objectType=\"class\", options:{members:\"names\"}).'
     ),
   targetObject: z.string().optional()
     .describe('For menu-item pattern: target form/class/report name'),
@@ -465,6 +471,88 @@ final class ${className}
     //   {
     //       return this.SomeMapField;
     //   }
+}`;
+}
+
+/**
+ * SysTest case for a target class — the red half of a red/green cycle.
+ *
+ * Every generated test FAILS on purpose (`this.fail(...)`): a test that passes
+ * before the behaviour exists proves nothing, and the framework gives no other
+ * signal that the developer has not written the assertion yet.
+ *
+ * Only API the platform actually has is emitted (read from SysTestCase /
+ * SysTestAssert in ApplicationFoundation):
+ *  - the asserts come from SysTestAssert, which SysTestCase extends;
+ *  - an expected exception is DECLARED with parmExceptionExpected(true) before
+ *    the call — there is no assertExpectedException in X++;
+ *  - SysTestTarget's second argument is a utilElementType, not a method name
+ *    (xppc: "Cannot implicitly convert from type 'str' to type
+ *    'Enumeration(utilElementType)'");
+ *  - rollback is the framework default, so there is no attribute to add and no
+ *    cleanup to write.
+ */
+function sysTestTemplate(targetClass: string, methods: string[]): string {
+  const testFor = (method: string): string => {
+    const cap = method.charAt(0).toUpperCase() + method.slice(1);
+    return `
+    /// <summary>
+    /// TODO: state the behaviour this pins down, in one sentence.
+    /// </summary>
+    [SysTestMethod]
+    public void test${cap}()
+    {
+        // Arrange
+        ${targetClass} instance = new ${targetClass}();
+
+        // Act
+        // TODO: call ${targetClass}.${method}(...) and capture the result.
+
+        // Assert
+        // TODO: replace with the assertion this test exists for, e.g.
+        //   this.assertEquals(expected, actual, 'what should hold');
+        this.fail('test${cap} is not implemented yet.');
+    }
+`;
+  };
+
+  const bodies = (methods.length > 0 ? methods : ['behaviour']).map(testFor).join('');
+
+  return `
+/// <summary>
+/// Unit tests for <c>${targetClass}</c>.
+/// </summary>
+/// <remarks>
+/// Every test method runs inside its own transaction, which the framework rolls
+/// back afterwards — created records need no cleanup.
+/// </remarks>
+[SysTestTarget(classStr(${targetClass}), UtilElementType::Class)]
+class ${targetClass}Test extends SysTestCase
+{
+    /// <summary>
+    /// Runs before EACH test method. setUpTestCase() runs once for the class.
+    /// </summary>
+    public void setUp()
+    {
+        super();
+
+        // TODO: arrange shared fixtures here, or delete this method.
+    }
+${bodies}
+    /// <summary>
+    /// Expected exceptions are DECLARED, not asserted: there is no
+    /// assertExpectedException in X++.
+    /// </summary>
+    [SysTestMethod]
+    public void testRejectsInvalidInput()
+    {
+        ${targetClass} instance = new ${targetClass}();
+
+        this.parmExceptionExpected(true);
+
+        // TODO: call the method with input that must be rejected.
+        this.fail('testRejectsInvalidInput is not implemented yet.');
+    }
 }`;
 }
 
@@ -1943,6 +2031,27 @@ export async function codeGenTool(request: CallToolRequest) {
             : `⚠️ **No prefix resolved** — set \`EXTENSION_PREFIX\` env var or pass \`modelName\` argument.\n  Generated bare name without prefix infix (e.g. \`${baseName}_Extension\`) which is **not MS-compliant**.`;
         }
       }
+    } else if (args.pattern === 'systest') {
+      // name is the TARGET class; the test class is named after it. No prefix is
+      // applied — the target already carries one, and <Target>Test is the naming
+      // the platform's own tests use.
+      const targetClass = args.name.trim();
+      const methods = (args.testMethods ?? []).map(m => m.trim()).filter(Boolean);
+      code = sysTestTemplate(targetClass, methods);
+      displayName = `${targetClass}Test`;
+      namingNote =
+        `📌 **Generated:** \`${targetClass}Test extends SysTestCase\` — one [SysTestMethod] per ` +
+        `target method${methods.length ? ` (${methods.join(', ')})` : ''}, plus the expected-exception shape.\n\n` +
+        `🔴 **Every test fails as written.** That is the point: run it first and watch it fail, so a ` +
+        `later pass means the behaviour arrived rather than the assertion being empty. Replace each ` +
+        `\`this.fail(...)\` with the assertion the test exists for.\n\n` +
+        `**The cycle:** \`d365fo_file(action="create", objectType="class")\` → ` +
+        `\`build_d365fo_project\` (must COMPILE — red means a failing assertion, not a broken file) → ` +
+        `\`run_systest_class(className="${targetClass}Test")\` (expect failures) → implement → build → ` +
+        `run again (expect green) → \`run_bp_check\`.\n\n` +
+        `⚠️ The test model must reference **TestEssentials**; [SysTestCategory], [SysTestOwner] and ` +
+        `[SysTestPriority] live there, while [SysTestMethod] and [SysTestCheckInTest] are in ` +
+        `ApplicationFoundation. Details: \`get_knowledge(topic="unit-testing")\`.`;
     } else if (args.pattern === 'sysoperation') {
       // sysoperation is handled separately so we can pass the optional serviceMethod param
       let finalName = applyObjectPrefix(args.name, prefix, resolvedModelName || undefined);

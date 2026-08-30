@@ -1351,6 +1351,9 @@ while select crosscompany : companies
       'Naming convention: <ClassName>Test (e.g. MyServiceTest) — matches the repo systests and the testing topic; avoid mixing the <ClassName>_Test variant in the same model',
       'Attributes: [SysTestMethod] is optional when the method name starts with "test", and required otherwise',
       'Run tests: Visual Studio → Test → Run All Tests, or SysTestSuite.run() in a batch job',
+      'RED FIRST: write the test before the behaviour and RUN it — a test that passes on its first run has proven nothing about the assertion inside it. The scaffold generate_object(mode="pattern", pattern="systest", name=<TargetClass>) emits exactly that: one [SysTestMethod] per target method, each ending in this.fail(...) until you write the assertion',
+      'The loop the server supports: prepare(mode="test", objectName=<TargetClass>) → generate_object(pattern="systest") → d365fo_file(action="create") → build_d365fo_project (must COMPILE — red means a failing assertion, not a broken file) → run_systest_class (expect failures) → implement → build → run again (expect green) → run_bp_check',
+      'run_systest_class reports per METHOD: it parses the /xml: document the runner writes (SysTestListenerXML: test-case/@name, @success and a failure/message child), so a green run is not mis-read as failed because a method is called testErrorHandling',
     ],
     examples: [
       {

@@ -16,9 +16,10 @@ import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
 import { prepareChangeTool } from './prepareChange.js';
 import { prepareCreateTool } from './prepareCreate.js';
+import { prepareTestTool } from './prepareTest.js';
 import { getConfigManager } from '../../utils/configManager.js';
 
-export const PREPARE_MODES = ['change', 'create'] as const;
+export const PREPARE_MODES = ['change', 'create', 'test'] as const;
 export type PrepareMode = (typeof PREPARE_MODES)[number];
 
 const PrepareArgsSchema = z
@@ -28,7 +29,8 @@ const PrepareArgsSchema = z
       .default('change')
       .describe(
         'change (default) → aggregate context for extending/modifying an existing object; ' +
-          'create → aggregate context for a brand-new object.',
+          'create → aggregate context for a brand-new object; ' +
+          'test → aggregate context for writing a SysTest for an existing class.',
       ),
   })
   .passthrough();
@@ -164,7 +166,7 @@ export async function prepareTool(request: CallToolRequest, context: XppServerCo
     const modeMsg =
       modeArg === undefined
         ? `❌ prepare: missing required parameter "mode".\n\nUsage:\n  prepare(mode="change", objectName="...", methodName="...")  — extend/modify an existing object\n  prepare(mode="create", objectName="...", objectType="...")   — plan a new object`
-        : `❌ prepare: invalid mode "${modeArg}". Valid values: "change", "create".\n\n  prepare(mode="change", objectName="...", methodName="...")  — extend/modify an existing object\n  prepare(mode="create", objectName="...", objectType="...")   — plan a new object`;
+        : `❌ prepare: invalid mode "${modeArg}". Valid values: "change", "create", "test".\n\n  prepare(mode="change", objectName="...", methodName="...")  — extend/modify an existing object\n  prepare(mode="create", objectName="...", objectType="...")   — plan a new object`;
     return {
       content: [{ type: 'text', text: modeMsg }],
       isError: true,
@@ -202,7 +204,9 @@ export async function prepareTool(request: CallToolRequest, context: XppServerCo
   const result =
     mode === 'create'
       ? await prepareCreateTool(subRequest('prepare_create', rest), context)
-      : await prepareChangeTool(subRequest('prepare_change', rest), context);
+      : mode === 'test'
+        ? await prepareTestTool(subRequest('prepare_test', rest), context)
+        : await prepareChangeTool(subRequest('prepare_change', rest), context);
 
   // Only a call that actually issued a token is worth suppressing: an error reply has
   // no context to reuse, and repeating it is how the caller retries after fixing args.

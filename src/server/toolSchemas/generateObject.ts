@@ -48,8 +48,9 @@ export const generateObjectTool = {
             'dialog-box', 'dimension-controller', 'number-seq-handler',
             'display-menu-controller', 'data-entity-staging', 'service-class-ais',
             'form-datasource-extension', 'form-control-extension', 'map-extension',
+            'systest',
           ],
-          description: '[pattern] REQUIRED. CoC skeletons: class/table-extension, form-handler, form-datasource-extension, form-control-extension, map-extension. ssrs-report-full = Contract+DP+Controller; service-class-ais = CRUD service + contract.',
+          description: '[pattern] REQUIRED. CoC skeletons: class/table-extension, form-handler, form-datasource-extension, form-control-extension, map-extension. ssrs-report-full = Contract+DP+Controller; service-class-ais = CRUD service + contract; systest = failing SysTestCase for name (TDD red).',
         },
         objectType: {
           type: 'string',

@@ -52,6 +52,13 @@ export const GENERATE_OBJECT_PARAM_SPECS: Record<string, { type: string; descrip
     type: 'string',
     description: 'For the menu-item and security-privilege patterns: target form/class/report name.',
   },
+  testMethods: {
+    type: 'string[]',
+    description:
+      'systest: target-class methods to write a test for — one [SysTestMethod] each. ' +
+      'Every generated test fails until its assertion is written, which is what makes the ' +
+      'first run meaningful. Read the method names from get_object_info(objectType="class").',
+  },
   serviceMethod: {
     type: 'string',
     description: 'sysoperation: service method the Controller calls (default "process").',
@@ -188,7 +195,7 @@ export interface GenerateObjectModeSpec {
 export const GENERATE_OBJECT_MODE_SPECS: Record<string, GenerateObjectModeSpec> = {
   pattern: {
     required: ['name', 'pattern'],
-    optional: ['menuItemType', 'baseName', 'targetObject', 'serviceMethod', 'modelName'],
+    optional: ['menuItemType', 'baseName', 'targetObject', 'serviceMethod', 'testMethods', 'modelName'],
     note:
       'Text only, no write. Call analyze_code(mode="patterns") first, then generate_object(mode="pattern"), ' +
       'then d365fo_file(action="create") to write the result.',
