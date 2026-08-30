@@ -217,3 +217,38 @@ describe('run_systest_class — the platform binding mismatch that stops a run',
     expect(capturedArgs).toContain('/unattended');
   });
 });
+
+describe('run_systest_class — a MISSING assembly is not the same fault as a wrong version', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    cfgEnsureLoaded.mockResolvedValue(undefined);
+    cfgGetModelName.mockReturnValue('Contoso');
+    cfgGetPackagePath.mockReturnValue(PKG);
+    allowPaths([SYSTEST_CONSOLE]);
+  });
+
+  it('tells the caller to copy the file, not to edit a redirect', async () => {
+    // Second fault seen on this VM once the redirect was fixed: the assembly the
+    // (correct) redirect names is simply not in Bin.
+    const err = Object.assign(new Error('Command failed'), {
+      stdout: 'Executing test(s) ....\n\nSystem.IO.FileNotFoundException: Could not load file or assembly ' +
+        "'System.ValueTuple, Version=4.0.3.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51' or one of " +
+        'its dependencies. The system cannot find the file specified.',
+      stderr: '',
+    });
+    execFileMock.mockImplementation((_f: string, _a: string[], _o: any, cb: Function) => {
+      cb(err);
+    });
+
+    const result = await sysTestRunnerTool({ className: 'ContosoMyTest' }, {});
+
+    expect(result.isError).toBe(true);
+    const text = result.content[0].text;
+    expect(text).toContain('System.ValueTuple');
+    expect(text).toContain('is not in PackagesLocalDirectory\\Bin at all');
+    expect(text).toMatch(/Get-ChildItem/);
+    // The redirect advice belongs to the other fault and must not appear here.
+    expect(text).not.toMatch(/point the redirect at it/);
+    expect(text).not.toContain('Tests FAILED');
+  });
+});

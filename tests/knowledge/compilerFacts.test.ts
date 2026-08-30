@@ -402,3 +402,57 @@ describe('report-extension knowledge names only compiler-verified shapes', () =>
     expect(text).toMatch(/design rule, not something the build will enforce/);
   });
 });
+
+describe('the three entries written from probe evidence, not from memory', () => {
+  const rulesText = (id: string) => KNOWLEDGE_BASE.find(e => e.id === id)!.rules.join('\n');
+
+  it('args-object names only accessors a probe compiled', () => {
+    const text = rulesText('args-object');
+    for (const m of ['record()', 'dataset()', 'caller()', 'parmEnum()', 'parmEnumType()',
+      'parmObject()', 'menuItemName()', 'menuItemType()', 'openMode()', 'lookupField()',
+      'lookupValue()']) {
+      expect(text, m).toContain(m);
+    }
+    // dataset() before record() is the rule the entry exists for.
+    expect(text).toMatch(/BEFORE trusting it/);
+  });
+
+  it('display-edit-methods states the modifier conflict the compiler reports', () => {
+    const text = rulesText('display-edit-methods');
+    expect(text).toContain("Conflicting modifiers 'static display'");
+    expect(text).toContain('SysClientCacheDataMethodAttribute(true)');
+    expect(text).toMatch(/ONCE PER VISIBLE ROW/);
+  });
+
+  it('sysoperation-ui-attributes lists attributes that compile together', () => {
+    const text = rulesText('sysoperation-ui-attributes');
+    for (const a of ['SysOperationGroupAttribute', 'SysOperationGroupMemberAttribute',
+      'SysOperationDisplayOrderAttribute', 'SysOperationLabelAttribute',
+      'SysOperationHelpTextAttribute', 'SysOperationControlVisibilityAttribute',
+      'SysOperationInitializable']) {
+      expect(text, a).toContain(a);
+    }
+    // DisplayOrder takes a string; getting this wrong is a compile error.
+    expect(text).toMatch(/a STRING, not an int/);
+    // And the deprecation the compiler warns about.
+    expect(text).toMatch(/SysEntryPointAttribute.*obsolete/);
+  });
+
+  it('the SysOperation scaffold no longer emits the deprecated entry-point attribute', async () => {
+    const { codeGenTool } = await import('../../src/tools/smart/codeGen.js');
+    const res = await codeGenTool(
+      { params: { arguments: { pattern: 'sysoperation', name: 'ConPosting' } } } as never,
+      {} as never,
+    ) as { content: Array<{ text: string }> };
+    expect(res.content[0].text).not.toContain('SysEntryPointAttribute');
+  });
+
+  it('the AIS service scaffold does not emit it either', async () => {
+    const { codeGenTool } = await import('../../src/tools/smart/codeGen.js');
+    const res = await codeGenTool(
+      { params: { arguments: { pattern: 'service-class-ais', name: 'ConOrder' } } } as never,
+      {} as never,
+    ) as { content: Array<{ text: string }> };
+    expect(res.content[0].text).not.toContain('SysEntryPointAttribute');
+  });
+});

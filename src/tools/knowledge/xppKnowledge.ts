@@ -2608,7 +2608,7 @@ public void post()
       'Class default access = public. Removing "public" does NOT make a class non-public. Use internal, final, abstract deliberately',
       'Instance fields default = protected — NEVER make them public; expose via parmFoo() accessors',
       'Constructor pattern: new() is protected, public static construct() factory; init() for post-construction setup',
-      'Method modifier order: [edit|display] [public|protected|private|internal] [static|abstract|final]. The compiler is looser than the convention — `internal protected` and `display static` also compile — but keep to this order so the AOT diff stays readable',
+      'Method modifier order: [edit|display] [public|protected|private|internal] [static|abstract|final]. `internal protected` compiles in either order, but display/edit and static are MUTUALLY EXCLUSIVE — "display static Name m()" is "Conflicting modifiers \'static display\'" (xppc-verified). Keep to the documented order so the AOT diff stays readable',
       'Combined access modifiers: "protected internal" COMPILES (xppc-verified); "private protected" does NOT — xppc rejects it as "Conflicting modifiers"',
       'Override visibility: must be at least as accessible as the base method. private is not overridable',
       'Optional parameters must come after required ones; all preceding parameters must be supplied. Use prmIsDefault(_x) to detect "was this passed"',
@@ -4154,6 +4154,175 @@ str designRef  = ssrsReportStr(MyBonusReport, Report);`,
       },
     ],
     related: ['select-statement', 'ssrs-reports', 'labels', 'reflection-dict', 'runtime-functions'],
+  },
+
+  // ── Args: what one object gets when it is opened from another ───────────
+  {
+    id: 'args-object',
+    title: 'Args — the record, caller and parameters an object is opened with',
+    keywords: ['args', 'args.record', 'args.caller', 'parmenum', 'parmobject', 'menuitemname',
+               'openmode', 'lookupfield', 'lookupvalue', 'menufunction', 'element.args',
+               'caller', 'pass parameter', 'open form with record', 'dataset'],
+    summary:
+      'Every menu item, form and report is entered through an Args instance: the record it was ' +
+      'opened on, who opened it, and any extra parameter. Reading it wrongly is how a form silently ' +
+      'opens on the wrong record, so each accessor below was checked against the compiler.',
+    rules: [
+      'Reach it from a form with element.args(), and from a class with the Args parameter of main(Args _args)',
+      'The record: _args.record() returns the caller\'s cursor as a table buffer — assign it to a typed buffer, and check _args.dataset() (the table id) BEFORE trusting it, because any caller can pass any table',
+      'The caller: _args.caller() returns an Object. Test it with `is` and downcast with `as` (Object and FormRun are late-bound, so a call on the wrong type fails at RUNTIME, not at compile time): `FormRun callerForm = _args.caller() as FormRun;`',
+      'Extra values: _args.parm() carries one string, _args.parmEnum() one enum value with _args.parmEnumType() naming its type (set it with enumNum(MyEnum)), and _args.parmObject() any object. Each is get/set — passing the value is the same call with an argument',
+      'Which entry point was used: _args.menuItemName() and _args.menuItemType(); _args.openMode() distinguishes New/Edit/View; _args.lookupField() and _args.lookupValue() carry a lookup\'s field and value',
+      'Opening something WITH arguments: build the Args, then run the menu function — `Args args = new Args(); args.record(myBuffer); args.parm(myId); new MenuFunction(menuItemDisplayStr(MyForm), MenuItemType::Display).run(args);`. `new Args(formStr(MyForm))` sets the name in the constructor; args.name(...) sets it afterwards',
+      'Never read _args.record() without checking dataset() first, and never assume caller() is a form — a batch, a service or another class reaches the same code with caller() null',
+    ],
+    examples: [
+      {
+        label: 'Entry point that only accepts the record it understands',
+        code: `public static void main(Args _args)
+{
+    MyOrderTable order;
+
+    if (!_args || _args.dataset() != tableNum(MyOrderTable))
+    {
+        throw error("@MyModel:OpenFromOrderListOnly");
+    }
+
+    order = _args.record();
+
+    // The caller is a form only when a user opened it; a batch reaches here too.
+    FormRun callerForm = _args.caller() as FormRun;
+
+    MyOrderProcessor::construct().process(order, _args.parm());
+}`,
+      },
+    ],
+    related: ['formrun-lifecycle', 'menu-navigation', 'sysoperation', 'form-event-handlers'],
+  },
+
+  // ── display / edit methods ──────────────────────────────────────────────
+  {
+    id: 'display-edit-methods',
+    title: 'display and edit methods (computed and writable columns)',
+    keywords: ['display method', 'edit method', 'computed column', 'sysclientcachedatamethod',
+               'display cache', 'calculated field', 'form column', 'unbound control'],
+    summary:
+      'A display method shows a value that is not stored; an edit method shows one and takes it back. ' +
+      'Both are ordinary X++ methods with one modifier — and the modifier will not combine with static.',
+    rules: [
+      'display <ReturnType> name() — the value is computed and READ-ONLY on the form or report. Declare it on the table when every form should see it, on the form when only that form should',
+      'edit <ReturnType> name(boolean _set, <ReturnType> _value) — the same, but writable: _set is false while painting and true when the user types, and the method returns the value to show. On a FORM the signature carries the data source buffer as well: edit <T> name(boolean _set, <Table> _buffer, <T> _value)',
+      'display/edit and static are MUTUALLY EXCLUSIVE: `display static Name m(CustTable _ct)` is a compile error, "Conflicting modifiers \'static display\'" (xppc-verified). The access modifier is free — `public display Name m()` compiles',
+      'The return type must be an EDT or a primitive the form can render; returning a container or an object gives a control with nothing to show',
+      'A display method runs ONCE PER VISIBLE ROW, every refresh. Anything that queries in it multiplies by the row count — that is the usual cause of a grid that scrolls slowly',
+      'Cache it when it is expensive and its inputs change only with the record: [SysClientCacheDataMethodAttribute(true)] on the method (the platform ships ~2,800 of these). The cache is per record, so a method that depends on anything else must NOT be cached',
+      'A display method on a table cannot be used in a select/where — it is X++, not SQL. For filtering, add a real field or a view',
+      'Neither is deprecated (see deprecated): they remain the supported way to show a computed value',
+    ],
+    examples: [
+      {
+        label: 'A cached display method and an editable one',
+        code: `/// <summary>
+/// Shown on every row — cached because it only changes with the record.
+/// </summary>
+[SysClientCacheDataMethodAttribute(true)]
+public display CustName displayPrimaryContact()
+{
+    return MyContactHelper::primaryContactName(this.AccountNum);
+}
+
+/// <summary>
+/// Writable: _set is false while painting, true when the user commits.
+/// </summary>
+public edit MyNote editInternalNote(boolean _set, MyNote _value)
+{
+    if (_set)
+    {
+        MyNoteStore::save(this.RecId, _value);
+    }
+
+    return MyNoteStore::load(this.RecId);
+}`,
+      },
+    ],
+    related: ['formrun-lifecycle', 'performance', 'caching', 'deprecated'],
+  },
+
+  // ── SysOperation dialog attributes ──────────────────────────────────────
+  {
+    id: 'sysoperation-ui-attributes',
+    title: 'SysOperation dialog: grouping, order and visibility from the contract',
+    keywords: ['sysoperationgroup', 'sysoperationgroupmember', 'sysoperationdisplayorder',
+               'sysoperationlabel', 'sysoperationhelptext', 'sysoperationcontrolvisibility',
+               'sysoperationinitializable', 'contract dialog', 'batch dialog', 'parameter dialog',
+               'sysoperationcontractprocessing'],
+    summary:
+      'The dialog of a SysOperation is generated from the data contract, and its layout is controlled ' +
+      'by attributes on the parm methods — no dialog code, no UI builder, until you need behaviour.',
+    rules: [
+      'Every dialog field is a parm method carrying [DataMemberAttribute(\'Name\')]. Without it the property is not on the contract and not in the dialog',
+      'Caption and tooltip: [SysOperationLabelAttribute(literalStr("@MyModel:FromDate"))] and [SysOperationHelpTextAttribute(literalStr("@MyModel:FromDateHelp"))] — literalStr passes the label id through without resolving it at compile time',
+      'Grouping: declare the group on the CLASS with [SysOperationGroupAttribute(\'Dates\', "@MyModel:Dates", \'1\')] (name, label, sequence) and put fields in it with [SysOperationGroupMemberAttribute(\'Dates\')] on each parm method',
+      'Order within a group: [SysOperationDisplayOrderAttribute(\'1\')] — a STRING, not an int',
+      'Visibility: [SysOperationControlVisibilityAttribute(false)] hides a contract member that must exist but not be shown (a value the caller sets in code)',
+      'Attributes stack in one bracket, comma-separated, on the same parm method. All of the above compile together (xppc-verified)',
+      'Validation belongs in the contract\'s validate() — return false after checkFailed(...) and the dialog will not close',
+      'Implement SysOperationInitializable on the contract when it needs to fill defaults before the dialog is shown; its initialize() runs first',
+      'Reach for a UI builder ([SysOperationContractProcessing(classStr(MyUIBuilder))]) only when the attributes cannot express it — a custom lookup, a field that reacts to another, or a control the framework does not generate. See ssrs-ui-builder',
+      'Do NOT put [SysEntryPointAttribute] on the service method: xppc answers "\'SysEntryPointAttribute\' is obsolete: This attribute is deprecated in AX7."',
+    ],
+    examples: [
+      {
+        label: 'A contract whose dialog needs no dialog code',
+        code: `[DataContractAttribute,
+ SysOperationGroupAttribute('Dates', "@MyModel:Dates", '1')]
+public class MyPostingContract implements SysOperationInitializable
+{
+    private TransDate fromDate;
+    private NoYes     includeposted;
+
+    public void initialize()
+    {
+        fromDate = DateTimeUtil::date(DateTimeUtil::utcNow());
+    }
+
+    [DataMemberAttribute('FromDate'),
+     SysOperationLabelAttribute(literalStr("@MyModel:FromDate")),
+     SysOperationHelpTextAttribute(literalStr("@MyModel:FromDateHelp")),
+     SysOperationGroupMemberAttribute('Dates'),
+     SysOperationDisplayOrderAttribute('1')]
+    public TransDate parmFromDate(TransDate _fromDate = fromDate)
+    {
+        fromDate = _fromDate;
+        return fromDate;
+    }
+
+    /// <summary>
+    /// On the contract, not on the dialog: the caller sets it in code.
+    /// </summary>
+    [DataMemberAttribute('IncludePosted'),
+     SysOperationControlVisibilityAttribute(false)]
+    public NoYes parmIncludePosted(NoYes _includePosted = includeposted)
+    {
+        includeposted = _includePosted;
+        return includeposted;
+    }
+
+    public boolean validate()
+    {
+        boolean ret = true;
+
+        if (!fromDate)
+        {
+            ret = checkFailed("@MyModel:FromDateRequired");
+        }
+
+        return ret;
+    }
+}`,
+      },
+    ],
+    related: ['sysoperation', 'ssrs-ui-builder', 'ssrs-contracts', 'custom-services'],
   },
 
   // ── Extending a report that already exists ──────────────────────────────

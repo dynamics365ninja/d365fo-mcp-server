@@ -182,27 +182,39 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
     // touches on its way into ExecuteTest throws before a single test runs. The
     // message names an assembly and no test, which reads like a broken test model.
     const bindingFailure = /Could not load file or assembly '([^']+?),\s*Version=([\d.]+)/i.exec(output);
-    if (bindingFailure && /manifest definition does not match|0x80131040/i.test(output)) {
+    if (bindingFailure) {
       const [, assembly, wanted] = bindingFailure;
-      return {
-        content: [{
-          type: 'text',
-          text:
-            `❌ The test runner could not start: it wants ${assembly} ${wanted}, which this install ` +
-            'does not have.\n\n' +
-            'No test ran, and nothing is wrong with the test class — this is an assembly binding ' +
-            'mismatch in the PLATFORM, not in the model. The runner\'s own config file ' +
-            `(PackagesLocalDirectory\\Bin\\SysTestConsole.exe.config) carries a bindingRedirect for ` +
-            `${assembly} to ${wanted}, while the DLL shipped next to it is a different version. ` +
-            'Compare them:\n' +
-            '  (Get-Item "<PackagesLocalDirectory>\\Bin\\' + assembly + '.dll").VersionInfo.FileVersion\n\n' +
-            'Fixing it means editing that redirect to the version actually present — a change to the ' +
-            'platform installation, so make it deliberately and keep a backup of the .config. Until ' +
-            'then the tests can still be run from Visual Studio\'s Test Explorer, which does not go ' +
-            'through this binary.\n\n' + output,
-        }],
-        isError: true,
-      };
+      // Two different faults wear the same sentence. A VERSION mismatch means the
+      // DLL is there and the redirect points elsewhere; a MISSING file means the
+      // redirect is right and the assembly was never copied into Bin. The fixes
+      // are not the same, so the message must not average them.
+      const versionMismatch = /manifest definition does not match|0x80131040/i.test(output);
+      const missingFile = /cannot find the file specified|FileNotFoundException/i.test(output);
+      if (versionMismatch || missingFile) {
+        const diagnosis = versionMismatch
+          ? `PackagesLocalDirectory\\Bin\\SysTestConsole.exe.config redirects ${assembly} to ${wanted}, ` +
+            'while the DLL shipped next to it is a different version. Read the version actually ' +
+            'present and point the redirect at it:\n' +
+            `  [Reflection.AssemblyName]::GetAssemblyName("<PackagesLocalDirectory>\\Bin\\${assembly}.dll").Version\n` +
+            '(the ASSEMBLY version, not the file version — they differ)'
+          : `${assembly} ${wanted} is not in PackagesLocalDirectory\\Bin at all. The redirect is fine; ` +
+            'the file was never copied there. Other copies usually exist in the install:\n' +
+            `  Get-ChildItem "<PackagesLocalDirectory>" -Filter ${assembly}.dll -Recurse -Depth 4\n` +
+            'Copying the matching version into Bin is what makes the runner start.';
+        return {
+          content: [{
+            type: 'text',
+            text:
+              `❌ The test runner could not start: ${assembly} ${wanted}.\n\n` +
+              'No test ran, and nothing is wrong with the test class — this is an assembly problem in ' +
+              `the PLATFORM install, not in the model.\n\n${diagnosis}\n\n` +
+              'Either fix touches the platform installation, so make it deliberately and keep a backup. ' +
+              'Until then the tests still run from Visual Studio Test Explorer, which does not go ' +
+              'through this binary.\n\n' + output,
+          }],
+          isError: true,
+        };
+      }
     }
 
     if (/WaitForDebugger|Cannot read keys when/i.test(output)) {

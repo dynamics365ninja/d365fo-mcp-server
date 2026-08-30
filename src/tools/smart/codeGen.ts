@@ -621,7 +621,7 @@ class ${name}Controller extends SysOperationServiceController
 // ── 3. Service ───────────────────────────────────────────────────────────
 /// <summary>
 /// Service class that contains the business logic for the ${name} operation.
-/// The method marked [SysEntryPointAttribute] is called by the controller.
+/// The controller calls the method below.
 /// TODO: Add a description of what data or records this operation processes.
 /// </summary>
 class ${name}Service extends SysOperationServiceBase
@@ -629,7 +629,6 @@ class ${name}Service extends SysOperationServiceBase
     /// <summary>
     /// Business logic entry point called by the controller.
     /// </summary>
-    [SysEntryPointAttribute(true)]
     public void ${serviceMethod}(${name}DataContract _contract)
     {
         TransDate transDate = _contract.parmTransDate();
@@ -1271,7 +1270,6 @@ public class ${name}Service
     /// <summary>
     /// Creates a new ${name} record.
     /// </summary>
-    [SysEntryPointAttribute(true)]
     public ${name}Id create(${name}Contract _contract)
     {
         ${name} record;
@@ -1294,7 +1292,6 @@ public class ${name}Service
     /// <summary>
     /// Updates an existing ${name} record.
     /// </summary>
-    [SysEntryPointAttribute(true)]
     public void update(${name}Contract _contract)
     {
         ${name} record;
@@ -1317,7 +1314,6 @@ public class ${name}Service
     /// <summary>
     /// Deletes a ${name} record.
     /// </summary>
-    [SysEntryPointAttribute(true)]
     public void delete(${name}Id _id)
     {
         ${name} record;
@@ -1336,7 +1332,6 @@ public class ${name}Service
     /// <summary>
     /// Reads a ${name} record and returns a contract.
     /// </summary>
-    [SysEntryPointAttribute(false)]
     public ${name}Contract read(${name}Id _id)
     {
         ${name}          record = ${name}::find(_id);
