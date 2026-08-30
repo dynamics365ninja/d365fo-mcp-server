@@ -39,7 +39,7 @@ import {
 } from '../../bridge/index.js';
 import * as debouncedRefresh from '../../bridge/debouncedRefresh.js';
 import { ProjectFileFinder, registerFileInActiveProject } from '../../workspace/projectFile.js';
-import { heuristicEdtBaseType, resolveEdtBaseType, isEnumName, resolveEdtEnumType } from '../smart/generateSmartTable.js';
+import { heuristicEdtBaseType, resolveEdtBaseType, isEnumName, resolveEdtEnumType, bridgeEdtBaseType } from '../smart/generateSmartTable.js';
 import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
 import {
   upsertFormExtensionControlProperty, resolveControlPropertyTarget,
@@ -82,6 +82,8 @@ import {
   directXmlAddControl,
   coerceNoYesFlag,
   directXmlAddIndex,
+  directXmlSetIndexValidTimeState,
+  directXmlClearEmptyProperty,
   directXmlAddQueryRange,
   directXmlRemoveQueryRange,
   directXmlAddDataEntityExtensionField,
@@ -692,6 +694,12 @@ export const ModifyD365FileArgsSchema = z.object({
   ),
   indexAlternateKey: z.union([z.boolean(), z.string()]).optional().describe(
     'Whether index is an alternate key. Accepts true/false or the XML spelling "Yes"/"No".'
+  ),
+  indexValidTimeStateKey: z.union([z.boolean(), z.string()]).optional().describe(
+    'Mark the index as the valid-time-state key of a date-effective table (ValidTimeStateFieldType = Date/UtcDateTime). Accepts true/false or "Yes"/"No". Written into the XML — the bridge does not know it.'
+  ),
+  indexValidTimeStateMode: z.string().optional().describe(
+    'Valid-time-state mode of that key: "Gap" or "NoGap". Written into the XML alongside indexValidTimeStateKey.'
   ),
   indexEnabled: z.union([z.boolean(), z.string()]).optional().describe(
     'Whether index is enabled (default: true). Accepts true/false or the XML spelling "Yes"/"No".'
@@ -2047,12 +2055,19 @@ export async function modifyD365FileTool(
           const edtName = args.fieldType;
           let baseType: string = (args as any).fieldBaseType ?? '';
           if (!baseType) {
-            try {
-              const rdb = symbolIndex.getReadDb();
-              baseType = resolveEdtBaseTypeForField(edtName, rdb);
-            } catch {
-              baseType = edtName; // bridge will apply its own name heuristics
-            }
+            // Same resolution ladder as create's fields[] (createD365File.ts): the live
+            // metadata first, then the edt_metadata chain, then the name heuristic.
+            // The old chain walk alone handed the bridge the ROOT EDT NAME for any EDT
+            // whose root is not a primitive in the index (FromDate → TransDate), and
+            // the bridge then wrote an AxTableFieldString — "Data type mismatch" at
+            // build (Phase F, L2-date-effective-table: ValidFrom/ValidTo).
+            let rdb: any;
+            try { rdb = symbolIndex.getReadDb(); } catch { rdb = undefined; }
+            baseType =
+              (await bridgeEdtBaseType(context.bridge, edtName))
+              ?? (rdb ? resolveEdtBaseType(edtName, rdb) : undefined)
+              ?? heuristicEdtBaseType(edtName)
+              ?? (rdb ? resolveEdtBaseTypeForField(edtName, rdb) : edtName);
           }
           bridgeResult = await bridgeAddField(
             context.bridge,
@@ -2168,6 +2183,21 @@ export async function modifyD365FileTool(
               alternateKey,
             );
             if (xmlFallbackResult) bridgeResult = viaXmlFallback(xmlFallbackResult);
+          }
+          // Valid-time-state key/mode live outside what the bridge's AddIndex knows —
+          // stamp them into the on-disk XML once the index exists (either path).
+          if (bridgeResult?.success) {
+            const vtsResult = await directXmlSetIndexValidTimeState(
+              actualFilePath,
+              (args as any).indexName,
+              coerceNoYesFlag((args as any).indexValidTimeStateKey),
+              (args as any).indexValidTimeStateMode,
+            );
+            if (vtsResult) {
+              bridgeResult = vtsResult.success
+                ? { ...bridgeResult, message: `${bridgeResult.message}\n${vtsResult.message}` }
+                : { success: false, message: `${bridgeResult.message}\n❌ ${vtsResult.message}` };
+            }
           }
         }
         break;
@@ -2473,6 +2503,17 @@ export async function modifyD365FileTool(
             );
             if (xmlFallbackResult) {
               bridgeResult = viaXmlFallback(xmlFallbackResult);
+            }
+          }
+
+          // An EMPTY value means "back to the default". The SDK serialiser then
+          // writes `<PrimaryIndex></PrimaryIndex>` — an element no shipped table
+          // carries (absence IS the default, e.g. the surrogate-key primary index of
+          // every date-effective table). Drop it so the file stays canonical.
+          if (bridgeResult?.success && String(args.propertyValue).trim() === '') {
+            const cleared = await directXmlClearEmptyProperty(actualFilePath, args.propertyPath);
+            if (cleared) {
+              bridgeResult = { ...bridgeResult, message: `${bridgeResult.message}\n${cleared.message}` };
             }
           }
         }

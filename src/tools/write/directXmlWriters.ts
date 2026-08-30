@@ -1725,3 +1725,108 @@ export const directXmlEnsureRelationProperties = serializedOnFile(async (
   }
 });
 
+/**
+ * Stamp `<ValidTimeStateKey>` / `<ValidTimeStateMode>` onto an existing `<AxTableIndex>`.
+ *
+ * Neither the bridge's AddIndex nor its SetAxTableProperty knows these two index
+ * properties, so a date-effective table (ValidTimeStateFieldType = Date/UtcDateTime)
+ * could be created but never completed through the tool path — its valid-time-state
+ * key index is exactly what xppc demands (Phase F, L2-date-effective-table). The
+ * SDK serialises index properties alphabetically before the <Fields> collection
+ * (Name, AllowDuplicates, AlternateKey, …, ValidTimeStateKey, ValidTimeStateMode,
+ * Fields — see PersonnelCore/AxTable/HcmPositionDetail.xml), so both land right
+ * before <Fields>. Idempotent: an already-present element is rewritten in place.
+ *
+ * ValidTimeStateMode: NoGap is the SDK DEFAULT and the serializer omits it — a
+ * bridge round-trip of a table carrying <ValidTimeStateMode>NoGap</…> dropped the
+ * element, and every shipped index that spells the mode out says Gap
+ * (HcmEmployment, HcmJobDuration, HcmPositionHierarchy…). So NoGap REMOVES the
+ * element and Gap writes it; either way the request is honoured.
+ */
+export const directXmlSetIndexValidTimeState = serializedOnFile(async (
+  filePath: string,
+  indexName: string,
+  validTimeStateKey: boolean | undefined,
+  validTimeStateMode: string | undefined,
+): Promise<{ success: boolean; message: string } | null> => {
+  if (validTimeStateKey === undefined && validTimeStateMode === undefined) return null;
+  const mode = validTimeStateMode === undefined ? undefined : String(validTimeStateMode).trim();
+  if (mode !== undefined && mode !== 'Gap' && mode !== 'NoGap') {
+    return { success: false, message: `ValidTimeStateMode must be "Gap" or "NoGap", got "${mode}" — nothing was written.` };
+  }
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+    if (!/<AxTable\b/.test(content) && !/<AxTableExtension\b/.test(content)) return null;
+
+    const blockRe = new RegExp(`(<AxTableIndex>\\s*<Name>${indexName}</Name>)([\\s\\S]*?)(</AxTableIndex>)`);
+    const m = content.match(blockRe);
+    if (!m) {
+      return {
+        success: false,
+        message: `Index '${indexName}' not found in ${filePath} — add it first (add-index), then set its valid-time-state properties.`,
+      };
+    }
+    let body = m[2]
+      .replace(/\s*<ValidTimeStateKey>[^<]*<\/ValidTimeStateKey>/g, '')
+      .replace(/\s*<ValidTimeStateMode>[^<]*<\/ValidTimeStateMode>/g, '');
+    const props =
+      (validTimeStateKey === undefined ? '' : `\n\t\t\t<ValidTimeStateKey>${validTimeStateKey ? 'Yes' : 'No'}</ValidTimeStateKey>`) +
+      (mode === 'Gap' ? `\n\t\t\t<ValidTimeStateMode>Gap</ValidTimeStateMode>` : '');
+    const fieldsAt = body.search(/\n\s*<Fields\b/);
+    body = fieldsAt >= 0 ? body.slice(0, fieldsAt) + props + body.slice(fieldsAt) : body + props;
+    const updated = content.replace(blockRe, (_all, open: string, _old: string, close: string) => open + body + close);
+    if (updated === content) {
+      return { success: true, message: `✅ Index '${indexName}' already carries the requested valid-time-state properties — skipped (idempotent).` };
+    }
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
+    console.error(`[modify_d365fo_file] ✅ directXmlSetIndexValidTimeState: '${indexName}' in ${filePath}`);
+    const written = [
+      validTimeStateKey === undefined ? null : `ValidTimeStateKey=${validTimeStateKey ? 'Yes' : 'No'}`,
+      mode === undefined
+        ? null
+        : (mode === 'Gap' ? 'ValidTimeStateMode=Gap' : 'ValidTimeStateMode=NoGap (the SDK default — no element written)'),
+    ].filter(Boolean).join(', ');
+    return {
+      success: true,
+      message: `✅ Index '${indexName}': ${written} written into the AxTable XML (the C# bridge does not know these index properties).`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlSetIndexValidTimeState failed: ${err}`);
+    return null;
+  }
+});
+
+/**
+ * Remove an EMPTY top-level property element (`<PrimaryIndex></PrimaryIndex>` or
+ * `<PrimaryIndex />`) from an AOT XML file.
+ *
+ * modify-property with propertyValue="" is how a caller says "back to the default",
+ * and the bridge's SetProperty obliges by writing the empty element the SDK
+ * serialiser produces for an empty string — which no shipped file carries: the
+ * default is expressed by ABSENCE (a table with no <PrimaryIndex> has the
+ * surrogate-key primary index, the shape of every date-effective table). Only a
+ * top-level, empty element is touched; a populated one is left alone.
+ */
+export const directXmlClearEmptyProperty = serializedOnFile(async (
+  filePath: string,
+  property: string,
+): Promise<{ success: boolean; message: string } | null> => {
+  if (!/^[A-Za-z][A-Za-z0-9]*$/.test(property)) return null;
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+    const empty = new RegExp(`\\n[ \\t]*<${property}>\\s*</${property}>[ \\t]*(?=\\n)|\\n[ \\t]*<${property}\\s*/>[ \\t]*(?=\\n)`);
+    if (!empty.test(content)) return null;
+    const updated = content.replace(empty, '');
+    await writeFileAtomic(filePath, normalizeD365Xml(updated));
+    console.error(`[modify_d365fo_file] ✅ directXmlClearEmptyProperty: removed empty <${property}> from ${filePath}`);
+    return {
+      success: true,
+      message: `🔧 Empty <${property}> element removed — the default is expressed by absence, no shipped file carries \`<${property}></${property}>\`.`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlClearEmptyProperty failed: ${err}`);
+    return null;
+  }
+});
