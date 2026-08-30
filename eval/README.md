@@ -220,6 +220,38 @@ endings. xppc does not care — which is why the live run still built clean — 
 took a byte-level look to find. Fixed, with the writer now taking the host
 document's ending from `detectEol`.
 
+**Five controller goldens were updated in place on 2026-08-30, and two report
+goldens were deliberately left stale in the same commit.** The generator stopped
+emitting a contract local that `prePromptModifyContract()` never reads, which is
+the `BPLocalVariableNotUsed` warning every captured report carried. That method
+body has no index dependency, so the five controller files
+(`L4-ssrs-report-advanced`, `-multidataset`, `-preprocess`, `-uibuilder`,
+`L3-print-mgmt-doctype-extension`) were rewritten to what the generator now
+emits and pinned by `tests/tools/generateSmartReport.test.ts` — the
+`L2-form-control-removal-lifecycle` case above, not the `L4-entity-security` one.
+
+The same commit made EDT resolution model-aware (a field of that name already in
+the target model wins; another module's prefix + the field name is demoted). The
+tmp tables of `L4-ssrs-report-advanced` and `L4-ssrs-report-multidataset`, the
+only report goldens captured from a bare `fieldsHint`, would therefore re-run to
+`Num` / `Name` / `Counter` instead of `PlCorrNoteId` / `smmSubject` /
+`PurchLineCount`. Those values need the live index and the provisioned fixture,
+so both goldens stay as captured, are marked stale in their own READMEs, and
+wait for an `eval-run` re-capture. `L4-ssrs-report-basic`'s golden — typed by a
+human reading the source table — already holds the expected shape.
+
+All five edited goldens, plus the two goldens frozen back in July
+(`L3-print-management-report`, `L3-electronic-reporting-integration`, whose
+compilers and sandbox have both moved on since), were re-verified the same day
+with `scripts/verify-goldens-build.ts --case <id>` — a new flag that runs the
+isolated per-case build for named cases only and, like `--limit`, writes to the
+scratch record so a targeted check can never overwrite the committed one.
+Result: **7/7 clean over 38 artifacts**, xppc 7.0.7996.33, model `fm-mcp`, after
+a clean `--baseline`. The two July goldens needed no re-run: neither goes near
+the report scaffold (one subclasses `PrintMgmtDocType` on its own base enum, the
+other is a single ER data-provider class), so the Phase F generator corrections
+could not have touched them.
+
 The sweep exists because the `build_d365fo_project` stale-result defect
 (`tests/tools/buildStaleResult.test.ts`) had made every non-`force` `pass@build`
 weaker evidence than it looked.

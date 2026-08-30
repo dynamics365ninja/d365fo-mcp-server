@@ -125,3 +125,27 @@ The primary-key/form-ref trio per table is the scaffold giving report tmp tables
 Main-table shape (unique alternate-key index on the first field, `ReplacementKey`).
 The count rose from 8 (draft capture) to 10 purely because `NoteId` now resolves to
 a real EDT that carries a relation, instead of the inert `String255`.
+
+## PARTLY STALE since 2026-08-30 — the tmp-table EDTs await a re-capture
+
+The controller file in this folder **was** updated in the same commit as the
+generator change that caused it (`prePromptModifyContract()` no longer declares
+a contract local it never reads, which retires the `BPLocalVariableNotUsed`
+warning listed above). That edit is mechanical, has no index dependency, and is
+pinned by `tests/tools/generateSmartReport.test.ts`.
+
+The two tmp tables are a different matter. The same change made EDT resolution
+model-aware, so a re-run of this case would now resolve:
+
+| Field | Golden here | After the change | Why |
+|---|---|---|---|
+| `NoteId` | `PlCorrNoteId` | `Num` | the fixture `ConDemoNoteHeader` in the workspace model already has a `NoteId`, and its EDT wins over a foreign-module name match — `PlCorrNoteId` is what earned this golden its `BPErrorEDTNotMigrated` |
+| `Subject` | `smmSubject` | `Name` | same probe (`ConDemoNoteHeader.Subject`) |
+| `LineCount` | `PurchLineCount` | `Counter` | a count is an integer; the foreign `Purch…` specialisation is demoted and the heuristic now answers |
+
+Those values are **not** hand-written into the golden here. Resolving them needs
+the live index and the provisioned fixture, so this golden stays as captured and
+visibly stale until the case is re-run through `eval-run` on the VM — the same
+rule the `L4-entity-security` note in `eval/README.md` sets out. The expected
+outcome is the shape `L4-ssrs-report-basic`'s golden already carries, where a
+human typed `Num`/`Name` by reading the source table.

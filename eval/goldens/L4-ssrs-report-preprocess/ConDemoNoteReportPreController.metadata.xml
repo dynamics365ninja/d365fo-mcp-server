@@ -40,9 +40,10 @@ public class ConDemoNoteReportPreController extends SrsReportRunController
     /// </summary>
     protected void prePromptModifyContract()
     {
-        ConDemoNoteReportPreContract contract = this.parmReportContract().parmRdpContract() as ConDemoNoteReportPreContract;
-        // TODO: Set default parameter values here
-        // Example: contract.parmFromDate(DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone()));
+        // TODO: set default parameter values here. Fetch the contract where you read it:
+        // Example:
+        //     ConDemoNoteReportPreContract contract = this.parmReportContract().parmRdpContract() as ConDemoNoteReportPreContract;
+        //     contract.parmFromDate(DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone()));
     }
 
 ]]></Source>

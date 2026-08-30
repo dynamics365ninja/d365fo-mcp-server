@@ -76,7 +76,7 @@ export const TAXONOMY: CoverageLeaf[] = [
     id: 'edt-extension', label: 'EDT extension', domain: 'Data model', source: 'aot', tier: 'total', weight: 2,
     aotTypes: ['edt-extension'], knowledgeIds: ['coc'],
     caseIds: ['L2-edt-extension-basic'],
-    note: 'Eval case authored (EDT + EDT extension via PropertyModifications); golden pending VM capture.',
+    note: 'Eval case authored (EDT + EDT extension via PropertyModifications); golden captured.',
   },
   {
     // Creating a base enum is half of this leaf; consuming one is the other half,
@@ -139,7 +139,7 @@ export const TAXONOMY: CoverageLeaf[] = [
     id: 'class-inheritance', label: 'Class inheritance (extends chain, virtual dispatch)', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
     aotTypes: ['class', 'class-extension'], knowledgeIds: ['class-inheritance'],
     caseIds: ['L2-coc-inherited-method'],
-    note: 'The mirror of table-inheritance for code. Added after the tool path was found to walk ZERO levels of the extends chain: an inherited method was reported as non-existent, so agents concluded a CoC wrap was impossible (PRs #780/#781/#782). Case authored; golden pending VM capture.',
+    note: 'The mirror of table-inheritance for code. Added after the tool path was found to walk ZERO levels of the extends chain: an inherited method was reported as non-existent, so agents concluded a CoC wrap was impossible (PRs #780/#781/#782). Case authored; golden captured.',
   },
   {
     id: 'coc-extension', label: 'Chain of Command extension', domain: 'Code', source: 'aot', tier: 'core', weight: 5,
@@ -156,7 +156,7 @@ export const TAXONOMY: CoverageLeaf[] = [
   {
     id: 'macro', label: 'Macro', domain: 'Code', source: 'aot', tier: 'total', weight: 1,
     aotTypes: ['macro'], knowledgeIds: ['macros'], caseIds: ['L1-macro-library-flight'],
-    note: 'Knowledge entry teaches the legacy status and the modern replacement; eval case authored, golden pending VM capture.',
+    note: 'Knowledge entry teaches the legacy status and the modern replacement; eval case authored; golden captured.',
   },
   {
     id: 'transactions', label: 'Transactions (ttsbegin/ttscommit)', domain: 'Code', source: 'topic', tier: 'core', weight: 5,
@@ -175,25 +175,25 @@ export const TAXONOMY: CoverageLeaf[] = [
     id: 'sysda', label: 'SysDa fluent query API', domain: 'Code', source: 'topic', tier: 'total', weight: 1,
     aotTypes: ['class'], knowledgeIds: ['sysda'],
     caseIds: ['L2-sysda-fluent-query'],
-    note: 'Eval case authored (SysDa fluent select); golden pending VM capture.',
+    note: 'Eval case authored (SysDa fluent select); golden captured.',
   },
   {
     id: 'error-handling', label: 'Error handling & infolog', domain: 'Code', source: 'topic', tier: 'core', weight: 5,
     aotTypes: ['class'], knowledgeIds: ['error-handling', 'telemetry'],
     caseIds: ['L2-error-handling-infolog'],
-    note: 'Case authored (checkFailed validation + typed catches + exceptionTextFallThrough + infolog capture); golden pending VM capture.',
+    note: 'Case authored (checkFailed validation + typed catches + exceptionTextFallThrough + infolog capture); golden captured.',
   },
   {
     id: 'sysextension', label: 'SysExtension plug-in pattern', domain: 'Code', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['class'], knowledgeIds: ['sysextension'],
     caseIds: ['L2-sysextension-plugin'],
-    note: 'Eval case authored (attribute-driven SysExtension factory); golden pending VM capture.',
+    note: 'Eval case authored (attribute-driven SysExtension factory); golden captured.',
   },
   {
     id: 'performance', label: 'Performance patterns', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
     aotTypes: ['class'], knowledgeIds: ['performance', 'set-based'],
     caseIds: ['L2-performance-set-based'],
-    note: 'Case authored; it asserts a STRUCTURAL performance property (insert_recordset / RecordInsertList / firstonly / delete_from instead of row-by-row) rather than a wall-clock measurement, which is not reproducible across VM load. Golden pending VM capture.',
+    note: 'Case authored; it asserts a STRUCTURAL performance property (insert_recordset / RecordInsertList / firstonly / delete_from instead of row-by-row) rather than a wall-clock measurement, which is not reproducible across VM load. Golden captured.',
   },
   {
     id: 'bp-rules', label: 'Best-practice (BP) compliance', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
@@ -216,22 +216,22 @@ export const TAXONOMY: CoverageLeaf[] = [
   {
     id: 'xpp-collections', label: 'X++ collections & containers (List/Map/Set/Struct)', domain: 'Code', source: 'topic', tier: 'total', weight: 3,
     aotTypes: ['class'], knowledgeIds: ['xpp-collections'], caseIds: ['L2-collections-map-list-container'],
-    note: 'Knowledge entry written (audit hole C6 closed); eval case authored, golden pending VM capture.',
+    note: 'Knowledge entry written (audit hole C6 closed); eval case authored; golden captured.',
   },
   {
     id: 'datetime-timezones', label: 'Date/time & time zones (utcdatetime, DateTimeUtil)', domain: 'Code', source: 'topic', tier: 'total', weight: 3,
     aotTypes: ['class'], knowledgeIds: ['datetime-timezones'], caseIds: ['L2-datetime-timezone-range'],
-    note: 'Knowledge entry written (audit hole C7 closed); eval case authored, golden pending VM capture.',
+    note: 'Knowledge entry written (audit hole C7 closed); eval case authored; golden captured.',
   },
   {
     id: 'dotnet-interop', label: '.NET interop (CLRInterop, using alias, CLRError)', domain: 'Code', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['class'], knowledgeIds: ['dotnet-interop'], caseIds: ['L2-dotnet-interop-clrerror'],
-    note: 'Knowledge entry written (audit hole C8 closed); eval case authored, golden pending VM capture.',
+    note: 'Knowledge entry written (audit hole C8 closed); eval case authored; golden captured.',
   },
   {
     id: 'reflection-dict', label: 'Reflection / Dict* metadata API', domain: 'Code', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['class'], knowledgeIds: ['reflection-dict'], caseIds: ['L2-reflection-dict-fieldwalk'],
-    note: 'Knowledge entry written (audit hole C9 closed); eval case authored, golden pending VM capture.',
+    note: 'Knowledge entry written (audit hole C9 closed); eval case authored; golden captured.',
   },
   // Language-core leaves (Phase B/E of the coverage plan): the grammar itself,
   // previously represented only by select-grammar. Leaves without caseIds are
@@ -261,12 +261,12 @@ export const TAXONOMY: CoverageLeaf[] = [
     id: 'exceptions-tts', label: 'Exceptions inside transactions (catchability, retry)', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
     aotTypes: ['class'], knowledgeIds: ['transactions', 'error-handling'],
     caseIds: ['L2-exception-tts-retry'],
-    note: 'TTS002/TTS003 validators + in-tts catchability matrix; eval case authored, golden pending VM capture.',
+    note: 'TTS002/TTS003 validators + in-tts catchability matrix; eval case authored; golden captured.',
   },
   {
     id: 'attributes', label: 'Attribute authoring & reflection', domain: 'Code', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['class'], knowledgeIds: ['attributes-authoring', 'reflection-dict'],
-    note: 'Rules-only topic (examples wait for the Phase F snapshot capture); no eval case.',
+    note: 'Taught with audited examples (the Phase F snapshot re-capture resolved their symbols); no eval case.',
   },
   {
     id: 'intrinsics', label: 'Compile-time (intrinsic) functions', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
@@ -277,7 +277,7 @@ export const TAXONOMY: CoverageLeaf[] = [
     id: 'date-effective', label: 'Date-effective tables (validTimeState)', domain: 'Code', source: 'topic', tier: 'total', weight: 3,
     aotTypes: ['table', 'class'], knowledgeIds: ['date-effective', 'select-statement'],
     caseIds: ['L2-date-effective-table'],
-    note: 'Eval case authored (table + as-of vs unfiltered select); golden pending VM capture.',
+    note: 'Eval case authored (table + as-of vs unfiltered select); golden captured.',
   },
 
   // ── UI ──────────────────────────────────────────────────────────────────
@@ -315,7 +315,7 @@ export const TAXONOMY: CoverageLeaf[] = [
   {
     id: 'tiles-kpis', label: 'Tiles & KPIs', domain: 'UI', source: 'aot', tier: 'total', weight: 1,
     aotTypes: ['tile', 'kpi'], knowledgeIds: ['tiles-kpis'], caseIds: ['L2-tile-cue-over-query'],
-    note: 'Knowledge entry written; eval case authored (count tile over an AOT query), golden pending VM capture.',
+    note: 'Knowledge entry written; eval case authored (count tile over an AOT query); golden captured.',
   },
 
   // ── Reporting ───────────────────────────────────────────────────────────
@@ -344,19 +344,19 @@ export const TAXONOMY: CoverageLeaf[] = [
     id: 'rdp-preprocess', label: 'Pre-processed RDP (long-running reports)', domain: 'Reporting', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['report'], knowledgeIds: ['ssrs-rdp-preprocess'],
     caseIds: ['L4-ssrs-report-preprocess'],
-    note: 'Eval case authored — doubles as the Phase F verification of the preProcess scaffold pairing; golden pending VM capture.',
+    note: 'Eval case authored — doubles as the Phase F verification of the preProcess scaffold pairing; golden captured.',
   },
   {
     id: 'report-ui-builder', label: 'Report dialog UI builders', domain: 'Reporting', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['report'], knowledgeIds: ['ssrs-ui-builder'],
     caseIds: ['L4-ssrs-report-uibuilder'],
-    note: 'uiBuilder scaffold option landed in Phase D; eval case authored, golden pending VM capture.',
+    note: 'uiBuilder scaffold option landed in Phase D; eval case authored; golden captured.',
   },
   {
     id: 'electronic-reporting', label: 'Electronic Reporting (ER)', domain: 'Reporting', source: 'topic', tier: 'total', weight: 1,
     aotTypes: ['class'], knowledgeIds: ['electronic-reporting'],
     caseIds: ['L3-electronic-reporting-integration'],
-    note: 'Eval case authored for the X++ half (ER data provider); the ER model/mapping/format stay UI-configured and out of scope. Golden pending VM capture.',
+    note: 'Eval case authored for the X++ half (ER data provider); the ER model/mapping/format stay UI-configured and out of scope. Golden captured.',
   },
 
   // ── Business logic frameworks ───────────────────────────────────────────
@@ -368,7 +368,7 @@ export const TAXONOMY: CoverageLeaf[] = [
     id: 'parallel-batch', label: 'Parallel batch processing', domain: 'Frameworks', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['class'], knowledgeIds: ['parallel-batch'],
     caseIds: ['L3-parallel-batch-tasks'],
-    note: 'Eval case authored (BatchHeader runtime tasks); golden pending VM capture.',
+    note: 'Eval case authored (BatchHeader runtime tasks); golden captured.',
   },
   {
     id: 'async-retryable-batch', label: 'Async & retryable batch (BatchRetryable/runAsync)', domain: 'Frameworks', source: 'topic', tier: 'total', weight: 2,
@@ -388,13 +388,13 @@ export const TAXONOMY: CoverageLeaf[] = [
     id: 'posting-engine', label: 'Posting engine (LedgerVoucher)', domain: 'Frameworks', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['class'], knowledgeIds: ['posting-engine'],
     caseIds: ['L4-posting-ledgervoucher-slice'],
-    note: 'Eval case authored; it scores the STRUCTURE of the LedgerVoucher call chain, not a posted result (no ledger fixture). Golden pending VM capture.',
+    note: 'Eval case authored; it scores the STRUCTURE of the LedgerVoucher call chain, not a posted result (no ledger fixture). Golden captured.',
   },
   {
     id: 'workflow', label: 'Workflow', domain: 'Frameworks', source: 'topic', tier: 'core', weight: 3,
     aotTypes: ['class'], knowledgeIds: ['workflow'],
     caseIds: ['L3-workflow-document-submit'],
-    note: 'Case authored for the X++/tool-path-reachable half (WorkflowDocument subclass + query, canSubmitToWorkflow, submit manager, action menu item). The AxWorkflowType/Approval/Category AOT elements stay uncovered: d365fo_file has no objectType for them. Golden pending VM capture.',
+    note: 'Case authored for the X++/tool-path-reachable half (WorkflowDocument subclass + query, canSubmitToWorkflow, submit manager, action menu item). The AxWorkflowType/Approval/Category AOT elements stay uncovered: d365fo_file has no objectType for them. Golden captured.',
   },
   {
     id: 'business-events', label: 'Business events & alerts', domain: 'Frameworks', source: 'topic', tier: 'core', weight: 3,
@@ -404,49 +404,49 @@ export const TAXONOMY: CoverageLeaf[] = [
     id: 'feature-management', label: 'Feature management', domain: 'Frameworks', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['class'], knowledgeIds: ['feature-management'],
     caseIds: ['L2-feature-management-flight'],
-    note: 'Eval case authored (IFeatureMetadata + FeatureStateProvider branch); golden pending VM capture.',
+    note: 'Eval case authored (IFeatureMetadata + FeatureStateProvider branch); golden captured.',
   },
   {
     id: 'configuration-keys', label: 'Configuration keys', domain: 'Frameworks', source: 'aot', tier: 'total', weight: 2,
     aotTypes: ['configuration-key'], knowledgeIds: ['configuration-keys'],
     caseIds: ['L2-config-key-gated-table'],
-    note: 'Create path added (d365fo_file objectType "configuration-key"); eval case authored, golden pending VM capture.',
+    note: 'Create path added (d365fo_file objectType "configuration-key"); eval case authored; golden captured.',
   },
   {
     id: 'multi-company', label: 'Multi-company / changeCompany', domain: 'Frameworks', source: 'topic', tier: 'core', weight: 3,
     aotTypes: ['class'], knowledgeIds: ['multi-company'],
     caseIds: ['L2-multi-company-changecompany'],
-    note: 'Case authored (changeCompany block + crosscompany select over a company container); golden pending VM capture.',
+    note: 'Case authored (changeCompany block + crosscompany select over a company container); golden captured.',
   },
   {
     id: 'global-address-book', label: 'Global address book', domain: 'Frameworks', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['class'], knowledgeIds: ['global-address-book'],
     caseIds: ['L3-gab-party-postaladdress'],
-    note: 'Eval case authored (party + primary postal address through the DirParty API); golden pending VM capture.',
+    note: 'Eval case authored (party + primary postal address through the DirParty API); golden captured.',
   },
   {
     id: 'currency', label: 'Currency & exchange rates', domain: 'Frameworks', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['class'], knowledgeIds: ['currency-exchange-rates'],
     caseIds: ['L3-currency-exchange-conversion'],
-    note: 'Eval case authored (exchange-rate helper conversion + currency rounding); golden pending VM capture.',
+    note: 'Eval case authored (exchange-rate helper conversion + currency rounding); golden captured.',
   },
   {
     id: 'inventory', label: 'Inventory (InventTrans / InventDim)', domain: 'Frameworks', source: 'topic', tier: 'total', weight: 3,
     aotTypes: ['class'], knowledgeIds: ['inventory-management'],
     caseIds: ['L3-inventory-inventdim-onhand'],
-    note: 'Eval case authored (InventDim/InventDimParm on-hand read); golden pending VM capture.',
+    note: 'Eval case authored (InventDim/InventDimParm on-hand read); golden captured.',
   },
   {
     id: 'warehouse', label: 'Warehouse management (WHS)', domain: 'Frameworks', source: 'topic', tier: 'total', weight: 1,
     aotTypes: ['class'], knowledgeIds: ['warehouse-management'],
     caseIds: ['L3-warehouse-work-slice'],
-    note: 'Eval case authored for the X++ half (work creation through the WHS framework); templates/directives stay configured data. Golden pending VM capture.',
+    note: 'Eval case authored for the X++ half (work creation through the WHS framework); templates/directives stay configured data. Golden captured.',
   },
   {
     id: 'trade-agreements', label: 'Trade agreements & pricing', domain: 'Frameworks', source: 'topic', tier: 'total', weight: 1,
     aotTypes: ['class'], knowledgeIds: ['trade-agreements'],
     caseIds: ['L3-trade-agreement-price-lookup'],
-    note: 'Eval case authored (PriceDisc price/discount resolution); golden pending VM capture.',
+    note: 'Eval case authored (PriceDisc price/discount resolution); golden captured.',
   },
 
   // ── Integration ─────────────────────────────────────────────────────────
@@ -459,7 +459,7 @@ export const TAXONOMY: CoverageLeaf[] = [
     id: 'data-entity-extension', label: 'Data entity extension', domain: 'Integration', source: 'aot', tier: 'total', weight: 2,
     aotTypes: ['data-entity-extension'], knowledgeIds: ['data-entities'],
     caseIds: ['L3-data-entity-extension-field'],
-    note: 'Eval case authored (table extension field surfaced on a standard entity); golden pending VM capture.',
+    note: 'Eval case authored (table extension field surfaced on a standard entity); golden captured.',
   },
   {
     id: 'custom-service', label: 'Custom services / OData actions', domain: 'Integration', source: 'aot', tier: 'core', weight: 3,
@@ -470,37 +470,37 @@ export const TAXONOMY: CoverageLeaf[] = [
     id: 'dmf', label: 'Data management framework (DMF/DIXF)', domain: 'Integration', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['class'], knowledgeIds: ['data-management-framework'],
     caseIds: ['L3-dmf-entity-import-slice'],
-    note: 'Eval case authored (import-ready entity + staging hook); golden pending VM capture.',
+    note: 'Eval case authored (import-ready entity + staging hook); golden captured.',
   },
   {
     id: 'dual-write', label: 'Dual-write (Dataverse)', domain: 'Integration', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['class'], knowledgeIds: ['dual-write'],
     caseIds: ['L3-dualwrite-entity-mapping'],
-    note: 'Eval case authored for the AOT half (business key + change tracking); the dual-write map itself is UI-authored. Golden pending VM capture.',
+    note: 'Eval case authored for the AOT half (business key + change tracking); the dual-write map itself is UI-authored. Golden captured.',
   },
   {
     id: 'power-platform', label: 'Power Platform / virtual entities', domain: 'Integration', source: 'topic', tier: 'total', weight: 1,
     aotTypes: ['class'], knowledgeIds: ['power-platform-integration'],
     caseIds: ['L2-virtual-entity-power-platform'],
-    note: 'Eval case authored (entity marked up for virtual-entity exposure); golden pending VM capture.',
+    note: 'Eval case authored (entity marked up for virtual-entity exposure); golden captured.',
   },
   {
     id: 'file-io', label: 'Reading Excel / CSV files', domain: 'Integration', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['class'], knowledgeIds: ['file-readers'],
     caseIds: ['L3-file-csv-import'],
-    note: 'Eval case authored (CommaStreamIo + OpenXML stream readers); golden pending VM capture.',
+    note: 'Eval case authored (CommaStreamIo + OpenXML stream readers); golden captured.',
   },
   {
     id: 'direct-sql', label: 'Direct SQL execution', domain: 'Integration', source: 'topic', tier: 'total', weight: 1,
     aotTypes: ['class'], knowledgeIds: ['direct-sql'],
     caseIds: ['L2-direct-sql-connection'],
-    note: 'Eval case authored — the escape hatch WITH its guard rails (permission assert, no concatenated input). Golden pending VM capture.',
+    note: 'Eval case authored — the escape hatch WITH its guard rails (permission assert, no concatenated input). Golden captured.',
   },
   {
     id: 'aggregate-measurements', label: 'Aggregate measurements / analytics', domain: 'Integration', source: 'aot', tier: 'total', weight: 1,
     aotTypes: ['aggregate-measurement'], knowledgeIds: ['aggregate-measurements'],
     caseIds: ['L3-aggregate-measurement-basic'],
-    note: 'Knowledge entry + create path added; eval case authored, golden pending VM capture.',
+    note: 'Knowledge entry + create path added; eval case authored; golden captured.',
   },
 
   // ── Security ────────────────────────────────────────────────────────────
@@ -525,12 +525,12 @@ export const TAXONOMY: CoverageLeaf[] = [
     id: 'xds', label: 'Extensible data security (XDS)', domain: 'Security', source: 'aot', tier: 'total', weight: 1,
     aotTypes: ['security-policy'], knowledgeIds: ['security'],
     caseIds: ['L3-xds-policy-constrained-table'],
-    note: 'Create path added (d365fo_file objectType "security-policy"); eval case authored (policy + policy query + constrained table), golden pending VM capture.',
+    note: 'Create path added (d365fo_file objectType "security-policy"); eval case authored (policy + policy query + constrained table); golden captured.',
   },
   {
     id: 'license-code', label: 'License codes', domain: 'Security', source: 'aot', tier: 'total', weight: 0,
     aotTypes: ['license-code'], knowledgeIds: ['license-codes'], caseIds: ['L2-license-code-configkey'],
-    note: 'Exotic (ISV licensing only) but now closable: knowledge + create path added, eval case authored, golden pending VM capture.',
+    note: 'Exotic (ISV licensing only) but now closable: knowledge + create path added, eval case authored; golden captured.',
   },
 
   // ── Quality ─────────────────────────────────────────────────────────────

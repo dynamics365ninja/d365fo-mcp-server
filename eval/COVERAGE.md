@@ -59,7 +59,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Operators & precedence (&&/|| trap, like, is/as) | core | ✅ | — | ✅ | Taught; CS001 blocks the C#-isms. No dedicated eval case. |
 | Statements & flow (switch fallthrough, loops) | core | ✅ | — | ✅ | Taught; BP004 covers removed keywords. No dedicated eval case. |
 | Exceptions inside transactions (catchability, retry) | core | ✅ | ✅ | ✅ | L2-exception-tts-retry |
-| Attribute authoring & reflection | total | ✅ | — | ✅ | Rules-only topic (examples wait for the Phase F snapshot capture); no eval case. |
+| Attribute authoring & reflection | total | ✅ | — | ✅ | Taught with audited examples (the Phase F snapshot re-capture resolved their symbols); no eval case. |
 | Compile-time (intrinsic) functions | core | ✅ | — | ✅ | Full catalog taught; references mode resolves the common ones. No dedicated eval case. |
 | Date-effective tables (validTimeState) | total | ✅ | ✅ | ✅ | L2-date-effective-table |
 
@@ -154,6 +154,6 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 ## Orphans
 
 - Knowledge entries no leaf claims (**unproven knowledge**): extensible-enums
-- Eval cases no leaf claims (**unmapped proof**): L0-create-readback-no-reindex, L2-batched-object-reads, L2-object-delete-and-entry-point-cleanup, L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice
+- Eval cases no leaf claims (**unmapped proof**): L0-create-readback-no-reindex, L2-batched-object-reads, L2-data-types-conversions, L2-declarations-scope, L2-intrinsic-functions, L2-object-delete-and-entry-point-cleanup, L2-operators-precedence, L2-oracle-discriminator-random-wrapper-name, L2-statements-switch-loops, L4-headerlines-document-slice
 
 _Generated 2026-08-30._
