@@ -24,6 +24,28 @@ const isCI = (): boolean => {
 /** How many distinct queries keep a memoized "did you mean" candidate pool. */
 const SUGGESTION_CACHE_ENTRIES = 32;
 
+/**
+ * A multi-word query, split into the substrings a symbol name must ALL contain.
+ *
+ * `search(query="ProcessGuide AdjustIn")` means "a name carrying both words" —
+ * no symbol name contains a space, so matching the raw string can only ever
+ * return nothing. Measured on the VM: that query missed
+ * `InventProcessGuideAdjustInController`, which an exact-name search finds, and
+ * the miss sent an eval run at an obsolete class.
+ *
+ * Tokens shorter than 3 characters are dropped rather than ANDed: they are not
+ * selective enough to narrow a corpus-wide scan, and a stray "a"/"of" would
+ * otherwise decide the result. At most 4 tokens are kept so the predicate stays
+ * bounded no matter how long a caller's phrase is.
+ */
+export function queryTokens(query: string): string[] {
+  return (query ?? '')
+    .trim()
+    .split(/\s+/)
+    .filter(t => t.length >= 3)
+    .slice(0, 4);
+}
+
 /** Total + per-type symbol counts (both come from one GROUP BY scan). */
 export interface SymbolCounts {
   total: number;
@@ -1528,6 +1550,14 @@ export class XppSymbolIndex {
    *     spaces and would pay it on every miss),
    *   - one or two characters are too unselective to be a useful substring probe.
    *
+   * The whitespace rule held only while the scan looked for the query VERBATIM.
+   * A multi-word query is not one name — it is several substrings that must all
+   * appear in one name, and {@link queryTokens} turns it into exactly that, so
+   * the scan is no longer guaranteed empty and the guard no longer applies.
+   * Measured cost on the VM: `search(query="ProcessGuide AdjustIn")` returned
+   * nothing while `InventProcessGuideAdjustInController` sat in the index, which
+   * sent an eval run at an obsolete class it then had to roll back.
+   *
    * Known limitation: the fallback only fires when FTS returns *nothing*, so one
    * incidental hit (e.g. query "Propert" matching PropertyType by prefix) still
    * hides the mid-token matches. Widening it to "fewer rows than limit" would put
@@ -1535,7 +1565,11 @@ export class XppSymbolIndex {
    */
   private substringScanIsWorthIt(query: string): boolean {
     const trimmed = query.trim();
-    return trimmed.length >= 3 && !/\s/.test(trimmed);
+    if (!/\s/.test(trimmed)) return trimmed.length >= 3;
+    // Every token must be selective on its own; one vague token ("get", "the")
+    // would drag the whole AND back to a corpus-wide match.
+    const tokens = queryTokens(trimmed);
+    return tokens.length >= 2;
   }
 
   /**
@@ -1545,7 +1579,12 @@ export class XppSymbolIndex {
    * PERFORMANCE: Only select essential columns, not s.* (avoids loading large text fields)
    */
   private likeFallbackSearch(db: Database, query: string, limit: number, types?: string[]): XppSymbol[] {
-    const fallbackCacheKey = types?.length ? `fallback_typed_${types.join('_')}` : 'fallback_all';
+    // The term count is part of the SQL (one LIKE per token), so it must be part
+    // of the statement-cache key — otherwise a two-token query reuses the
+    // one-token statement and binds its parameters against the wrong arity.
+    const termCount = /\s/.test(query.trim()) ? Math.max(queryTokens(query.trim()).length, 1) : 1;
+    const fallbackCacheKey =
+      (types?.length ? `fallback_typed_${types.join('_')}` : 'fallback_all') + `_t${termCount}`;
     // ESCAPE '\' is required — without it the backslashes produced by
     // escapeLikePattern are literal characters and any query containing
     // '_' or '%' (e.g. "SalesLine_MyExt") silently matches nothing.
@@ -1559,16 +1598,26 @@ export class XppSymbolIndex {
     // The cold number matters less than what it enables - a covering scan reads
     // exactly the index the startup warm-up preloads, so those pages are already
     // there. Hydrating the survivors by rowid is a handful of lookups.
-    let fallbackSql = `SELECT s.id FROM symbols s WHERE s.name LIKE ? ESCAPE '\\'`;
     const escapeLikePattern = (value: string): string => {
       // First escape backslashes, then escape SQL LIKE wildcards % and _
       return value
         .replace(/\\/g, '\\\\')
         .replace(/[%_]/g, '\\$&');
     };
+    // A multi-word query means "a name containing all of these", so each token
+    // becomes its own LIKE and they are ANDed — still ONE covering scan, since
+    // the extra predicates are evaluated per candidate row rather than adding a
+    // pass. Searching for the raw string instead can only ever return nothing:
+    // no symbol name contains a space.
     // Trimmed: no symbol name starts or ends with whitespace, so padding in the
     // raw query would only ever turn a real match into a miss.
-    const fallbackParams: any[] = [`%${escapeLikePattern(query.trim())}%`];
+    const trimmedQuery = query.trim();
+    const terms = /\s/.test(trimmedQuery) ? queryTokens(trimmedQuery) : [trimmedQuery];
+    const searchTerms = terms.length > 0 ? terms : [trimmedQuery];
+    let fallbackSql =
+      `SELECT s.id FROM symbols s WHERE ` +
+      searchTerms.map(() => `s.name LIKE ? ESCAPE '\\'`).join(' AND ');
+    const fallbackParams: any[] = searchTerms.map(t => `%${escapeLikePattern(t)}%`);
     if (types && types.length > 0) {
       fallbackSql += ` AND s.type IN (${types.map(() => '?').join(',')})`;
       fallbackParams.push(...types);
