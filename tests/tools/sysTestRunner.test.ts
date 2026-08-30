@@ -149,8 +149,11 @@ describe('run_systest_class — interactive console blocker', () => {
     const result = await sysTestRunnerTool({ className: 'ContosoMyTest' }, {});
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('requires an interactive console session');
-    expect(result.content[0].text).toContain('not a bug in this tool');
+    // The message no longer calls the runner interactive-only: /unattended is
+    // passed and normally skips this prompt, so it now says what to do if the
+    // prompt appears anyway.
+    expect(result.content[0].text).toContain('debugger-attach prompt');
+    expect(result.content[0].text).toContain('/unattended');
   });
 
   it('a plain test failure is NOT misclassified as the interactive-console blocker', async () => {
@@ -162,6 +165,55 @@ describe('run_systest_class — interactive console blocker', () => {
 
     expect(result.isError).toBeFalsy();
     expect(result.content[0].text).toContain('Tests FAILED');
-    expect(result.content[0].text).not.toContain('interactive console session');
+    expect(result.content[0].text).not.toContain('debugger-attach prompt');
+  });
+});
+
+describe('run_systest_class — the platform binding mismatch that stops a run', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    cfgEnsureLoaded.mockResolvedValue(undefined);
+    cfgGetModelName.mockReturnValue('Contoso');
+    cfgGetPackagePath.mockReturnValue(PKG);
+    allowPaths([SYSTEST_CONSOLE]);
+  });
+
+  it('names the assembly and the config redirect instead of blaming the test', async () => {
+    // Real output from this VM: the runner's own config redirects
+    // Microsoft.ApplicationInsights to 2.22.0.997 while Bin ships 2.23.0.0, so the
+    // telemetry logger throws before any test runs.
+    const err = Object.assign(new Error('Command failed'), {
+      stdout: 'Executing test(s) ....\n\nSystem.IO.FileLoadException: Could not load file or assembly ' +
+        "'Microsoft.ApplicationInsights, Version=2.22.0.997, Culture=neutral, PublicKeyToken=31bf3856ad364e35' " +
+        "or one of its dependencies. The located assembly's manifest definition does not match the assembly " +
+        'reference. (Exception from HRESULT: 0x80131040)',
+      stderr: '',
+    });
+    execFileMock.mockImplementation((_f: string, _a: string[], _o: any, cb: Function) => {
+      cb(err);
+    });
+
+    const result = await sysTestRunnerTool({ className: 'ContosoMyTest' }, {});
+
+    expect(result.isError).toBe(true);
+    const text = result.content[0].text;
+    expect(text).toContain('Microsoft.ApplicationInsights');
+    expect(text).toContain('2.22.0.997');
+    expect(text).toContain('SysTestConsole.exe.config');
+    expect(text).toMatch(/No test ran/i);
+    // It must not read as a test failure — nothing was executed.
+    expect(text).not.toContain('Tests FAILED');
+  });
+
+  it('passes /unattended so the runner does not stop at the debugger prompt', async () => {
+    let capturedArgs: string[] = [];
+    execFileMock.mockImplementation((_f: string, a: string[], _o: any, cb: Function) => {
+      capturedArgs = a;
+      cb(null, { stdout: 'ok', stderr: '' });
+    });
+
+    await sysTestRunnerTool({ className: 'ContosoMyTest' }, {});
+
+    expect(capturedArgs).toContain('/unattended');
   });
 });
