@@ -14,6 +14,38 @@
  */
 
 import { FormPatternTemplates } from '../../utils/formPatternTemplates.js';
+import {
+  getFieldControlMapFromDisk,
+  resetTableXmlIndexCache,
+  type FieldControlMap,
+} from '../../utils/fieldControlTypes.js';
+
+/**
+ * Resolve a data source table's field→control types.
+ *
+ * The templates have accepted `fieldTypes` all along and `generate_object`
+ * supplies it, but this builder — the one behind
+ * `d365fo_file(action="create", objectType="form")` — never did, so EVERY grid
+ * column came out as an AxFormStringControl. That is invisible for a string
+ * field and a build error for any other: a date column fails the build with
+ * "AxForm/…/DataField: Data type mismatch", naming the form rather than the
+ * field type it actually disagrees with. Found by capturing
+ * L3-form-event-handler-class on the VM.
+ *
+ * A caller-supplied map still wins, so the smart-form path is unaffected.
+ */
+function resolveFieldTypes(
+  table: string | undefined,
+  supplied: unknown,
+): FieldControlMap | undefined {
+  if (supplied instanceof Map) return supplied as FieldControlMap;
+  if (!table) return undefined;
+  // A table written moments ago in this same call is on disk but not in any
+  // cached listing, so the listing is rebuilt rather than trusted.
+  resetTableXmlIndexCache();
+  const map = getFieldControlMapFromDisk(table);
+  return map.size > 0 ? map : undefined;
+}
 
 /**
  * Build an AxForm from a design pattern.
@@ -29,14 +61,19 @@ export function buildAxFormXml(formName: string, properties?: Record<string, any
     ? FormPatternTemplates.normalizePattern(String(rawPattern))
     : 'SimpleList';
 
+  const dsTable = properties?.dataSourceTable || properties?.dataSource || undefined;
+  const linesDsTable = properties?.linesDataSourceTable || properties?.linesDataSource;
+
   return FormPatternTemplates.build(pattern, {
     formName,
     dsName: properties?.dataSource || undefined,
-    dsTable: properties?.dataSourceTable || properties?.dataSource || undefined,
+    dsTable,
     caption: properties?.caption,
     gridFields: Array.isArray(properties?.gridFields) ? properties.gridFields : undefined,
     linesDsName: properties?.linesDataSource,
-    linesDsTable: properties?.linesDataSourceTable || properties?.linesDataSource,
+    linesDsTable,
     sections: Array.isArray(properties?.sections) ? properties.sections : undefined,
+    fieldTypes: resolveFieldTypes(dsTable, properties?.fieldTypes),
+    linesFieldTypes: resolveFieldTypes(linesDsTable, properties?.linesFieldTypes),
   });
 }

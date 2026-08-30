@@ -306,8 +306,8 @@ All four are `golden_pending`. What ran here, VM-free, and what it proved:
 | `tests/eval/mobileAppCaseGrounding.test.ts` — executes each case's own grounding calls (`get_knowledge`, `object_patterns(domain="mobile-app")`) in process and asserts the answer names the identifiers the case then asks for | 5/5 pass — the ground truth each case depends on is reachable and complete |
 | `tests/knowledge/mobileAppPatternCatalog.test.ts` — every shipped X++ skeleton through the same offline BP validator behind `validate_code(mode="syntax")` | 16/16 pass, 0 error-severity violations across 6 skeletons |
 | `tests/eval/caseCatalog.test.ts` | schema-valid, `golden_pending` consistent, no unpublished tool named in an instruction |
-| `npm run eval:knowledge-audit` | 309 refs, 0 outside the audited snapshot (the new topics name AOT elements in prose only, so no re-capture is owed) |
-| `npm run eval:coverage -- --check` | core 51/51, total 89/91 — the two new leaves are the visible gap |
+| `npm run eval:knowledge-audit` | 0 refs outside the audited snapshot — the new topics name AOT elements in prose only, so no re-capture is owed |
+| `npm run eval:coverage -- --check` | core 100%, total 98/100 — the two new leaves are the visible gap |
 
 **Not run, and why:** the implement → build → score → record cycle needs the
 D365FO VM (full-mode server, C# bridge, Contoso model, `xppc`). This work was
@@ -323,6 +323,17 @@ Standing queues:
   been authored but never run; coverage counts them as uncovered because they
   prove nothing until captured. `eval-run` captures each on the VM — flip the
   flag as each lands.
+
+  Nine of them arrived together on 2026-08-30 with the compiler-verified language
+  work, and they are why core coverage reads 86.4% rather than 100%:
+  `L2-runtime-functions-arity`, `L2-implicit-conversions`,
+  `L2-select-find-options-joins`, `L2-args-record-caller`,
+  `L2-display-edit-methods`, `L3-form-event-handler-class`,
+  `L3-sysoperation-dialog-attributes`, `L2-systest-authoring-basic`,
+  `L3-report-dataset-extension`. Each has a knowledge entry written from a
+  compiler probe and a tool path that can produce it; what none of them has yet is
+  a build that proves the two agree. The number is supposed to fall when the
+  taxonomy grows honestly — it climbs back one captured golden at a time.
 - **Coverage closure loop** (~2–4 leaves/week): `eval-author` drafts a case for
   each leaf missing **E** → `eval-run` captures the golden → MODEL_ERROR
   clusters flow through `knowledgeFeedback` into proposed knowledge entries
@@ -341,11 +352,33 @@ Standing queues:
 
 Blocked / declined (not planned):
 
-- `SysTestConsole.exe` requires an interactive console session (unconditional
-  `WaitForDebugger()` / `Console.ReadKey()` even in local-AOS mode) — a platform
-  limitation. Three cases stay `systest_pending: true` (`L2-coc-extension`,
-  `L3-batch-basic`, `L2-event-handler-basic`). `vstest.console.exe` +
-  `RunnableDropSysTest.TestAdapter.dll` discovers zero tests: dead end.
+- ~~`SysTestConsole.exe` requires an interactive console session~~ — **wrong, corrected
+  2026-08-30.** The binary documents `/unattended` in its own `/?` output, and with that
+  flag it skips the debugger-attach prompt and reaches "Executing test(s) ....". The tool
+  passes it now. What blocks a run on THIS VM is a different, and specific, thing: the
+  telemetry logger the runner touches on its way into `ExecuteTest` fails with
+  `Could not load file or assembly 'Microsoft.ApplicationInsights, Version=2.22.0.997'`,
+  because `Bin\SysTestConsole.exe.config` redirects that assembly to 2.22.0.997 while the
+  DLL shipped in `Bin` is 2.23.0.0. Fixing it is a one-line edit to a Microsoft-owned
+  config file — a change to the platform installation, deliberately NOT made here.
+  Both assembly faults were fixed on this VM by CONFIG edits only, each with a backup
+  beside the file: the redirect now names 2.23.0.29, and `ModelUtilDlls` was added to the
+  `<probing privatePath>` so the correctly-redirected System.ValueTuple 4.0.3.0 is found.
+  The runner then reaches the DATABASE and stops at `Login failed for user 'AOSUser'`.
+  **That was read as a rotated credential for weeks, and it is not one.** Nothing has
+  rotated: `Bin\SysTestConsole.exe.config` is the SHIPPED TEMPLATE, never configured for
+  this machine, and it disagrees with the AOS's own `WebRoot\web.config` on all four
+  DataAccess settings — database (`AxDbRain` vs `AxDB`), user (`AOSUser` vs `axdbadmin`),
+  server (`.` vs the real host) and password (`$CREDENTIAL_PLACEHOLDER$` vs an 828-char
+  encrypted blob). The fix is to copy the four values across, keeping a backup; it edits
+  the PLATFORM install and handles a secret, so it is the owner's call to make, not a
+  tool's. `run_systest_class` now performs that comparison itself and reports which
+  settings differ (never the password — only "placeholder" or "set, N chars"), so the
+  next reader is not sent hunting a password again.
+  The four cases stay `systest_pending: true` until that is applied
+  (`L2-coc-extension`, `L3-batch-basic`, `L2-event-handler-basic`,
+  `L3-enum-field-form-downgrade-guard`). `vstest.console.exe` +
+  `RunnableDropSysTest.TestAdapter.dll` discovers zero tests: still a dead end.
 - CI-workflow half of the autonomous improver. The VM-free fix-brief generator
   (`npm run eval:brief`) is done; running Claude Code unattended on top of it in
   GitHub Actions was **explicitly declined** as a new autonomous-agent surface

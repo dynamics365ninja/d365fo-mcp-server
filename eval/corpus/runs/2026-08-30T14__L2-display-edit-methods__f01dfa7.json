@@ -1,0 +1,41 @@
+{
+  "run_id": "2026-08-30T14__L2-display-edit-methods__f01dfa7",
+  "case_id": "L2-display-edit-methods",
+  "tier": 2,
+  "timestamp": "2026-08-30T14:05:00.000Z",
+  "server_git_sha": "f01dfa7",
+  "platform_build": "7.0.7996.33",
+  "generated_artifacts": [
+    "CustGroupCon_Extension.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "KNOWLEDGE_GAP",
+  "root_cause_hypothesis": "The case spec asked for the display and edit methods to go in an AxTableExtension. An AxTableExtension document has no <Methods> element at all — no shipped table extension in ApplicationSuite has one — so on a table you do not own they must live in an [ExtensionOf(tableStr(...))] final class. Authored from documentation; the platform disagreed. Case instruction and target_artifact_types corrected, and the realization in the extension class builds clean and BP-clean.",
+  "suggested_fix_area": "eval/cases/L2-display-edit-methods.json",
+  "evidence_refs": [
+    "eval/goldens/L2-display-edit-methods/README.md"
+  ]
+}

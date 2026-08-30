@@ -114,7 +114,10 @@ describe('taxonomy notes match the catalog', () => {
 
   it('no note claims a pending golden for a case that is captured', () => {
     const lying = TAXONOMY
-      .filter(l => /golden pending VM capture/i.test(l.note ?? ''))
+      // Any phrasing of "pending", not the one literal string: three notes said
+      // "goldens pending VM capture" and "golden capture pending on the VM" and
+      // slipped this gate for weeks.
+      .filter(l => /pending/i.test(l.note ?? ''))
       .filter(l => (l.caseIds ?? []).every(id => cases.get(id)?.goldenPending === false))
       .map(l => l.id);
 

@@ -12,7 +12,9 @@ export const prepareTool = {
       '• change → extending/modifying an EXISTING object: exact signature, existing CoC wrappers, eligibility, ' +
       'recommended strategy, naming, patterns. Replaces the analyze→search→info→generate loop.\n' +
       '• create → a NEW object: collision check, naming with auto-prefix, similar objects, EDT suggestions, ' +
-      'reusable labels, mined property defaults.',
+      'reusable labels, mined property defaults.\n' +
+      '• test → writing a SysTest for an existing class: methods worth covering, tests that already exist, ' +
+      'whether the model references TestEssentials, and the red-first cycle.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -21,7 +23,7 @@ export const prepareTool = {
         // session's ListTools.
         mode: {
           type: 'string',
-          enum: ['change', 'create'],
+          enum: ['change', 'create', 'test'],
         },
         goal: {
           type: 'string',

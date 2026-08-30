@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoRebateService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Does the work of the customer rebate run.
+/// </summary>
+public class ConDemoRebateService extends SysOperationServiceBase
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>process</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Counts the customers the run applies to.
+    /// </summary>
+    /// <param name = "_contract">The parameters of the run.</param>
+    /// <remarks>
+    /// No SysEntryPointAttribute here: xppc answers that it is obsolete and
+    /// deprecated in AX7.
+    /// </remarks>
+    public void process(ConDemoRebateContract _contract)
+    {
+        CustTable custTable;
+
+        if (_contract.parmIncludeBlocked() == NoYes::Yes)
+        {
+            select count(RecId) from custTable
+                where custTable.CustGroup == _contract.parmCustGroup();
+        }
+        else
+        {
+            select count(RecId) from custTable
+                where custTable.CustGroup == _contract.parmCustGroup()
+                && custTable.Blocked == CustVendorBlocked::No;
+        }
+
+        info(strFmt("@SYS100074", _contract.parmCustGroup(), int642Str(custTable.RecId)));
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

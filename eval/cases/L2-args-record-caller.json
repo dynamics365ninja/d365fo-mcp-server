@@ -1,0 +1,24 @@
+{
+  "id": "L2-args-record-caller",
+  "title": "Args: reading the record an object was opened with, and refusing the ones it does not understand",
+  "tier": 2,
+  "instruction": "In the sandbox model, create a runnable class DemoOrderEntryPoint with `public static void main(Args _args)`. Ground it first with get_knowledge(topic=\"args-object\"). The method must (1) check `_args` is present and that `_args.dataset()` is the table id it expects BEFORE calling `_args.record()` - any caller can pass any table, and reading record() unchecked is how a form silently acts on the wrong buffer. Throw a LABELLED error otherwise. (2) assign the record to a typed buffer, (3) read the optional string parameter with `_args.parm()`, (4) obtain the caller with `_args.caller()` and downcast it with `as FormRun`, checking the result for null before using it, because Object and FormRun are late-bound and a wrong-type call fails at RUNTIME rather than compile time. Also add `public static void openFrom(CustTable _record)` that builds an Args, sets record() and parm(), and runs a display menu item through `new MenuFunction(menuItemDisplayStr(...), MenuItemType::Display)`. Confirm the menu item name with search or get_object_info before writing it. Build with zero errors and zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-args-record-caller/",
+  "golden_pending": false,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "args",
+    "caller",
+    "menufunction",
+    "navigation",
+    "class",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

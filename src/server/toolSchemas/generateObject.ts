@@ -48,8 +48,13 @@ export const generateObjectTool = {
             'dialog-box', 'dimension-controller', 'number-seq-handler',
             'display-menu-controller', 'data-entity-staging', 'service-class-ais',
             'form-datasource-extension', 'form-control-extension', 'map-extension',
+            'systest',
+            'report-dataset-extension', 'report-custom-design', 'report-menu-redirect',
           ],
-          description: '[pattern] REQUIRED. CoC skeletons: class/table-extension, form-handler, form-datasource-extension, form-control-extension, map-extension. ssrs-report-full = Contract+DP+Controller; service-class-ais = CRUD service + contract.',
+          // Paid for the three report-* enum values by dropping the
+          // CoC-skeleton roll-call: it re-listed five values printed
+          // verbatim in the enum right above, in the same payload.
+          description: '[pattern] REQUIRED. ssrs-report-full = Contract+DP+Controller; service-class-ais = CRUD service + contract; systest = failing SysTestCase (TDD red); report-* extend a STANDARD report (recipes: object_patterns(domain="report")).',
         },
         objectType: {
           type: 'string',
@@ -60,9 +65,11 @@ export const generateObjectTool = {
           type: 'object',
           additionalProperties: true,
           description:
+            // The op-spec pointer this used to repeat is already in this
+            // tool's own description, sent in the same payload.
             'Mode-specific parameters as ONE nested object (label, fields[], fieldsHint, cloneFrom, tableMapping, ' +
-            'formPattern, contractParams[], keyFields[], style, fieldGroup, …). Get the contract from ' +
-            'get_knowledge(kind="op-spec", topic="<mode>"); a missing required one returns that COMPLETE spec.',
+            'formPattern, contractParams[], keyFields[], style, fieldGroup, …). A missing required one is ' +
+            'answered with that mode\'s COMPLETE spec.',
         },
       },
       required: ['mode'],

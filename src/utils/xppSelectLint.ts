@@ -11,35 +11,7 @@
  * Advisory only: returns human-readable warnings, never throws or blocks.
  */
 
-/** Strip X++ line/block comments and string literals so 'where'/'join' tokens inside
- *  them don't skew the scan. */
-function stripCommentsAndStrings(s: string): string {
-  let out = '';
-  let i = 0;
-  while (i < s.length) {
-    const two = s.slice(i, i + 2);
-    if (two === '//') {
-      const nl = s.indexOf('\n', i);
-      i = nl === -1 ? s.length : nl;
-      continue;
-    }
-    if (two === '/*') {
-      const end = s.indexOf('*/', i + 2);
-      i = end === -1 ? s.length : end + 2;
-      continue;
-    }
-    if (s[i] === '"') {
-      i++;
-      while (i < s.length && s[i] !== '"') { if (s[i] === '\\') i++; i++; }
-      i++;
-      out += '""';
-      continue;
-    }
-    out += s[i];
-    i++;
-  }
-  return out;
-}
+import { maskXpp } from './xppLexer.js';
 
 /**
  * Inspect X++ source for misplaced WHERE clauses in select statements. Returns a list of
@@ -47,11 +19,15 @@ function stripCommentsAndStrings(s: string): string {
  */
 export function lintXppSelect(source: string | undefined): string[] {
   if (!source || !/\bselect\b/i.test(source)) return [];
-  const cleaned = stripCommentsAndStrings(source);
+  const cleaned = maskXpp(source);
   const warnings: string[] = [];
 
-  // Each select statement spans from `select` to its terminating `;`.
-  const selectRe = /\bselect\b[\s\S]*?;/gi;
+  // A select statement ends at its `;` — or at the `{` that opens a `while select`
+  // body, whichever comes first. Stopping only at `;` swallowed the loop body, so a
+  // second, perfectly legal select inside the body contributed its own `where` to
+  // the join segment and every `while select … join … { select … where …; }` in the
+  // platform (41 shipped classes) was reported as a misplaced where.
+  const selectRe = /\bselect\b[^;{]*[;{]/gi;
   let m: RegExpExecArray | null;
   while ((m = selectRe.exec(cleaned)) !== null) {
     const stmt = m[0];

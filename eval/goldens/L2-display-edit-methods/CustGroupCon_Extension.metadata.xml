@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>CustGroupCon_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Adds two computed columns to CustGroup: one read-only and cached, one the
+/// user can type into.
+/// </summary>
+[ExtensionOf(tableStr(CustGroup))]
+final class CustGroupCon_Extension
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>conGroupSummary</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Describes the group as one line for a grid column.
+    /// </summary>
+    /// <returns>The identifier and the name of the group.</returns>
+    /// <remarks>
+    /// A display method runs once per VISIBLE ROW on every refresh. This one
+    /// reads nothing but the record in hand, so its value changes only when the
+    /// record does and the per-record cache is safe. A method that depended on
+    /// anything else must not carry the attribute.
+    /// Not usable in a select where clause: this is X++, not SQL.
+    /// </remarks>
+    [SysClientCacheDataMethodAttribute(true)]
+    public display Description conGroupSummary()
+    {
+        return strFmt("@SYS100074", this.CustGroup, this.Name);
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>conEditableName</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Shows the group name and takes an edited one back.
+    /// </summary>
+    /// <param name = "_set">false while the form paints, true when the user commits.</param>
+    /// <param name = "_value">The value the user typed; meaningful only when _set is true.</param>
+    /// <returns>The value to show.</returns>
+    /// <remarks>
+    /// The method is called twice per round trip and has to return the value to
+    /// display in both. Neither this nor the display method above may be
+    /// static: the compiler answers "Conflicting modifiers 'static display'".
+    /// </remarks>
+    public edit Description conEditableName(boolean _set, Description _value)
+    {
+        if (_set)
+        {
+            this.Name = _value;
+        }
+
+        return this.Name;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

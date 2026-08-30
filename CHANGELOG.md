@@ -61,23 +61,9 @@ those are called out explicitly below.
   `tests/eval/mobileAppCaseGrounding.test.ts`, executes each case's own grounding
   calls and asserts the answer names what the case then asks the implementer to
   write — a case whose ground truth is missing now fails here instead of on the
-  VM after a paid run. Coverage taxonomy gains `warehouse-app-screens`; total
-  coverage moves to **97.8%** (core unchanged at 100%) with both gaps named in
-  the closure queue.
+  VM after a paid run. Coverage taxonomy gains `warehouse-app-screens`, the
+  second of the two leaves this release adds to the closure queue.
 
-### Fixed
-- **`barcode-scanning` told the agent to write a GS1 parser it must not write.**
-  Inside a warehouse-app flow the platform parses GS1 before the scan reaches the
-  flow — global prefix/group-separator/unknown-identifier options on Warehouse
-  management parameters, the application-identifier list, and a bar-code data
-  policy on the mobile device menu item for one scan filling several fields. The
-  topic now leads with that, keeps the hand-written parser only for the paths
-  with no menu item behind them (rich client, integrations), and adds the two
-  facts that decide whether scanning works at all: the scanner hardware must add
-  a recognised AIM prefix and convert the ASCII 29 group separator to a printable
-  character, and multiple-field scanning changes *when* a flow has its values, so
-  a custom step can be skipped. The eval case was reframed to match. Sourced from
-  Microsoft's own documentation rather than recall.
 - **Warehouse-scanner knowledge pack (SCM audit).** D365FO drives barcode
   scanners through Warehouse management, and the base was silent on it: querying
   `get_knowledge` for `barcode`, `gs1` or `scanning` returned *"No matching
@@ -115,11 +101,14 @@ those are called out explicitly below.
   single transaction, idempotent on the action key. Fixed-offset slicing, an
   `ItemId` string compare, a raw `InventDim` insert, a direct journal-transaction
   insert and an idempotency guard outside the transaction each fail the case.
-- **Coverage taxonomy leaf `warehouse-mobile-scanning`** (w2, total tier). The
-  scanner half of WHS was uncovered while looking covered under `warehouse`, whose
-  case exercises wave/work creation only. Total coverage therefore moves 100% →
-  **98.9%** (core is unchanged at 100%) and the closure queue now names the gap;
-  it closes when the case's golden is captured on the VM.
+- **Coverage taxonomy leaves `warehouse-mobile-scanning` and
+  `warehouse-app-screens`** (w2 each, total tier). The scanner half of WHS was
+  uncovered while looking covered under `warehouse`, whose case exercises
+  wave/work creation only; the screen half was not modelled at all. Both leaves
+  are honest gaps rather than closures, so they reopen the total tier that the
+  golden capture above had just closed: **core 59/59 (100%), total 98/100 (98%)**,
+  with both named in the weight-ordered closure queue. They close when the four
+  `golden_pending` cases are captured on the VM.
 - **X++ language-core knowledge pack (Phase B).** The knowledge base was strong
   on frameworks and data access and silent on the language itself, so an agent
   could look up `SysOperation` but not how `switch` falls through. Seven new
@@ -186,8 +175,58 @@ those are called out explicitly below.
   Phase F captured their goldens on the VM, five language cases and a final
   attribute/reflection case closed the queue — each built, xppbp-clean,
   golden-matched and rolled back on the VM.
+- **Three scaffolds for extending a report that already ships**, closing the last
+  G4 gap — the technique was knowledge-only, so an agent could read what to do
+  and still had to hand-write it. `generate_object(mode="pattern", pattern=…)`
+  now emits `report-dataset-extension`, `report-custom-design` and
+  `report-menu-redirect`, each paired with a recipe in
+  `object_patterns(domain="report")` (10 recipes now: seven that create a report,
+  three that change one). Every emitted shape was compiled on the VM against real
+  standard objects — `AssetBarCodeDP`/`AssetBarCodeTmp`,
+  `AssetBarCodeController`, `SalesInvoiceController` — **with a negative control
+  in the same build**, because a probe that reports nothing is not a probe that
+  passed. Three details the compiler settled and the scaffolds now carry:
+  - the dataset accessor is a *parameter*, never derived from the temp-table
+    name: the platform's own `AssetBarCodeDP` spells its getter
+    `geAssetBarCodeTmp`, a shipped typo. Give it and you get the bulk
+    `[PostHandlerFor]` shape; omit it and you get the per-row
+    `[DataEventHandler]`, which needs no accessor at all;
+  - `linkPhysicalTableInstance` is load-bearing in the bulk shape — a temp-table
+    buffer merely declared in the handler is a *different, empty* table, so the
+    handler would appear to work while updating nothing;
+  - a catalog recipe can no longer name a `generate_object` pattern that does not
+    exist: `CODE_GEN_PATTERNS` is exported and the catalog gate checks every
+    pattern name in the file against it.
+- **Nine eval goldens captured on the VM**, taking core coverage from 86.4% back
+  to 100% (59/59) — this time on goldens that exist rather than on leaves marked
+  pending. Every artifact was written through the server's own
+  `d365fo_file(action="create")` path (no hand-edited XML), full-built with xppc
+  7.0.7996.33, checked with xppbp and rolled back; a golden is only committed out
+  of a build that was clean. 15 files across `L2-runtime-functions-arity`,
+  `L2-implicit-conversions`, `L2-select-find-options-joins`,
+  `L2-args-record-caller`, `L2-display-edit-methods`,
+  `L2-systest-authoring-basic`, `L3-form-event-handler-class`,
+  `L3-sysoperation-dialog-attributes` and `L3-report-dataset-extension`, each with
+  a README recording what it has to keep showing and what the capture taught.
+  One case spec was wrong and the platform said so: `L2-display-edit-methods`
+  asked for an `AxTableExtension`, and an `AxTableExtension` carries no
+  `<Methods>` element at all — not one shipped table extension in ApplicationSuite
+  has one — so display and edit methods on a table you do not own belong in an
+  `[ExtensionOf(tableStr(…))] final class`.
 
 ### Fixed
+- **`barcode-scanning` told the agent to write a GS1 parser it must not write.**
+  Inside a warehouse-app flow the platform parses GS1 before the scan reaches the
+  flow — global prefix/group-separator/unknown-identifier options on Warehouse
+  management parameters, the application-identifier list, and a bar-code data
+  policy on the mobile device menu item for one scan filling several fields. The
+  topic now leads with that, keeps the hand-written parser only for the paths
+  with no menu item behind them (rich client, integrations), and adds the two
+  facts that decide whether scanning works at all: the scanner hardware must add
+  a recognised AIM prefix and convert the ASCII 29 group separator to a printable
+  character, and multiple-field scanning changes *when* a flow has its values, so
+  a custom step can be skipped. The eval case was reframed to match. Sourced from
+  Microsoft's own documentation rather than recall.
 - **`labels(action="search")` recommended labels that are not on disk.**
   `action="info"` has checked a single id against the `.label.txt` since August;
   search — the call an agent makes *before* it reuses a label — never did. One
@@ -240,6 +279,49 @@ those are called out explicitly below.
   reported as an empty result — at session start, exactly when the caches are
   cold, a workspace full of recent edits could come back as "no recent edits". A
   resource read is not on the latency path a tool call is, so it now waits.
+- **`d365fo_file(action="create", objectType="table")` silently dropped
+  `properties.fieldGroups`.** The `<FieldGroups>` block was a hardcoded literal
+  holding only the five `Auto*` groups. A table with no groups of its own still
+  builds clean, so this stayed invisible until the SimpleList form template
+  emitted `<DataGroup>Overview</DataGroup>` and the build failed with *"Field
+  group 'Overview' does not exist"* — on the **form**, pointing away from the
+  table that had actually lost it.
+- **`d365fo_file(action="create", objectType="form")` never resolved field
+  control types**, so every grid column came out `AxFormStringControl` —
+  invisible for a string field, and a build error for anything else (a date
+  column fails with *"DataField: Data type mismatch"*, again naming the form
+  rather than the type it disagrees with). The templates have accepted a
+  `fieldTypes` map all along and `generate_object` supplies one; only this
+  builder did not. It now resolves them off disk, which also covers a table
+  written moments earlier in the same call and therefore absent from the symbol
+  index. `createTablePropertyHonesty` needed no change and got none — it reads
+  the XML that was actually written rather than a maintained capability list, so
+  it stopped reporting field groups by itself, and its test now asserts that
+  silence.
+- **The knowledge base told agents to call two methods that do not exist.** Both
+  were found by compiling what it recommends rather than by reading it again.
+  `form-event-handlers` said a control lookup ends with `_e.CancelSuperCall()`;
+  xppc answers *"Class 'FormControlEventArgs' does not contain a definition for
+  'CancelSuperCall'"* — the args have to be narrowed to
+  `FormControlCancelableSuperEventArgs` first (and a data source write is
+  cancelled through its own `FormDataSourceCancelEventArgs.cancel(true)`).
+  `report-extension-patterns` said a custom-design controller's `main()` calls
+  `initArgs(...)`; there is no `initArgs` on `SrsReportRunController` or anywhere
+  in its hierarchy. Shipped controllers use `parmArgs` + `parmReportName` +
+  `startOperation`, which is what both the rule and the scaffold now do.
+- **`run_systest_class` blamed the wrong thing for a failed database login.** It
+  reported `Login failed for user '…'` as "a deployment credential", which sent
+  the reader hunting a rotated password. On the machine this was recorded from,
+  nothing had rotated: `Bin\SysTestConsole.exe.config` is the shipped template,
+  never configured for that install, and it disagreed with the AOS's own
+  `WebRoot\web.config` on **all four** DataAccess settings — database, user,
+  server, and a password still reading `$CREDENTIAL_PLACEHOLDER$`. The tool now
+  compares the two files itself and names the settings that differ, and it never
+  puts the password in its answer: only "the shipped placeholder" or "set, N
+  chars, not shown". Applying the fix edits the platform install and moves a
+  secret between files, so it stays the operator's call — the four
+  `systest_pending` eval cases remain pending, now with an accurate reason.
+
 - **A write did not invalidate the workspace scan cache.** `WorkspaceScanner`'s
   own doc comment said its 15s TTL was "paired with invalidate() (called after
   writes)"; `invalidate()` had no production caller at all — only tests and its

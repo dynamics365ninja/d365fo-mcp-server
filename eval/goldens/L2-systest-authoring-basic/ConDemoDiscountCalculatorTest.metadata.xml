@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoDiscountCalculatorTest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Unit tests for <c>ConDemoDiscountCalculator</c>.
+/// </summary>
+/// <remarks>
+/// Every test method runs inside its own transaction, which the framework rolls
+/// back afterwards, so created records need no cleanup and there is no rollback
+/// attribute to add.
+/// The second argument of SysTestTarget is the element TYPE. A method name
+/// there does not compile.
+/// </remarks>
+[SysTestTarget(classStr(ConDemoDiscountCalculator), UtilElementType::Class)]
+class ConDemoDiscountCalculatorTest extends SysTestCase
+{
+    private ConDemoDiscountCalculator calculator;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>setUp</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Runs before EACH test method. setUpTestCase() runs once for the class.
+    /// </summary>
+    public void setUp()
+    {
+        super();
+
+        calculator = new ConDemoDiscountCalculator();
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>testPercentOfRoundsToTwoDecimals</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// A percentage is rounded to two decimals, not left at full precision.
+    /// </summary>
+    [SysTestMethod]
+    public void testPercentOfRoundsToTwoDecimals()
+    {
+        this.assertRealEquals(12.35, calculator.percentOf(123.45, 10));
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>testIsFreeHoldsOnlyAtOrBelowZero</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Zero is free and the smallest positive amount is not.
+    /// </summary>
+    [SysTestMethod]
+    public void testIsFreeHoldsOnlyAtOrBelowZero()
+    {
+        this.assertTrue(calculator.isFree(0));
+        this.assertFalse(calculator.isFree(0.01));
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>testRejectsPercentAbove100</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// A percentage above 100 is refused.
+    /// </summary>
+    /// <remarks>
+    /// An expected exception is DECLARED before the call. There is no
+    /// assertExpectedException in X++.
+    /// </remarks>
+    [SysTestMethod]
+    public void testRejectsPercentAbove100()
+    {
+        this.parmExceptionExpected(true);
+
+        calculator.percentOf(100, 101);
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
