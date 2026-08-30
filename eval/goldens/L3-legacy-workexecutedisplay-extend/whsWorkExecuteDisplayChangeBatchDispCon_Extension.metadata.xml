@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>whsWorkExecuteDisplayChangeBatchDispCon_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Chain of Command extension that shows the batch expiration date on the Change batch
+/// disposition screen of the LEGACY warehouse-app flow
+/// <c>whsWorkExecuteDisplayChangeBatchDisp</c>.
+/// </summary>
+/// <remarks>
+/// FRAMEWORK CHOICE - why this flow is changed in the legacy WHSWorkExecuteDisplay
+/// hierarchy and not in ProcessGuide: the Change batch disposition flow is NOT converted in
+/// this version. <c>WHSWorkExecuteMode::ChangeBatchDisposition</c> is still served by
+/// <c>whsWorkExecuteDisplayChangeBatchDisp</c>, a subclass of the legacy
+/// <c>WHSWorkExecuteDisplay</c> whose <c>displayForm</c> is a single switch over the step
+/// that builds the whole screen as a container. That class carries no
+/// <c>SysObsolete</c> attribute, and this deployment has no ProcessGuide controller, step,
+/// page builder or navigation agent registered on the mode; the only other classes carrying
+/// its <c>WHSWorkExecuteMode</c> attribute are
+/// <c>WHSMobileAppFlowChangeBatchDisposition</c> and
+/// <c>WHSMobileAppStepInfoBuilderChangeBatchDisposition</c>, which are the warehouse-app
+/// field name and step title configuration rather than a ProcessGuide conversion. There is
+/// therefore no ProcessGuide extension point to target, and converting the flow is out of
+/// scope for this change. A NEW flow would still be built in ProcessGuide. For contrast the
+/// neighbouring <c>WhsWorkExecuteDisplayAdjustIn</c> IS obsolete in this deployment and its
+/// attribute redirects to <c>InventProcessGuideAdjustInController</c> - that flow has been
+/// converted and must not be extended this way.
+///
+/// FIND REFERENCES on the method being wrapped, run BEFORE this class was written:
+/// find_references(whsWorkExecuteDisplayChangeBatchDisp.buildChangeBatchDisposition)
+/// returned 1 hit and reported "name-based index scan (xref bridge unavailable) -
+/// heuristic". That single hit is the declaring file itself, so the answer was verified
+/// against the source of <c>whsWorkExecuteDisplayChangeBatchDisp.displayForm</c>. The real
+/// call sites are FOUR, all this.buildChangeBatchDisposition(...) inside that one method:
+/// (1) the initial build under "case #InitializeBatchDispChange", taken while step is still
+/// #InitializeBatchDispChange, (2) the main rebuild under "case #ProcessBatchDispChange"
+/// after the posted screen has been processed, (3) the rebuild taken when the item or batch
+/// the operator entered has changed, and (4) the rebuild of the success screen after the
+/// disposition code was changed and the pass field values were reset. Call sites 2, 3 and 4
+/// all run with step == #ProcessBatchDispChange, so the step alone does not separate them:
+/// the guard below therefore also requires a resolvable item, batch and expiration date,
+/// which is exactly what the initial screen (1) and the reset success screen (4) do not
+/// have.
+///
+/// That is why this narrow, class-owned builder is wrapped rather than displayForm or a
+/// shared base method. displayForm is the entire screen lifecycle for the mode, and
+/// find_references(WHSWorkExecuteDisplay.buildBatchDisposition) - the shared base helper
+/// this screen itself calls twice - reports a caller in a DIFFERENT package
+/// (ITMProcessGuideGoodsInTransitHelper, model InboundTransportationManagement), so
+/// wrapping that one would leak this change into the goods in transit flow. The same trap
+/// applies to processWorkLine(), which is reached from every work-execution process.
+///
+/// The control added is a LABEL, not an input. The legacy framework posts the whole screen
+/// back and runs every input control through <c>WHSRFControlData::processData</c>, so an
+/// extra text control would inject an unknown field into this flow's field value handling.
+///
+/// Session state is read from and written back to the <c>WHSRFPassthrough</c> that the
+/// framework round-trips to the device, never to a class member: every round trip may be
+/// served by a different AOS. Nothing here reads or writes <c>WHSWorkTable</c> or
+/// <c>WHSWorkLine</c> - the disposition change itself stays with the framework.
+/// </remarks>
+[ExtensionOf(classStr(whsWorkExecuteDisplayChangeBatchDisp))]
+final class whsWorkExecuteDisplayChangeBatchDispCon_Extension
+{
+    #WHSRF
+    #define.ConBatchExpDateControl('ConBatchExpDate')
+    #define.ConBatchExpDatePassKey('ConBatchExpDateShown')
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>buildChangeBatchDisposition</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Adds the expiration date of the batch being re-dispositioned to the Change batch
+    /// disposition screen.
+    /// </summary>
+    /// <param name = "_con">The RF container variable.</param>
+    /// <returns>The updated RF container variable.</returns>
+    protected container buildChangeBatchDisposition(container _con)
+    {
+        container   ret;
+        container   expDateControl;
+        str         expDateText;
+        int         okButtonLocation;
+
+        ret = next buildChangeBatchDisposition(_con);
+
+        // Guard on the mode and the step this change is for. The builder is reached from
+        // four places in displayForm; the initial screen runs with a different step and the
+        // reset success screen has no batch in session, so neither picks this up.
+        if (mode == WHSWorkExecuteMode::ChangeBatchDisposition
+            && this.parmStep() == #ProcessBatchDispChange)
+        {
+            expDateText = this.conBatchExpDateText();
+
+            if (expDateText)
+            {
+                expDateControl = this.buildControl(#RFLabel,
+                    #ConBatchExpDateControl,
+                expDateText,
+                    1,
+                    '',
+                    extendedTypeNum(WHSRFUndefinedDataType),
+                    '',
+                    0);
+
+                // Keep the value above the OK button instead of below it.
+                okButtonLocation = this.getControlLocationInContainer(ret, #RFOK);
+
+                if (okButtonLocation)
+                {
+                    ret = conIns(ret, okButtonLocation, expDateControl);
+                }
+                else
+                {
+                    ret += [expDateControl];
+                }
+            }
+        }
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>conBatchExpDateText</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Builds the expiration date text for the batch currently in session and records what
+    /// was shown in the session pass-through.
+    /// </summary>
+    /// <returns>
+    /// The expiration date text, or an empty string when no batch with an expiration date
+    /// is in session.
+    /// </returns>
+    private str conBatchExpDateText()
+    {
+        ItemId              itemId;
+        InventBatchId       inventBatchId;
+        InventBatchExpDate  expDate;
+        str                 expDateText;
+
+        // Session values are read from the pass-through and not from class members: the
+        // framework is stateless and the next round trip may run on a different AOS.
+        itemId        = pass.lookupStr(#ItemId);
+        inventBatchId = pass.lookupStr(#BatchId);
+
+        if (!itemId
+            || !inventBatchId
+            || !InventBatch::exist(inventBatchId, itemId))
+        {
+            // Nothing to show yet, and drop whatever an earlier round trip recorded.
+            pass.remove(#ConBatchExpDatePassKey);
+            return '';
+        }
+
+        expDate = InventBatch::find(inventBatchId, itemId).expDate;
+
+        if (expDate == dateNull())
+        {
+            pass.remove(#ConBatchExpDatePassKey);
+            return '';
+        }
+
+        expDateText = strFmt('%1: %2',
+            "@SYS54367",
+            WhsrfControlData::convertDate2DateFormatStrCurrentUserDateCulture(expDate, pass.lookupStr(#UserId)));
+
+        // Write it back through the pass-through so the next round trip sees what was shown.
+        pass.insert(#ConBatchExpDatePassKey, expDateText);
+
+        return expDateText;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

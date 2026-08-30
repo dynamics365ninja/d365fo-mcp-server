@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoPackProcessGuidePromptContainerStep</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The <c>ConDemoPackProcessGuidePromptContainerStep</c> class represents the screen that asks
+/// the worker to scan the container that is packed.
+/// </summary>
+[ProcessGuideStepName(classStr(ConDemoPackProcessGuidePromptContainerStep))]
+public class ConDemoPackProcessGuidePromptContainerStep extends ProcessGuideStep
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>pageBuilderName</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets the name of the page builder that builds the screen of this step.
+    /// </summary>
+    /// <returns>
+    /// The name of the page builder class.
+    /// </returns>
+    protected ProcessGuidePageBuilderName pageBuilderName()
+    {
+        return classStr(ConDemoPackProcessGuidePromptContainerPageBuilder);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isComplete</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Specifies if the step is completed.
+    /// </summary>
+    /// <returns>
+    /// true, if the worker confirmed a container; otherwise, false.
+    /// </returns>
+    protected boolean isComplete()
+    {
+        WhsrfPassthrough pass = controller.parmSessionState().parmPass();
+
+        return pass.lookupStr(ProcessGuideDataTypeNames::ContainerId) != '';
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

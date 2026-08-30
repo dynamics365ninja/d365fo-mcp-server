@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ProdProcessGuidePromptProductionIdPageBuilderCon_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Extends the standard production order identification prompt of the warehouse app so that
+/// the warehouse of the current mobile device session is shown on the screen.
+/// </summary>
+/// <remarks>
+/// The label is appended after the standard controls, so the standard layout is preserved.
+/// </remarks>
+[ExtensionOf(classStr(ProdProcessGuidePromptProductionIdPageBuilder))]
+final class ProdProcessGuidePromptProductionIdPageBuilderCon_Extension
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>addDataControls</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Adds the warehouse of the current mobile device session below the standard data controls.
+    /// </summary>
+    /// <param name = "_page">
+    /// The <c>ProcessGuidePage</c> class to which the controls should be added.
+    /// </param>
+    protected void addDataControls(ProcessGuidePage _page)
+    {
+        WhsrfPassthrough    pass;
+        InventLocationId    inventLocationId;
+
+        next addDataControls(_page);
+
+        pass = controller.parmSessionState().parmPass();
+        inventLocationId = pass.lookupStr(ProcessGuideDataTypeNames::InventLocationId);
+
+        if (inventLocationId)
+        {
+            _page.addLabel(
+                ProcessGuideDataTypeNames::InventLocation,
+                strFmt("@WAX1112", inventLocationId),
+                extendedTypeNum(WHSRFUndefinedDataType));
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

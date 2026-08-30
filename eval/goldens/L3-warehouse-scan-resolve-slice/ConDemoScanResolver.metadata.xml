@@ -1,0 +1,342 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoScanResolver</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Resolves scanner input into an item, an inventory dimension combination and a posted
+/// inventory movement journal.
+/// </summary>
+/// <remarks>
+/// This helper serves the scanning paths that have NO mobile device menu item behind them:
+/// a rich client form and an integration. Inside a warehouse app flow the platform already
+/// parses the GS1 scan from the bar code setup and the bar code data policy on the mobile
+/// device menu item, so this class must not be called from a warehouse app step.
+/// Bar code setup, item bar codes and journal names are configured data - this class only
+/// reads them, it never creates them.
+/// </remarks>
+public final class ConDemoScanResolver
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>splitGs1</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Splits a GS1-128 scan into application identifier and value pairs.
+    /// </summary>
+    /// <param name = "_scan">The decoded text delivered by the scanner.</param>
+    /// <returns>A container holding one nested application identifier and value container per element found.</returns>
+    /// <remarks>
+    /// An application identifier with a predefined length runs straight into the next identifier,
+    /// a variable length one ends at the FNC1 group separator (ASCII 29) or at the end of the scan.
+    /// Slicing the scan at fixed character offsets breaks on the first real customer label.
+    /// </remarks>
+    public static container splitGs1(str _scan)
+    {
+        container   pairs;
+        container   fixedLengths;
+        str         groupSeparator;
+        str         rest;
+        str         ai;
+        int         valueLength;
+        int         separatorPos;
+
+        fixedLengths   = ConDemoScanResolver::gs1FixedValueLengths();
+        groupSeparator = num2char(29);
+
+        // A keyboard wedge appends CR/LF and the scanner hardware prefixes the AIM symbology
+        // identifier (]C1 for GS1-128). Neither belongs to the data.
+        rest = strLRTrim(strRem(_scan, num2char(13) + num2char(10)));
+
+        if (subStr(rest, 1, 1) == ']')
+        {
+            rest = subStr(rest, 4, strLen(rest) - 3);
+        }
+
+        while (strLen(rest) >= 2)
+        {
+            if (subStr(rest, 1, 1) == groupSeparator)
+            {
+                // A separator that survived the previous element.
+                rest = subStr(rest, 2, strLen(rest) - 1);
+                continue;
+            }
+
+            ai   = subStr(rest, 1, 2);
+            rest = subStr(rest, 3, strLen(rest) - 2);
+
+            valueLength = ConDemoScanResolver::gs1FixedValueLength(fixedLengths, ai);
+
+            if (valueLength == 0)
+            {
+                // Variable length: the value ends at the group separator or at the end of the scan.
+                separatorPos = strScan(rest, groupSeparator, 1, strLen(rest));
+                valueLength  = separatorPos > 0 ? separatorPos - 1 : strLen(rest);
+            }
+
+            if (valueLength > strLen(rest))
+            {
+                valueLength = strLen(rest);
+            }
+
+            pairs = conIns(pairs, conLen(pairs) + 1, [ai, subStr(rest, 1, valueLength)]);
+            rest  = subStr(rest, valueLength + 1, strLen(rest) - valueLength);
+        }
+
+        return pairs;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>itemIdFromGtin</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Resolves a scanned GTIN to an item number through the item bar code setup.
+    /// </summary>
+    /// <param name = "_gtin">The GTIN read from application identifier 01 of the scan.</param>
+    /// <returns>The item number the bar code resolves to, or an empty item number.</returns>
+    /// <remarks>
+    /// Only bar codes flagged for input may resolve a scan, a code kept for printing must not.
+    /// One item legitimately carries several codes, so a string comparison against the item
+    /// number is wrong. An unresolved code is a normal business case, so the operator is told
+    /// with a label and no exception is thrown.
+    /// </remarks>
+    public static ItemId itemIdFromGtin(str _gtin)
+    {
+        InventItemBarcode   inventItemBarcode;
+        ItemBarCode         barcode;
+
+        barcode = strLRTrim(strRem(_gtin, num2char(13) + num2char(10) + num2char(29)));
+
+        if (!barcode)
+        {
+            return '';
+        }
+
+        inventItemBarcode = InventItemBarcode::findInputBarcode(barcode);
+
+        if (!inventItemBarcode.itemId)
+        {
+            warning(strFmt("@SYS72727", barcode, '01'));
+            return '';
+        }
+
+        return inventItemBarcode.itemId;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>dimensionsFromScan</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Builds the inventory dimension combination described by a GS1-128 scan.
+    /// </summary>
+    /// <param name = "_scan">The decoded text delivered by the scanner.</param>
+    /// <returns>The identifier of the dimension combination.</returns>
+    /// <remarks>
+    /// The batch number is application identifier 10 and the serial number is 21. The combination
+    /// is obtained through the dimension API - inserting into InventDim directly leaves an orphan
+    /// dimension and on hand that does not add up.
+    /// </remarks>
+    public static InventDimId dimensionsFromScan(str _scan)
+    {
+        InventDim   inventDim;
+        container   pairs;
+        container   pair;
+        str         ai;
+        int         i;
+
+        pairs = ConDemoScanResolver::splitGs1(_scan);
+
+        for (i = 1; i <= conLen(pairs); i++)
+        {
+            pair = conPeek(pairs, i);
+            ai   = conPeek(pair, 1);
+
+            if (ai == '10')
+            {
+                // Batch or lot number.
+                inventDim.inventBatchId = conPeek(pair, 2);
+            }
+            else if (ai == '21')
+            {
+                // Serial number.
+                inventDim.inventSerialId = conPeek(pair, 2);
+            }
+        }
+
+        return InventDim::findOrCreate(inventDim).inventDimId;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>postScanAction</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Posts the inventory movement a scan asks for and returns the identifier of the posted journal.
+    /// </summary>
+    /// <param name = "_actionKey">The key the caller sent with the scan, used to make the action idempotent.</param>
+    /// <param name = "_itemId">The item the scan resolved to.</param>
+    /// <param name = "_inventDimId">The dimension combination the scan resolved to.</param>
+    /// <param name = "_qty">The quantity to move.</param>
+    /// <param name = "_journalName">The configured journal name to create the journal under.</param>
+    /// <returns>The identifier of the posted inventory journal.</returns>
+    /// <remarks>
+    /// The whole action runs inside one transaction because a device round trip can never span one.
+    /// The guard on the action key sits inside that transaction, so the same scan arriving twice
+    /// posts once. The journal is created and posted through the journal framework, never by
+    /// writing the journal transaction table or InventTrans directly.
+    /// </remarks>
+    public static InventJournalId postScanAction(
+        str                     _actionKey,
+        ItemId                  _itemId,
+        InventDimId             _inventDimId,
+        InventQty               _qty,
+        InventJournalNameId     _journalName)
+    {
+        InventJournalTable      postedJournal;
+        InventJournalTable      inventJournalTable;
+        InventJournalTrans      inventJournalTrans;
+        JournalTableData        journalTableData;
+        JournalTransData        journalTransData;
+        JournalCheckPost        journalCheckPost;
+        InventJournalSource     actionSource;
+        InventJournalId         journalId;
+
+        if (!_actionKey)
+        {
+            throw error(Error::missingMethodParameter(
+                classStr(ConDemoScanResolver),
+                staticMethodStr(ConDemoScanResolver, postScanAction),
+                identifierStr(_actionKey)));
+        }
+
+        // The stored key and the key the guard compares against go through the same type, so a
+        // key longer than the field is truncated once and is afterwards compared as it is stored.
+        actionSource = _actionKey;
+
+        ttsbegin;
+
+        // Idempotency guard, INSIDE the transaction: the device retries and the operator
+        // re-scans, and the same action key must still post exactly one journal.
+        select firstonly postedJournal
+            where postedJournal.Source == actionSource;
+
+        if (postedJournal.JournalId)
+        {
+            journalId = postedJournal.JournalId;
+            info(strFmt("@SYS335854", journalId));
+        }
+        else
+        {
+            inventJournalTable.JournalNameId = _journalName;
+            inventJournalTable.initFromInventJournalName(InventJournalName::find(_journalName));
+            inventJournalTable.Source        = actionSource;
+            inventJournalTable.insert();
+
+            journalTableData = JournalTableData::newTable(inventJournalTable);
+
+            inventJournalTrans.initFromInventJournalTable(inventJournalTable);
+            inventJournalTrans.initFromInventTable(InventTable::find(_itemId));
+            inventJournalTrans.TransDate   = DateTimeUtil::date(DateTimeUtil::getSystemDateTime());
+            inventJournalTrans.ItemId      = _itemId;
+            inventJournalTrans.InventDimId = _inventDimId;
+            inventJournalTrans.Qty         = _qty;
+
+            journalTransData = journalTableData.journalStatic().newJournalTransData(inventJournalTrans, journalTableData);
+            journalTransData.initFromJournalTable();
+            journalTransData.create();
+
+            // The journal framework carries the validation the shop floor depends on: a direct
+            // insert into the journal transaction table, or a write to InventTrans, skips it.
+            journalCheckPost = InventJournalCheckPost::newPostJournal(inventJournalTable);
+
+            if (journalCheckPost)
+            {
+                journalCheckPost.runOperation();
+            }
+
+            journalId = inventJournalTable.JournalId;
+        }
+
+        ttscommit;
+
+        return journalId;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>gs1FixedValueLengths</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the GS1 application identifiers that have a predefined length.
+    /// </summary>
+    /// <returns>A flat container of alternating application identifier and value length.</returns>
+    /// <remarks>
+    /// Kept in one place so the list can grow with the standard. An identifier that is not listed
+    /// here is variable length and its value ends at the group separator. The lengths follow the
+    /// predefined length table of the GS1 general specifications, counted after the first two digits.
+    /// </remarks>
+    private static container gs1FixedValueLengths()
+    {
+        return ['00', 18,
+            '01', 14,
+            '02', 14,
+            '03', 14,
+            '04', 16,
+            '11', 6,
+            '12', 6,
+            '13', 6,
+            '14', 6,
+            '15', 6,
+            '16', 6,
+            '17', 6,
+            '18', 6,
+            '19', 6,
+            '20', 2,
+            '31', 8,
+            '32', 8,
+            '33', 8,
+            '34', 8,
+            '35', 8,
+            '36', 8,
+            '41', 14];
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>gs1FixedValueLength</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Looks the predefined value length of an application identifier up.
+    /// </summary>
+    /// <param name = "_fixedLengths">The table returned by the predefined length list.</param>
+    /// <param name = "_ai">The two leading digits of the application identifier.</param>
+    /// <returns>The predefined value length, or zero when the identifier is variable length.</returns>
+    private static int gs1FixedValueLength(container _fixedLengths, str _ai)
+    {
+        int i;
+
+        for (i = 1; i < conLen(_fixedLengths); i += 2)
+        {
+            if (conPeek(_fixedLengths, i) == _ai)
+            {
+                return conPeek(_fixedLengths, i + 1);
+            }
+        }
+
+        return 0;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

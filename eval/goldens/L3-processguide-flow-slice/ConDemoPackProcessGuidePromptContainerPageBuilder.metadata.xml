@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoPackProcessGuidePromptContainerPageBuilder</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The <c>ConDemoPackProcessGuidePromptContainerPageBuilder</c> class builds the screen that asks
+/// the worker to scan the container that is packed.
+/// </summary>
+[ProcessGuidePageBuilderName(classStr(ConDemoPackProcessGuidePromptContainerPageBuilder))]
+public class ConDemoPackProcessGuidePromptContainerPageBuilder extends ProcessGuidePageBuilder
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>addDataControls</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Adds the data controls to the page.
+    /// </summary>
+    /// <param name = "_page">
+    /// The <c>ProcessGuidePage</c> class to which the controls should be added.
+    /// </param>
+    protected void addDataControls(ProcessGuidePage _page)
+    {
+        WhsrfPassthrough pass = controller.parmSessionState().parmPass();
+
+        _page.addTextBox(
+            ProcessGuideDataTypeNames::ContainerId,
+            "@WAX1422",
+            extendedTypeNum(WHSContainerId),
+            true,
+            pass.lookupStr(ProcessGuideDataTypeNames::ContainerId));
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>addActionControls</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Adds the action controls to the page.
+    /// </summary>
+    /// <param name = "_page">
+    /// The <c>ProcessGuidePage</c> class to which the controls should be added.
+    /// </param>
+    protected void addActionControls(ProcessGuidePage _page)
+    {
+        #ProcessGuideActionNames
+
+        _page.addButton(step.createAction(#ActionOK), true);
+        _page.addButton(step.createAction(#ActionCancelExitProcess));
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 100,
-    "covered": 98,
-    "percent": 98
+    "covered": 100,
+    "percent": 100
   },
   "leaves": [
     {
@@ -1147,10 +1147,12 @@
       "tier": "total",
       "weight": 2,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L3-warehouse-scan-resolve-slice"
+      ]
     },
     {
       "id": "warehouse-app-screens",
@@ -1159,10 +1161,14 @@
       "tier": "total",
       "weight": 2,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-processguide-page-control",
+        "L3-legacy-workexecutedisplay-extend",
+        "L3-processguide-flow-slice"
+      ]
     },
     {
       "id": "trade-agreements",

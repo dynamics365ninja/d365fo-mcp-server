@@ -11,7 +11,7 @@
     "AxClass"
   ],
   "golden_path": "eval/goldens/L3-processguide-flow-slice/",
-  "golden_pending": true,
+  "golden_pending": false,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"

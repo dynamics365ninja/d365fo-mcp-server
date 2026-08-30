@@ -7,7 +7,7 @@
     "AxClass"
   ],
   "golden_path": "eval/goldens/L2-processguide-page-control/",
-  "golden_pending": true,
+  "golden_pending": false,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"
