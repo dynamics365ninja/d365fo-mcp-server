@@ -28,7 +28,40 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
-_Nothing released yet._
+### Fixed (golden re-verification)
+- **`d365fo_file(action="create", objectType="table")` also dropped
+  `properties.indexes`** — the third collection it lost after field groups, and
+  the one with no way back: `createTablePropertyHonesty` correctly reported the
+  loss and offered `add-index` as the repair, but that operation requires the C#
+  bridge, so a create running on the XML-template path could not produce an index
+  at all. `<Indexes>` is now rendered by a builder shared with the
+  table-extension path, so the two cannot drift. `<Relations />` is still a
+  literal and stays reported by that same honesty check.
+- **The form templates named a field group they had no reason to believe
+  existed.** `<DataGroup>Overview</DataGroup>` was hardcoded on the grid in three
+  patterns. Binding a grid to a field group is right — shipped forms do it, and
+  `CustGroup` and `VendGroup` both bind `Overview` — but naming a group the table
+  does not declare is a build error, and an *incremental* build passes it
+  silently, which is how it survived several captures. The builder now reads the
+  bound table and omits the element only when it has **positively** established
+  the group is absent; a table it cannot read leaves the binding alone, because
+  absence of evidence is not evidence of absence.
+- **Three goldens that could not build have been re-captured on the VM**, closing
+  the "Fixture ⇄ golden mismatch" row of `eval/golden-build-verification.json`.
+  `L1-form-basic`'s table golden did not satisfy its own case instruction, which
+  asks for an `Overview` field group *and spells out why* ("a form whose grid
+  names a field group the table does not declare fails FormPatternValidation at
+  build time") — it carried `<FieldGroups />`, because the create path had
+  silently dropped it. `L1-form-simplelistdetails`'s form carried a `<DataGroup>`
+  with no sibling `<DataSource>`, so the group could not be resolved against any
+  table. `L1-form-detailsmaster` needed no re-capture and went green once the
+  fixture table was correct. All three now build clean in isolation, and
+  `eval/fixtures/ConDemoNoteHeader.metadata.xml` is re-synchronised with the
+  re-captured golden — a copy of a golden again rather than a hand repair of one.
+  Golden re-verification: **93/100 clean over 224 artifacts** (was 57/65 over
+  143; the catalog grew by 35 cases in between, so a third of it got its first
+  isolated verdict here). Exactly three cases changed state — the three above.
+  Nothing regressed.
 
 ---
 

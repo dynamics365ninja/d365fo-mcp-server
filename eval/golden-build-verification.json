@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-29",
+  "generatedAt": "2026-08-30",
   "method": "scripts/verify-goldens-build.ts — isolated full xppc build per case",
-  "compiler": "xppc 7.0.7858.27",
-  "model": "Contoso",
-  "clean": 57,
-  "total": 65,
-  "artifacts": 143,
+  "compiler": "xppc 7.0.7996.33",
+  "model": "fm-mcp",
+  "clean": 93,
+  "total": 100,
+  "artifacts": 224,
   "cases": [
     {
       "caseId": "L0-edt-basic",
@@ -34,19 +34,15 @@
       "skipped": [
         "AxTable/ConDemoNoteHeader"
       ],
-      "ok": false,
-      "errors": [
-        "Metadata Error: AxForm/ConDemoNoteHeaderList/Design/Controls/Grid/DataGroup: Field group 'Overview' does not exist."
-      ]
+      "ok": true,
+      "errors": []
     },
     {
       "caseId": "L1-form-detailsmaster",
       "artifacts": 1,
       "skipped": [],
-      "ok": false,
-      "errors": [
-        "Metadata Error: AxForm/ConDemoNoteHeaderMaster/Design/Controls/Tab/Controls/FormTabPageDetail/Controls/DetailTab/Controls/TabPageOverview/Controls/OverviewGroup/DataGroup: Field group 'Overview' does not exist."
-      ]
+      "ok": true,
+      "errors": []
     },
     {
       "caseId": "L1-form-dialog",
@@ -73,10 +69,8 @@
       "caseId": "L1-form-simplelistdetails",
       "artifacts": 1,
       "skipped": [],
-      "ok": false,
-      "errors": [
-        "Metadata Error: AxForm/ConDemoNoteHeaderDetails/Design/Controls/DetailsHeader/Controls/Overview/DataGroup: Field group 'Overview' does not exist."
-      ]
+      "ok": true,
+      "errors": []
     },
     {
       "caseId": "L1-form-tableofcontents",
@@ -129,6 +123,27 @@
       "errors": []
     },
     {
+      "caseId": "L2-args-record-caller",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-attribute-authoring-reflection",
+      "artifacts": 3,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-bp-suppression-lifecycle",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
       "caseId": "L2-business-event-basic",
       "artifacts": 2,
       "skipped": [],
@@ -171,8 +186,29 @@
       "errors": []
     },
     {
+      "caseId": "L2-data-types-conversions",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-date-effective-table",
+      "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
       "caseId": "L2-datetime-timezone-range",
       "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-declarations-scope",
+      "artifacts": 1,
       "skipped": [],
       "ok": true,
       "errors": []
@@ -201,6 +237,13 @@
       "errors": []
     },
     {
+      "caseId": "L2-display-edit-methods",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
       "caseId": "L2-dotnet-interop-clrerror",
       "artifacts": 1,
       "skipped": [],
@@ -210,6 +253,13 @@
     {
       "caseId": "L2-edt-extension-basic",
       "artifacts": 3,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-entity-query-range-roundtrip",
+      "artifacts": 2,
       "skipped": [],
       "ok": true,
       "errors": []
@@ -236,8 +286,22 @@
       "errors": []
     },
     {
+      "caseId": "L2-exception-tts-retry",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
       "caseId": "L2-feature-management-flight",
       "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-form-control-removal-lifecycle",
+      "artifacts": 3,
       "skipped": [],
       "ok": true,
       "errors": []
@@ -264,8 +328,22 @@
       "errors": []
     },
     {
+      "caseId": "L2-implicit-conversions",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
       "caseId": "L2-interface-abstract-basic",
       "artifacts": 3,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-intrinsic-functions",
+      "artifacts": 1,
       "skipped": [],
       "ok": true,
       "errors": []
@@ -292,8 +370,22 @@
       "errors": []
     },
     {
+      "caseId": "L2-object-delete-and-entry-point-cleanup",
+      "artifacts": 4,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
       "caseId": "L2-occ-retry-basic",
       "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-operators-precedence",
+      "artifacts": 1,
       "skipped": [],
       "ok": true,
       "errors": []
@@ -322,6 +414,27 @@
       "errors": []
     },
     {
+      "caseId": "L2-runtime-functions-arity",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-select-find-options-joins",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-statements-switch-loops",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
       "caseId": "L2-sysda-fluent-query",
       "artifacts": 1,
       "skipped": [],
@@ -331,6 +444,13 @@
     {
       "caseId": "L2-sysextension-plugin",
       "artifacts": 5,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-systest-authoring-basic",
+      "artifacts": 2,
       "skipped": [],
       "ok": true,
       "errors": []
@@ -365,6 +485,20 @@
     },
     {
       "caseId": "L2-tile-cue-over-query",
+      "artifacts": 3,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L2-virtual-entity-power-platform",
+      "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L3-aggregate-measurement-basic",
       "artifacts": 3,
       "skipped": [],
       "ok": true,
@@ -406,6 +540,33 @@
       "errors": []
     },
     {
+      "caseId": "L3-dmf-entity-import-slice",
+      "artifacts": 2,
+      "skipped": [],
+      "ok": false,
+      "errors": [
+        "Compile Error: Table Method dynamics://Table/ConDemoImportTargetEntity/Method/postGetStagingData: [(27,9),(27,41)]: The name 'ConDemoImportTargetEntityStaging' does not denote a class, a table, or an extended data type.",
+        "Compile Error: Table Method dynamics://Table/ConDemoImportTargetEntity/Method/postGetStagingData: [(30,15),(32,80)]: 'stagingTable' is not declared.",
+        "Compile Error: Table Method dynamics://Table/ConDemoImportTargetEntity/Method/postGetStagingData: [(34,13),(34,38)]: The qualifier 'stagingTable' is not valid for field 'DocumentCode'.",
+        "Compile Error: Table Method dynamics://Table/ConDemoImportTargetEntity/Method/postGetStagingData: [(34,48),(34,60)]: The qualifier 'stagingTable' is not valid for field 'DocumentCode'.",
+        "Metadata Error: AxDataEntityView/ConDemoImportTargetEntity/DataManagementStagingTable: Table 'ConDemoImportTargetEntityStaging' does not exist."
+      ]
+    },
+    {
+      "caseId": "L3-dualwrite-entity-mapping",
+      "artifacts": 3,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L3-electronic-reporting-integration",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
       "caseId": "L3-file-csv-import",
       "artifacts": 1,
       "skipped": [],
@@ -429,6 +590,13 @@
       ]
     },
     {
+      "caseId": "L3-form-event-handler-class",
+      "artifacts": 3,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
       "caseId": "L3-gab-party-postaladdress",
       "artifacts": 1,
       "skipped": [],
@@ -443,8 +611,71 @@
       "errors": []
     },
     {
+      "caseId": "L3-parallel-batch-tasks",
+      "artifacts": 3,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L3-print-management-report",
+      "artifacts": 3,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L3-print-mgmt-doctype-extension",
+      "artifacts": 8,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L3-report-dataset-extension",
+      "artifacts": 2,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L3-sysoperation-dialog-attributes",
+      "artifacts": 3,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L3-trade-agreement-price-lookup",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": false,
+      "errors": [
+        "Compile Error: Class Method dynamics://Class/ConDemoPriceResolver/Method/salesPrice: [(15,5),(15,35)]: The name 'Price' does not denote a class, a table, or an extended data type.",
+        "Compile Error: Class Method dynamics://Class/ConDemoPriceResolver/Method/salesPrice: [(26,31),(26,48)]: The name 'UnitOfMeasureSymbol' does not denote a class, a table, or an extended data type.",
+        "Compile Error: Class Method dynamics://Class/ConDemoPriceResolver/Method/salesPrice: [(26,9),(26,56)]: The name 'UnitOfMeasureSymbol' does not denote a class, a table, or an extended data type.",
+        "Compile Error: Class Method dynamics://Class/ConDemoPriceResolver/Method/salesPrice: [(35,16),(35,33)]: The name 'PriceCur' does not denote a class, a table, or an extended data type.",
+        "Compile Error: Class Method dynamics://Class/ConDemoPriceResolver/Method/lineDiscountPercent: [(57,31),(57,48)]: The name 'UnitOfMeasureSymbol' does not denote a class, a table, or an extended data type.",
+        "Compile Error: Class Method dynamics://Class/ConDemoPriceResolver/Method/lineDiscountPercent: [(57,9),(57,56)]: The name 'UnitOfMeasureSymbol' does not denote a class, a table, or an extended data type."
+      ]
+    },
+    {
+      "caseId": "L3-warehouse-work-slice",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
       "caseId": "L3-workflow-document-submit",
       "artifacts": 5,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L3-xds-policy-constrained-table",
+      "artifacts": 4,
       "skipped": [],
       "ok": true,
       "errors": []
@@ -466,6 +697,13 @@
       "errors": []
     },
     {
+      "caseId": "L4-posting-ledgervoucher-slice",
+      "artifacts": 1,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
       "caseId": "L4-ssrs-report-advanced",
       "artifacts": 6,
       "skipped": [],
@@ -481,6 +719,20 @@
     },
     {
       "caseId": "L4-ssrs-report-multidataset",
+      "artifacts": 7,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L4-ssrs-report-preprocess",
+      "artifacts": 6,
+      "skipped": [],
+      "ok": true,
+      "errors": []
+    },
+    {
+      "caseId": "L4-ssrs-report-uibuilder",
       "artifacts": 7,
       "skipped": [],
       "ok": true,

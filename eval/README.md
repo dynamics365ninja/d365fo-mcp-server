@@ -122,7 +122,16 @@ reuse names that never coexist in a real run) — measured at 12 bulk errors, 0
 real. Pre-existing files are never overwritten, so a fixture the case reads is
 reported as `skipped` rather than compile-verified.
 
-**Current record: 57/65 clean over 143 artifacts** (2026-07-29, xppc
+**Current record: 93/100 clean over 224 artifacts** (2026-08-30, xppc
+7.0.7996.33, model `fm-mcp`). The catalog grew by 35 cases since the previous
+record, so this is the first isolated verdict for a third of it. Exactly three
+cases changed state, and they are the three this sweep set out to fix
+(`L1-form-basic`, `L1-form-detailsmaster`, `L1-form-simplelistdetails`); nothing
+regressed. Of the seven that still fail, five are the pre-existing classes below
+and two (`L3-dmf-entity-import-slice`, `L3-trade-agreement-price-lookup`) are
+first-time results for cases the previous record never covered.
+
+The previous record was **57/65 clean over 143 artifacts** (2026-07-29, xppc
 7.0.7858.27). A sweep on 2026-07-28 reported **65/65** over the same 65 cases,
 the same 143 artifacts and the same two fixture skips; it does not reproduce
 against a sandbox that holds only the fixture. The 07-28 number therefore rested
@@ -132,12 +141,14 @@ themselves. A clean `--baseline` does not prove an empty sandbox: it only proves
 that whatever is in there compiles. Inventory `<Model>/<Model>/Ax*` before
 trusting an isolated verdict.
 
-The eight open failures (per-case errors in the JSON), by class:
+The failures (per-case errors in the JSON), by class — the table below was
+written against the eight of the 2026-07-29 record; the fixture row is now
+closed, and the two first-time failures are not in it:
 
 | Class | Cases | Evidence |
 |---|---|---|
 | Golden defect, environment-independent | `L1-map-basic`, `L1-form-workspace`, `L3-form-detailstransaction` | a map field named `CreatedDateTime` (reserved for system fields); 4 `FormPatternValidation` errors on the workspace Design; `ConDemoNoteHeaderLine.LineNum` EDT data-type mismatch |
-| Fixture ⇄ golden mismatch | `L1-form-basic`, `L1-form-detailsmaster`, `L1-form-simplelistdetails` | all three bind a grid to field group **`Overview`** on `ConDemoNoteHeader`; no fixture and no golden in the catalog defines that group — not even `L1-form-basic`'s own golden copy of the table |
+| ~~Fixture ⇄ golden mismatch~~ **CLOSED 2026-08-30** | ~~`L1-form-basic`, `L1-form-detailsmaster`, `L1-form-simplelistdetails`~~ | all three bound a grid to field group **`Overview`** on `ConDemoNoteHeader`, which no fixture and no golden declared. Root cause was a create-path defect (`<FieldGroups>` was a hardcoded literal, so `properties.fieldGroups` was dropped) — see below |
 | Cross-case dependency the case never creates | `L4-entity-security`, `L2-oracle-discriminator-random-wrapper-name` | menu item → form `ConDemoNoteHeaderList` (created by `L1-form-basic`); form extension → field `ConHasNotes` (created by `L2-form-extension-basic`'s table extension) |
 
 The last class cannot pass a *real* case run either — the protocol rolls back
@@ -173,7 +184,34 @@ The one warning in every build above is the environment's pre-existing
 | Case | What was settled | Still to do |
 |---|---|---|
 | `L1-map-basic` | The instruction demanded a map field `CreatedDateTime` mapped 1:1 to `ConDemoNoteHeader` — a name reserved for system fields (which `L1-table-basic` already forbids in its own wording) *and* a column that table never declares, so the mapping pointed at nothing. The map is now two fields, `NoteId` + `Subject`. | Re-capture the golden. |
-| `L1-form-basic`, `L1-form-detailsmaster`, `L1-form-simplelistdetails` | The `Overview` field group the three grids bind to via `<DataGroup>` existed in no fixture and no golden. The form goldens are the evidence it existed when they were captured, so the **table** golden is what drifted: `eval/fixtures/ConDemoNoteHeader.metadata.xml` now declares the group, and `L1-form-basic`'s instruction requires the case to create it. | Re-capture `L1-form-basic`'s table golden so it and the fixture agree again. |
+| `L1-form-basic`, `L1-form-detailsmaster`, `L1-form-simplelistdetails` | The `Overview` field group the three grids bind to via `<DataGroup>` existed in no fixture and no golden. The form goldens are the evidence it existed when they were captured, so the **table** golden is what drifted: `eval/fixtures/ConDemoNoteHeader.metadata.xml` now declares the group, and `L1-form-basic`'s instruction requires the case to create it. | **Done 2026-08-30** — re-captured; all three build clean. |
+
+### 2026-08-30 — the fixture class is closed, and it was a tool defect
+
+The 08-23 audit settled the question and named the remaining work as "re-capture
+`L1-form-basic`'s table golden". That capture has now happened, on the VM
+(xppc 7.0.7996.33, sandbox `fm-mcp`), and it turned up **why** the golden had
+drifted rather than just repairing it:
+
+- `d365fo_file(action="create", objectType="table")` rendered `<FieldGroups>` as a
+  hardcoded literal, so `properties.fieldGroups` was dropped without a word. The
+  golden faithfully recorded the loss. Fixed in #963.
+- The same builder dropped `properties.indexes` too, and that one had no way
+  back: the repair `createTablePropertyHonesty` offered (`add-index`) needs the C#
+  bridge, so a create on the template path could not produce an index at all.
+- `L1-form-simplelistdetails` was a **second, separate** defect that the first one
+  had been masking: its golden's `<DataGroup>` carried no sibling `<DataSource>`,
+  so the group could not be resolved against any table. It too was re-captured.
+- The three form templates hardcoded `<DataGroup>Overview</DataGroup>` whether or
+  not the bound table declared the group. The builder now reads the table and
+  omits the element only on **positive** evidence of absence — a table it cannot
+  read leaves the binding alone.
+
+`L1-form-detailsmaster` needed no re-capture: it went green as soon as the
+fixture table was right, which is the evidence that the fixture, not that form,
+was the broken artifact. `eval/fixtures/ConDemoNoteHeader.metadata.xml` is
+re-synchronised with the re-captured golden, so it is a copy of a golden again
+rather than a hand repair of one.
 
 The remaining four (`L1-form-workspace`, `L3-form-detailstransaction`,
 `L4-entity-security`, `L2-oracle-discriminator-random-wrapper-name`) are

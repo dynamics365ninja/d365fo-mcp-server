@@ -19,12 +19,18 @@ provisioned before dependent cases, excluded from rollback) is the fix.
 |------|--------|------|-------------|
 | `ConDemoNoteHeader.metadata.xml` | `ConDemoNoteHeader` | `AxTable` | **yes** — the keystone fixture |
 
-The shape is recovered verbatim from the 2026-06-30 golden
+The shape is a verbatim copy of
 `eval/goldens/L1-form-basic/ConDemoNoteHeader.metadata.xml` (the golden of the
 table itself): `NoteId` (String / EDT `Num` / Mandatory), `Subject` (String /
-EDT `Name`), unique index `NoteIdx` on `NoteId`, `TitleField1 = Subject`,
-`TableGroup = Main`, label `@TaxTransactionInquiry:HeaderNote`. Keep it in sync
-with that golden.
+EDT `Name`), field group `Overview` over both, unique index `NoteIdx` on
+`NoteId`, `TitleField1 = Subject`, `TableGroup = Main`, label
+`@TaxTransactionInquiry:HeaderNote`. Keep it in sync with that golden.
+
+Re-synchronised 2026-08-30 from the re-captured golden. Between 2026-08-23 and
+then the two deliberately disagreed: the audit had added the `Overview` group
+here by hand because the golden had lost it to a create-path defect, and said so
+in the file. That is no longer the case — this is a copy of a golden again, not
+a repair of one.
 
 ## INPUT vs OUTPUT classification (the crux)
 

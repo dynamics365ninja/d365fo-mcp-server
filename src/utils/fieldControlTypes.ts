@@ -321,6 +321,38 @@ export function resetTableXmlIndexCache(): void {
   tableXmlIndexByRoot.clear();
 }
 
+/** The `<AxTableFieldGroup>` names a table document declares. */
+export function parseTableFieldGroupNames(tableXml: string): Set<string> {
+  const names = new Set<string>();
+  const re = /<AxTableFieldGroup>[\s\S]*?<Name>([^<]+)<\/Name>/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(tableXml)) !== null) names.add(m[1].trim().toLowerCase());
+  return names;
+}
+
+/**
+ * Does this table declare that field group?
+ *
+ * `undefined` means "could not tell" — the table was not found or not readable
+ * — and is deliberately distinct from `false`. A form control's `<DataGroup>`
+ * is a build error when it names a group the table does not have, but dropping
+ * it on a mere failure to read would break every form built without the
+ * packages root in reach. Only a positive `false` may change behaviour.
+ */
+export function tableDeclaresFieldGroup(
+  table: string,
+  group: string,
+  roots?: readonly string[],
+): boolean | undefined {
+  try {
+    const file = findTableXmlPath(table, roots);
+    if (!file) return undefined;
+    return parseTableFieldGroupNames(fs.readFileSync(file, 'utf-8')).has(group.trim().toLowerCase());
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Field→control-type map for a table, read straight off disk. Returns an empty
  * map when the table cannot be found, so callers fall back to String controls

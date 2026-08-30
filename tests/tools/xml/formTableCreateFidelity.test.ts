@@ -18,10 +18,12 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { buildAxTableXml, buildAxTableFieldGroupsXml } from '../../../src/tools/xml/tableXml';
+import { buildAxTableXml, buildAxTableFieldGroupsXml, buildAxTableIndexesXml } from '../../../src/tools/xml/tableXml';
 import { buildAxFormXml } from '../../../src/tools/xml/formXml';
-import { getFieldControlMapFromDisk, findTableXmlPath, resetTableXmlIndexCache }
-  from '../../../src/utils/fieldControlTypes';
+import {
+  getFieldControlMapFromDisk, findTableXmlPath, resetTableXmlIndexCache,
+  parseTableFieldGroupNames, tableDeclaresFieldGroup,
+} from '../../../src/utils/fieldControlTypes';
 
 const AUTO_GROUPS = ['AutoReport', 'AutoLookup', 'AutoIdentification', 'AutoSummary', 'AutoBrowse'];
 
@@ -152,5 +154,131 @@ describe('buildAxFormXml — grid columns carry the field\'s own control type', 
     });
     expect(xml).toContain('<Name>Grid_SomeField</Name>');
     expect(xml).toContain('AxFormStringControl');
+  });
+});
+
+/**
+ * The third collection the plain table builder dropped. Unlike field groups this
+ * one had no way back: `createTablePropertyHonesty` offered `add-index` as the
+ * repair, and that operation needs the C# bridge — so a create running on the
+ * template path could not produce an index at all.
+ */
+describe('buildAxTableIndexesXml', () => {
+  it('emits an empty element when nothing was asked for', () => {
+    expect(buildAxTableIndexesXml([])).toBe('	<Indexes />');
+  });
+
+  it('writes a unique index the way AllowDuplicates spells it', () => {
+    const xml = buildAxTableIndexesXml([
+      { name: 'NoteIdx', fields: ['NoteId'], allowDuplicates: false },
+    ]);
+    expect(xml).toContain('<Name>NoteIdx</Name>');
+    expect(xml).toContain('<AllowDuplicates>No</AllowDuplicates>');
+    expect(xml).toContain('<DataField>NoteId</DataField>');
+  });
+
+  it('accepts both field spellings, because both are documented elsewhere', () => {
+    // `["A"]` is what add-index and the bridge normalizer take; reading only
+    // `fieldName` turned it into <DataField>undefined</DataField> — an index
+    // that deserializes and points at nothing.
+    const xml = buildAxTableIndexesXml([
+      { name: 'Mixed', fields: ['A', { fieldName: 'B' }, { name: 'C' }, { dataField: 'D' }] },
+    ]);
+    for (const f of ['A', 'B', 'C', 'D']) expect(xml).toContain(`<DataField>${f}</DataField>`);
+    expect(xml).not.toContain('undefined');
+  });
+
+  it('drops a field entry that names nothing rather than writing undefined', () => {
+    const xml = buildAxTableIndexesXml([{ name: 'Idx', fields: [{ direction: 'Descending' } as never] }]);
+    expect(xml).toContain('<Fields />');
+    expect(xml).not.toContain('undefined');
+  });
+
+  it('omits AllowDuplicates when the caller did not say, rather than guessing', () => {
+    const xml = buildAxTableIndexesXml([{ name: 'Idx', fields: ['A'] }]);
+    expect(xml).not.toContain('AllowDuplicates');
+  });
+
+  it('reaches the written table document', () => {
+    const xml = buildAxTableXml('ConDemoNoteHeader', {
+      fields: [{ name: 'NoteId', edt: 'Num' }],
+      indexes: [{ name: 'NoteIdx', fields: ['NoteId'], allowDuplicates: false }],
+    });
+    expect(xml).not.toContain('<Indexes />');
+    expect(xml).toContain('<Name>NoteIdx</Name>');
+  });
+});
+
+/**
+ * `<DataGroup>` on a grid or group control is resolved against that control's
+ * datasource table. Naming a group the table does not declare is a build error
+ * that an INCREMENTAL build passes silently — which is how three captured
+ * goldens ended up carrying a dangling one.
+ */
+describe('grid DataGroup is only emitted when the group is really there', () => {
+  const roots: string[] = [];
+  afterEach(() => {
+    resetTableXmlIndexCache();
+    for (const r of roots.splice(0)) fs.rmSync(r, { recursive: true, force: true });
+  });
+
+  const rootWithGroups = (table: string, groups: string[]): string => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pld-dg-'));
+    roots.push(root);
+    const dir = path.join(root, 'Pkg', 'Model', 'AxTable');
+    fs.mkdirSync(dir, { recursive: true });
+    const groupXml = groups
+      .map(g => ['  <AxTableFieldGroup>', `    <Name>${g}</Name>`, '    <Fields />', '  </AxTableFieldGroup>'].join('\n'))
+      .join('\n');
+    fs.writeFileSync(path.join(dir, `${table}.xml`), [
+      '<AxTable>',
+      `  <Name>${table}</Name>`,
+      '  <FieldGroups>',
+      groupXml,
+      '  </FieldGroups>',
+      '</AxTable>',
+      '',
+    ].join('\n'));
+    return root;
+  };
+
+  it('reads the group names a table declares', () => {
+    const root = rootWithGroups('T', ['AutoReport', 'Overview']);
+    const file = findTableXmlPath('T', [root])!;
+    expect([...parseTableFieldGroupNames(fs.readFileSync(file, 'utf-8'))]).toContain('overview');
+    expect(tableDeclaresFieldGroup('T', 'Overview', [root])).toBe(true);
+    expect(tableDeclaresFieldGroup('T', 'Nope', [root])).toBe(false);
+  });
+
+  it('answers undefined — not false — for a table it cannot read', () => {
+    // Absence of evidence is not evidence of absence: dropping the binding on a
+    // failed read would break every form built without the packages root in reach.
+    const root = rootWithGroups('T', ['Overview']);
+    expect(tableDeclaresFieldGroup('Missing', 'Overview', [root])).toBeUndefined();
+  });
+
+  it('keeps the binding when the table declares the group', () => {
+    const xml = buildAxFormXml('F', {
+      pattern: 'SimpleList', dataSource: 'ConDemoNoteHeader', gridFields: ['NoteId'],
+    });
+    // Holds on both routes, which is the point: on a machine with the sandbox in
+    // reach the table declares Overview, and on one without it the answer is
+    // "could not tell" and the historical default stands. Only a positive
+    // "the table does not have it" may drop the binding.
+    expect(xml).toContain('<DataGroup>Overview</DataGroup>');
+  });
+
+  it('pairs every DataGroup it writes with a sibling DataSource', () => {
+    // A group control whose DataGroup has no DataSource cannot resolve the group,
+    // and the build says "Field group 'Overview' does not exist" while pointing
+    // at the control rather than the missing sibling.
+    for (const pattern of ['SimpleList', 'SimpleListDetails', 'DetailsMaster']) {
+      const xml = buildAxFormXml('F', { pattern, dataSource: 'ConDemoNoteHeader', gridFields: ['NoteId'] });
+      const groups = xml.split('<DataGroup>').slice(1);
+      for (const after of groups) {
+        expect(after.slice(0, 200), `${pattern}: DataGroup without a sibling DataSource`)
+          .toContain('<DataSource>');
+      }
+    }
   });
 });

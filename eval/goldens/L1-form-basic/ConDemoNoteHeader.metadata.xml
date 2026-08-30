@@ -1,27 +1,78 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Golden metadata for eval case: L1-form-basic (artifact 1 of 2: the table)
-  Captured: 2026-06-30, server SHA: cbb395f
-  Platform: xppc 7.0.7858.27
-  Environment: EXTENSION_PREFIX=Con -> table name is ConDemoNoteHeader
+  RE-CAPTURED: 2026-08-30, server SHA c7979a6+, xppc 7.0.7996.33, sandbox fm-mcp
+  Supersedes the 2026-06-30 capture (SHA cbb395f, xppc 7.0.7858.27).
 
-  Known deviations from instruction:
-  - Label reused from the index (@TaxTransactionInquiry:HeaderNote, "Header Note")
-    rather than inventing new text, per the instruction's "reused standard label" ask.
-  - BP warnings present (0 errors, multiple warnings: missing alternate key, no
-    AutoReport field group, no caching, no DeveloperDocumentation, no form ref);
-    see the corpus record. All warning-severity, not errors.
+  Why it was re-captured, and it is not a cosmetic difference:
+  The case instruction asks for a field group 'Overview' containing NoteId and
+  Subject, and says exactly why - "a form whose grid names a field group the
+  table does not declare fails FormPatternValidation at build time". The old
+  golden carried <FieldGroups /> and satisfied neither. The cause was a create-path
+  defect: <FieldGroups> was a hardcoded literal, so properties.fieldGroups was
+  dropped without a word. Three cases in golden-build-verification.json failed on
+  exactly that (L1-form-basic, L1-form-detailsmaster, L1-form-simplelistdetails -
+  all three bind a grid to this table's Overview group).
+
+  The index arrives the same way now: <Indexes> was a literal too, and the repair
+  the tool offered (add-index) needs the C# bridge, so on the template path an
+  index could not be produced at all.
+
+  Shape changes from the older capture, both from the writer, neither a
+  regression: the <Declaration> is present (the 2026-06 capture came from the
+  bridge, which omits it), and the five standard Auto* field groups are written.
+
+  Build: 0 errors, xppbp clean. Sandbox rolled back.
+  PENDING HUMAN REVIEW (see docs/AGENT_EVAL_LOOP.md 6.4).
 -->
 <AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>ConDemoNoteHeader</Name>
 	<SourceCode>
+		<Declaration><![CDATA[
+public class ConDemoNoteHeader extends common
+{
+}
+]]></Declaration>
 		<Methods />
 	</SourceCode>
 	<Label>@TaxTransactionInquiry:HeaderNote</Label>
 	<TableGroup>Main</TableGroup>
 	<TitleField1>Subject</TitleField1>
 	<DeleteActions />
-	<FieldGroups />
+	<FieldGroups>
+		<AxTableFieldGroup>
+			<Name>AutoReport</Name>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoLookup</Name>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoIdentification</Name>
+			<AutoPopulate>Yes</AutoPopulate>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoSummary</Name>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoBrowse</Name>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>Overview</Name>
+			<Fields>
+				<AxTableFieldGroupField>
+					<DataField>NoteId</DataField>
+				</AxTableFieldGroupField>
+				<AxTableFieldGroupField>
+					<DataField>Subject</DataField>
+				</AxTableFieldGroupField>
+			</Fields>
+		</AxTableFieldGroup>
+	</FieldGroups>
 	<Fields>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
@@ -39,6 +90,7 @@
 	<Indexes>
 		<AxTableIndex>
 			<Name>NoteIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
 			<Fields>
 				<AxTableIndexField>
 					<DataField>NoteId</DataField>

@@ -1,48 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  HARNESS-LEVEL EVAL FIXTURE — ConDemoNoteHeader (AxTable)
+  HARNESS-LEVEL EVAL FIXTURE - ConDemoNoteHeader (AxTable)
 
   This is a shared INPUT object, NOT a case output. ~18 catalog cases READ from
   or bind to this table (form datasources, maps, queries, data entities, batch
   jobs, custom services, SSRS DPs, ...). It must exist BEFORE those cases run and
-  must survive the per-case rollback. See docs/AGENT_EVAL_LOOP.md §4a/§11 and
+  must survive the per-case rollback. See docs/AGENT_EVAL_LOOP.md 4a/11 and
   eval/fixtures/README.md for the provisioning + rollback-exclusion contract.
 
-  Why it lives here (root cause): the table was
-  originally created only as artifact 1 of case L1-form-basic. The implementer
-  protocol rolls back every case after scoring, so the shared table could never
-  survive — each rollback re-broke every dependent case. Separating the fixture
-  from its origin case (this file) is the fix.
+  Why it lives here (root cause): the table was originally created only as
+  artifact 1 of case L1-form-basic. The implementer protocol rolls back every
+  case after scoring, so the shared table could never survive - each rollback
+  re-broke every dependent case. Separating the fixture from its origin case
+  (this file) is the fix.
 
-  Shape recovered verbatim from the 2026-06-30 golden
-  eval/goldens/L1-form-basic/ConDemoNoteHeader.metadata.xml (the golden of the
-  table itself), so provisioning reproduces exactly what dependent cases and
-  their goldens were captured against. Keep this in sync with that golden: if the
-  L1-form-basic table golden changes, this fixture changes with it.
+  2026-08-30: SYNCHRONISED with the re-captured L1-form-basic table golden
+  (xppc 7.0.7996.33, sandbox fm-mcp). The 2026-08-23 audit added the <Overview>
+  field group here by hand and left a note that the TABLE golden was the artifact
+  that had drifted; that re-capture has now happened, so the two agree again and
+  this file is once more a copy of a golden rather than a repair of one.
 
-  2026-08-23 (catalog audit): the <Overview> field group was ADDED here. It is
-  not in the 2026-06-30 L1-form-basic table golden, and that omission is the
-  root cause of the three "fixture <-> golden mismatch" failures recorded in
-  eval/README.md (L1-form-basic, L1-form-detailsmaster, L1-form-simplelistdetails):
-  all three bind their grid to <DataGroup>Overview</DataGroup>, which no fixture
-  and no golden declared, so the form could never compile. The form goldens are
-  the evidence that the group existed when they were captured; the TABLE golden
-  is the artifact that drifted. L1-form-basic's instruction now requires the
-  group explicitly - re-capture its table golden on the VM and this fixture and
-  that golden agree again.
+  Three differences from the 2026-06-30 shape, all from the writer and none a
+  behaviour change: the <Declaration> is present (the 2026-06 capture came from
+  the C# bridge, which omits it), the five standard Auto* field groups are
+  written, and NoteIdx carries <AllowDuplicates>No</AllowDuplicates> - which the
+  case instruction asked for all along ("a unique index 'NoteIdx'").
 
-  VERIFIED on the VM the same day (model fm-mcp, xppc 7.0.7996.33): this fixture
-  builds with 0 errors and the group reads back byte for byte; L1-form-basic's
-  golden form builds clean on top of it; and removing the group reproduces
-  "Field group 'Overview' does not exist" exactly. Measured in both directions,
-  not assumed.
-
-  Name reflects EXTENSION_PREFIX=Con applied to the authored name "DemoNoteHeader"
-  — the provisioned AOT object is ConDemoNoteHeader.
+  Keep this in sync with that golden: if the L1-form-basic table golden changes,
+  this fixture changes with it.
 -->
 <AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>ConDemoNoteHeader</Name>
 	<SourceCode>
+		<Declaration><![CDATA[
+public class ConDemoNoteHeader extends common
+{
+}
+]]></Declaration>
 		<Methods />
 	</SourceCode>
 	<Label>@TaxTransactionInquiry:HeaderNote</Label>
@@ -50,6 +44,27 @@
 	<TitleField1>Subject</TitleField1>
 	<DeleteActions />
 	<FieldGroups>
+		<AxTableFieldGroup>
+			<Name>AutoReport</Name>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoLookup</Name>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoIdentification</Name>
+			<AutoPopulate>Yes</AutoPopulate>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoSummary</Name>
+			<Fields />
+		</AxTableFieldGroup>
+		<AxTableFieldGroup>
+			<Name>AutoBrowse</Name>
+			<Fields />
+		</AxTableFieldGroup>
 		<AxTableFieldGroup>
 			<Name>Overview</Name>
 			<Fields>
@@ -79,6 +94,7 @@
 	<Indexes>
 		<AxTableIndex>
 			<Name>NoteIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
 			<Fields>
 				<AxTableIndexField>
 					<DataField>NoteId</DataField>

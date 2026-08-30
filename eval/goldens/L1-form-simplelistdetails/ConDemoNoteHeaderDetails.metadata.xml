@@ -1,9 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Golden for L1-form-simplelistdetails: SimpleListDetails form. Captured
-  2026-07-01, SHA 9c37103. Generated via generate_object(mode="scaffold",
-  objectType="form", formPattern="SimpleListDetails", generateControls=true).
-  Fully deterministic (no random ids/GUIDs in this pattern's output).
+  Golden metadata for eval case: L1-form-simplelistdetails
+  RE-CAPTURED: 2026-08-30, server SHA c7979a6+, xppc 7.0.7996.33, sandbox fm-mcp
+
+  The previous capture carried <DataGroup>Overview</DataGroup> on the details
+  header group control with NO sibling <DataSource>. A form control's field group
+  is resolved on that control's own datasource, so without one the build fails
+  with "Field group 'Overview' does not exist" - and an INCREMENTAL build passes
+  it silently, which is how it survived capture. The template emits the sibling
+  now; this capture records that.
+
+  Built against the VM fixture table ConDemoNoteHeader, which this case does not
+  own and the capture did not write.
+
+  Build: 0 errors, xppbp clean. Sandbox rolled back.
+  PENDING HUMAN REVIEW (see docs/AGENT_EVAL_LOOP.md 6.4).
 -->
 <AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
 	<Name>ConDemoNoteHeaderDetails</Name>
@@ -153,6 +164,7 @@ public class ConDemoNoteHeaderDetails extends FormRun
 						<Name>Overview</Name>
 						<Type>Group</Type>
 						<DataGroup>Overview</DataGroup>
+						<DataSource>ConDemoNoteHeader</DataSource>
 						<FormControlExtension
 							i:nil="true" />
 						<Controls>

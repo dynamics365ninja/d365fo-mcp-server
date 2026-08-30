@@ -160,24 +160,30 @@ describe('#11 XML fallback must name what it could not apply', () => {
     const text = result.content[0].text as string;
     const xml = [...files.values()].join('\n');
 
-    // The write itself still happened, and the template really did drop these —
-    // if either stops being true this test is measuring the wrong thing.
+    // The write itself still happened, and the template really did drop the
+    // relation — if either stops being true this test is measuring the wrong thing.
     expect(text).toMatch(/^✅ Created /);
     expect(text).not.toContain('via IMetadataProvider');
-    expect(xml).toContain('<Indexes />');
+    expect(xml).toContain('<Relations />');
     expect(xml).not.toContain('ConSettingRel');
 
     expect(text).toContain('NOT APPLIED');
-    expect(text).toContain('SettingIdx');
     expect(text).toContain('ConSettingRel');
-    expect(text).toContain('add-index');
+    expect(text).toContain('add-relation');
 
-    // Field groups are no longer among them: the template writes the caller's
-    // groups now, so the honesty check — which reads the XML that was actually
-    // written rather than a maintained capability list — must fall silent about
-    // them on its own. A report here would mean the group was dropped again.
+    // Field groups and indexes are no longer among them: the template writes
+    // both now, so the honesty check — which reads the XML that was ACTUALLY
+    // written rather than a maintained capability list — falls silent about them
+    // on its own. A report here would mean one was dropped again.
+    //
+    // The index matters beyond tidiness: `add-index`, the repair the report used
+    // to offer, needs the C# bridge, so on the template path there was no way to
+    // get an index at all.
     expect(xml).toContain('ConCustomGroup');
     expect(text).not.toContain('ConCustomGroup');
+    expect(xml).toContain('<Name>SettingIdx</Name>');
+    expect(xml).toContain('<AllowDuplicates>No</AllowDuplicates>');
+    expect(text).not.toContain('SettingIdx');
   });
 
   it('says the bridge is the reason the template ran', async () => {

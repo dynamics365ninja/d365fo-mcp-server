@@ -1,18 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Golden metadata for eval case: L1-form-basic (artifact 2 of 2: the form)
-  Captured: 2026-06-30, server SHA: cbb395f
-  Platform: xppc 7.0.7858.27
-  Environment: EXTENSION_PREFIX=Con -> form name is ConDemoNoteHeaderList (named
-  with a List suffix, not the bare table name - prepare(mode="create") flagged
-  a same-name collision against the table and a distinct name was required).
+  RE-CAPTURED: 2026-08-30, server SHA c7979a6+, xppc 7.0.7996.33, sandbox fm-mcp
 
-  Generated via generate_object(mode="scaffold", objectType="form",
-  formPattern="SimpleList", generateControls=true). Caption was generated as raw
-  text ("Note headers") and reassigned post-hoc to a reused label via
-  d365fo_file(modify, replace-code) - modify-property is NOT supported for
-  objectType="form" via the bridge (table/table-extension/edt/class only); the
-  direct-XML fallback path handled it.
+  <DataGroup>Overview</DataGroup> on the grid is KEPT, and is now backed by a
+  table that declares the group - which is what shipped forms do (CustGroup and
+  VendGroup both bind Overview). The form builder no longer emits that element
+  blind: it reads the bound table and omits it only when it has positively
+  established the group is absent.
+
+  Build: 0 errors, xppbp clean. Sandbox rolled back.
+  PENDING HUMAN REVIEW (see docs/AGENT_EVAL_LOOP.md 6.4).
 -->
 <AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
 	<Name>ConDemoNoteHeaderList</Name>
