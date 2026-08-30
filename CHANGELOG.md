@@ -29,6 +29,58 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **The TDD loop for X++: `prepare(mode="test")` and a red-first SysTest scaffold.**
+  The server could teach SysTest and run a class; it could not help write one, and
+  part of what it taught was an API the platform does not have.
+  `generate_object(mode="pattern", pattern="systest")` now emits a `SysTestCase`
+  subclass with one `[SysTestMethod]` per named method, each ending in
+  `this.fail(...)` so the first run is red on purpose — a scaffolded test that
+  passes before the behaviour exists has proven nothing about the assertion inside
+  it. Only verified API is emitted (the second argument of `SysTestTarget` is a
+  `utilElementType`, an expected exception is declared with
+  `parmExceptionExpected`, and there is no rollback attribute because rollback is
+  the default); the generated class compiles under xppc 7.0.7996.33 with 0 errors
+  and 0 warnings. `prepare(mode="test")` answers in one call what used to take
+  three tools and a guess: the methods worth covering with their real signatures,
+  the test classes that already cover the target, whether the model references
+  `TestEssentials`, the scaffold call, the red-first order and a grounding token.
+  Its index lookup cost one measurement to get right — `parent_name = ? COLLATE
+  NOCASE` cannot use the index on that column, so it degraded to a full scan of a
+  2.5 GB table (74 s cold); plain equality with the existing nocase fallback is
+  ~1 ms.
+- **Ten more `validate_code(mode="syntax")` rules, taken from real compiler
+  diagnostics** — static set 30 → 40. Each exists because xppc answered a probe,
+  and each quotes that message in its fix text so the developer reads what the
+  build would have said: `FN002` (a predefined function this platform removed —
+  `corrFlagGet`, `dateMin`, `int2Enum` and friends read as AX 2012 habits),
+  `BP006` (`pause`/`window`/`tableLock`/`changeSite`, which the compiler reports
+  only as `Invalid token '10'`), `MAC001` (`#define X(1)` defines nothing),
+  `SEL008` (order by / group by after the where of the same segment), `SEL009`
+  (`in` with an inline container literal), `SEL010` (a select expression on a
+  buffer whose name differs from its table), `ATTR001` (a non-literal attribute
+  argument), `ATTR002` (`[SysObsolete]` without all three arguments), `EXT001`
+  (a non-static extension-method class) and `KW001`. All ten were swept over
+  7,649 shipped `AxClass`/`AxTable`/`AxForm` files — 51 MB of compiling X++ —
+  and the sweep ends with zero error-severity findings.
+- **Knowledge written from compiler probes rather than memory:**
+  `runtime-functions` (~170 predefined functions by category with the argument
+  counts the compiler stated, including the optional trailing parameters the
+  language reference presents as fixed, the four variadic ones no arity rule may
+  police, the five AX 2012 names that are gone and the four reported obsolete),
+  `form-event-handlers` (built from the platform's own handlers: the sender of a
+  `[FormEventHandler]` is `xFormRun`, not `FormRun`), `args-object`,
+  `display-edit-methods`, `sysoperation-ui-attributes`, and three techniques for
+  extending a report that already ships. Writing them disproved two things this
+  repo already said — among them `xpp-class-rules`' claim that `display static`
+  compiles, which came from a probe whose method name did not match its XML
+  entry, so the body was never compiled.
+- **Nine coverage leaves for the language surface the artifact taxonomy hid.**
+  The old taxonomy asked whether the server can create each kind of AOT object,
+  and the answer was yes for all 51 core leaves; it never asked whether the server
+  knows what the **compiler** accepts inside them — which is where this wave found
+  twenty-two wrong knowledge rules and five false-positive validator rules. Adding
+  the question dropped core coverage to 86.4% on purpose before the VM goldens
+  took it back to 100% (59/59); total now reads 98/100.
 - **`object_patterns(domain="mobile-app")` — warehouse-app screen recipes, and the
   framework choice they hang on.** D365FO builds the SAME mobile device screens
   with **two frameworks**, and picking the wrong one is a rewrite rather than a
@@ -215,6 +267,18 @@ those are called out explicitly below.
   `[ExtensionOf(tableStr(…))] final class`.
 
 ### Fixed
+- **`run_systest_class` was recorded as blocked by a platform limitation it does
+  not have.** This repo stated that `SysTestConsole.exe` requires an interactive
+  console session (an unconditional `WaitForDebugger`/`Console.ReadKey`). It does
+  not: the binary documents `/unattended` in its own `/?` output, and with the
+  flag it skips the prompt and reaches "Executing test(s) ...."  — the tool passes
+  it now. What actually stopped a run on the reference VM is named instead of
+  blamed on the test model: `Bin\SysTestConsole.exe.config` redirects
+  `Microsoft.ApplicationInsights` to a version the install does not have, and once
+  that is corrected the next assembly (`System.ValueTuple` 4.0.3.0) is correctly
+  redirected but simply absent from `Bin`. Both are config-only fixes on the
+  platform installation, so they are described rather than made here; the tool
+  recognises the failure and explains it.
 - **`barcode-scanning` told the agent to write a GS1 parser it must not write.**
   Inside a warehouse-app flow the platform parses GS1 before the scan reaches the
   flow — global prefix/group-separator/unknown-identifier options on Warehouse
@@ -438,6 +502,23 @@ those are called out explicitly below.
   `fs.access` miss and are correctly left alone.
 
 ### Changed
+- **The compiler is the oracle for the validator now.** Measured against the
+  platform this server writes for — 7,649 shipped files (51 MB of X++) swept
+  through `runRules`, plus ~700 probe classes compiled by xppc — the validator
+  used to report 5 error-severity findings on Microsoft's own compiling code. It
+  now reports none while checking six times more. Two causes: every one of those
+  false positives came from maskers that recognised only double-quoted strings
+  (`strFind(text, ',', 1, len)` read as a wrong arity, a GUID mask as a C# `??`,
+  an SQL string as a `left join`), so all five are replaced by one lexer in
+  `src/utils/xppLexer.ts` that handles both quote styles, verbatim literals and
+  doubled/escaped quotes while preserving offsets; and reserved words, intrinsics
+  and function arities are now captured from the shipped parser and compiler
+  assemblies into `eval/compiler-facts.snapshot.json` (115 keywords, 80
+  intrinsics, 170 functions) instead of 28 hand-typed entries — so `FN001` knows
+  that `date2Str` takes 7 **or** 8 arguments and that `strFmt`/`conIns`/`max`/`min`
+  are variadic. Several rules were narrowed by the shipped code that disproved
+  their old shape, `COC001` (which fired on new methods an extension class merely
+  adds) among them.
 - **Knowledge claims re-verified against xppc on the VM (Phase F).** `conIns`
   left `FIXED_ARITY_BUILTINS` (xppc accepts 2 and 4 arguments), `protected
   internal` compiles while `private protected` does not, `forceLaterals` is not

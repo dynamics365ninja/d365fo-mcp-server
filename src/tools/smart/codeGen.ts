@@ -56,7 +56,7 @@ const CodeGenArgsSchema = z.object({
     .describe(
       'For the systest pattern: the target class methods to write a test for. ' +
       'One [SysTestMethod] per entry, each failing until its assertion is written. ' +
-      'Read them from get_object_info(objectType=\"class\", options:{members:\"names\"}).'
+      'Read them from get_object_info(objectType="class", options:{members:"names"}).'
     ),
   targetObject: z.string().optional()
     .describe('For menu-item pattern: target form/class/report name'),
