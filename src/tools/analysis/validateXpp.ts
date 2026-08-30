@@ -54,6 +54,15 @@ import {
   AX_TABLE_NON_EXISTENT_PROPERTIES,
   axTableElementRank,
 } from '../../utils/axTablePropertyOrder.js';
+import { maskXpp } from '../../utils/xppLexer.js';
+import {
+  COMPILER_VERSION,
+  acceptsArgumentCount,
+  describeArity,
+  intrinsicInfo,
+  isUnknownFunction,
+  runtimeFunctionInfo,
+} from '../../knowledge/compilerFacts.js';
 
 // Schema
 
@@ -92,41 +101,13 @@ function lineNumber(code: string, index: number): number {
 }
 
 /**
- * Lightweight tokenizer-lite: returns a copy of `code` with the CONTENT of string
- * literals, line comments (//…) and block comments (/* … *\/) replaced by spaces,
- * preserving every newline (so line numbers stay correct) and overall length (so
- * offsets stay correct). Keyword/regex scans run against this masked text to avoid
- * false positives from keywords that appear inside strings or comments.
+ * Masked copy of `code` — see src/utils/xppLexer.ts, the single masker this repo
+ * has. Kept as a named export because every rule below calls it and the tests
+ * exercise it directly. Both quote styles and @verbatim strings are recognised;
+ * before that was true, `strFind(x, ',', 1, n)` was an FN001 error on shipped code.
  */
 export function maskStringsAndComments(code: string): string {
-  const out = code.split('');
-  const n = code.length;
-  let i = 0;
-  type State = 'code' | 'line' | 'block' | 'string';
-  let state: State = 'code';
-  while (i < n) {
-    const c = code[i];
-    const c2 = i + 1 < n ? code[i + 1] : '';
-    if (state === 'code') {
-      if (c === '/' && c2 === '/') { state = 'line'; i += 2; continue; }
-      if (c === '/' && c2 === '*') { state = 'block'; i += 2; continue; }
-      if (c === '"') { state = 'string'; i++; continue; }
-      i++;
-    } else if (state === 'line') {
-      if (c === '\n') { state = 'code'; i++; continue; }
-      out[i] = ' '; i++;
-    } else if (state === 'block') {
-      if (c === '*' && c2 === '/') { out[i] = ' '; out[i + 1] = ' '; state = 'code'; i += 2; continue; }
-      if (c !== '\n') out[i] = ' ';
-      i++;
-    } else { // string
-      if (c === '\\') { out[i] = ' '; if (c2 && c2 !== '\n') out[i + 1] = ' '; i += 2; continue; }
-      if (c === '"') { state = 'code'; i++; continue; }
-      if (c !== '\n') out[i] = ' ';
-      i++;
-    }
-  }
-  return out.join('');
+  return maskXpp(code);
 }
 
 /**
@@ -169,21 +150,31 @@ function checkTodayDeprecated(code: string): ValidationViolation[] {
     code,
     /\btoday\s*\(\s*\)/gi,
     'SEL001',
-    'error',
+    // xppc compiles today() — this is a best-practice finding (BPUpgradeCodeToday),
+    // not a compile error, and the severity must say so.
+    'warning',
     'Replace today() with DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone()). ' +
     'today() ignores user time zone and fails BPUpgradeCodeToday.',
   );
 }
 
-/** SEL002 — forceLiterals is forbidden (SQL injection). */
+/**
+ * SEL002 — forceLiterals reveals the where-clause values to SQL Server.
+ *
+ * A warning, not an error: xppc accepts the keyword and the platform itself ships
+ * 57 uses of it (LeanCost_CalcProdFlow_Multi, CostStatementCache). The risk is real
+ * only when a value in the where clause comes from user input.
+ */
 function checkForceLiterals(code: string): ValidationViolation[] {
   return matchAll(
-    code,
+    maskStringsAndComments(code),
     /\bforceLiterals\b/gi,
     'SEL002',
-    'error',
-    'Remove forceLiterals. Use forcePlaceholders (default for non-join selects) or omit. ' +
-    'forceLiterals exposes the query to SQL injection.',
+    'warning',
+    'Avoid forceLiterals: it reveals the where-clause values to the query optimiser and, ' +
+    'with values that come from user input, exposes the statement to SQL injection. ' +
+    'Use forcePlaceholders (the default for non-join selects) or omit the hint. ' +
+    'Standard code uses it only where the plan measurably needs the literal.',
   );
 }
 
@@ -301,6 +292,54 @@ function checkFunctionInWhere(code: string): ValidationViolation[] {
 }
 
 /**
+ * The body of the method whose declaration starts at `declIdx`, as masked lines,
+ * located by brace depth. Returns [] when the declaration has no body.
+ */
+function methodBodyLines(maskedLines: string[], declIdx: number): string[] {
+  let depth = 0;
+  let started = false;
+  const body: string[] = [];
+  for (let i = declIdx; i < maskedLines.length; i++) {
+    const line = maskedLines[i];
+    for (const ch of line) {
+      if (ch === '{') { depth++; started = true; }
+      else if (ch === '}') depth--;
+    }
+    if (started) {
+      if (i > declIdx) body.push(line);
+      if (depth <= 0) break;
+    } else if (i > declIdx + 2) {
+      break; // a declaration with no body within reach (interface method, abstract)
+    }
+  }
+  return body;
+}
+
+/** True when the method declared at `declIdx` calls `next` — i.e. it is a CoC wrapper. */
+function methodBodyCallsNext(maskedLines: string[], declIdx: number): boolean {
+  return methodBodyLines(maskedLines, declIdx).some(l => /\bnext\s+[A-Za-z_]/.test(l));
+}
+
+/**
+ * The class declaration that follows line `fromIdx`, skipping doc comments and blank
+ * lines. Scanning the raw text found `class` inside `/// Extends the <c>X</c> class …`
+ * and reported the comment as the declaration (COC003 on
+ * ProjVersioningPurchaseOrder_Extension), so the search runs on masked lines where
+ * comment content is blank.
+ */
+function classDeclarationAfter(
+  maskedLines: string[],
+  fromIdx: number,
+  maxLookahead = 12,
+): { index: number; text: string } | null {
+  const end = Math.min(fromIdx + maxLookahead, maskedLines.length - 1);
+  for (let j = fromIdx; j <= end; j++) {
+    if (/\bclass\b/i.test(maskedLines[j])) return { index: j, text: maskedLines[j] };
+  }
+  return null;
+}
+
+/**
  * COC001 — Default parameter value copied into CoC wrapper signature.
  * Detects: inside an [ExtensionOf] class, any method whose parameter list
  * contains "= " (assignment default).
@@ -311,8 +350,15 @@ function checkCocDefaultParam(code: string): ValidationViolation[] {
   if (!/\[ExtensionOf\s*\(/i.test(code)) return violations;
 
   const lines = code.split('\n');
+  const maskedLines = maskStringsAndComments(code).split('\n');
   lines.forEach((rawLine, i) => {
     if (rawLine.trimStart().startsWith('//')) return;
+    // Only a CoC WRAPPER inherits the base signature; a brand-new method that an
+    // extension class merely adds may carry defaults like any other method, and the
+    // platform ships 20 such classes (HRMAbsenceCode_AppSuite_Extension.findByJobId,
+    // SalesLineType_ApplicationSuite_Extension.saveStockPurchaseLine, …). The
+    // distinguishing mark is a call to next inside the body.
+    if (!methodBodyCallsNext(maskedLines, i)) return;
     // Method-like line with a default param: "public Foo method(Type _p = val)".
     // The second alternative catches declarations with NO access modifier (legal
     // X++ — members default to public). get_method's CoC template deliberately
@@ -349,26 +395,26 @@ function checkCocDefaultParam(code: string): ValidationViolation[] {
 function checkExtensionOfNotFinal(code: string): ValidationViolation[] {
   const violations: ValidationViolation[] = [];
   const lines = code.split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line.includes('[ExtensionOf') && !line.includes('[extensionof')) continue;
-    // Look ahead up to 3 lines for the class declaration
-    for (let j = i; j <= Math.min(i + 3, lines.length - 1); j++) {
-      const declLine = lines[j];
-      if (/\bclass\b/i.test(declLine)) {
-        if (!/\bfinal\b/i.test(declLine)) {
-          violations.push({
-            rule: 'COC002',
-            severity: 'error',
-            line: j + 1,
-            excerpt: declLine.trim(),
-            fix: 'Extension classes must be declared final: "[ExtensionOf(...)] final class MyClass_Extension". ' +
-              'Without final the compiler will reject the file.',
-          });
-        }
-        break;
-      }
+  const maskedLines = maskStringsAndComments(code).split('\n');
+  for (let i = 0; i < maskedLines.length; i++) {
+    if (!/\[\s*ExtensionOf/i.test(maskedLines[i])) continue;
+    const decl = classDeclarationAfter(maskedLines, i);
+    if (!decl) continue;
+    // final = a CoC class (wrappers); static = an extension-method class. Both carry
+    // [ExtensionOf] and both compile — the platform ships static ones, e.g.
+    // TaxCalculationAdjustment_ApplicationSuite_Extension.
+    if (!/\bfinal\b/i.test(decl.text) && !/\bstatic\b/i.test(decl.text)) {
+      violations.push({
+        rule: 'COC002',
+        severity: 'error',
+        line: decl.index + 1,
+        excerpt: lines[decl.index]?.trim() ?? decl.text.trim(),
+        fix: 'An [ExtensionOf] class must be final (Chain of Command wrappers) or static ' +
+          '(extension methods): "[ExtensionOf(...)] final class MyClass_Extension". ' +
+          'Without either the compiler rejects the file.',
+      });
     }
+    i = decl.index;
   }
   return violations;
 }
@@ -379,26 +425,23 @@ function checkExtensionOfNotFinal(code: string): ValidationViolation[] {
 function checkExtensionOfNaming(code: string): ValidationViolation[] {
   const violations: ValidationViolation[] = [];
   const lines = code.split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line.includes('[ExtensionOf') && !line.includes('[extensionof')) continue;
-    for (let j = i; j <= Math.min(i + 3, lines.length - 1); j++) {
-      const declLine = lines[j];
-      const m = /\bclass\s+(\w+)/i.exec(declLine);
-      if (m) {
-        if (!m[1].endsWith('_Extension')) {
-          violations.push({
-            rule: 'COC003',
-            severity: 'error',
-            line: j + 1,
-            excerpt: declLine.trim(),
-            fix: `Rename class to "${m[1]}_Extension". ` +
-              'Extension classes must end with _Extension per MS naming guidelines.',
-          });
-        }
-        break;
-      }
+  const maskedLines = maskStringsAndComments(code).split('\n');
+  for (let i = 0; i < maskedLines.length; i++) {
+    if (!/\[\s*ExtensionOf/i.test(maskedLines[i])) continue;
+    const decl = classDeclarationAfter(maskedLines, i);
+    if (!decl) continue;
+    const m = /\bclass\s+(\w+)/i.exec(decl.text);
+    if (m && !m[1].endsWith('_Extension')) {
+      violations.push({
+        rule: 'COC003',
+        severity: 'error',
+        line: decl.index + 1,
+        excerpt: lines[decl.index]?.trim() ?? decl.text.trim(),
+        fix: `Rename class to "${m[1]}_Extension". ` +
+          'Extension classes must end with _Extension per MS naming guidelines.',
+      });
     }
+    i = decl.index;
   }
   return violations;
 }
@@ -607,40 +650,28 @@ function checkEnumSymbolInMessage(code: string): ValidationViolation[] {
  * xppc. Adding a built-in here is only safe when its arity is genuinely fixed:
  * one with an optional parameter belongs nowhere near this rule.
  */
-const FIXED_ARITY_BUILTINS: Record<string, { name: string; arity: number; note: string }> = {
-  enum2str:    { name: 'enum2Str',    arity: 1, note: 'enum2Str(value) — the value alone. It resolves that value\'s <Label> in the session language, which is why it needs no enum id' },
-  enum2symbol: { name: 'enum2Symbol', arity: 2, note: 'enum2Symbol(enumNum(MyEnum), value) — enum id AND value' },
-  symbol2enum: { name: 'symbol2Enum', arity: 2, note: 'symbol2Enum(enumNum(MyEnum), symbolString) — enum id AND symbol' },
-  enumnum:     { name: 'enumNum',     arity: 1, note: 'enumNum(MyEnum) — the enum TYPE name alone, not a value' },
-  // Runtime string/container/date/math functions with genuinely fixed arity.
-  // Every arity below was verified against xppc 7.0.7996.33 on the VM (Phase F,
-  // 2026-08-29): a probe class compiled at N and failed at N+1 ("expects N
-  // argument(s)") and N-1 ("is missing argument N"). conIns was REMOVED — xppc
-  // accepted it with 2 and 4 arguments, so it is variadic, not fixed.
-  strlen:      { name: 'strLen',      arity: 1, note: 'strLen(text)' },
-  strupr:      { name: 'strUpr',      arity: 1, note: 'strUpr(text)' },
-  strlwr:      { name: 'strLwr',      arity: 1, note: 'strLwr(text)' },
-  substr:      { name: 'subStr',      arity: 3, note: 'subStr(text, position, number) — position is 1-based' },
-  strdel:      { name: 'strDel',      arity: 3, note: 'strDel(text, position, number)' },
-  strins:      { name: 'strIns',      arity: 3, note: 'strIns(text, insert, position)' },
-  strrep:      { name: 'strRep',      arity: 2, note: 'strRep(text, count)' },
-  strfind:     { name: 'strFind',     arity: 4, note: 'strFind(text, characters, start, count)' },
-  strscan:     { name: 'strScan',     arity: 4, note: 'strScan(text, pattern, start, count)' },
-  conlen:      { name: 'conLen',      arity: 1, note: 'conLen(container)' },
-  conpeek:     { name: 'conPeek',     arity: 2, note: 'conPeek(container, position) — 1-based' },
-  condel:      { name: 'conDel',      arity: 3, note: 'conDel(container, start, number)' },
-  mkdate:      { name: 'mkDate',      arity: 3, note: 'mkDate(day, month, year)' },
-  year:        { name: 'year',        arity: 1, note: 'year(date)' },
-  mthofyr:     { name: 'mthOfYr',     arity: 1, note: 'mthOfYr(date)' },
-  dayofmth:    { name: 'dayOfMth',    arity: 1, note: 'dayOfMth(date)' },
-  endmth:      { name: 'endMth',      arity: 1, note: 'endMth(date)' },
-  nextmth:     { name: 'nextMth',     arity: 1, note: 'nextMth(date)' },
-  prevmth:     { name: 'prevMth',     arity: 1, note: 'prevMth(date)' },
-  datemthfwd:  { name: 'dateMthFwd',  arity: 2, note: 'dateMthFwd(date, months)' },
-  decround:    { name: 'decRound',    arity: 2, note: 'decRound(value, decimals)' },
-  power:       { name: 'power',       arity: 2, note: 'power(value, exponent)' },
-  abs:         { name: 'abs',         arity: 1, note: 'abs(value)' },
-  ssrsreportstr: { name: 'ssrsReportStr', arity: 2, note: 'ssrsReportStr(MyReport, MyDesign) — report AND design name; the design must exist inside that AxReport (scaffolded reports name it "Report")' },
+/**
+ * Extra guidance for the built-ins whose arity is a documented trap. The ARITY
+ * itself is never written here — it comes from the compiler's own answer (see
+ * src/knowledge/compilerFacts.ts); this map only adds the sentence that explains
+ * why the wrong count looked right.
+ */
+const BUILTIN_ARITY_NOTES: Record<string, string> = {
+  enum2str: 'enum2Str(value) — the value alone. It resolves that value\'s <Label> in the session language, which is why it needs no enum id',
+  enum2symbol: 'enum2Symbol(enumNum(MyEnum), value) — enum id AND value',
+  symbol2enum: 'symbol2Enum(enumNum(MyEnum), symbolString) — enum id AND symbol',
+  enumnum: 'enumNum(MyEnum) — the enum TYPE name alone, not a value',
+  substr: 'subStr(text, position, number) — position is 1-based',
+  strfind: 'strFind(text, characters, start, count)',
+  strscan: 'strScan(text, pattern, start, count)',
+  conpeek: 'conPeek(container, position) — 1-based',
+  condel: 'conDel(container, start, number)',
+  mkdate: 'mkDate(day, month, year)',
+  date2str: 'date2Str(date, sequence, day, sep1, month, sep2, year [, DateFlags]) — the 8th argument is optional',
+  datetime2str: 'datetime2Str(utcdatetime [, DateFlags]) — the flags argument is optional',
+  num2str: 'num2Str(value, characters, decimals, decimalSeparator, thousandSeparator)',
+  fieldid2name: 'fieldId2Name(tableId, fieldId [, arrayIndex])',
+  ssrsreportstr: 'ssrsReportStr(MyReport, MyDesign) — report AND design name; the design must exist inside that AxReport (scaffolded reports name it Report)',
 };
 
 /**
@@ -689,6 +720,15 @@ function countCallArguments(masked: string, open: number): number | null {
  *
  * severity 'error' — this is a compile failure, not a preference.
  */
+/**
+ * Words that may legally precede a predefined-function CALL. Anything else that is
+ * a bare identifier in front of `name(` marks a method DECLARATION (`Type name()`).
+ */
+const CALL_PRECEDING_KEYWORDS = new Set([
+  'return', 'if', 'while', 'for', 'switch', 'case', 'throw', 'else', 'do', 'and', 'or',
+  'not', 'select', 'where', 'join', 'setting', 'by', 'in', 'next', 'new', 'super', 'print',
+]);
+
 function checkBuiltinArity(code: string): ValidationViolation[] {
   const violations: ValidationViolation[] = [];
   const masked = maskStringsAndComments(code);
@@ -697,23 +737,75 @@ function checkBuiltinArity(code: string): ValidationViolation[] {
   const callRe = /\b([A-Za-z_]\w*)\s*\(/g;
   let m: RegExpExecArray | null;
   while ((m = callRe.exec(masked)) !== null) {
-    const spec = FIXED_ARITY_BUILTINS[m[1].toLowerCase()];
-    if (!spec) continue;
+    const called = m[1];
+    const intrinsic = intrinsicInfo(called);
+    const runtime = intrinsic ? null : runtimeFunctionInfo(called);
+    const unknown = !intrinsic && !runtime && isUnknownFunction(called);
+    if (!intrinsic && !runtime && !unknown) continue;
+    // Variadic — the compiler has no count to check (strFmt, conIns, max, min).
+    if (runtime && runtime.arity.max === 'variadic') continue;
     // `something.enum2Str(…)` is a method on another type, not the global.
-    if (masked.slice(0, m.index).trimEnd().endsWith('.')) continue;
-
-    const actual = countCallArguments(masked, m.index + m[0].length - 1);
-    if (actual === null || actual === spec.arity) continue;
+    const before = masked.slice(0, m.index).trimEnd();
+    if (before.endsWith('.')) continue;
+    // `MyClass::year(…)` is that class's own static; only Global:: shares the
+    // predefined names.
+    if (before.endsWith('::') && !/\bGlobal\s*::$/.test(before)) continue;
+    // A DECLARATION, not a call: `public IntEditAdaptor Year()` in a form adaptor
+    // reads as a call to the predefined year() unless the preceding token is
+    // recognised as a type name. In a call the previous token is an operator, a
+    // separator or a statement keyword — never a bare identifier.
+    const prevToken = /([A-Za-z_]\w*)\s*$/.exec(before)?.[1];
+    if (prevToken && !CALL_PRECEDING_KEYWORDS.has(prevToken.toLowerCase())) continue;
 
     const lineNo = lineNumber(masked, m.index);
+    const excerpt = lines[lineNo - 1].trim();
+
+    if (unknown) {
+      violations.push({
+        rule: 'FN002',
+        severity: 'error',
+        line: lineNo,
+        excerpt,
+        fix:
+          `${called} is not a predefined function on this platform (xppc ${COMPILER_VERSION}): ` +
+          `"The name '${called}' does not denote a predefined function, a static method on the Global ` +
+          'class nor a previously defined local function". It reads as one because AX 2012 had it — ' +
+          'call get_knowledge(topic="runtime-functions") for the function that replaced it.',
+      });
+      continue;
+    }
+
+    const actual = countCallArguments(masked, m.index + m[0].length - 1);
+    if (actual === null) continue;
+
+    const note = BUILTIN_ARITY_NOTES[called.toLowerCase()];
+    if (intrinsic) {
+      if (actual === intrinsic.args) continue;
+      violations.push({
+        rule: 'FN001',
+        severity: 'error',
+        line: lineNo,
+        excerpt,
+        fix:
+          `${intrinsic.name} is a compile-time intrinsic taking ${intrinsic.args} argument(s); ` +
+          `${actual} given.${note ? ` ${note}.` : ''}`,
+      });
+      continue;
+    }
+
+    const arity = runtime!.arity;
+    if (acceptsArgumentCount(arity, actual)) continue;
+    const expected = arity.max === 'variadic' ? arity.min : arity.max;
     violations.push({
       rule: 'FN001',
       severity: 'error',
       line: lineNo,
-      excerpt: lines[lineNo - 1].trim(),
+      excerpt,
       fix:
-        `${spec.name} takes ${spec.arity} argument(s); ${actual} given. xppc rejects this with ` +
-        `"'${spec.name}' expects ${spec.arity} argument(s), but ${actual} specified". ${spec.note}.`,
+        `${runtime!.name} takes ${describeArity(arity)}; ${actual} given. xppc rejects this with ` +
+        `"'${runtime!.name}' expects ${expected} argument(s), but ${actual} specified"` +
+        (actual < arity.min ? ` or "is missing argument ${arity.min}"` : '') +
+        `.${note ? ` ${note}.` : ''}`,
     });
   }
 
@@ -854,14 +946,19 @@ function checkHardcodedStrings(code: string): ValidationViolation[] {
   lines.forEach((rawLine, i) => {
     const line = rawLine.trimStart();
     if (line.startsWith('//') || line.startsWith('*')) return;
-    // Match: info("...") / warning("...") / error("...") / checkFailed("...")
-    // where the first argument is a raw string (not starting with @)
-    const pattern = /\b(?:info|warning|error|checkFailed)\s*\(\s*"(?!@)([^"]{1,200})"/gi;
+    // Match: info("...") / warning('...') / error("...") / checkFailed("...")
+    // where the first argument is a raw string (not starting with @).
+    // Both quote styles count — the platform writes single-quoted literals as often
+    // as double-quoted ones. The lookbehind keeps the rule off member calls such as
+    // AifChangeTrackingEventSource::…Info("…") and this.error(…) on a logger: only
+    // the Global functions carry the label obligation.
+    const pattern = /(?<![.\w:])(?:info|warning|error|checkFailed)\s*\(\s*(["'])(?!@)([^"']{1,200})\1/gi;
     let m: RegExpExecArray | null;
     while ((m = pattern.exec(rawLine)) !== null) {
       violations.push({
         rule: 'BP001',
-        severity: 'error',
+        // xppc compiles a hardcoded string; xppbp reports BPErrorLabelIsText.
+        severity: 'warning',
         line: i + 1,
         excerpt: m[0].trim(),
         fix: 'Replace the hardcoded string with a label reference: info("@ModelName:LabelId"). ' +
@@ -970,19 +1067,58 @@ function checkMissingAlternateKey(code: string): ValidationViolation[] {
  */
 function checkUnbalancedTts(code: string): ValidationViolation[] {
   const masked = maskStringsAndComments(code);
-  const begins = (masked.match(/\bttsbegin\b/gi) ?? []).length;
-  const commits = (masked.match(/\bttscommit\b/gi) ?? []).length;
-  if (begins === 0 && commits === 0) return [];
-  if (begins === commits) return [];
-  const firstIdx = masked.search(/\bttsbegin\b/i);
-  return [{
-    rule: 'TTS001',
-    severity: 'warning',
-    line: firstIdx >= 0 ? lineNumber(code, firstIdx) : undefined,
-    excerpt: `ttsbegin × ${begins}, ttscommit × ${commits}`,
-    fix: 'Balance every ttsbegin with a matching ttscommit (and ttsabort in the catch). ' +
-      'An unmatched ttsbegin leaves the transaction open; an unmatched ttscommit will throw at runtime.',
-  }];
+  const lines = masked.split('\n');
+
+  // Count per top-level brace block — i.e. per method when the input is a method
+  // source or a concatenated class. Counting across the whole text conflated
+  // separate methods and reported 21 shipped classes as unbalanced: one method
+  // opening two transactions and another closing three is not a defect.
+  type Region = { line: number; begins: number; commits: number; aborts: number };
+  const regions: Region[] = [];
+  let current: Region | null = null;
+  let depth = 0;
+  lines.forEach((line, i) => {
+    if (depth === 0 && line.includes('{')) current = { line: i + 1, begins: 0, commits: 0, aborts: 0 };
+    const target = current;
+    if (target) {
+      target.begins += (line.match(/\bttsbegin\b/gi) ?? []).length;
+      target.commits += (line.match(/\bttscommit\b/gi) ?? []).length;
+      target.aborts += (line.match(/\bttsabort\b/gi) ?? []).length;
+    }
+    for (const ch of line) {
+      if (ch === '{') depth++;
+      else if (ch === '}') depth--;
+    }
+    if (depth <= 0 && target) { regions.push(target); current = null; depth = 0; }
+  });
+  if (current) regions.push(current);
+  if (regions.length === 0) {
+    regions.push({
+      line: 1,
+      begins: (masked.match(/\bttsbegin\b/gi) ?? []).length,
+      commits: (masked.match(/\bttscommit\b/gi) ?? []).length,
+      aborts: (masked.match(/\bttsabort\b/gi) ?? []).length,
+    });
+  }
+
+  const violations: ValidationViolation[] = [];
+  for (const r of regions) {
+    if (r.begins === 0 && r.commits === 0) continue;
+    if (r.begins === r.commits) continue;
+    // ttsabort closes a transaction too, so a guard clause that aborts on one path
+    // legitimately leaves fewer commits than begins.
+    if (r.begins > r.commits && r.begins <= r.commits + r.aborts) continue;
+    violations.push({
+      rule: 'TTS001',
+      severity: 'warning',
+      line: r.line,
+      excerpt: `ttsbegin × ${r.begins}, ttscommit × ${r.commits}` +
+        (r.aborts ? `, ttsabort × ${r.aborts}` : ''),
+      fix: 'Balance every ttsbegin with a matching ttscommit (or a ttsabort on the failure path). ' +
+        'An unmatched ttsbegin leaves the transaction open; an unmatched ttscommit throws at runtime.',
+    });
+  }
+  return violations;
 }
 
 /**

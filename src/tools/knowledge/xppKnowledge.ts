@@ -1251,11 +1251,11 @@ ttscommit;`,
       'Tables with SaveDataPerCompany=No: shared across all companies (e.g. DirPartyTable, RefRecId tables)',
       'changeCompany("DAT") { ... }: switch company context for a code block — closes and re-opens connection',
       'crosscompany select: use when querying data across multiple companies in one query',
-      // The container form needs the colon AND a container VARIABLE — an inline
-      // literal after crossCompany does not parse, and `from` is only legal after
-      // a field list. Spelling it out because the shorthand people reach for,
-      // `select crosscompany [co1, co2] from t`, fails all three ways at once.
-      'crosscompany containers: declare a container variable, then `while select crossCompany : companies <fieldlist> from myTable` — the colon is required and the company list must be a variable, not an inline literal',
+      // xppc 7.0.7996.33, probe: the colon is required, but the operand may be a
+      // variable, an inline container literal or a parenthesised expression. The
+      // earlier "variable only" wording was wrong — the platform itself ships
+      // `while select crosscompany:[rootCompany] *` (LedgerJournalMultiPost).
+      'crosscompany company list: the COLON is required — `select crossCompany : companies myTable`. The operand may be a container variable, an inline literal (`crossCompany : [\'dat\', \'dmo\']`) or an expression (`crossCompany : (c + [\'dmo\'])`). Note `from` is only legal after a field list',
       'crossCompany binds to the DRIVING buffer only — `select crossCompany custTable join custInvoiceJour`, never `join crossCompany custInvoiceJour` (validate_code rule SEL003)',
       'NEVER hardcode DataAreaId — always use curExt() (returns the current DataAreaId; not deprecated) or CompanyInfo::current().DataArea',
       'changeCompany is expensive — avoid inside loops; batch operations cross-company instead',
@@ -2455,13 +2455,13 @@ else
       'Complete grammar reference for X++ select/while select. Statement order: [FindOptions] [FieldList from] tableBuffer [index] [order by / group by] [where …] [join … [where …]]. ' +
       'FindOptions go BETWEEN "select" and the table buffer. Each joined buffer has its own where clause immediately after it.',
     rules: [
-      'FindOptions (crossCompany, firstOnly, forUpdate, forceNestedLoop, forceSelectOrder, forcePlaceholders, pessimisticLock, optimisticLock, repeatableRead, validTimeState, noFetch, reverse, firstFast) go BETWEEN "select" and the table buffer / field list',
+      'FindOptions (crossCompany, firstOnly, firstOnly1/10/100/1000, forUpdate, forceNestedLoop, forceSelectOrder, forcePlaceholders, forceLiterals, pessimisticLock, optimisticLock, repeatableRead, generateOnly, validTimeState, noFetch, reverse, firstFast) go BETWEEN "select" and the table buffer / field list',
       'firstOnly variants: firstOnly (1 row), firstOnly10, firstOnly100, firstOnly1000 — row-count hints to the plan; firstFast is a priority hint only and does NOT limit rows',
       'exists join / notexists join are semi-joins: the joined buffer fetches NO fields and cannot be read in the loop body — its conditions go in its own where clause',
       'crossCompany belongs on the OUTER (driving) buffer — never on a joined buffer. Optional container filter: select crossCompany : myContainer table …',
       'Each joined buffer gets its own "where" clause immediately after it; order by / group by appear after the full join chain',
-      '"in" operator: "where field in container" — container = X++ container type; works with str/int/int64/real/enum/boolean/date/utcDateTime. NOT a Set, List class, or subquery',
-      'forceLiterals is FORBIDDEN — SQL injection risk; use forcePlaceholders (default for non-join selects) or omit',
+      '"in" operator is far narrower than it looks (xppc-verified): the LEFT side must be an ENUM field and the RIGHT side a container VARIABLE. A str, int64, real or date field answers "Types \'str(CustAccount)\' and \'container\' are not compatible with operator \'in\'", an inline list answers "Container literals in \'in\' expression are not supported. Declare container variable instead", and a Set or List is rejected outright. For a non-enum field write the OR chain or a QueryBuildRange',
+      'forceLiterals reveals the where-clause values to the optimiser: avoid it, and never use it with values that came from user input (SQL injection). It is not forbidden — xppc accepts it and standard code uses it where the plan measurably needs the literal; use forcePlaceholders (the default for non-join selects) or omit the hint',
       'The force* FindOptions are exactly forceLiterals, forcePlaceholders, forceNestedLoop, forceSelectOrder — "forceLaterals" is NOT a keyword (xppc-verified: parsed as a buffer name, "join expected")',
       'No function calls in WHERE — assign result to a local variable first (performance + BP compliance)',
       'outer join is LEFT OUTER only — no RIGHT outer, no "left" keyword; check joined buffer.RecId == 0 to detect "no match"',
@@ -2469,7 +2469,9 @@ else
       '"index hint" requires buffer.allowIndexHint(true) to be called first; otherwise silently ignored — use only when measured',
       'Aggregates (sum/avg/count/minof/maxof): when sum would be null X++ returns NO row — guard with "if (buffer)" after the select',
       'Non-aggregated fields in select list must appear in "group by" when aggregates are used',
-      'validTimeState(dateFrom, dateTo): use for date-effective tables (ValidTimeStateFieldType ≠ None)',
+      'validTimeState(dateFrom, dateTo) or validTimeState(asOf): use for date-effective tables (ValidTimeStateFieldType ≠ None). The arguments must be variables or literals — a call expression inside the parentheses is a parse error ("Invalid token \'::\'"), so assign DateTimeUtil::utcNow() to a variable first',
+      'order by / group by belong BEFORE the where of the same segment: "select t order by f where c" is legal, "select t where c order by f" is a compile error ("\'join\' expected"). After a join the next segment starts over, so "… join u order by u.f where u.c" is correct',
+      'A select EXPRESSION names the TABLE, not a buffer: str s = (select firstOnly CustGroup).Name; passing a declared buffer answers "Table \'cg\' is not found"',
       'doInsert/doUpdate/doDelete bypass overridden methods and event handlers — reserved for data-fix/migration scenarios only',
       'For dynamic queries from user input: use executeQueryWithParameters API — NEVER concatenate into where clause',
     ],
@@ -2589,7 +2591,7 @@ public void post()
       'Class default access = public. Removing "public" does NOT make a class non-public. Use internal, final, abstract deliberately',
       'Instance fields default = protected — NEVER make them public; expose via parmFoo() accessors',
       'Constructor pattern: new() is protected, public static construct() factory; init() for post-construction setup',
-      'Method modifier order: [edit|display] [public|protected|private|internal] [static|abstract|final]',
+      'Method modifier order: [edit|display] [public|protected|private|internal] [static|abstract|final]. The compiler is looser than the convention — `internal protected` and `display static` also compile — but keep to this order so the AOT diff stays readable',
       'Combined access modifiers: "protected internal" COMPILES (xppc-verified); "private protected" does NOT — xppc rejects it as "Conflicting modifiers"',
       'Override visibility: must be at least as accessible as the base method. private is not overridable',
       'Optional parameters must come after required ones; all preceding parameters must be supplied. Use prmIsDefault(_x) to detect "was this passed"',
@@ -2602,7 +2604,7 @@ public void post()
       'NO method overloading and NO constructor overloading — one new() per class; simulate with optional parameters or distinct static newFromX()/construct() factories',
       'NO C# property syntax — the accessor-pair convention is the parm method: public FromDate parmFromDate(FromDate _v = fromDate) { fromDate = _v; return fromDate; }',
       'NO generics, NO lambdas/anonymous methods — .NET-only features; generic types are reachable only through .NET interop',
-      'Local (nested) functions can be declared at the top of a method body — legacy feature; prefer private methods',
+      'Local (nested) functions may be declared anywhere in a method body — before or after statements — and see the locals declared above them; legacy feature, prefer private methods',
       'Static constructor: static void TypeNew() runs once on first use of the class — the supported place for one-time static-state init',
       'Interfaces: implement a comma-separated list; interface members are implicitly public; name prefix convention is I',
     ],
@@ -3537,14 +3539,15 @@ if (deserialized == effective.ValidFrom)
       'fully qualified everywhere because no `using` alias was declared.',
     rules: [
       'Declare `using System.Text;` above the class declaration to shorten names; without it every CLR type must be fully qualified (System.Text.StringBuilder)',
-      'CLR calls must execute where the assembly is deployed — put them in a `server` static method (or a class with RunOn = Server). A client-tier CLR call against a server-only assembly fails at runtime, not at compile time',
+      'Do NOT mark the method `server`: xppc compiles the modifier but answers "The \'Server\' keyword has been deprecated, please remove it from the method definition" — in finance and operations all X++ already runs on the AOS tier. What still matters is that the assembly is referenced by the model and deployed with it',
       'Assert interop permission before calling out: new InteropPermission(InteropKind::ClrInterop).assert(); — required for CAS-protected interop, and it documents the boundary',
       'Catch CLR failures with `catch (Exception::CLRError)` and pull the real message from CLRInterop::getLastException() — a bare `catch (Exception::Error)` will NOT catch a CLR exception and the diagnostic is lost',
+      'The typed form catches one .NET exception type, but the variable must be DECLARED first and the catch names it alone: `System.ArgumentException ex; try { … } catch (ex) { error(ex.Message); }`. C#-style `catch (System.ArgumentException ex)` is a parse error ("\')\' expected")',
       'Marshalling: X++ str ↔ System.String and X++ real/int ↔ the matching CLR primitives convert implicitly; anytype needs CLRInterop::getAnyTypeForObject() / CLRInterop::getObjectForAnyType()',
       'CLR enums are reached by value with CLRInterop::parseClrEnum(\'System.StringComparison\', \'OrdinalIgnoreCase\') — an X++ enum literal will not bind to a CLR enum parameter',
-      'A CLR array is a System.Array — index it with get_Item()/set_Item(), not with X++ [] syntax; property getters/setters are get_X()/set_X()',
+      'A CLR array is a System.Array: create it with `new System.String[3]()` and read/write it with GetValue/SetValue — X++ [] indexing on it is a compile error ("The array indexing syntax can only be applied to X++ array types. Use the SetValue and GetValue methods on managed array types"). Properties are reachable as `obj.Name` or `obj.get_Name()`',
       'null checks use `if (clrObject == null)`; do NOT compare a CLR object with an X++ empty value',
-      'Dispose deterministic resources explicitly (streams, readers) in a finally block — X++ has no `using` STATEMENT, only the using DECLARATION for namespaces',
+      'X++ HAS the `using` statement for IDisposable: `using (var reader = new System.IO.StreamReader(path)) { … }` compiles and disposes on every exit path (the platform ships 8,306 of them). Reach for try/finally + Dispose() only when the object must outlive one block',
       'Reference the assembly from the model (References node) so the compiler resolves it; a runtime-only GAC assembly compiles but breaks on a clean build machine',
       'Prefer an X++ equivalent when one exists (strFmt, Set/Map, System.IO only when the X++ file APIs cannot do it) — interop costs marshalling and blocks the compiler from checking anything',
     ],
@@ -3553,7 +3556,7 @@ if (deserialized == effective.ValidFrom)
         label: 'Server-tier CLR call with proper CLRError handling',
         code: `using System.Text;
 
-public static server str buildCsvLine(container _values)
+public static str buildCsvLine(container _values)
 {
     str result;
 
@@ -3975,7 +3978,9 @@ str asText = any2Str(v);`,
       'TRAP: && and || have EQUAL precedence, evaluated left-to-right — a || b && c means (a || b) && c, NOT a || (b && c) as in C#. ALWAYS parenthesize mixed &&/|| chains',
       'Precedence (high→low): unary (- ~ !) → * / DIV MOD << >> & ^ → + - | → relational (< <= == != > >= like as is) → && and || (equal) → ?:',
       'DIV = integer division, MOD = remainder — keywords, not / and %: 7 DIV 2 == 3, 7 MOD 2 == 1. Plain / always divides as real, even between ints',
-      '++ and -- are STATEMENTS with no prefix/postfix value distinction — i++ cannot sit inside a larger expression',
+      '++ and -- are STATEMENTS with no prefix/postfix value distinction — `int y = i++;` is a syntax error ("\';\' expected"); increment on its own line',
+      'Assignment operators: = += -= *= /= (xppc-verified — *= and /= do compile, contrary to the language reference, and the platform ships 59 uses). There is no %=, no <<= and no ??=',
+      'Implicit conversions are narrower than they look: int→real, int→int64, int↔enum, int↔boolean all compile, but real→int is a compile ERROR ("The type conversion from \'real\' to \'int\' loses range and precision") and so are int→str, str→int, date→int, enum→str and boolean→str. int64→int and real→int64 compile with a warning. Convert explicitly (real2int, int2Str, any2Str…)',
       'like matches SQL-style wildcards: * = any run, ? = one character; works in where clauses (translated to SQL LIKE) and on str values in code',
       'String concatenation is +; there is NO string interpolation ($"…" does not exist) — use strFmt("%1 / %2", a, b)',
       'is tests the runtime type; as downcasts and yields null on failure — check the result before use. Both apply to class/table hierarchies only, never to EDTs',
@@ -4014,12 +4019,13 @@ if (isAdmin || (isOwner && isEnabled))
       'non-constant expressions; pause/window are removed keywords, client/server are parsed but ignored.',
     rules: [
       'switch FALLS THROUGH: without break, execution continues into the next case (opposite of C#) — end every case with break and comment any deliberate fallthrough',
-      'case accepts comma-separated lists (case 1, 2, 3:) and non-constant expressions; default: is optional',
+      'case accepts comma-separated lists (case 1, 2, 3:) and non-constant expressions (case y:, case y + 1:); default: is optional but MUST be the last case item — placing it first is a compile error ("A default part must be the last case item in the switch statement")',
       'switch works on int, enum, str and other primitives',
       'Loops: while, do { } while (…);, for (init; test; increment) — break exits the innermost loop, continue jumps to the next iteration',
       'break inside a switch that sits inside a loop exits only the SWITCH — use a flag or restructure to leave the loop',
-      'pause and window were REMOVED (compile errors); print still parses but goes nowhere useful in the cloud — use info() with a label',
-      'client and server modifiers are parsed but IGNORED — delete them in new code',
+      'pause, window, tableLock and changeSite were REMOVED — they are no longer keywords, so xppc reports them as syntax errors ("Invalid token", "does not denote a class, a table, or an extended data type"). print and breakpoint still compile but go nowhere useful in the cloud — use info() with a label',
+      'client and server modifiers still COMPILE, with a deprecation warning ("The \'Client\' keyword has been deprecated, please remove it from the method definition") — delete them in new code; everything runs on the AOS tier',
+      'Assignment operators are = += -= *= /= and the ++ / -- STATEMENTS. *= and /= compile (the platform ships 59 uses); ++ and -- have no value, so `int y = i++;` is a syntax error ("\';\' expected") — increment on its own line',
     ],
     examples: [
       {
@@ -4054,7 +4060,7 @@ switch (status)
       'LITERAL-only constructor arguments and read back via reflection. Instances are constructed lazily.',
     rules: [
       'An attribute class is a non-abstract X++ class deriving from SysAttribute; the name conventionally ends in "Attribute" and that suffix may be OMITTED at the usage site',
-      'Constructor arguments at the usage site MUST be compile-time literals of primitive types (str/int/boolean/enum value) — no variables, no object creation',
+      'Constructor arguments at the usage site MUST be compile-time literals of primitive types (str/int/boolean/enum value/date) — a variable is "Invalid token \',\'", a call is "Invalid token \'(\'". A #define MACRO is legal, because it expands to a literal before the compiler sees it',
       'Attributes apply to classes, interfaces, methods, class fields and table methods; several stack comma-separated in one bracket or in separate brackets',
       'Attribute arguments are positional only — X++ has no named-argument syntax',
       'Instances are constructed LAZILY when reflection reads them — a throwing attribute constructor surfaces at the READER, far from the declaration site',

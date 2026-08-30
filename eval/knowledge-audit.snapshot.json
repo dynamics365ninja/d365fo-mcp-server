@@ -1,6 +1,6 @@
 {
-  "capturedAt": "2026-08-30T05:04:24.353Z",
-  "indexedAt": "2026-08-30T04:56:59.501Z",
+  "capturedAt": "2026-08-30T10:16:17.520Z",
+  "indexedAt": "2026-08-30T07:43:44.317Z",
   "ok": [
     "alerts-business-events|attribute|DataContract",
     "alerts-business-events|attribute|DataContractAttribute",
@@ -226,6 +226,7 @@
     "select-statement|static-call|CustVendorBlocked::No",
     "select-statement|static-call|DateTimeUtil::getSystemDate",
     "select-statement|static-call|DateTimeUtil::getUserPreferredTimeZone",
+    "select-statement|static-call|DateTimeUtil::utcNow",
     "set-based|declaration|RecordInsertList",
     "set-based|new|RecordInsertList",
     "set-based|static-call|CustVendorBlocked::All",
