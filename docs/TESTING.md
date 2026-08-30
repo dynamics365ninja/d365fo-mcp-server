@@ -1,6 +1,6 @@
 # Testing
 
-The project uses [Vitest](https://vitest.dev/). ~5,000 tests across ~350 files run without a live D365FO environment — all external dependencies (SQLite, filesystem, bridge, cache) are mocked.
+The project uses [Vitest](https://vitest.dev/). ~5,200 tests across ~365 files run without a live D365FO environment — all external dependencies (SQLite, filesystem, bridge, cache) are mocked.
 
 ## Running tests
 
