@@ -2368,7 +2368,8 @@ else
       'by code: the device menu item binds a mode and an activity, and that pair picks the class that runs. ' +
       'The action it runs must complete inside the one server call that received the scan.',
     rules: [
-      'A warehouse-app screen is a CONTAINER of controls built server-side by the WHSWorkExecuteDisplay hierarchy — there is no FormRun, no datasource, no control event. Nothing in formrun-lifecycle or form-patterns applies to a scanner step',
+      'TWO FRAMEWORKS build these screens and you must know which one owns the flow BEFORE you touch it: ProcessGuide (current — controller/step/page builder/data processor/navigation agent/action, see process-guide-framework) and the legacy WHSWorkExecuteDisplay hierarchy (one displayForm per mode doing all of it). Both are instantiated by SysExtension off the same WHSWorkExecuteMode attribute, so the way to tell them apart is what the registered class derives from. New flows go to ProcessGuide where it exists',
+      'A warehouse-app screen is a CONTAINER of controls built server-side — there is no FormRun, no datasource, no control event. Nothing in formrun-lifecycle or form-patterns applies to a scanner step',
       'Every round trip is STATELESS and may be served by a different AOS: carry state in the pass-through data the framework round-trips (the WHSRFControlData / container payload), NEVER in class member variables, static fields or globals. Member state survives a single-box dev machine and silently loses the worker\'s progress under load balancing',
       'Define the layout of the pass-through container in ONE place. Two methods that each hard-code conPeek indexes is the classic cause of "wrong value after the operator pressed back"',
       'Mobile device menu items (WHSRFMenuItemTable) and mobile device menus are CONFIGURED DATA, not AOT elements. "Add a scanner menu item" is setup or a data package — do not try to create an AOT object for it. The AOT half of a custom flow is the activity value and the display/execute class behind it',
@@ -2456,7 +2457,44 @@ public static container executeScanAction(container _state, str _scannedCode)
 }`,
       },
     ],
-    related: ['warehouse-management', 'barcode-scanning', 'inventory-management', 'posting-engine', 'extensible-enums'],
+    related: ['process-guide-framework', 'warehouse-management', 'barcode-scanning', 'inventory-management', 'posting-engine'],
+  },
+
+  // ── Process guide framework ─────────────────────────────────────────────
+  {
+    id: 'process-guide-framework',
+    title: 'ProcessGuide framework — the current mobile flow/screen model',
+    keywords: ['process guide', 'processguide', 'processguidecontroller', 'processguidestep',
+               'processguidepagebuilder', 'processguidenavigationagent', 'processguideaction',
+               'processguidedataprocessor', 'page builder', 'navigation route', 'step name',
+               'mobile flow framework', 'screen framework', 'addfollowingstep', 'iscomplete',
+               'adddatacontrols', 'addactioncontrols'],
+    summary:
+      'ProcessGuide is the framework the warehouse app flows are being rebuilt on, and the one to use for ' +
+      'anything new. It splits what the legacy WHSWorkExecuteDisplay did in one displayForm method into six ' +
+      'classes with one responsibility each, and every one of them is an extension point. It carries NO WHS ' +
+      'prefix on purpose — production and inventory processes use it too. The catch is registration: classes ' +
+      'are found by attribute through SysExtension, so a class with the right base and the wrong (or missing) ' +
+      'attribute compiles cleanly and never runs.',
+    rules: [
+      'Six responsibilities, one class each: CONTROLLER owns the process, STEP is one screen, PAGE BUILDER makes its controls, DATA PROCESSOR handles what the worker typed, NAVIGATION AGENT decides what comes next, ACTION is a button. If your change does not fit one of those, it is going in the wrong class',
+      'Registration is by ATTRIBUTE, not by editing a factory: the controller carries WHSWorkExecuteMode, the step carries ProcessGuideStepName, the page builder carries ProcessGuidePageBuilderName, the action carries ProcessGuideActionName. Forgetting the attribute is the signature failure here — it compiles, and the screen simply never appears',
+      'Name values are the class name through classStr, never a string literal: a literal survives a rename and fails at run time on a device instead of at compile time',
+      'The request arrives as XML on one custom service endpoint, is turned into a container and then into a typed request — session state (mode, pass, controller, current step) plus the page. You never parse the container yourself in a flow class',
+      'The controller entry point builds the response: it resolves the step (the initial one, or the one in session state), executes it, saves state and returns. Do not call steps directly from other steps',
+      'A step WITH a screen names its page builder and answers isComplete. The base marks a screen complete on OK alone, so a screen that collects a value and does not override isComplete moves on before your validation ran',
+      'A step WITHOUT a screen derives from the without-prompt base and does the work in doExecute — that is where a post, a journal or a work confirmation belongs, running silently right after the confirm screen',
+      'OK and the two Cancel actions are special: they call back into the step (run the data processor, then rebuild the page or complete the step; reset to the first step; exit the process). Never reimplement them as custom actions',
+      'Default data processing delegates to the legacy WhsRfControlData, which already validates the standard fields — item, location, license plate. Write a data processor only for a field the platform does not know',
+      'Error UI is free: on a validation failure the base rebuilds the page, clears the scanned value and adds the error control. Override rebuildFromRequestPage, isErrorState or reuseRequestPageOnError only to deviate deliberately',
+      'Navigation is a route map of "after this step, that step". Conditional branching needs its own navigation agent plus a factory, wired by overriding the agent factory on the controller — faking a branch by mutating the route breaks every other extension of that flow',
+      'Extending an existing flow, by intent: add a control → wrap addDataControls on the page builder; replace a screen → a new page builder plus a wrapper on pageBuilderName; insert a screen → wrap the route initializer and RE-POINT BOTH EDGES; change when a step finishes → wrap isComplete',
+      'State lives in the pass-through keyed by the framework data-type names, shared with the legacy flows — that is why a converted flow keeps working with existing data, and why a class member is still the wrong place for it',
+      'An exception inside a step is handled by the framework: the process rolls back to the previous step. Do not wrap a step body in try/catch to keep the worker where they were — you will swallow the rollback',
+      'Naming follows <FunctionalArea>ProcessGuide<ProcessName>Controller and the matching Step / PageBuilder names. It is a convention, not a compiler rule, but the factories and the reader both depend on it',
+      'Copy-ready skeletons for all of this — create a flow, add a control, replace a screen, insert a step — are in object_patterns(domain="mobile-app"). This topic is the rules; that is the template',
+    ],
+    related: ['warehouse-mobile-app', 'warehouse-management', 'coc-authoring', 'sysextension'],
   },
 
   // ── Barcodes & scanner input ────────────────────────────────────────────
@@ -2481,7 +2519,10 @@ public static container executeScanAction(container _state, str _scannedCode)
       'SCANNING is the opposite direction and shares no code with printing: a scanner hands you decoded text. Never run scanned input back through the encoder to "normalize" it',
       'Barcode setup (BarcodeSetup) says which symbology a code uses; item barcodes (InventItemBarcode) map a code to item, unit, quantity and inventory dimensions, flagged separately for input and for printing. Resolve a scan through that table — a string compare against ItemId is wrong, because one item legitimately carries many codes (per unit, per pack size, an old vendor code)',
       'A barcode string is not a key: the same value can resolve under more than one barcode setup, and a print-only code must not resolve on input. Filter on the use-for-input flag and treat "more than one match" as a real branch, not an assert',
-      'GS1-128 (formerly EAN-128) carries application identifiers: (00) SSCC, (01) GTIN, (10) batch/lot, (17) expiry as YYMMDD, (21) serial number, (30)/(37) count. Parse AI by AI — a fixed-length AI runs straight into the next one, a variable-length AI ends at the FNC1 group separator (ASCII 29) or at end of scan. Slicing at fixed offsets is the classic defect',
+      'INSIDE the warehouse app, DO NOT WRITE A GS1 PARSER. The platform parses the scan before it reaches the flow and fills the controls: global options live on Warehouse management parameters (the prefix characters that mark a scan as GS1, the printable stand-in for the ASCII 29 group separator, and the unknown-application-identifier policy — Error refuses the WHOLE scan for one unmapped element), the identifier list is setup data, and a bar-code data policy on the mobile device menu item is what makes ONE scan fill SEVERAL fields. A hand-rolled parser duplicates all of it and diverges on the next standard change',
+      'The scanner HARDWARE is part of that configuration: it must add a prefix the system recognises (the AIM identifiers ]C1 GS1-128, ]e0 GS1 DataBar, ]d2 GS1 DataMatrix, ]Q3 GS1 QR, ]J1 GS1 DotCode) and convert the non-printable group separator to the character named in the parameters. A scan that behaves as plain text usually means the scanner, not the code',
+      'Multiple-field scanning changes WHEN a flow has its values — a step you assumed would run can be skipped because the scan already filled it. Test a custom flow with the policy on AND off',
+      'OUTSIDE the app (a rich-client form, an integration) there is no menu item to hang a policy on, so that path parses in code: GS1-128 (formerly EAN-128) carries application identifiers — (00) SSCC, (01) GTIN, (10) batch/lot, (17) expiry as YYMMDD, (21) serial number, (30)/(37) count. Parse AI by AI: a fixed-length AI runs straight into the next one, a variable-length AI ends at the group separator or at end of scan. Slicing at fixed offsets is the classic defect',
       'A GTIN is not an item number: it identifies item + unit and often a pack quantity, so one scan of a case can mean 12 EA. Take the unit and quantity from the barcode record and convert through the unit-of-measure setup — never post the raw scanned quantity',
       'Batch and serial numbers read off a GS1 label must be applied as inventory dimensions through the dimension API (see inventory-management). Writing batch/serial onto a line without going through findOrCreate leaves an orphan dimension and on-hand that does not add up',
       'Keyboard-wedge scanners TYPE the value and finish with Enter or Tab: in the rich client the whole string arrives in one modified() call, not keystroke by keystroke. Put the resolution in modified() or the lookup, and make it idempotent — a double trigger must not book the quantity twice',
@@ -2491,8 +2532,13 @@ public static container executeScanAction(container _state, str _scannedCode)
     ],
     examples: [
       {
-        label: 'Split a GS1-128 scan by application identifier',
-        code: `// Returns a container of [ai, value] pairs. Fixed-length AIs are followed
+        label: 'Split a GS1-128 scan by application identifier (OUTSIDE the warehouse app only)',
+        code: `// Inside a warehouse-app flow the platform already did this - see the GS1
+// rules above and object_patterns(domain="mobile-app", pattern="gs1-scan-input").
+// This is the shape for the paths that have no menu item: a rich-client
+// form or an integration.
+//
+// Returns a container of [ai, value] pairs. Fixed-length AIs are followed
 // immediately by the next AI; variable-length ones end at the FNC1 group
 // separator (ASCII 29) or at the end of the scan. Slicing at fixed offsets
 // instead is what breaks on the first real customer label.
@@ -2556,7 +2602,7 @@ public boolean modified()
 }`,
       },
     ],
-    related: ['warehouse-mobile-app', 'inventory-management', 'warehouse-management', 'ssrs-reports'],
+    related: ['warehouse-mobile-app', 'process-guide-framework', 'inventory-management', 'ssrs-reports'],
   },
 
   // ── Trade Agreements ────────────────────────────────────────────────────

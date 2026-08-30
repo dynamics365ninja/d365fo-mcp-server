@@ -1,0 +1,25 @@
+{
+  "id": "L3-legacy-workexecutedisplay-extend",
+  "title": "Legacy framework: change one screen of a WHSWorkExecuteDisplay flow without breaking its neighbours",
+  "tier": 3,
+  "instruction": "In the sandbox model, extend a flow that is still built on the ORIGINAL warehouse-app framework. Ground it first with object_patterns(domain=\"mobile-app\", pattern=\"legacy-workexecutedisplay\") and get_knowledge(topic=\"warehouse-mobile-app\"). Pick a WHSWorkExecuteDisplay subclass that exists in this deployment (find it with search(query=\"WHSWorkExecuteDisplay\", type=\"class\") and get_object_info), and add a value to one of its screens with a Chain of Command extension. Scored on the trap this framework carries: run find_references on the method you intend to wrap FIRST and record what you found in the class doc comment - a legacy display method such as processWorkLine() is reached from many modes, so wrapping displayForm() wholesale, or wrapping a shared method without guarding on the mode this change is for, FAILS this case. The wrapper must call next, must guard its own logic on the mode/step it targets, must read and write session values through the pass-through rather than class members, and must not write WHSWorkTable or WHSWorkLine directly. Also state in the doc comment why this flow is being changed in the legacy framework rather than ProcessGuide (the flow is not converted in this version) - the framework choice must be recorded in the change itself. Confirm every class and member signature with get_object_info(options={\"method\":\"<name>\",\"include\":\"signature\"}) before writing. Must build with zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L3-legacy-workexecutedisplay-extend/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "warehouse",
+    "whs",
+    "mobile-app",
+    "legacy",
+    "screen",
+    "coc",
+    "class"
+  ],
+  "split": "holdout"
+}

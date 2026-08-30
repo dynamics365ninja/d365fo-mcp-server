@@ -7,9 +7,9 @@
   },
   "total": {
     "tier": "all",
-    "total": 90,
+    "total": 91,
     "covered": 89,
-    "percent": 98.9
+    "percent": 97.8
   },
   "leaves": [
     {
@@ -1124,6 +1124,18 @@
     {
       "id": "warehouse-mobile-scanning",
       "label": "Warehouse app / barcode scanning",
+      "domain": "Frameworks",
+      "tier": "total",
+      "weight": 2,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "warehouse-app-screens",
+      "label": "Warehouse-app screens (ProcessGuide / legacy)",
       "domain": "Frameworks",
       "tier": "total",
       "weight": 2,

@@ -295,6 +295,28 @@ only as a recovery hint) or at `get_form_info` / `get_label_info` /
 `find_object`, which were never tool names at all, and 7 specs under-declared
 their own golden.
 
+**Warehouse-app screen cases — what has and has not been run (2026-08-30).**
+Four cases now cover the mobile device (scanner) surface:
+`L3-processguide-flow-slice`, `L2-processguide-page-control`,
+`L3-legacy-workexecutedisplay-extend` and `L3-warehouse-scan-resolve-slice`.
+All four are `golden_pending`. What ran here, VM-free, and what it proved:
+
+| Ran | Result |
+|---|---|
+| `tests/eval/mobileAppCaseGrounding.test.ts` — executes each case's own grounding calls (`get_knowledge`, `object_patterns(domain="mobile-app")`) in process and asserts the answer names the identifiers the case then asks for | 5/5 pass — the ground truth each case depends on is reachable and complete |
+| `tests/knowledge/mobileAppPatternCatalog.test.ts` — every shipped X++ skeleton through the same offline BP validator behind `validate_code(mode="syntax")` | 16/16 pass, 0 error-severity violations across 6 skeletons |
+| `tests/eval/caseCatalog.test.ts` | schema-valid, `golden_pending` consistent, no unpublished tool named in an instruction |
+| `npm run eval:knowledge-audit` | 309 refs, 0 outside the audited snapshot (the new topics name AOT elements in prose only, so no re-capture is owed) |
+| `npm run eval:coverage -- --check` | core 51/51, total 89/91 — the two new leaves are the visible gap |
+
+**Not run, and why:** the implement → build → score → record cycle needs the
+D365FO VM (full-mode server, C# bridge, Contoso model, `xppc`). This work was
+done in a cloud session with no VM attached, so there is no build result, no BP
+result, no golden and no corpus record for these four cases — and none was
+written, because a corpus record asserts that a run happened. `eval-run` on the
+VM is what closes them; the grounding dry-run above is what can be honestly
+claimed until then.
+
 Standing queues:
 
 - **Capture the pending goldens (VM).** Cases with `golden_pending: true` have

@@ -9,7 +9,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
 | core | 51 | 51 | **100%** |
-| total | 89 | 90 | 98.9% |
+| total | 89 | 91 | 97.8% |
 
 ## Data model (12/12)
 
@@ -87,7 +87,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Report dialog UI builders | total | ✅ | ✅ | ✅ | L4-ssrs-report-uibuilder |
 | Electronic Reporting (ER) | total | ✅ | ✅ | ✅ | L3-electronic-reporting-integration |
 
-## Frameworks (16/17)
+## Frameworks (16/18)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -107,6 +107,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Inventory (InventTrans / InventDim) | total | ✅ | ✅ | ✅ | L3-inventory-inventdim-onhand |
 | Warehouse management (WHS) | total | ✅ | ✅ | ✅ | L3-warehouse-work-slice |
 | Warehouse app / barcode scanning | total | ✅ | — | ✅ | Knowledge authored (scan → action dispatch, one-round-trip transaction, idempotency, GS1 AI parsing, item-barcode resolution); eval case authored, golden pending VM capture. |
+| Warehouse-app screens (ProcessGuide / legacy) | total | ✅ | — | ✅ | Knowledge + object_patterns(domain="mobile-app") recipes authored for both frameworks; three eval cases authored, goldens pending VM capture. |
 | Trade agreements & pricing | total | ✅ | ✅ | ✅ | L3-trade-agreement-price-lookup |
 
 ## Integration (9/9)
@@ -145,6 +146,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Weight | Leaf | Missing |
 | ---: | --- | --- |
+| 2 | Warehouse-app screens (ProcessGuide / legacy) | missing E |
 | 2 | Warehouse app / barcode scanning | missing E |
 
 ## Orphans
