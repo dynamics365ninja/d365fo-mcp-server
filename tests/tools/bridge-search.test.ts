@@ -189,3 +189,63 @@ describe('tryBridgeSearch — mixed results', () => {
     expect(text).toContain('security-privilege');
   });
 });
+
+/**
+ * The type filter is a promise the TOOL makes, so the adapter has to keep it
+ * even when the bridge does not.
+ *
+ * The bridge's C#-side type map has no entry for every AOT kind — `report` is
+ * one — and an unmapped type runs the query UNFILTERED. `search(type="report")`
+ * therefore answered with tables and queries, confidently: "Cust" returned six
+ * tables, and `FMRentalsByCustomer` came back as two queries beside the report.
+ * A caller acting on that list looks for a report among tables.
+ *
+ * Filtering adapter-side covers every unmapped type at once, not just the one
+ * that happened to be noticed.
+ */
+describe('tryBridgeSearch — the requested type is enforced', () => {
+  it('drops results of the wrong type when the bridge ignores the filter', async () => {
+    const bridge = makeBridge([
+      { name: 'FMRentalsByCustomer', type: 'report' },
+      { name: 'FMRentalsByCustomer', type: 'query' },
+      { name: 'FMRentalsByCustomerState', type: 'query' },
+    ]);
+    const result = await tryBridgeSearch(bridge, 'FMRentalsByCustomer', 'report');
+    const text = (result?.content?.[0] as { text: string } | undefined)?.text ?? '';
+
+    expect(text).toContain('FMRentalsByCustomer');
+    expect(text).not.toContain('(query)');
+    expect(text).not.toContain('FMRentalsByCustomerState');
+  });
+
+  it('returns null rather than a wrong list when nothing matches the type', async () => {
+    // Falling through lets the symbol-index path answer. A confidently wrong
+    // list is worse than none, because the caller acts on it.
+    const bridge = makeBridge([
+      { name: 'ServicesCustomer', type: 'table' },
+      { name: 'SubBillCopyCustomerSplitTmp', type: 'table' },
+    ]);
+    expect(await tryBridgeSearch(bridge, 'Cust', 'report')).toBeNull();
+  });
+
+  it('leaves an untyped search alone', async () => {
+    const bridge = makeBridge([
+      { name: 'FMRentalsByCustomer', type: 'report' },
+      { name: 'FMRentalsByCustomer', type: 'query' },
+    ]);
+    const result = await tryBridgeSearch(bridge, 'FMRentalsByCustomer');
+    const text = (result?.content?.[0] as { text: string } | undefined)?.text ?? '';
+    expect(text).toContain('(report)');
+    expect(text).toContain('(query)');
+  });
+
+  it('treats type "all" as no filter', async () => {
+    const bridge = makeBridge([
+      { name: 'CustTable', type: 'table' },
+      { name: 'CustGroup', type: 'table' },
+    ]);
+    const result = await tryBridgeSearch(bridge, 'Cust', 'all');
+    const text = (result?.content?.[0] as { text: string } | undefined)?.text ?? '';
+    expect(text).toContain('CustTable');
+  });
+});

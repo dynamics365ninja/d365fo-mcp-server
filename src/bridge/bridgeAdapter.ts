@@ -949,7 +949,23 @@ export async function tryBridgeSearch(
     if (!sr) return null;
 
     // Splice in exact matches the bridge's truncated window missed (#15).
-    const bridgeHits = sr.results ?? [];
+    //
+    // …but first, honour the type filter the caller asked for, because the bridge
+    // does not always honour it. Its C#-side type map has no entry for every AOT
+    // kind — `report` is one — and an unmapped type runs the query UNFILTERED, so
+    // `search(type="report")` answered with tables and queries and looked
+    // authoritative doing it ("Cust" returned six tables). A report reached the
+    // caller only when the SQLite exact-name splice happened to carry one, which
+    // is why the failure looked intermittent rather than total.
+    //
+    // Only the BRIDGE's hits are filtered. The spliced exact and custom matches
+    // are deliberately allowed to differ in type — a `table-extension` is a
+    // wanted answer to a `type="table"` search for the table it extends — and
+    // filtering those too would delete that behaviour.
+    const rawBridgeHits = sr.results ?? [];
+    const bridgeHits = objectType && objectType !== 'all'
+      ? rawBridgeHits.filter(r => r.type === objectType)
+      : rawBridgeHits;
     const known = new Set(bridgeHits.map(r => `${r.name.toLowerCase()}\0${r.type}`));
     const spliced: Array<{ name: string; type: string; model?: string; fromIndex?: boolean }> = [];
     for (const cand of opts?.exactMatches ?? []) {
