@@ -438,6 +438,24 @@ Blocked / declined (not planned):
   blob **is** decryptable by the account the runner executes as, so no second
   blocker was hiding behind the first. **The runtime oracle is live for the first
   time.**
+
+  **And a SysTest has now actually EXECUTED** (2026-08-31 12:05, during the
+  `L2-coc-extension` runtime run). `SysTestListenerXML` wrote real per-method
+  results with real timings:
+
+      EvalL2CocCarFactsTest.testCarFactsSummaryAppendsVerifiedSuffix   success  1704 ms
+      EvalL2CocCarFactsTest.testWrapperPreservesBaseValueForDifferentInput  success  390 ms
+
+  That is the first time in this project's history that X++ test code ran and
+  reported. **What is NOT yet proven is that the oracle can report a FAILURE.**
+  The run was stopped while performing exactly that negative control, so every
+  observation so far is of the runner saying "success" — and this repo has already
+  paid twice for treating an all-green instrument as a working one (a probe that
+  reported nothing, a golden that lost its attributes silently). Until a
+  deliberately-failing test is shown to come back failed, `systest_pending` stays
+  true on all four cases and no systest score is recorded. Running that control is
+  the first thing the next session should do; the passing run above is not the
+  hard part any more.
   The four cases (`L2-coc-extension`, `L3-batch-basic`, `L2-event-handler-basic`,
   `L3-enum-field-form-downgrade-guard`) keep `systest_pending: true` until each one
   actually RUNS: their test classes were rolled back after their goldens were
