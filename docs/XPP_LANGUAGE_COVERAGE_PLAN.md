@@ -1,10 +1,24 @@
 # X++ language, reporting & TDD coverage — plan v3 (2026-08-31)
 
-**Status: H0–H5 are implemented on `feat/xpp-coverage-v3`. What is left is
-evidence, not code:** nine authored cases are `golden_pending` and need an
-`eval-run` capture on the VM (§6). Decision D1 is **done and verified** — the
-SysTest runner reaches the database for the first time (§7), so the runtime half
-of the oracle is live and the four `systest_pending` cases now wait only on a run.
+**Status: H0–H5 implemented, and all nine authored cases are CAPTURED** on
+`feat/xpp-coverage-v3`. Core coverage is back to **96.9% (63/65)** — it fell to
+90.8% when the leaves were added honestly and climbed one captured golden at a
+time. Decision D1 is done and verified: the SysTest runner reaches the database
+for the first time (§7).
+
+**What the captures were actually worth.** Nine cases, nine passes — and the
+passes are the least interesting part. Running each case on the VM through the
+grounded tool path is the only thing in this repo that compares INTENT against
+OUTPUT; the 5,681-test suite compares code against expectations someone already
+held. The runs found **31 defects**, including five errors in knowledge written
+the same day and one write-path bug that had silently corrupted a committed
+golden. §9 lists them.
+
+**What is left** — evidence, not code: eight older `golden_pending` cases from
+earlier waves, four `systest_pending` runs (the first is in flight), one
+re-capture (`L3-sysoperation-dialog-attributes`, whose golden was removed after
+the attribute-drop bug was found in it), and a `bp_clean` top-up for
+`L3-warehouse-work-slice`.
 
 **Lifecycle.** v1 (A–F) and v2.1 (G0–G5, G-VM) were executed and their content
 removed; the durable record is `eval/COVERAGE.md`, `eval/README.md`, the goldens'
@@ -197,6 +211,35 @@ and **delete this file**.
 | D2 | P3 breadth (journals, tax, e-mail, file-io, HTTP/JSON) | **partly taken**: `document-attachments` shipped (probe-verified) and the CLR entry points were confirmed reachable (`HttpClient`, `Newtonsoft.Json.Linq`, `OfficeOpenXml`, `Regex`, `FormJsonSerializer` all compile in the sandbox). `email-sending`, `file-io`, `tax-framework`, `posting-engine` extensions → BACKLOG |
 | D3 | `d365fo_file` operations on a scaffold-owned AxReport | **not built** → BACKLOG, with the budget arithmetic |
 | D4 | Drop DECL001/CONV001 if they cost false positives | **not built**: the sweep's own evidence argues against them — the two rules of that shape already produced 75 of the 99 findings, and the compiler's messages for both are exact and immediate |
+
+---
+
+## 9. What the capture runs found
+
+Nine cases, nine passes, 31 defects. The recurring shapes are worth more than the
+list, because they say where to look next:
+
+| Shape | Instances |
+|---|---|
+| A refusal naming a parameter the caller cannot send | `get_knowledge(bp-moniker, search)` demanded `query` (schema publishes `topic`); naming rules demanded `baseObjectName` (`prepare` does not publish it) |
+| A test covering a branch real callers never take | `searchControl` was tested only through the explicit-`filePath` path, which returns before the bridge that actually answers |
+| A list that renders a member as something else | the completion formatter printed the signature instead of the name, so `SysQuery::range` appeared as `#ISOCountryRegionCodes` and runs concluded the API did not exist |
+| Data hand-written where it should be derived | `kernelEnums.ts` was missing `AccessType`/`MenuItemType`/`JoinMode`; `npm run oracle:kernel-enums` derives it now |
+| Silent loss with a green build | `create(class)` dropped multi-line attribute blocks — attributes are syntactically optional, so xppc and xppbp said nothing and a golden was captured without them |
+| A unique index asserting something false | the report scaffold made a temp table's first column unique; under GroupedWithTotals that is the group key, so the second row in a group failed at RUN time |
+| Comparison artefacts that make evidence unreproducible | RDL carries per-generation GUIDs inside CDATA, which `ignore` globs cannot reach; six goldens carry them |
+
+**The methodology lesson, which cost the most:** *"it compiles" is not "it is
+correct."* A probe passed EIGHT arguments to `DocumentManagement::attachFile` and
+built clean, so the entry documented eight. It takes nine; the ninth defaults, so
+the eighth silently became `_attachmentName` instead of `_notes`. For any call
+with optional tail parameters the compiler cannot answer the question being asked
+— read the signature and count. Now stated in the probe harness header, beside
+the older rule that a probe reporting nothing is not a probe that passed.
+
+**Five knowledge errors, all written in this same wave, all caught by first
+independent use.** Every gate this repo has checks that a name RESOLVES; none
+checks that the sentence around it is true. That is the gap eval runs fill.
 
 ---
 
