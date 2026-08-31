@@ -2051,8 +2051,129 @@ function checkReservedIdentifiers(code: string): ValidationViolation[] {
   return violations;
 }
 
+/**
+ * DOC001 — a bare `&` or `<` inside a `///` doc comment.
+ *
+ * X++ doc comments are parsed as XML, so an ampersand in prose is not prose:
+ * xppbp answers BPXmlDocMalformed and the build carries the finding. Worse for
+ * this server, pre-escaping it as `&amp;` does NOT survive the write path (found
+ * during the G-VM capture, 2026-08-30) — so the fix is to rewrite the sentence,
+ * which only helps if the problem is visible BEFORE the write.
+ */
+function checkDocCommentXml(code: string): ValidationViolation[] {
+  const violations: ValidationViolation[] = [];
+  const lines = code.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const at = line.indexOf('///');
+    if (at < 0) continue;
+    const text = line.slice(at + 3);
+
+    // `&` that does not open a character entity (&amp; &#39; &lt;).
+    const amp = /&(?!#?\w+;)/.exec(text);
+    // `<` that cannot start a tag: followed by a space, a digit or an operator.
+    const lt = /<(?![/!?a-zA-Z])/.exec(text);
+    const found = amp ?? lt;
+    if (!found) continue;
+
+    violations.push({
+      rule: 'DOC001',
+      severity: 'error',
+      line: i + 1,
+      excerpt: line.trim().slice(0, 120),
+      fix:
+        `A /// comment is parsed as XML, so a bare "${found[0]}" makes xppbp report ` +
+        'BPXmlDocMalformed. Name the operator in words ("and", "less than") rather than escaping it: ' +
+        'an entity written here does not survive the write path, so the escape silently comes back.',
+    });
+  }
+  return violations;
+}
+
+/**
+ * SET001 — a set-based statement with no `where`.
+ *
+ * `update_recordset t setting f = 1;` and `delete_from t;` both compile and both
+ * touch EVERY row of the table, in every company the statement can see. It is
+ * occasionally what the author meant; it is never what they meant by accident,
+ * and the mistake is invisible until production data is gone.
+ *
+ * Warning, not error: the compiler accepts it and shipped code does it on purpose
+ * (staging tables, temp tables), so an error would fire on correct code.
+ */
+function checkSetBasedWithoutWhere(code: string): ValidationViolation[] {
+  const masked = maskStringsAndComments(code);
+  const violations: ValidationViolation[] = [];
+  const re = /\b(update_recordset|delete_from)\b/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(masked)) !== null) {
+    // The statement runs to its terminating semicolon; `where` may follow
+    // `setting …` or a `join …`, so the whole statement has to be read.
+    const end = masked.indexOf(';', m.index);
+    const statement = masked.slice(m.index, end < 0 ? masked.length : end);
+    if (/\bwhere\b/i.test(statement)) continue;
+    violations.push({
+      rule: 'SET001',
+      severity: 'warning',
+      line: lineNumber(code, m.index),
+      excerpt: code.slice(m.index, Math.min(code.length, m.index + 90)).split('\n')[0].trim(),
+      fix:
+        `${m[1]} with no where clause touches EVERY row of the table (and, unless the query is ` +
+        'restricted, every company it can see). If that is deliberate — a temp or staging table — say ' +
+        'so in a comment; otherwise add the where before this reaches data anyone cares about.',
+    });
+  }
+  return violations;
+}
+
+/**
+ * OP001 — `&&` and `||` mixed in one expression without parentheses.
+ *
+ * In X++ they have EQUAL precedence and evaluate left to right, unlike C#, Java,
+ * SQL and every language a developer arrives from — where `&&` binds tighter. So
+ * `a || b && c` means `(a || b) && c` here and `a || (b && c)` almost everywhere
+ * else, and the code reads correct in both readings. Parentheses are the fix
+ * because they make the two readings the same.
+ */
+function checkMixedBooleanOperators(code: string): ValidationViolation[] {
+  const masked = maskStringsAndComments(code);
+  const violations: ValidationViolation[] = [];
+  const lines = masked.split('\n');
+  const original = code.split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.includes('&&') || !line.includes('||')) continue;
+
+    // Only unparenthesised mixing matters. Blank out every parenthesised group,
+    // innermost first, and see whether both operators survive at the top level.
+    let flat = line;
+    for (let pass = 0; pass < 8; pass++) {
+      const next = flat.replace(/\([^()]*\)/g, group => ' '.repeat(group.length));
+      if (next === flat) break;
+      flat = next;
+    }
+    if (!flat.includes('&&') || !flat.includes('||')) continue;
+
+    violations.push({
+      rule: 'OP001',
+      severity: 'warning',
+      line: i + 1,
+      excerpt: original[i]?.trim().slice(0, 120) ?? line.trim(),
+      fix:
+        '&& and || have EQUAL precedence in X++ and evaluate left to right — unlike C#, Java and SQL, ' +
+        'where && binds tighter. "a || b && c" is (a || b) && c here. Parenthesise the intended ' +
+        'grouping so the code means the same thing to the compiler and to the next reader.',
+    });
+  }
+  return violations;
+}
+
 const XPP_RULES = [
   checkTodayDeprecated,
+  checkDocCommentXml,
+  checkSetBasedWithoutWhere,
+  checkMixedBooleanOperators,
   checkForceLiterals,
   checkCrossCompanyPlacement,
   checkNestedWhileSelect,
@@ -2198,10 +2319,88 @@ function checkNonExistentTableProperties(code: string): ValidationViolation[] {
   return violations;
 }
 
+/**
+ * XML008 — an AxTableExtension carrying a `<Methods>` element.
+ *
+ * It reads perfectly and it is not a thing: not one shipped table extension in
+ * ApplicationSuite has `<Methods>`, and the deserializer ignores the block, so
+ * the build stays green and the method simply does not exist. The failure then
+ * lands somewhere else entirely — at the call site, as "the method is not found".
+ *
+ * Display, edit and helper methods for a table you do not own belong in an
+ * `[ExtensionOf(tableStr(…))] final class`. This cost a captured eval case its
+ * first run (G-VM, 2026-08-30).
+ */
+function checkTableExtensionMethods(code: string): ValidationViolation[] {
+  if (!/<AxTableExtension[\s>]/.test(code)) return [];
+  const at = code.search(/<Methods\b/);
+  if (at < 0) return [];
+  const name = /<Name>([^<]+)<\/Name>/.exec(code)?.[1] ?? 'the extension';
+  return [{
+    rule: 'XML008',
+    severity: 'error',
+    line: lineNumber(code, at),
+    excerpt: '<Methods> inside an AxTableExtension',
+    fix:
+      'An AxTableExtension has no <Methods> element — the deserializer drops the block SILENTLY, ' +
+      'the build stays green, and the method is missing only at its call site. Put the methods in ' +
+      `an extension class instead: [ExtensionOf(tableStr(${name.split('.')[0]}))] final class ` +
+      `${name.replace(/\./g, '')}_Extension. Display and edit methods work there too.`,
+  }];
+}
+
+/**
+ * XML009 — a form control bound to a field group the table does not declare.
+ *
+ * `<DataGroup>Overview</DataGroup>` on a grid names a field group by string. If
+ * the table has no such group the AOT reports
+ * "Field group 'Overview' does not exist" — but only on a FULL build. An
+ * incremental build passes it, which is how this survived several captures
+ * before it was found (PR #967).
+ *
+ * The rule can only see what is in front of it: a single document naming a group
+ * cannot be checked without the table. What it CAN catch is the shape that
+ * actually shipped broken — a generated document that declares the table's field
+ * groups AND references a different one.
+ */
+function checkDataGroupDeclared(code: string): ValidationViolation[] {
+  if (!/<DataGroup>/.test(code)) return [];
+  // Only decidable when the same document declares the groups (a table + its form,
+  // or a table document). Otherwise stay quiet rather than guess.
+  const groupBlock = /<FieldGroups>([\s\S]*?)<\/FieldGroups>/.exec(code);
+  if (!groupBlock) return [];
+  const declared = new Set(
+    [...groupBlock[1].matchAll(/<AxTableFieldGroup>[\s\S]*?<Name>([^<]+)<\/Name>/g)].map(m => m[1]),
+  );
+  if (declared.size === 0) return [];
+
+  const violations: ValidationViolation[] = [];
+  const seen = new Set<string>();
+  for (const m of code.matchAll(/<DataGroup>([^<]+)<\/DataGroup>/g)) {
+    const group = m[1].trim();
+    if (!group || declared.has(group) || seen.has(group)) continue;
+    seen.add(group);
+    violations.push({
+      rule: 'XML009',
+      severity: 'error',
+      line: lineNumber(code, m.index ?? 0),
+      excerpt: `<DataGroup>${group}</DataGroup>`,
+      fix:
+        `The table declares no field group named "${group}" (it has: ` +
+        `${[...declared].join(', ')}). A full build answers "Field group '${group}' does not exist"; ` +
+        'an INCREMENTAL build passes it silently, so this is easy to ship. Either add the group to ' +
+        'the table or point the control at one that exists.',
+    });
+  }
+  return violations;
+}
+
 const XML_RULES = [
   checkMissingAlternateKey,
   checkTableElementOrder,
   checkNonExistentTableProperties,
+  checkTableExtensionMethods,
+  checkDataGroupDeclared,
 ];
 
 const XML_PROPERTY_RULES = [
