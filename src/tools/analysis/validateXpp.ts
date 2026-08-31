@@ -444,7 +444,11 @@ function checkExtensionOfNaming(code: string): ValidationViolation[] {
     const decl = classDeclarationAfter(maskedLines, i);
     if (!decl) continue;
     const m = /\bclass\s+(\w+)/i.exec(decl.text);
-    if (m && !m[1].endsWith('_Extension')) {
+    // Case-insensitively: the platform itself ships
+    // `[ExtensionOf(classStr(JournalCheckPost))] internal final class
+    // JournalCheckPostIV_extension`, and X++ identifiers are case-insensitive, so
+    // a lower-case suffix is the convention kept, not broken.
+    if (m && !/_extension$/i.test(m[1])) {
       violations.push({
         rule: 'COC003',
         severity: 'error',
@@ -742,6 +746,27 @@ const CALL_PRECEDING_KEYWORDS = new Set([
   'not', 'select', 'where', 'join', 'setting', 'by', 'in', 'next', 'new', 'super', 'print',
 ]);
 
+/**
+ * Does this source declare a local function (or a method) with that name?
+ *
+ * X++ resolves a bare call in three places, in the order the compiler's own error
+ * text lists them: a predefined function, a static on Global, "nor a previously
+ * defined local function". A local function therefore SHADOWS a predefined name,
+ * and its signature is the one that counts — so any arity claim about the
+ * predefined version is wrong for the rest of that source.
+ *
+ * Deliberately file-wide rather than scope-accurate: this decides whether to STAY
+ * SILENT, and for an error-severity rule the safe direction is silence.
+ */
+function declaresLocalFunction(masked: string, name: string): boolean {
+  const re = new RegExp(
+    String.raw`\b(?:void|int|int64|str|boolean|real|container|date|utcdatetime|anytype|guid|` +
+    String.raw`[A-Z]\w*)\s+${name}\s*\([^)]*\)\s*[\r\n]*\s*\{`,
+    'i',
+  );
+  return re.test(masked);
+}
+
 function checkBuiltinArity(code: string): ValidationViolation[] {
   const violations: ValidationViolation[] = [];
   const masked = maskStringsAndComments(code);
@@ -769,6 +794,15 @@ function checkBuiltinArity(code: string): ValidationViolation[] {
     // separator or a statement keyword — never a bare identifier.
     const prevToken = /([A-Za-z_]\w*)\s*$/.exec(before)?.[1];
     if (prevToken && !CALL_PRECEDING_KEYWORDS.has(prevToken.toLowerCase())) continue;
+    // `new Info()` is a constructor, not a call to the predefined info(). `new` has
+    // to stay in the keyword set above (it precedes real calls too), so the
+    // constructor form is excluded here.
+    if (prevToken?.toLowerCase() === 'new') continue;
+    // A LOCAL FUNCTION shadows a predefined name, and the compiler says so in its
+    // own error text: "…nor a previously defined local function". BatchRun declares
+    // `void info() { … }` and then calls `info();` with no arguments, which FN001
+    // read as the predefined info() being called with too few.
+    if (declaresLocalFunction(masked, called)) continue;
 
     const lineNo = lineNumber(masked, m.index);
     const excerpt = lines[lineNo - 1].trim();
@@ -1282,8 +1316,23 @@ function checkCSharpIsms(code: string): ValidationViolation[] {
         '("System.ArgumentException ex;") and write catch (ex).',
     },
   ];
+  // A `using` ALIAS makes a C#-looking name legal X++. GlobalUnifiedPricing ships
+  // 448 files that open with
+  //     using string  = System.String;
+  //     using decimal = System.Decimal;
+  // and then declare `public string ConstructGroupKey(...)` — which compiles,
+  // because `string` now denotes a CLR type. Flagging those was 3 error-severity
+  // findings on shipped code, and the same alias form is what dotnet-interop teaches.
+  const aliased = new Set(
+    [...masked.matchAll(/\busing\s+([A-Za-z_]\w*)\s*=/g)].map(m => m[1].toLowerCase()),
+  );
+
   for (const p of patterns) {
-    violations.push(...matchAll(masked, p.re, 'CS001', 'error', p.fix));
+    for (const v of matchAll(masked, p.re, 'CS001', 'error', p.fix)) {
+      const name = /^([A-Za-z_]\w*)/.exec(v.excerpt)?.[1]?.toLowerCase();
+      if (name && aliased.has(name)) continue;
+      violations.push(v);
+    }
   }
   return violations;
 }
@@ -1415,8 +1464,14 @@ function checkReportDpShape(code: string): ValidationViolation[] {
   if (!extendsMatch) return [];
   const violations: ValidationViolation[] = [];
   const isPreProcess = /PreProcess/i.test(extendsMatch[1]);
+  // An ABSTRACT DP base declares the shared processReport()/parmDataContract() work
+  // and leaves the contract to its concrete subclasses, which carry the attribute.
+  // Shipped example: `abstract class CustVendAdvanceInvoiceDP extends
+  // SRSReportDataProviderBase`, the base of CustAdvanceInvoice and VendAdvanceInvoice.
+  const isAbstract = /\babstract\s+(?:final\s+)?class\b/i.test(masked);
 
   if (!isPreProcess
+      && !isAbstract
       && /\bparmDataContract\s*\(/i.test(masked)
       && !/SRSReportParameterAttribute/i.test(code)) {
     violations.push({
@@ -1621,7 +1676,16 @@ function selectStatements(masked: string): Array<{ text: string; index: number }
   const out: Array<{ text: string; index: number }> = [];
   const re = /\bselect\b[^;{]*[;{]/gi;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(masked)) !== null) out.push({ text: m[0], index: m.index });
+  while ((m = re.exec(masked)) !== null) {
+    // A macro directive ends the statement even without a semicolon. Inside a
+    // #localmacro the select is a FRAGMENT with no terminator, so the match ran on
+    // past #endmacro and swallowed the next macro's clauses: that is how SEL008
+    // reported "order by after where" on DocuRefSearch, where each macro on its own
+    // is in the right order. Cutting at the directive keeps the two apart.
+    const macroAt = /^[ \t]*#/m.exec(m[0]);
+    const text = macroAt ? m[0].slice(0, macroAt.index) : m[0];
+    out.push({ text, index: m.index });
+  }
   return out;
 }
 
@@ -1803,8 +1867,18 @@ function validTimeStateViolations(masked: string): ValidationViolation[] {
   // validTimeState takes plain identifiers only: a call ("Invalid token '::'"), a
   // field access ("Invalid token '.'") and even a date literal ("'identifier'
   // expected") are all parse errors.
+  //
+  // …but only as a SELECT CLAUSE. `validTimeState` is also an ordinary method name
+  // in the SysDa API (SysDaFindObject.validTimeState(SysDaValidTimeState _v = null))
+  // and on date-effective tables, where every argument the clause would reject is
+  // perfectly legal. Restricting the scan to select statements removed 14
+  // error-severity findings on shipped ApplicationPlatform code.
+  const statements = selectStatements(masked);
   const vtsRe = /\bvalidTimeState\s*\(([^)]*)\)/gi;
   while ((m = vtsRe.exec(masked)) !== null) {
+    const at = m.index;
+    const inSelect = statements.some(s => at >= s.index && at < s.index + s.text.length);
+    if (!inSelect) continue;
     const operands = m[1].split(',').map(s => s.trim()).filter(Boolean);
     if (operands.length > 0 && operands.every(o => /^[A-Za-z_]\w*$/.test(o))) continue;
     violations.push({
@@ -1934,7 +2008,18 @@ function checkAttributeArguments(code: string): ValidationViolation[] {
     }
     if (buf.trim()) args.push(buf.trim());
 
-    for (const arg of args) {
+    for (const raw of args) {
+      // Shipped code documents attribute arguments constantly —
+      // `SysSetupConfig(true /*ContinueOnError*/, 600 /*10 minutes*/)` — and the
+      // masked form of that is not what it looks like: the lexer keeps the OPENING
+      // `/*` and blanks the closing `*/` along with the content, so the argument
+      // arrives as `true /*                  ` with no terminator at all. Matching
+      // only the closed form left 11 error-severity false positives in the first
+      // 3,000 files swept, so both forms are stripped here.
+      const arg = raw
+        .replace(/\/\*[\s\S]*?(?:\*\/|$)/g, ' ')
+        .replace(/\/\/.*$/gm, ' ')
+        .trim();
       if (!arg) continue;
       if (ATTRIBUTE_LITERAL_RE.test(arg)) continue;
       const call = /^([A-Za-z_]\w*)\s*\(/.exec(arg);
@@ -2059,6 +2144,12 @@ function checkReservedIdentifiers(code: string): ValidationViolation[] {
  * this server, pre-escaping it as `&amp;` does NOT survive the write path (found
  * during the G-VM capture, 2026-08-30) — so the fix is to rewrite the sentence,
  * which only helps if the problem is visible BEFORE the write.
+ *
+ * WARNING, not error, and the sweep is why. Across 6,000 shipped AxClass files
+ * Microsoft writes a bare `&` in a doc comment in 4 of them ("F&O") and a bare
+ * `<` in 9 ("version < CTP8", "2 <= maxVal"). BPXmlDocMalformed is a
+ * best-practice finding, not a compile failure, and a rule that stops a build on
+ * code the product ships is our defect rather than theirs.
  */
 function checkDocCommentXml(code: string): ValidationViolation[] {
   const violations: ValidationViolation[] = [];
@@ -2078,7 +2169,7 @@ function checkDocCommentXml(code: string): ValidationViolation[] {
 
     violations.push({
       rule: 'DOC001',
-      severity: 'error',
+      severity: 'warning',
       line: i + 1,
       excerpt: line.trim().slice(0, 120),
       fix:

@@ -98,7 +98,34 @@ function captureTables(): {
   };
 }
 
-/** Candidate run-time functions to probe. Names only — the compiler decides the rest. */
+/**
+ * Candidate run-time functions to probe. Names only — the compiler decides the rest.
+ *
+ * The list below started as the names we could think of, which is exactly the
+ * wrong way to build a catalogue: a function nobody remembers is precisely the
+ * one an agent will get wrong. The last block is therefore not remembered but
+ * DERIVED — `Microsoft.Dynamics.Ax.Xpp.Support.dll` →
+ * `Microsoft.Dynamics.Ax.Xpp.PredefinedFunctions` exposes 281 static methods, and
+ * diffing them against a capture surfaced 178 names it had never asked about.
+ *
+ * Most of those 178 are internal plumbing whose names are not X++ surface at all
+ * (EnterTryBlock, LogCQLFuncError, newBinNode, qpeek — the internal spelling of
+ * conPeek), and the implementations of keywords (ttsbegin, changecompany, Like).
+ * So the diff is a CANDIDATE generator, never an answer: every name it suggests
+ * still has to be put to xppc, which is what the two passes below do.
+ *
+ * To regenerate the candidates after a platform update:
+ *   powershell -Command "$a=[Reflection.Assembly]::LoadFrom('<Bin>/Microsoft.Dynamics.AX.Xpp.Support.dll');
+ *     $t=$a.GetType('Microsoft.Dynamics.Ax.Xpp.PredefinedFunctions');
+ *     ($t.GetMethods('Public,NonPublic,Static') | Select -Expand Name -Unique | Sort) -join ' '"
+ * then drop any name already in the snapshot and any that is plainly internal.
+ *
+ * `prmIsDefault` is deliberately NOT here and must not be added: it is a compiler
+ * FORM, not a function — it takes the NAME of a default parameter and answers
+ * "PrmIsDefaultIllegal: The name of a default parameter must be passed to the
+ * prmIsDefault function" for anything else. Probing it for arity would record a
+ * fiction.
+ */
 const PROBE_FUNCTIONS = `
 abs acos asin atan cos cosh sin sinh tan tanh exp exp10 frac log10 logN max min power round decRound trunc
 corrFlagGet corrFlagSet cTerm ddb dg fV idg intvMax intvName intvNo intvNorm pmt pt pv rate sln syd term
@@ -116,6 +143,9 @@ match strAlpha strCmp strColSeq strDel strFind strFmt strIns strKeep strLen strL
 strPoke strPrompt strRem strRep strRTrim strScan strUpr subStr strReplace strSplit strStartsWith strEndsWith
 strContains strLRTrim strRFix strLFix
 beep newGuid sleep info warning error checkFailed
+evalBuf runBuf delStr insStr delLspc delRspc delPrefix strLastIndex formattedStr2Num
+calDaysBetween calWeekNo sessionKey image sound lookupLabel truncateInfolog ttsCount
+nullGuid dayOfWeek nextDay prevDay periods pricePerPeriod anyToDate
 `.split(/\s+/).filter(Boolean);
 
 const MAX_PROBE_ARGS = 9;

@@ -27,6 +27,20 @@ import { runRules } from '../../src/tools/analysis/validateXpp.js';
 import { lintXppSelect } from '../../src/utils/xppSelectLint.js';
 import { parseArgs, walkAot, walkOptionsFromArgs, xppOf } from './aotSource.js';
 
+/**
+ * AOT types whose CDATA is X++.
+ *
+ * `AxReport` is deliberately absent: its CDATA is the RDL document, not X++, so
+ * running the X++ rules over it measures nothing — and costs a great deal, since
+ * a single shipped report reaches 2.7 MB and every rule's regex walks all of it.
+ * The report rules have their own code path (`runRules(…, 'xml-report')`); this
+ * sweep is about the X++ set.
+ */
+const XPP_SOURCE_TYPES = [
+  'AxClass', 'AxTable', 'AxForm', 'AxQuery', 'AxView', 'AxMap', 'AxDataEntityView',
+  'AxTableExtension', 'AxFormExtension', 'AxMacro',
+] as const;
+
 interface Finding {
   rule: string;
   severity: 'error' | 'warning';
@@ -37,7 +51,8 @@ interface Finding {
 
 function main(): void {
   const args = parseArgs(process.argv.slice(2));
-  const walkOptions = walkOptionsFromArgs(args);
+  const fromArgs = walkOptionsFromArgs(args);
+  const walkOptions = { ...fromArgs, types: fromArgs.types ?? XPP_SOURCE_TYPES };
   const started = Date.now();
 
   const errors: Finding[] = [];

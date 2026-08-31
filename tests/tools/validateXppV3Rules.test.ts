@@ -33,6 +33,15 @@ describe('DOC001 — /// doc comments are parsed as XML', () => {
     expect(fix).toMatch(/does not survive the write path/i);
   });
 
+  it('is a WARNING, because Microsoft ships this too', () => {
+    // Measured over 6,000 shipped AxClass files: a bare & in a doc comment in 4
+    // of them ("F&O"), a bare < in 9 ("version < CTP8"). BPXmlDocMalformed is a
+    // best-practice finding, not a compile failure — an error here would stop a
+    // build on code the product itself contains.
+    const code = '    /// Discount & rebate.\n    public void apply()\n    {\n    }';
+    expect(runRules(code, 'xpp').find(v => v.rule === 'DOC001')?.severity).toBe('warning');
+  });
+
   it('accepts a real character entity', () => {
     const code = '    /// Discount &amp; rebate, plus &#39;quoted&#39; text.\n    public void apply()\n    {\n    }';
     expect(rulesOn(code)).not.toContain('DOC001');
@@ -285,5 +294,163 @@ describe('XML009 — a control bound to a field group the table does not declare
     );
     const hits = runRules(xml, 'xml-any').filter(v => v.rule === 'XML009');
     expect(hits).toHaveLength(1);
+  });
+});
+
+/**
+ * Two rules that shipped in the compiler-verified wave and were still firing on
+ * Microsoft's own code. The sweep found both; these tests keep them fixed.
+ */
+describe('regressions the shipped-source sweep found', () => {
+  it('ATTR001 accepts an attribute argument that carries an inline comment', () => {
+    // 11 error-severity hits in the first 3,000 files swept. The masker keeps the
+    // opening /* and blanks the closing */, so the argument arrives unterminated
+    // and a "strip closed comments" fix matches nothing.
+    const code = `
+    [SysSetupConfig(true /*ContinueOnError*/, 600 /*10 minutes*/)]
+    public void setup()
+    {
+    }`;
+    expect(runRules(code, 'xpp').map(v => v.rule)).not.toContain('ATTR001');
+  });
+
+  it('ATTR001 still rejects a genuinely non-literal argument', () => {
+    const code = `
+    [MyAttribute(someVariable)]
+    public void setup()
+    {
+    }`;
+    expect(runRules(code, 'xpp').map(v => v.rule)).toContain('ATTR001');
+  });
+
+  it('SEL008 does not read across a macro boundary', () => {
+    // A select inside a #localmacro is a FRAGMENT with no terminating semicolon,
+    // so the statement matcher ran past #endmacro and picked up the next macro's
+    // where — reporting "order by after where" on DocuRefSearch, where each macro
+    // on its own is in the correct order.
+    const code = `
+    #localmacro.whereClause
+        where docuRef.RefCompanyId == common.DataAreaId
+    #endmacro
+
+    #localmacro.querySortByCreatedDateTime
+        select noFetch docuRef
+            order by CreatedDateTime desc
+            where docuRef.RefRecId == common.RecId
+    #endmacro`;
+    expect(runRules(code, 'xpp').map(v => v.rule)).not.toContain('SEL008');
+  });
+
+  it('SEL008 still catches a real ordering mistake', () => {
+    const code = `
+    public void m()
+    {
+        CustTable custTable;
+
+        select custTable
+            where custTable.CustGroup == '10'
+            order by AccountNum;
+    }`;
+    expect(runRules(code, 'xpp').map(v => v.rule)).toContain('SEL008');
+  });
+  it('FN001 does not read a constructor as a call to the predefined function', () => {
+    // `new Info()` builds the Info class; `info` is also a predefined function.
+    const code = `
+    public void m()
+    {
+        Info info = new Info();
+    }`;
+    expect(runRules(code, 'xpp').map(v => v.rule)).not.toContain('FN001');
+  });
+
+  it('FN001 yields to a local function that shadows a predefined name', () => {
+    // The compiler resolves "…nor a previously defined local function" last, so a
+    // local one wins and its arity is the one that counts. BatchRun does exactly
+    // this: void info() { … } and then info();
+    const code = `
+    public void run()
+    {
+        void info()
+        {
+            this.doSomething();
+        }
+
+        info();
+    }`;
+    expect(runRules(code, 'xpp').map(v => v.rule)).not.toContain('FN001');
+  });
+
+  it('FN001 still catches a genuine arity mistake', () => {
+    const code = `
+    public void m()
+    {
+        str s = subStr('abc');
+    }`;
+    expect(runRules(code, 'xpp').map(v => v.rule)).toContain('FN001');
+  });
+
+  it('SEL010 leaves the SysDa method named validTimeState alone', () => {
+    const code = `
+    public SysDaFindObject validTimeState(SysDaValidTimeState _validTimeState = null)
+    {
+        return this;
+    }`;
+    expect(runRules(code, 'xpp').map(v => v.rule)).not.toContain('SEL010');
+  });
+
+  it('SEL010 still catches an expression in the select CLAUSE', () => {
+    const code = `
+    public void m()
+    {
+        MyRateTable rate;
+
+        select validTimeState(DateTimeUtil::utcNow()) rate;
+    }`;
+    expect(runRules(code, 'xpp').map(v => v.rule)).toContain('SEL010');
+  });
+
+  it('CS001 accepts a C#-looking type name the file aliases with using', () => {
+    // 448 shipped files open with `using string = System.String;` and then declare
+    // `public string ConstructGroupKey(...)`, which compiles.
+    const code = `
+using string = System.String;
+using decimal = System.Decimal;
+
+public class MyPricingConfigurer
+{
+}`;
+    expect(runRules(code, 'xpp').map(v => v.rule)).not.toContain('CS001');
+  });
+
+  it('CS001 still rejects the C# type when nothing aliased it', () => {
+    const code = `
+    public void m()
+    {
+        string groupKey = 'x';
+    }`;
+    expect(runRules(code, 'xpp').map(v => v.rule)).toContain('CS001');
+  });
+
+  it('COC003 accepts the lower-case _extension suffix the platform ships', () => {
+    const code = `
+[ExtensionOf(classStr(JournalCheckPost))]
+internal final class MyJournalCheckPost_extension
+{
+}`;
+    expect(runRules(code, 'xpp').map(v => v.rule)).not.toContain('COC003');
+  });
+
+  it('RPT001 leaves an abstract DP base class alone', () => {
+    // The concrete subclasses carry [SRSReportParameterAttribute]; the shared base
+    // legitimately does not.
+    const code = `
+abstract class MyAdvanceInvoiceDP extends SRSReportDataProviderBase
+{
+    public void processReport()
+    {
+        contract = this.parmDataContract();
+    }
+}`;
+    expect(runRules(code, 'xpp').map(v => v.rule)).not.toContain('RPT001');
   });
 });
