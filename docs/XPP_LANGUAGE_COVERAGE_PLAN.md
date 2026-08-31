@@ -2,8 +2,9 @@
 
 **Status: H0–H5 are implemented on `feat/xpp-coverage-v3`. What is left is
 evidence, not code:** nine authored cases are `golden_pending` and need an
-`eval-run` capture on the VM (§6), and the four `systest_pending` cases still
-depend on owner decision D1 (§7).
+`eval-run` capture on the VM (§6). Decision D1 is **done and verified** — the
+SysTest runner reaches the database for the first time (§7), so the runtime half
+of the oracle is live and the four `systest_pending` cases now wait only on a run.
 
 **Lifecycle.** v1 (A–F) and v2.1 (G0–G5, G-VM) were executed and their content
 removed; the durable record is `eval/COVERAGE.md`, `eval/README.md`, the goldens'
@@ -166,8 +167,8 @@ one a fact worth keeping (`client` is a reserved word and cannot name a variable
 `CustTableListPage` is not in the sandbox reference set). Batch 2 re-asked every
 question in the shape the compiler accepts: **17 probes, 15 compile, 0 surprises.**
 
-Still open, deliberately: P2 (`anytype` re-typing at run time) needs a SysTest, so
-it waits on D1.
+P2 (`anytype` re-typing at run time) needs a SysTest — and as of D1 that is now
+possible, so it moves from blocked to simply not yet written.
 
 ---
 
@@ -192,7 +193,7 @@ and **delete this file**.
 
 | # | Decision | State |
 |---|---|---|
-| **D1** | Copy the four `DataAccess.*` values from `WebRoot\web.config` into `Bin\SysTestConsole.exe.config`. Without it the whole **runtime** column stays unprovable — four cases are `systest_pending` and `L2-tdd-red-green-cycle` cannot be authored honestly. | **owner applied it 2026-08-31**; a live `run_systest_class` still has to confirm the connection before the four flags flip |
+| **D1** | Copy the four `DataAccess.*` values from `WebRoot\web.config` into `Bin\SysTestConsole.exe.config`. | **DONE and verified 2026-08-31.** All four settings agree, and `SysTestConsole.exe /test:<nonexistent> /unattended` now opens a real AOS session (`partition [UT01], company [DAT]`, `0 Run, 0 Failed`) instead of `Login failed for user 'AOSUser'`. That also closes the entry's open unknown: the encrypted password blob **is** decryptable by the account the runner executes as. The four `systest_pending` flags still wait on an actual per-case run, and `L2-tdd-red-green-cycle` can now be authored honestly. |
 | D2 | P3 breadth (journals, tax, e-mail, file-io, HTTP/JSON) | **partly taken**: `document-attachments` shipped (probe-verified) and the CLR entry points were confirmed reachable (`HttpClient`, `Newtonsoft.Json.Linq`, `OfficeOpenXml`, `Regex`, `FormJsonSerializer` all compile in the sandbox). `email-sending`, `file-io`, `tax-framework`, `posting-engine` extensions → BACKLOG |
 | D3 | `d365fo_file` operations on a scaffold-owned AxReport | **not built** → BACKLOG, with the budget arithmetic |
 | D4 | Drop DECL001/CONV001 if they cost false positives | **not built**: the sweep's own evidence argues against them — the two rules of that shape already produced 75 of the 99 findings, and the compiler's messages for both are exact and immediate |

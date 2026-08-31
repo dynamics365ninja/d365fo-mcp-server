@@ -593,7 +593,7 @@ export const TAXONOMY: CoverageLeaf[] = [
     // leaf proves the framework is authored correctly, not that a test went green.
     // The knowledge behind it is now read from the shipped SysTestCase/SysTestAssert
     // rather than from memory (there is no assertExpectedException).
-    note: 'Authoring is proven by three captured goldens; no SysTest has RUN — the console runner needs an interactive session, so systest scores stay null.',
+    note: 'Authoring is proven by three captured goldens. No SysTest has RUN yet — but as of 2026-08-31 the runner CONNECTS to the AOS database for the first time (the config drift was fixed on the VM), so the four cases whose runtime score is still null now wait on an eval-run rather than on a blocker.',
   },
   {
     id: 'labels', label: 'Labels & localisation', domain: 'Quality', source: 'topic', tier: 'core', weight: 5,

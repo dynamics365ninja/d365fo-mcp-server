@@ -23,7 +23,33 @@ the design.
 
 ---
 
-## Live SysTest runs — blocked on an unconfigured platform config
+## Live SysTest runs — UNBLOCKED 2026-08-31
+
+**Status:** **resolved 2026-08-31.** The owner applied the config copy on the VM and
+the runner now reaches the database. Kept here (rather than deleted) because the
+diagnosis was wrong twice before it was right, and because the four cases below
+still have to RUN before their flags flip.
+
+**What changed.** `compareSysTestDataAccess` reports all four `DataAccess.*`
+settings in agreement with `WebRoot\web.config`, and `SysTestConsole.exe
+/test:<a class that does not exist> /unattended` now prints
+
+    [SysTestSuite.Rainier Test Suite] [initial partition: [UT01], initial company: [DAT] …] Suite started
+    Rainier Test Suite : 0 Run, 0 Failed
+
+— real AOS session data, so the connection is open. That also answers the one
+UNKNOWN this entry carried: the 828-character encrypted password blob **is**
+decryptable by the account the runner executes as, so no second blocker was hiding
+behind the first.
+
+**What is still owed.** The four cases keep `systest_pending: true` until each one
+actually runs: their SysTest classes were rolled back after their goldens were
+captured, so re-running them means an `eval-run` per case. And `L2-tdd-red-green-cycle`
+— the case that proves the loop rather than the authoring — can now be authored
+honestly, which it could not be while no test had ever executed.
+
+<details>
+<summary>The original entry, kept for the diagnosis history</summary>
 
 **Status:** open, parked as its own topic 2026-08-30. Not a code change; nothing in
 this repo can close it.
@@ -71,6 +97,9 @@ not sent hunting a password that was never wrong.
 for the AOS service account, and the runner may execute as a different user. If it
 starts and still fails after the copy, that — not the config — is the real blocker,
 and running from Visual Studio Test Explorer stays the fallback.
+*[2026-08-31] It can. The unknown is closed.*
+
+</details>
 
 ---
 

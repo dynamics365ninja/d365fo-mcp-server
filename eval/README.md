@@ -413,10 +413,26 @@ Blocked / declined (not planned):
   tool's. `run_systest_class` now performs that comparison itself and reports which
   settings differ (never the password — only "placeholder" or "set, N chars"), so the
   next reader is not sent hunting a password again.
-  The four cases stay `systest_pending: true` until that is applied
-  (`L2-coc-extension`, `L3-batch-basic`, `L2-event-handler-basic`,
-  `L3-enum-field-form-downgrade-guard`). `vstest.console.exe` +
-  `RunnableDropSysTest.TestAdapter.dll` discovers zero tests: still a dead end.
+  **Applied and verified 2026-08-31 — the runner CONNECTS.** The owner copied the
+  four values; `compareSysTestDataAccess` reports no drift, and
+  `SysTestConsole.exe /test:<a class that does not exist> /unattended` now answers
+
+      [SysTestSuite.Rainier Test Suite] [initial partition: [UT01], initial company: [DAT] …] Suite started
+      Rainier Test Suite : 0 Run, 0 Failed
+
+  instead of `Login failed`. That is real AOS session data, so the connection is
+  open — and it closes the one unknown this entry carried: the encrypted password
+  blob **is** decryptable by the account the runner executes as, so no second
+  blocker was hiding behind the first. **The runtime oracle is live for the first
+  time.**
+  The four cases (`L2-coc-extension`, `L3-batch-basic`, `L2-event-handler-basic`,
+  `L3-enum-field-form-downgrade-guard`) keep `systest_pending: true` until each one
+  actually RUNS: their test classes were rolled back after their goldens were
+  captured, so re-running them means an `eval-run` per case. `L2-tdd-red-green-cycle`
+  — the case that proves the loop rather than the authoring — can now be authored
+  honestly, which it could not be while no test had ever executed.
+  `vstest.console.exe` + `RunnableDropSysTest.TestAdapter.dll` discovers zero
+  tests: still a dead end, and no longer needed as a fallback.
 - CI-workflow half of the autonomous improver. The VM-free fix-brief generator
   (`npm run eval:brief`) is done; running Claude Code unattended on top of it in
   GitHub Actions was **explicitly declined** as a new autonomous-agent surface
