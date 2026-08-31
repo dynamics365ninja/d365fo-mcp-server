@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>FixtureLiteralShapes</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// Literal shapes that once made error-severity rules fire on code that compiles.
+/// Every method here is a minimal reproduction of a measured false positive; the
+/// sweep must stay silent on all of them.
+public class FixtureLiteralShapes
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>singleQuotedCommaArgument</Name>
+				<Source><![CDATA[
+    /// FN001 counted the comma INSIDE the literal as a fourth argument.
+    public int singleQuotedCommaArgument(str _text)
+    {
+        return strFind(_text, ',', 1, strLen(_text));
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>guidMaskLiteral</Name>
+				<Source><![CDATA[
+    /// CS001 read the '??' inside this mask as the C# null-coalescing operator.
+    public boolean guidMaskLiteral(str _candidate)
+    {
+        return match('????????-????-????-????-????????????', _candidate);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>sqlTextInLiteral</Name>
+				<Source><![CDATA[
+    /// SEL007 read the SQL inside this literal as an attempt at X++ join syntax.
+    public str sqlTextInLiteral()
+    {
+        return ' LEFT JOIN %2 T2 ON T1.RECID = T2.RECID';
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>verbatimAndEscapes</Name>
+				<Source><![CDATA[
+    /// Lexer conformance: verbatim strings, doubled quotes, backslash escapes and
+    /// a block-comment marker inside a literal must all mask cleanly.
+    public container verbatimAndEscapes()
+    {
+        str path = @'C:\Temp\report.pdf';
+        str quoted = 'it''s here';
+        str escaped = "line\nbreak \"quoted\"";
+        str notAComment = 'this /* is not */ a comment';
+        str macroText = 'the #define directive is text here';
+        return [path, quoted, escaped, notAComment, macroText];
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>whereAfterJoinIsLegal</Name>
+				<Source><![CDATA[
+    /// lintXppSelect flagged the joined table's own where clause. It is standard
+    /// X++: each join segment carries its own where.
+    public void whereAfterJoinIsLegal()
+    {
+        CustTable    custTable;
+        CustGroup    custGroup;
+
+        while select custTable
+            order by AccountNum
+            join custGroup
+                where custGroup.CustGroup == custTable.CustGroup
+                   && custGroup.Name != ''
+        {
+            info(custTable.AccountNum);
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
