@@ -120,8 +120,19 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
       return await parseAndFormatForm(formName, 'Unknown', xmlContent, includeControls, includeDataSources, includeMethods, searchControl, maxControls);
     }
 
-    const bridgeResult = await tryBridgeForm(context.bridge, formName, maxControls);
-    if (bridgeResult) return bridgeResult;
+    // searchControl is implemented on the XML path only, so the bridge — which
+    // answers first in full mode — silently returned the WHOLE tree instead of
+    // the matches. On CustTable (635 controls) that blew the response cap, and
+    // the truncation message then advised using searchControl: the option the
+    // caller had already passed. An eval run lost a cycle dumping the form to a
+    // file and grepping it. So when a search is asked for, prefer the path that
+    // can actually perform it.
+    const wantsSearch = Boolean(searchControl);
+
+    if (!wantsSearch) {
+      const bridgeResult = await tryBridgeForm(context.bridge, formName, maxControls);
+      if (bridgeResult) return bridgeResult;
+    }
 
     // Symbol index → form XML. A silent bridge is not proof the form is missing:
     // it also happens when the bridge is down or its provider does not cover that
@@ -136,6 +147,22 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
           includeControls, includeDataSources, includeMethods, searchControl, maxControls,
         );
       } catch { /* not a usable AxForm XML — fall through to the error below */ }
+    }
+
+    // The XML was unreachable and a search was asked for. The bridge can still
+    // describe the form, but it cannot filter — say so rather than returning a
+    // full tree that looks like the search found everything.
+    if (wantsSearch) {
+      const bridgeFallback = await tryBridgeForm(context.bridge, formName, maxControls);
+      if (bridgeFallback) {
+        const note =
+          `⚠️ searchControl="${searchControl}" was NOT applied: the form XML is not in the symbol ` +
+          `index (run update_symbol_index, or pass options={filePath:"<absolute path>"}), and the ` +
+          `bridge reader cannot filter. The full control tree follows.\n\n`;
+        const first = bridgeFallback.content?.[0];
+        if (first && typeof first.text === 'string') first.text = note + first.text;
+        return bridgeFallback;
+      }
     }
 
     // Determine why the bridge returned nothing to give an actionable error message.

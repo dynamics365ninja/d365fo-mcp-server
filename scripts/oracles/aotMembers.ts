@@ -13,6 +13,13 @@
  * implemented in the kernel and the audit cannot resolve it (`FormEventArgs`,
  * `XppPrePostArgs`, `Uncheck`).
  *
+ * INHERITED members are included, and that is not a nicety. Reading only a
+ * class's own `<Method>` elements is how this tool led to a knowledge entry
+ * claiming `SysTableLookup` "does not have" `addLookupMethod` — it has it, from
+ * `SysTableLookupBase`, and so does `SysReferenceTableLookup`. An eval run paid
+ * two build cycles for that sentence. A member list that stops at the declaring
+ * class answers a question nobody asked.
+ *
  * Usage:
  *   npm run oracle:members -- SysTestCase SysTestAssert
  *   npm run oracle:members -- SrsReportRunController --grep parm
@@ -39,7 +46,7 @@ interface MemberReport {
   extends?: string;
   implements?: string[];
   attributes?: string[];
-  methods?: { name: string; signature: string; attributes: string[] }[];
+  methods?: { name: string; signature: string; attributes: string[]; from?: string }[];
   /** For AxEnum: the literal names, in declaration order. */
   enumValues?: string[];
   /** Other AOT elements sharing this name, e.g. the form behind a table. */
@@ -140,6 +147,25 @@ export function readMembers(requested: string, preferType?: string): MemberRepor
   // <EnumValues><AxEnumValue><Name>…  — the members a rule is allowed to name.
   const enumValues = [...xml.matchAll(/<AxEnumValue>\s*<Name>([^<]+)<\/Name>/g)].map(e => e[1]);
 
+  // Walk `extends` and append what the bases contribute. A name declared lower
+  // in the chain wins, so an override is reported once, at the class that
+  // overrides it. The chain is bounded: a kernel base (no AOT XML) simply ends
+  // it, and `seenBases` stops a cycle in malformed metadata.
+  const own = new Set(methods.map(mm => mm.name.toLowerCase()));
+  const seenBases = new Set<string>([requested.toLowerCase()]);
+  let base = extendsM?.[1];
+  while (base && !seenBases.has(base.toLowerCase())) {
+    seenBases.add(base.toLowerCase());
+    const parent = readMembers(base, 'AxClass');
+    if (!parent.found) break;
+    for (const mm of parent.methods ?? []) {
+      if (own.has(mm.name.toLowerCase())) continue;
+      own.add(mm.name.toLowerCase());
+      methods.push({ ...mm, from: parent.name });
+    }
+    base = parent.extends;
+  }
+
   return {
     requested,
     found: true,
@@ -201,7 +227,11 @@ function main(): void {
       console.log(`\n${r.requested}: NOT FOUND in the AOT — kernel-implemented, or the name is wrong.`);
       continue;
     }
-    console.log(`\n${r.name}  [${r.packageName}/${r.type}]  ${r.methods?.length ?? 0} methods`);
+    const inherited = (r.methods ?? []).filter(mm => mm.from).length;
+    console.log(
+      `\n${r.name}  [${r.packageName}/${r.type}]  ${r.methods?.length ?? 0} methods` +
+      (inherited ? ` (${inherited} inherited)` : ''),
+    );
     if (r.declaration) console.log(`  ${r.declaration}`);
     if (r.enumValues) console.log(`  values: ${r.enumValues.join(' ')}`);
     if (r.alsoFoundAs) console.log(`  also an AOT element of: ${r.alsoFoundAs.join(', ')}`);
@@ -211,7 +241,8 @@ function main(): void {
       console.log(`  ${methods.map(mm => mm.name).join(' ')}`);
     } else {
       for (const mm of methods) {
-        console.log(`  ${mm.attributes.length ? `[${mm.attributes.join('][')}] ` : ''}${mm.signature || mm.name}`);
+        const origin = mm.from ? `   (from ${mm.from})` : '';
+        console.log(`  ${mm.attributes.length ? `[${mm.attributes.join('][')}] ` : ''}${mm.signature || mm.name}${origin}`);
       }
     }
     if (grep) console.log(`  (${methods.length} of ${r.methods?.length ?? 0} match "${grep}")`);

@@ -68,7 +68,8 @@
     "oracle:sweep": "tsx scripts/oracles/validatorSweep.ts",
     "oracle:census": "tsx scripts/oracles/census.ts",
     "oracle:probe": "tsx scripts/oracles/xppcProbe.ts",
-    "oracle:members": "tsx scripts/oracles/aotMembers.ts"
+    "oracle:members": "tsx scripts/oracles/aotMembers.ts",
+    "oracle:kernel-enums": "tsx scripts/oracles/kernelEnumAudit.ts"
   },
   "keywords": [
     "mcp",

@@ -71,6 +71,21 @@ const ENTRIES: KernelEnum[] = [
   // ones shipped code actually uses, counted over 30,000 AxClass/AxForm files:
   // Yes 602, No 561, Cancel 154, Ok 129, YesToAll 7, NoToAll 6.
   { name: 'DialogButton', values: ['Cancel', 'No', 'NoToAll', 'Ok', 'Yes', 'YesToAll'] },
+  // Added 2026-08-31 after an eval run tripped over AccessType and MenuItemType:
+  // validate_code(mode="references") called both hard ERRORS on code that
+  // compiles, and with GROUNDING_ENFORCE on it would have REFUSED the write —
+  // the exact failure this module was created to prevent. That both were absent
+  // was the signal that the list had never been derived from anything, so it is
+  // now checked by `npm run oracle:kernel-enums`, which finds every `Name::Value`
+  // in shipped X++ with no AOT element behind it. Values below are what the
+  // product itself writes, counted by that audit, not recalled.
+  { name: 'MenuItemType', values: ['Action', 'Display', 'Output'] },
+  { name: 'AccessType', values: ['Add', 'Correction', 'Delete', 'Edit', 'NoAccess', 'View'] },
+  { name: 'AccessRight', values: ['Add', 'Correction', 'Delete', 'Edit', 'NoAccess', 'View'] },
+  { name: 'SortOrder', values: ['Ascending', 'Descending'] },
+  // The argument to an `unchecked(...)` block. Only these two members exist —
+  // DBSchemaDrift and Deadlock read plausibly and are not real (xppc-verified).
+  { name: 'Uncheck', values: ['TableSecurityPermission', 'XDS'] },
   { name: 'TableScope', values: ['CurrentTableOnly', 'IncludeBaseTables', 'IncludeDerivedTables'] },
   { name: 'ConcurrencyModel', values: ['Auto', 'Optimistic', 'Pessimistic'] },
   { name: 'StatementType', values: ['Delete', 'Insert', 'Select', 'Update'] },

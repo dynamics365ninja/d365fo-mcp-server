@@ -775,6 +775,16 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
   let verifiedCount = 0;
   const { cleaned, strings } = cleanCode(code);
   const locals = collectLocals(cleaned);
+  // Names this source DECLARES. A new class calling its own static is spelled
+  // `MyClass::helper()` — X++ accepts nothing else, since a bare name resolves
+  // only against predefined functions, Global statics and local functions — so
+  // every non-trivial new class refers to something the index cannot contain
+  // yet. Reporting that as unknown-type blocks writes of correct code under
+  // GROUNDING_ENFORCE, and the fix needs no new plumbing: the declaration is in
+  // the very text being checked.
+  const selfDeclared = new Set<string>(
+    [...cleaned.matchAll(/\b(?:class|interface)\s+([A-Za-z_]\w*)/g)].map(d => d[1].toLowerCase()),
+  );
 
   const typeExistsCache = new Map<string, string[]>();
   const lookupTypes = (name: string): string[] => {
@@ -868,6 +878,14 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
     const line = lineOf(cleaned, m.index ?? 0);
 
     if (locals.declaredNames.has(target.toLowerCase())) { verifiedCount++; continue; }
+    // A kernel type has no metadata anywhere, so `methodStr(FormStringControl,
+    // lookup)` can never resolve — and the DECLARED-type path already knows
+    // that and only warns. Reporting the same name as an ERROR here was the two
+    // rules disagreeing about the same fact; an eval run hit it on the one
+    // spelling X++ accepts for a control override.
+    if (KERNEL_TYPES.has(target.toLowerCase())) { verifiedCount++; continue; }
+    // …and the class being written is not in the index yet either.
+    if (selfDeclared.has(target.toLowerCase())) { verifiedCount++; continue; }
 
     const types = lookupTypes(target);
     const targetOk = expected === null
@@ -927,6 +945,9 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
     // to a type, and `CustTable custTable;` differs only in the first letter's
     // case — so the guard disabled this check for the commonest code there is.
     if (KERNEL_TYPES.has(lower)) { verifiedCount++; continue; } // no metadata for kernel statics
+    // The class being written cannot be in the index yet; its own members are
+    // checked by the compiler a moment later.
+    if (selfDeclared.has(lower)) { verifiedCount++; continue; }
 
     const types = lookupTypes(typeName);
     if (types.length === 0) {
