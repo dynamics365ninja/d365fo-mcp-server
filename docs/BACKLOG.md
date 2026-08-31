@@ -74,6 +74,95 @@ and running from Visual Studio Test Explorer stays the fallback.
 
 ---
 
+## v3 breadth pack — deferred, each with a probe result already in hand
+
+**Status:** deferred 2026-08-31 · **Area:** `src/tools/knowledge/xppKnowledge.ts`
+
+**What.** Four knowledge topics the v3 map identified as real gaps (zero hits in
+the knowledge base) and that this round did NOT ship, because the P1 half of the
+plan filled the day:
+
+- `email-sending` — `SysMailerMessageBuilder` (setFrom/addTo/addCc/setSubject/
+  setBody/addAttachment) + `SysMailerFactory::sendNonInteractive`. **The shape
+  already compiled** in probe `MailerBuilder`.
+- `file-io` — widen the read-only `file-readers` topic: write CSV, XLSX through
+  `OfficeOpenXml.ExcelPackage`, and `File::SendFileToUser(stream, name)` for the
+  download. Both compiled (probes `ClrExcel`, `FileSendToUser`).
+- `http-json-xml` — `System.Net.Http.HttpClient`, `FormJsonSerializer`,
+  `Newtonsoft.Json.Linq`, `System.Text.RegularExpressions.Regex`. All four
+  resolve in the sandbox model (probe `ClrHttp2`, `ClrNewtonsoft`). Note the trap
+  that probe found: `client` is a RESERVED WORD, so it cannot name the variable.
+- `tax-framework` — TaxTrans/TaxTable/TaxGroup/TaxDirection and the legacy `Tax*`
+  posting classes. This one is the only one that needs **domain review by the
+  owner** before it ships; it is also the domain of the only live user in the
+  usage data.
+
+**Why deferred.** Each is P3 on the demand evidence (§2 of the v3 plan): the
+daily loop is table/form/enum/label extension work, and the knowledge payload is
+a token budget where every rule competes with every other rule for attention.
+
+**Trigger.** A corpus record or a real session that needed one of them, or the
+owner asking for the tax pack.
+
+**Sketch.** The API names are verified; write the entries straight from the probe
+JSON (`npm run oracle:probe -- --file scripts/oracles/probes/coverage-v3.ts`) and
+capture the audit snapshot afterwards.
+
+---
+
+## AxReport write operations — deferred on the byte budget
+
+**Status:** deferred 2026-08-31 · **Area:** `src/tools/write/modifyD365File.ts`
+
+**What.** There is no `d365fo_file` operation for an AxReport. A dataset field, a
+parameter or a column cannot be added to a report this server itself scaffolded —
+every report recipe ends with "open the Report Designer". Proposed:
+`refresh-report-dataset` (fields ← the DP's temp table), `add-report-parameter`,
+`add-report-column`, all refusing any design the scaffold does not own.
+
+**Why deferred.** Three operation enum values cost ~60–80 ListTools chars against
+~64 of headroom, so it can only ship by trimming another tool's schema in the
+same change. Folding the three into one `report-design` operation with an
+`action` op-spec parameter (~25 chars) is the cheaper shape and is the one to
+build.
+
+**Why it is not simply "use the designer".** The designer is unavoidable for
+LAYOUT. Refreshing a dataset after adding a field to the temp table is not
+layout — it is bookkeeping the tool already has every input for, and getting it
+wrong is silent (`Field group 'X' does not exist` is the same class of failure,
+and XML009 now catches that one).
+
+**Trigger.** Demand — a session that adds a field to a scaffolded report's temp
+table and then cannot surface it — or headroom freed by a measured trim.
+
+**Risk.** A malformed RDL is not caught by a build; it fails in the SSRS renderer
+at run time. Refusing foreign designs is what keeps that bounded.
+
+---
+
+## DECL001 / CONV001 — not built, and the evidence is against them
+
+**Status:** **rejected 2026-08-31** · **Area:** `src/tools/analysis/validateXpp.ts`
+
+**What was proposed.** Two error-severity rules from the v2.1 plan: DECL001 for
+local-variable shadowing, CONV001 for the implicit conversions the compiler
+refuses (`int i = 1.5`, `str s = 1`, `"a" + 1`).
+
+**Why rejected rather than deferred.** Both are one-pass regex approximations of
+a question that needs scope, and the first full-install sweep of this repo's
+rules is a direct measurement of what that costs: 99 error-severity findings on
+code that compiles, 75 of them from exactly this shape of rule (ATTR001 and
+SEL010 — pattern matching where the language wanted context). Meanwhile the
+compiler's own messages for both cases are exact and arrive at the same moment a
+build would: "A local variable named 'i' cannot be declared in this scope…" and
+"…loses range and precision". The rule would add risk without adding an answer.
+
+**What would reopen it.** A corpus record showing an agent shipping one of these
+and being unable to read the compiler's answer — not the observation that the
+rules would be easy to write.
+
+---
+
 ## Context pipeline — Phase 3b: live editor focus
 
 **Status:** deferred · **Area:** `src/workspace`, `src/types/context.ts` · **Depends on:** Phase 1–3a (shipped)

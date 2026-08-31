@@ -28,7 +28,62 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
-_Nothing released yet._
+### Added
+- **TDD for a TABLE method — the loop's most-asked task had no red-first path.**
+  Across 1,593 real MCP calls the single most-requested X++ topic was the table
+  Chain of Command contract (`validateWrite`, where `next` goes, `checkFailed` vs
+  `error`, `orig()`): roughly thirty `get_knowledge` calls were variations of that
+  one question. Both `prepare(mode="test")` and
+  `generate_object(pattern="systest")` resolved **classes only**, so the rule a
+  developer most wants to pin down could not be tested through the server at all.
+  `prepare(mode="test", objectName="CustTable.validateWrite")` now resolves
+  tables (dotted form included) and emits the scaffold call with
+  `testTargetType: "table"` already set. The scaffold arranges a buffer with
+  `initValue()`, asserts the boolean verdict **and** the infolog line the rule
+  writes, and adds the ACCEPTING case beside the rejecting one — without it a rule
+  that refuses every row passes its own test. Write methods get a transaction and
+  a re-read from the database. Compiler-verified before it was written
+  (`UtilElementType::Table`, `assertExpectedInfoLogMessage` after the act), and it
+  costs no ListTools bytes: the parameter lives in the op-spec.
+- **Six knowledge topics for constructs nothing could measure**: `lookups`,
+  `global-class-statics`, `system-objects`, `report-print-destinations`,
+  `document-attachments`, `rdl-design-expressions` — plus extensions to
+  `query-object-model` (range vs filter on an outer join, the range expression
+  language, `[QueryRangeFunction]`), `sysoperation` (the packed query parameter),
+  `bp-rules` (`SuppressBPWarning`), `deprecated` (the RunBase lifecycle and its
+  `#CurrentVersion` bump) and `ssrs-rdp-preprocess` (`AX_RdpPreProcessedId`).
+- **The oracle harness is in the repo** (`npm run oracle:sweep|census|probe|members`).
+  The census, the validator sweep and the xppc probe harness had lived only in
+  session scratchpads: the measurements behind the compiler-verified wave could
+  not be re-run. `--dry` runs the sweep against `tests/fixtures/oracles` so CI can
+  hold the zero-error bar with no D365FO install.
+
+### Fixed
+- **Seven validator false positives on Microsoft's own X++**, found by the first
+  full-install sweep (105,686 files, 615 MB): `ATTR001` on an attribute argument
+  carrying an inline comment (72 hits), `SEL010` on `validTimeState` used as an
+  ordinary method name in the SysDa API (14), `FN001` on `new Info()` and on a
+  local function shadowing a predefined name (7), `CS001` on a C#-looking type the
+  file legally aliased with `using string = System.String;` (3, and 448 shipped
+  files use that form), `COC003` on the lower-case `_extension` suffix the
+  platform itself ships (1), `RPT001` on an abstract DP base class (1), and
+  `SEL008` reading a select across a `#localmacro` boundary (1).
+- The shared X++ lexer had **no tests**, which is how its documented "delimiters
+  survive" contract could be false for `*/` without anyone noticing — the reason
+  the `ATTR001` fix initially matched nothing. 16 tests now pin the behaviour.
+
+### Changed
+- Five new validator rules: `XML008` (an `AxTableExtension` carrying `<Methods>`,
+  which the deserializer drops silently), `XML009` (a control bound to a field
+  group the table does not declare — a full build catches it, an incremental build
+  does not), `DOC001` (a bare `&` or `<` in a `///` comment → `BPXmlDocMalformed`;
+  a **warning**, because Microsoft ships it too), `SET001`
+  (`update_recordset`/`delete_from` with no `where`) and `OP001` (`&&` mixed with
+  `||` unparenthesised — they have equal precedence in X++, unlike C#).
+- Coverage falls to **core 90.8% / total 91.7%**. Nine leaves were added for
+  constructs the artifact-indexed taxonomy had no way to count, each with an
+  authored case that is `golden_pending` until captured on a VM. The number was
+  never 100% for these; there was nothing to count.
 
 ---
 
