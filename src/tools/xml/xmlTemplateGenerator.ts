@@ -282,13 +282,40 @@ export class XmlTemplateGenerator {
         // Include any leading [Attribute] and doc-comment (///) lines that belong to this method.
         // Walking BACKWARDS through the lines that appear above the method signature:
         // we stop as soon as we hit a line that is neither empty, nor an attribute, nor a comment.
+        //
+        // An attribute block may SPAN LINES, and only the first line starts with a bracket:
+        //
+        //     [DataMemberAttribute('Query'),
+        //      AifQueryTypeAttribute('_packedQuery', queryStr(MyQuery))]
+        //     public str parmQuery(str _packedQuery = '')
+        //
+        // Testing each line in isolation stopped this walk at the continuation
+        // line, so BOTH lines were left behind — and the member-variable
+        // collector above skips anything starting with '[' or not ending in ';',
+        // so they were dropped silently. The class then compiled clean without
+        // its attributes, which are syntactically optional: a green build, a
+        // contract with no data members, and no message anywhere. It reached a
+        // committed golden that way (L3-sysoperation-dialog-attributes lost all
+        // five of the attributes its own README says it demonstrates).
+        //
+        // So the walk tracks bracket depth: once a ']' is seen, every line above
+        // belongs to the block until the '[' that opened it.
         const sigBeforeMethod = sigText.substring(0, methodStartInSig);
         const sigBeforeLines = sigBeforeMethod.split('\n').reverse();
         let droppedChars = 0;
+        let pendingClose = 0;
         for (const line of sigBeforeLines) {
           const t = line.trim();
-          if (t.length === 0 || t.startsWith('[') || t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) {
+          const opens = (t.match(/\[/g) ?? []).length;
+          const closes = (t.match(/\]/g) ?? []).length;
+          const insideAttribute = pendingClose > 0;
+          const isAttributeLine = t.startsWith('[') || closes > opens;
+          const isCommentOrBlank =
+            t.length === 0 || t.startsWith('//') || t.startsWith('*') || t.startsWith('/*');
+
+          if (insideAttribute || isAttributeLine || isCommentOrBlank) {
             droppedChars += line.length + 1; // +1 for '\n'
+            pendingClose = Math.max(0, pendingClose + closes - opens);
           } else {
             break;
           }

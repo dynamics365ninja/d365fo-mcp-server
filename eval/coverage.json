@@ -2,14 +2,14 @@
   "core": {
     "tier": "core",
     "total": 65,
-    "covered": 59,
-    "percent": 90.8
+    "covered": 63,
+    "percent": 96.9
   },
   "total": {
     "tier": "all",
     "total": 109,
-    "covered": 100,
-    "percent": 91.7
+    "covered": 106,
+    "percent": 97.2
   },
   "leaves": [
     {
@@ -430,29 +430,35 @@
         "L2-dotnet-interop-clrerror",
         "L2-edt-extension-basic",
         "L2-feature-management-flight",
+        "L2-global-statics-access-checks",
         "L2-implicit-conversions",
         "L2-interface-abstract-basic",
         "L2-intrinsic-functions",
         "L2-license-code-configkey",
+        "L2-lookup-reference-multiselect",
         "L2-numberseq-basic",
         "L2-occ-retry-basic",
         "L2-operators-precedence",
+        "L2-query-range-expression-sysqueryrangeutil",
         "L2-reflection-dict-fieldwalk",
         "L2-runtime-functions-arity",
         "L2-select-find-options-joins",
         "L2-statements-switch-loops",
         "L2-sysda-fluent-query",
         "L2-sysextension-plugin",
+        "L2-system-objects-infolog-box",
         "L2-systest-authoring-basic",
         "L2-table-caching-basic",
         "L2-table-extension",
         "L2-table-inheritance-basic",
         "L2-table-modify-lifecycle",
+        "L3-attachment-docuref-pdf",
         "L3-custom-service-basic",
         "L3-form-detailstransaction",
         "L3-form-event-handler-class",
         "L3-report-dataset-extension",
-        "L3-sysoperation-dialog-attributes"
+        "L3-runbase-coc-pack-unpack",
+        "L3-sysoperation-query-parameter-batch"
       ]
     },
     {
@@ -498,29 +504,35 @@
         "L2-dotnet-interop-clrerror",
         "L2-edt-extension-basic",
         "L2-feature-management-flight",
+        "L2-global-statics-access-checks",
         "L2-implicit-conversions",
         "L2-interface-abstract-basic",
         "L2-intrinsic-functions",
         "L2-license-code-configkey",
+        "L2-lookup-reference-multiselect",
         "L2-numberseq-basic",
         "L2-occ-retry-basic",
         "L2-operators-precedence",
+        "L2-query-range-expression-sysqueryrangeutil",
         "L2-reflection-dict-fieldwalk",
         "L2-runtime-functions-arity",
         "L2-select-find-options-joins",
         "L2-statements-switch-loops",
         "L2-sysda-fluent-query",
         "L2-sysextension-plugin",
+        "L2-system-objects-infolog-box",
         "L2-systest-authoring-basic",
         "L2-table-caching-basic",
         "L2-table-extension",
         "L2-table-inheritance-basic",
         "L2-table-modify-lifecycle",
+        "L3-attachment-docuref-pdf",
         "L3-custom-service-basic",
         "L3-form-detailstransaction",
         "L3-form-event-handler-class",
         "L3-report-dataset-extension",
-        "L3-sysoperation-dialog-attributes"
+        "L3-runbase-coc-pack-unpack",
+        "L3-sysoperation-query-parameter-batch"
       ]
     },
     {
@@ -1457,29 +1469,35 @@
         "L2-dotnet-interop-clrerror",
         "L2-edt-extension-basic",
         "L2-feature-management-flight",
+        "L2-global-statics-access-checks",
         "L2-implicit-conversions",
         "L2-interface-abstract-basic",
         "L2-intrinsic-functions",
         "L2-license-code-configkey",
+        "L2-lookup-reference-multiselect",
         "L2-numberseq-basic",
         "L2-occ-retry-basic",
         "L2-operators-precedence",
+        "L2-query-range-expression-sysqueryrangeutil",
         "L2-reflection-dict-fieldwalk",
         "L2-runtime-functions-arity",
         "L2-select-find-options-joins",
         "L2-statements-switch-loops",
         "L2-sysda-fluent-query",
         "L2-sysextension-plugin",
+        "L2-system-objects-infolog-box",
         "L2-systest-authoring-basic",
         "L2-table-caching-basic",
         "L2-table-extension",
         "L2-table-inheritance-basic",
         "L2-table-modify-lifecycle",
+        "L3-attachment-docuref-pdf",
         "L3-custom-service-basic",
         "L3-form-detailstransaction",
         "L3-form-event-handler-class",
         "L3-report-dataset-extension",
-        "L3-sysoperation-dialog-attributes"
+        "L3-runbase-coc-pack-unpack",
+        "L3-sysoperation-query-parameter-batch"
       ]
     },
     {
@@ -1573,12 +1591,10 @@
       "tier": "total",
       "weight": 3,
       "k": true,
-      "e": true,
+      "e": false,
       "t": true,
-      "covered": true,
-      "cases": [
-        "L3-sysoperation-dialog-attributes"
-      ]
+      "covered": false,
+      "cases": []
     },
     {
       "id": "report-extension",
@@ -1615,10 +1631,12 @@
       "tier": "core",
       "weight": 4,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-lookup-reference-multiselect"
+      ]
     },
     {
       "id": "global-statics",
@@ -1627,10 +1645,12 @@
       "tier": "core",
       "weight": 4,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-global-statics-access-checks"
+      ]
     },
     {
       "id": "system-objects",
@@ -1639,10 +1659,12 @@
       "tier": "core",
       "weight": 4,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-system-objects-infolog-box"
+      ]
     },
     {
       "id": "query-object-model-advanced",
@@ -1651,10 +1673,12 @@
       "tier": "total",
       "weight": 3,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L2-query-range-expression-sysqueryrangeutil"
+      ]
     },
     {
       "id": "sysoperation-query-param",
@@ -1663,10 +1687,12 @@
       "tier": "core",
       "weight": 4,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L3-sysoperation-query-parameter-batch"
+      ]
     },
     {
       "id": "runbase-lifecycle",
@@ -1675,10 +1701,12 @@
       "tier": "total",
       "weight": 3,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L3-runbase-coc-pack-unpack"
+      ]
     },
     {
       "id": "rdl-expressions",
@@ -1711,10 +1739,12 @@
       "tier": "total",
       "weight": 3,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L3-attachment-docuref-pdf"
+      ]
     }
   ],
   "orphans": {

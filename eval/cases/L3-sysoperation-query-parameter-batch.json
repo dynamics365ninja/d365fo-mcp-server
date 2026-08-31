@@ -4,10 +4,12 @@
   "tier": 3,
   "instruction": "Ground with get_knowledge(topic=\"sysoperation\"). In the sandbox model write a SysOperation trio (contract + service + controller) for a batch job whose dialog offers query ranges. The contract's query parm must carry BOTH [DataMemberAttribute('Query')] and [AifQueryTypeAttribute('_packedQuery', queryStr(<an existing AOT query>))], and its value is a packed STRING. The service unpacks it with new Query(SysOperationHelper::base64Decode(contract.parmQuery())) and iterates a QueryRun. Storing a Query OBJECT on the contract FAILS this case: the contract is serialised into the batch record, so a non-packable member is lost between the dialog and the batch run - which looks like the filter being ignored in batch but working interactively. Build with zero errors and zero BP errors.",
   "target_artifact_types": [
+    "AxClass",
+    "AxClass",
     "AxClass"
   ],
   "golden_path": "eval/goldens/L3-sysoperation-query-parameter-batch/",
-  "golden_pending": true,
+  "golden_pending": false,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"

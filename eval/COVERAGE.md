@@ -8,8 +8,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
-| core | 59 | 65 | **90.8%** |
-| total | 100 | 109 | 91.7% |
+| core | 63 | 65 | **96.9%** |
+| total | 106 | 109 | 97.2% |
 
 ## Data model (12/12)
 
@@ -28,7 +28,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Relations, indexes, field groups | core | ✅ | ✅ | ✅ | L2-table-modify-lifecycle, L3-form-detailstransaction |
 | Table inheritance (SupportInheritance/Extends) | total | ✅ | ✅ | ✅ | L2-table-inheritance-basic |
 
-## Code (33/36)
+## Code (36/36)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -46,8 +46,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Error handling & infolog | core | ✅ | ✅ | ✅ | L2-error-handling-infolog |
 | SysExtension plug-in pattern | total | ✅ | ✅ | ✅ | L2-sysextension-plugin |
 | Performance patterns | core | ✅ | ✅ | ✅ | L2-performance-set-based |
-| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +53 |
-| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +52 |
+| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +59 |
+| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +58 |
 | Optimistic concurrency & UnitOfWork | core | ✅ | ✅ | ✅ | L2-occ-retry-basic |
 | Caching (CacheLookup, SysGlobalObjectCache, RecordViewCache) | total | ✅ | ✅ | ✅ | L2-table-caching-basic |
 | X++ collections & containers (List/Map/Set/Struct) | total | ✅ | ✅ | ✅ | L2-collections-map-list-container |
@@ -65,11 +65,11 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Run-time (predefined) functions | core | ✅ | ✅ | ✅ | L2-runtime-functions-arity |
 | Implicit conversions & explicit converters | core | ✅ | ✅ | ✅ | L2-implicit-conversions |
 | select find options, join kinds and clause order | core | ✅ | ✅ | ✅ | L2-select-find-options-joins |
-| Global:: statics (query values, access checks) | core | ✅ | — | ✅ | The third place the compiler looks for a bare call, after intrinsics and predefined functions; FN001 reports them as "Global.fn". No case yet. |
-| System objects (infolog, Box, Debug, session) | core | ✅ | — | ✅ | Half of them are kernel classes with no AOT XML, so the metadata index cannot answer for them — which is exactly why the topic exists. No case yet. |
-| Query filters, range expressions, custom range functions | total | ✅ | — | ✅ | Range vs filter on an outer join, the range expression language, and [QueryRangeFunction] — all verified by probe, none proven by a case. |
+| Global:: statics (query values, access checks) | core | ✅ | ✅ | ✅ | L2-global-statics-access-checks |
+| System objects (infolog, Box, Debug, session) | core | ✅ | ✅ | ✅ | L2-system-objects-infolog-box |
+| Query filters, range expressions, custom range functions | total | ✅ | ✅ | ✅ | L2-query-range-expression-sysqueryrangeutil |
 
-## UI (10/11)
+## UI (11/11)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -83,7 +83,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Args — record, caller and parameters | core | ✅ | ✅ | ✅ | L2-args-record-caller |
 | display / edit methods | core | ✅ | ✅ | ✅ | L2-display-edit-methods |
 | Form event handlers | core | ✅ | ✅ | ✅ | L3-form-event-handler-class |
-| Lookups (table, reference, multi-select, override) | core | ✅ | — | ✅ | Knowledge and tool path exist (lookup-form pattern, form-control-extension); no captured case yet — L2-lookup-reference-multiselect is the one to author. |
+| Lookups (table, reference, multi-select, override) | core | ✅ | ✅ | ✅ | L2-lookup-reference-multiselect |
 
 ## Reporting (8/10)
 
@@ -100,7 +100,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Report design & RDL expressions | core | ✅ | — | ✅ | Design kind is an XML i:type (precision 416 : auto 56 over 400 shipped reports); the six AX_* parameters are platform-supplied. No case yet. |
 | Report print destinations (file, e-mail, archive, batch) | core | ✅ | — | ✅ | Member names read from SrsPrintDestinationSettings and compile-verified. L4-ssrs-report-print-destinations is the case to author. |
 
-## Frameworks (19/21)
+## Frameworks (20/21)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -122,11 +122,11 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Warehouse app / barcode scanning | total | ✅ | ✅ | ✅ | L3-warehouse-scan-resolve-slice |
 | Warehouse-app screens (ProcessGuide / legacy) | total | ✅ | ✅ | ✅ | L2-processguide-page-control, L3-legacy-workexecutedisplay-extend, L3-processguide-flow-slice |
 | Trade agreements & pricing | total | ✅ | ✅ | ✅ | L3-trade-agreement-price-lookup |
-| SysOperation dialog from contract attributes | total | ✅ | ✅ | ✅ | L3-sysoperation-dialog-attributes |
-| SysOperation query parameter (batch with a filter) | core | ✅ | — | ✅ | [AifQueryTypeAttribute] + SysOperationHelper::base64Decode, compile-verified. The case to author is L3-sysoperation-query-parameter-batch. |
-| RunBase lifecycle & packed state | total | ✅ | — | ✅ | Legacy, but unavoidable when wrapping shipped classes: the #CurrentVersion bump rule is the one that silently corrupts batch parameters when missed. |
+| SysOperation dialog from contract attributes | total | ✅ | — | ✅ | missing E |
+| SysOperation query parameter (batch with a filter) | core | ✅ | ✅ | ✅ | L3-sysoperation-query-parameter-batch |
+| RunBase lifecycle & packed state | total | ✅ | ✅ | ✅ | L3-runbase-coc-pack-unpack |
 
-## Integration (9/10)
+## Integration (10/10)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -139,7 +139,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Reading Excel / CSV files | total | ✅ | ✅ | ✅ | L3-file-csv-import |
 | Direct SQL execution | total | ✅ | ✅ | ✅ | L2-direct-sql-connection |
 | Aggregate measurements / analytics | total | ✅ | ✅ | ✅ | L3-aggregate-measurement-basic |
-| Attachments (DocuRef / DocumentManagement) | total | ✅ | — | ✅ | attachFile argument 4 is a DocuTypeId string, not a DocuType record — compile-verified, and the mistake attaches the file to an invisible record. |
+| Attachments (DocuRef / DocumentManagement) | total | ✅ | ✅ | ✅ | L3-attachment-docuref-pdf |
 
 ## Security (6/6)
 
@@ -157,22 +157,16 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | SysTest unit testing | core | ✅ | ✅ | ✅ | L2-coc-extension, L2-event-handler-basic, L2-systest-authoring-basic +1 |
-| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +52 |
+| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +58 |
 | TDD loop (red-first SysTest authoring) | core | ✅ | ✅ | ✅ | L2-systest-authoring-basic |
 
 ## Closure queue (uncovered, by frequency weight)
 
 | Weight | Leaf | Missing |
 | ---: | --- | --- |
-| 4 | Global:: statics (query values, access checks) | missing E |
-| 4 | Lookups (table, reference, multi-select, override) | missing E |
 | 4 | Report design & RDL expressions | missing E |
 | 4 | Report print destinations (file, e-mail, archive, batch) | missing E |
-| 4 | SysOperation query parameter (batch with a filter) | missing E |
-| 4 | System objects (infolog, Box, Debug, session) | missing E |
-| 3 | Attachments (DocuRef / DocumentManagement) | missing E |
-| 3 | Query filters, range expressions, custom range functions | missing E |
-| 3 | RunBase lifecycle & packed state | missing E |
+| 3 | SysOperation dialog from contract attributes | missing E |
 
 ## Orphans
 

@@ -1,0 +1,56 @@
+{
+  "run_id": "2026-08-31T10__L3-sysoperation-query-parameter-batch__06f974f",
+  "case_id": "L3-sysoperation-query-parameter-batch",
+  "tier": 3,
+  "timestamp": "2026-08-31T10:32:06.461Z",
+  "server_git_sha": "06f974f",
+  "generated_artifacts": [
+    "ConDemoJobHistoryScanContract.metadata.xml",
+    "ConDemoJobHistoryScanController.metadata.xml",
+    "ConDemoJobHistoryScanService.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "TOOL_DEFECT",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "d365fo_file(action=\"create\", objectType=\"class\") SILENTLY DROPS any method-level attribute block that spans more than one source line. The class-source splitter that carves sourceCode into <Declaration> + <Method> regenerates each method header (it also replaces author-written /// docs with generated ones) and keeps only the line(s) it recognises immediately above the signature, so a bracket list continued onto a second line is discarded. Minimal repro on the VM (probe class ConProbeAttrStrip, one create call, three methods): parmA with a single-line [DataMemberAttribute] -> PRESERVED; parmB with /// docs + single-line [DataMemberAttribute('B')] -> PRESERVED; parmC with [DataMemberAttribute('C'),\n SysOperationDisplayOrderAttribute('1')] -> BOTH attributes GONE, no warning, no error, and the class still compiles clean. Severity is high because the loss is invisible: attributes are syntactically optional, so xppc and xppbp stay green while the object is functionally wrong (a SysOperation contract whose parms are no longer data members, an event handler that no longer subscribes, an AifQueryType that no longer renders a range dialog). This case hit it on the first create: the parmQuery attribute pair [DataMemberAttribute('Query'), AifQueryTypeAttribute('_packedQuery', queryStr(BatchJobHistoryCleanUp))] - the whole point of the case - vanished from the written XML. Recovered through the grounded path with d365fo_file(action=\"modify\", operation=\"add-method\"), which DOES preserve attributes; the artifact scored here is the recovered one. Two corollaries: (a) add-method re-indents a multi-line attribute continuation badly (second attribute line and the signature itself pushed to 8 spaces) - cosmetic, single-line input formats correctly; (b) the already-signed-off golden of the sibling case L3-sysoperation-dialog-attributes is CORRUPTED BY THIS SAME DEFECT - its README lists [DataMemberAttribute]/[SysOperationLabelAttribute]/[SysOperationGroupMemberAttribute]/[SysOperationDisplayOrderAttribute]/[SysOperationControlVisibilityAttribute] as what the golden must keep showing, but ConDemoRebateContract.metadata.xml contains NONE of them on any parm method, while the older L3-batch-basic golden (captured 2026-06-30) still has its multi-line [DataMemberAttribute, SysOperationLabelAttribute(...), SysOperationDisplayOrderAttribute('N')] blocks intact - and shows NO generated /// doc comments at all - which points at the doc-comment-generating method splitter added after that capture as the regression, and means the defect has already poisoned one signed-off holdout golden.",
+  "suggested_fix_area": "src class-source splitter used by d365fo_file(action=\"create\", objectType=\"class\") (the sourceCode -> <Declaration>/<Methods> carve + doc-comment generator): attach the COMPLETE attribute block preceding a method signature, however many lines it spans, before generating docs; add a regression test with a multi-line bracket list. Secondary: re-capture eval/goldens/L3-sysoperation-dialog-attributes/ConDemoRebateContract.metadata.xml after the fix (its current content contradicts its own README) and fix the add-method re-indentation of multi-line attribute continuations.",
+  "evidence_refs": [
+    "eval/goldens/L3-sysoperation-query-parameter-batch/ConDemoJobHistoryScanContract.metadata.xml",
+    "eval/goldens/L3-sysoperation-query-parameter-batch/README.md",
+    "eval/goldens/L3-sysoperation-dialog-attributes/ConDemoRebateContract.metadata.xml",
+    "eval/goldens/L3-sysoperation-dialog-attributes/README.md",
+    "eval/goldens/L3-batch-basic/ConDemoBatchContract.metadata.xml"
+  ]
+}

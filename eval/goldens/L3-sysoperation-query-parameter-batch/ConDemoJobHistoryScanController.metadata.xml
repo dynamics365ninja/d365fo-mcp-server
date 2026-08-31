@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L3-sysoperation-query-parameter-batch (artifact 3 of 3: Controller - SysOperationServiceController)
+  Captured: 2026-08-31, server SHA: 06f974f
+  Platform: xppc 7.0.7996.33
+-->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoJobHistoryScanController</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Controller class that orchestrates the con demo job history scan operation.
+/// </summary>
+public class ConDemoJobHistoryScanController extends SysOperationServiceController
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>construct</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Constructs a controller wired to the scan service.
+    /// </summary>
+    /// <returns>The constructed controller.</returns>
+    public static ConDemoJobHistoryScanController construct()
+    {
+        ConDemoJobHistoryScanController controller = new ConDemoJobHistoryScanController();
+
+        controller.parmClassName(classStr(ConDemoJobHistoryScanService));
+        controller.parmMethodName(methodStr(ConDemoJobHistoryScanService, scanHistory));
+
+        return controller;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Entry point of the batch job.
+    /// </summary>
+    /// <param name = "_args">The arguments of the caller.</param>
+    public static void main(Args _args)
+    {
+        ConDemoJobHistoryScanController controller = ConDemoJobHistoryScanController::construct();
+
+        controller.parmArgs(_args);
+        controller.parmDialogCaption("@ConDemo:JobHistoryScanCaption");
+        controller.startOperation();
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

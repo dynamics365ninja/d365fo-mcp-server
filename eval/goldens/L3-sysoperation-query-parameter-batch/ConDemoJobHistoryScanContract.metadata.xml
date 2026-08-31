@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L3-sysoperation-query-parameter-batch (artifact 1 of 3: DataContract - the packed query parameter)
+  Captured: 2026-08-31, server SHA: 06f974f
+  Platform: xppc 7.0.7996.33
+-->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoJobHistoryScanContract</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Data contract class that defines dialog parameters for the con demo job history scan operation.
+/// </summary>
+[DataContractAttribute]
+public class ConDemoJobHistoryScanContract
+{
+    private str packedQuery;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmQuery</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets or sets the query the batch job runs, packed into a string.
+    /// </summary>
+    /// <param name = "_packedQuery">The packed query.</param>
+    /// <returns>The packed query.</returns>
+    /// <remarks>
+    /// The contract is serialised into the batch record, so the query is stored PACKED (a string),
+    /// never as a Query object. AifQueryTypeAttribute names the AOT query whose ranges the dialog renders.
+    /// </remarks>
+    [DataMemberAttribute('Query'), AifQueryTypeAttribute('_packedQuery', queryStr(BatchJobHistoryCleanUp))]
+    public str parmQuery(str _packedQuery = packedQuery)
+    {
+        packedQuery = _packedQuery;
+
+        return packedQuery;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
