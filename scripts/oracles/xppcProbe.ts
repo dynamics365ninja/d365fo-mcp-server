@@ -19,6 +19,15 @@
  * Semantic errors do not cascade between methods, so many probes can share a
  * class; a PARSE-level probe must be alone, because it kills the whole file.
  *
+ * **"It compiles" is not "it is correct", and the gap is widest at a call site.**
+ * A probe of `DocumentManagement::attachFile` passed EIGHT arguments and built
+ * clean, so the knowledge entry was written with eight. The method takes nine;
+ * the ninth defaults, so the eighth argument silently became the attachment NAME
+ * instead of the notes — no error, wrong data, and an eval run had to find it.
+ * For anything with optional tail parameters the compiler cannot answer the
+ * question you are asking. Read the signature (`npm run oracle:members -- <Class>
+ * --grep <method>`) and COUNT, then let the probe confirm the shape.
+ *
  * Usage:
  *   npx tsx scripts/oracles/xppcProbe.ts --file scripts/oracles/probes/p05-queryrange.ts
  *   npx tsx scripts/oracles/xppcProbe.ts --inline "int i = 1.5;" --id ConvReal

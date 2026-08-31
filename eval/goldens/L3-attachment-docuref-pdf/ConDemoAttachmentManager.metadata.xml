@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L3-attachment-docuref-pdf: attaching a generated file with DocumentManagement::attachFile - argument 4 is a DocuTypeId STRING (DocuType::typeFile()), never a DocuType record, and the first three arguments (TableId/RecId/DataAreaId) all come from the SAME buffer being attached to. Read back with DocumentManagement::findAttachments. Captured 2026-08-31, SHA d2da751. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoAttachmentManager</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Attaches generated documents to a record with <c>DocumentManagement</c> and reads them back.
+/// </summary>
+/// <remarks>
+/// An attachment is owned by three ids - table id, record id and data area id - and all three must
+/// come from the buffer being attached to. Taking the record id from a different buffer raises no
+/// error; the file is simply attached to a record nobody looks at.
+/// Argument 4 of <c>DocumentManagement::attachFile</c> is a <c>DocuTypeId</c>, that is a STRING such
+/// as the one returned by <c>DocuType::typeFile()</c>. Passing a <c>DocuType</c> record instead is a
+/// compile error.
+/// </remarks>
+public final class ConDemoAttachmentManager
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>attachGeneratedDocument</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Generates a document in memory and attaches it to the given record.
+    /// </summary>
+    /// <param name = "_record">The record that owns the attachment.</param>
+    /// <param name = "_notes">Optional notes stored on the attachment.</param>
+    /// <returns>The <c>DocuRef</c> created for the generated document.</returns>
+    public static DocuRef attachGeneratedDocument(Common _record, Notes _notes = '')
+    {
+        ConDemoAttachmentManager::validateOwner(_record);
+
+        return ConDemoAttachmentManager::attachDocument(
+            _record,
+            ConDemoAttachmentManager::buildDocumentStream(_record),
+            ConDemoAttachmentManager::buildFileName(_record),
+            ConDemoAttachmentManager::documentContentType(),
+            _notes);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>attachDocument</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Attaches an already generated file to the given record.
+    /// </summary>
+    /// <param name = "_record">The record that owns the attachment.</param>
+    /// <param name = "_file">The stream holding the bytes to store.</param>
+    /// <param name = "_fileName">The file name to store the bytes under.</param>
+    /// <param name = "_contentType">The MIME type of the file, for example <c>application/pdf</c>.</param>
+    /// <param name = "_notes">Optional notes stored on the attachment.</param>
+    /// <returns>The <c>DocuRef</c> created for the file.</returns>
+    public static DocuRef attachDocument(
+        Common              _record,
+        System.IO.Stream    _file,
+        Filename            _fileName,
+        str                 _contentType,
+        Notes               _notes = '')
+    {
+        ConDemoAttachmentManager::validateOwner(_record);
+
+        // The first three arguments identify the OWNER, so all three are read from the buffer being
+        // attached to. Argument 4 is a DocuTypeId - a string - and never a DocuType record.
+        return DocumentManagement::attachFile(
+            _record.TableId,
+            _record.RecId,
+            _record.DataAreaId,
+            DocuType::typeFile(),
+            _file,
+            _fileName,
+            _contentType,
+            _fileName,
+            _notes);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>findAttachmentNames</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Reads the attachments of the given record back.
+    /// </summary>
+    /// <param name = "_record">The record whose attachments are listed.</param>
+    /// <returns>A list of the attachment names, in cursor order.</returns>
+    public static List findAttachmentNames(Common _record)
+    {
+        DocuRef docuRef;
+        List    attachmentNames = new List(Types::String);
+
+        ConDemoAttachmentManager::validateOwner(_record);
+
+        // The same three owner ids that attachFile was given - any other buffer reads another record.
+        docuRef = DocumentManagement::findAttachments(_record.TableId, _record.RecId, _record.DataAreaId);
+
+        while (docuRef)
+        {
+            attachmentNames.addEnd(docuRef.Name);
+
+            next docuRef;
+        }
+
+        return attachmentNames;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>buildDocumentStream</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Builds the in-memory document that <c>attachGeneratedDocument</c> attaches.
+    /// </summary>
+    /// <param name = "_record">The record the document is generated for.</param>
+    /// <returns>A readable stream positioned at the first byte.</returns>
+    private static System.IO.Stream buildDocumentStream(Common _record)
+    {
+        System.Text.UTF8Encoding    encoding = new System.Text.UTF8Encoding();
+        System.Byte[]               documentBytes = encoding.GetBytes(ConDemoAttachmentManager::buildDocumentText(_record));
+        System.IO.MemoryStream      documentStream = new System.IO.MemoryStream(documentBytes);
+
+        documentStream.Position = 0;
+
+        return documentStream;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>buildDocumentText</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Builds the text of the generated document.
+    /// </summary>
+    /// <param name = "_record">The record the document is generated for.</param>
+    /// <returns>The document text, naming the three ids that own the attachment.</returns>
+    private static str buildDocumentText(Common _record)
+    {
+        return strFmt('%1 / %2 / %3', _record.DataAreaId, tableId2Name(_record.TableId), _record.RecId);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>buildFileName</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Builds the file name of the generated document.
+    /// </summary>
+    /// <param name = "_record">The record the document is generated for.</param>
+    /// <returns>The file name, including its extension.</returns>
+    private static Filename buildFileName(Common _record)
+    {
+        return strFmt('%1-%2%3',
+            tableId2Name(_record.TableId),
+            _record.RecId,
+            ConDemoAttachmentManager::documentFileExtension());
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>documentContentType</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// The MIME type stored on the generated document.
+    /// </summary>
+    /// <returns>The content type of the generated document.</returns>
+    private static str documentContentType()
+    {
+        return 'text/plain';
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>documentFileExtension</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// The file extension of the generated document.
+    /// </summary>
+    /// <returns>The file extension, including the leading dot.</returns>
+    private static str documentFileExtension()
+    {
+        return '.txt';
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateOwner</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Rejects a buffer that cannot own an attachment.
+    /// </summary>
+    /// <param name = "_record">The record to check.</param>
+    private static void validateOwner(Common _record)
+    {
+        if (!_record || !_record.TableId || !_record.RecId)
+        {
+            throw error(Error::missingParameter(null));
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,52 @@
+{
+  "run_id": "2026-08-31T10__L3-attachment-docuref-pdf__d2da751",
+  "case_id": "L3-attachment-docuref-pdf",
+  "tier": 3,
+  "timestamp": "2026-08-31T10:20:10.574Z",
+  "server_git_sha": "d2da751",
+  "generated_artifacts": [
+    "ConDemoAttachmentManager.xml"
+  ],
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "PASS",
+  "root_cause_hypothesis": "Secondary finding on an otherwise clean PASS: get_knowledge(topic=\"document-attachments\") documents attachFile as 8 arguments (tableId, recId, dataAreaId, docuTypeId, stream, fileName, mimeType, notes), but the real ApplicationFoundation signature has 9 - str _fileName, str _fileContentType, str _attachmentName, str _notes = ''. The documented arg 8 \"notes\" is actually _attachmentName; an 8-argument call still compiles because _notes defaults, so the agent silently stores the notes text as the attachment NAME and leaves the notes empty. The topic also does not mention DocuType::typeFile() as the idiomatic DocuTypeId source (shipped call sites use it).",
+  "suggested_fix_area": "knowledge/document-attachments topic: correct the attachFile signature to the 9-argument form (add _attachmentName), flag that an 8-argument call silently mis-binds notes to the attachment name, and cite DocuType::typeFile() as the DocuTypeId source.",
+  "evidence_refs": [
+    "K:/AosService/PackagesLocalDirectory/ApplicationFoundation/ApplicationFoundation/AxClass/DocumentManagement.xml#attachFile",
+    "K:/AosService/PackagesLocalDirectory/UserSecGov/UserSecGov/AxClass/UserSecGovEntryPointsLoaderTaskRecording.xml#attachFile",
+    "eval/goldens/L3-attachment-docuref-pdf/ConDemoAttachmentManager.metadata.xml"
+  ]
+}

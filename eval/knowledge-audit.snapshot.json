@@ -1,6 +1,6 @@
 {
-  "capturedAt": "2026-08-31T10:09:52.101Z",
-  "indexedAt": "2026-08-31T09:56:14.898Z",
+  "capturedAt": "2026-08-31T10:23:53.533Z",
+  "indexedAt": "2026-08-31T10:18:09.273Z",
   "ok": [
     "alerts-business-events|attribute|DataContract",
     "alerts-business-events|attribute|DataContractAttribute",
@@ -78,6 +78,7 @@
     "direct-sql|new|SqlStatementExecutePermission",
     "direct-sql|static-call|CodeAccessPermission::revertAssert",
     "display-edit-methods|attribute|SysClientCacheDataMethodAttribute",
+    "document-attachments|static-call|DocuType::typeFile",
     "document-attachments|static-call|DocumentManagement::attachFile",
     "document-attachments|static-call|DocumentManagement::findAttachments",
     "dotnet-interop|declaration|StringBuilder",
