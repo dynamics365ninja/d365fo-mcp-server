@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>FixtureStaticExtensionClass</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// An EXTENSION-METHOD class, not a Chain of Command class: no [ExtensionOf],
+/// static, and every method static with a table or class first parameter. The
+/// compiler enforces exactly this shape (EXT001 encodes its messages). COC002 and
+/// COC003 used to treat the _Extension suffix alone as proof of a CoC class.
+public static class FixtureStaticExtensionClass_Extension
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>displayGroupName</Name>
+				<Source><![CDATA[
+    public static str displayGroupName(CustTable _custTable)
+    {
+        CustGroup custGroup;
+
+        select firstonly Name from custGroup
+            where custGroup.CustGroup == _custTable.CustGroup;
+
+        return custGroup.Name;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>hasOpenTransactions</Name>
+				<Source><![CDATA[
+    public static boolean hasOpenTransactions(CustTable _custTable, boolean _includeSettled = false)
+    {
+        CustTrans custTrans;
+
+        select firstonly RecId from custTrans
+            where custTrans.AccountNum == _custTable.AccountNum
+               && (_includeSettled || custTrans.Closed == dateNull());
+
+        return custTrans.RecId != 0;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

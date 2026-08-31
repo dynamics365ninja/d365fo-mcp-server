@@ -5,6 +5,7 @@
   "CodeAccessPermission": "X++ kernel CAS base class.",
   "Connection": "X++ kernel class — direct SQL (Connection/Statement/ResultSet trio).",
   "DateTimeUtil": "X++ kernel class (system runtime, no AOT metadata element).",
+  "DialogButton": "X++ kernel enum — what Box::yesNo/confirm/okCancel answer with. No AOT element, but real: an xppc probe compiled `DialogButton answer = Box::yesNo(...)`, and shipped code uses Yes/No/Cancel/Ok/YesToAll/NoToAll 1,459 times across 275 files. Also listed in src/knowledge/kernelEnums.ts with those values.",
   "Exception": "X++ kernel enum (Exception::Error / Info / Warning) — throw argument and infolog severity.",
   "ExportAttribute": "System.ComponentModel.Composition.ExportAttribute (MEF) — reached via `using`, not an AOT element.",
   "FieldId": "X++ kernel system type — field id returned by DictTable::fieldCnt2Id() (no AOT EDT element).",

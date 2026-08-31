@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>FixtureSelectShapes</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// select shapes the compiler accepts and shipped code uses, including the ones
+/// rules were once too strict about (forceLiterals is legal and used; today());
+/// plus the transaction shape whose branch-dependent tts counts made TTS001 noisy.
+public class FixtureSelectShapes
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>forceLiteralsIsLegal</Name>
+				<Source><![CDATA[
+    /// SEL002 called this forbidden. It compiles, and Microsoft uses it — the
+    /// honest severity is a warning about SQL injection with user input.
+    public void forceLiteralsIsLegal(CustAccount _accountNum)
+    {
+        CustTable custTable;
+
+        select forceLiterals firstonly custTable
+            where custTable.AccountNum == _accountNum;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>sessionDateInQuery</Name>
+				<Source><![CDATA[
+    /// SEL001 raised an ERROR for today(). It is a best-practice finding at most.
+    public void sessionDateInQuery()
+    {
+        CustTrans custTrans;
+
+        select firstonly custTrans
+            where custTrans.TransDate == today();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>branchedTransaction</Name>
+				<Source><![CDATA[
+    /// Begin and commit counts differ per branch; that is not an imbalance.
+    public void branchedTransaction(boolean _doWork, CustTable _custTable)
+    {
+        if (_doWork)
+        {
+            ttsbegin;
+            _custTable.selectForUpdate(true);
+            _custTable.update();
+            ttscommit;
+        }
+        else
+        {
+            ttsbegin;
+            _custTable.doUpdate();
+            ttscommit;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>infoOnAnObject</Name>
+				<Source><![CDATA[
+    /// BP001 fired on any .Info( call. A method named Info on an object is not
+    /// the global info() function, and hard-coded text is a warning, not an error.
+    public void infoOnAnObject(SysInfoLogStr _entry)
+    {
+        infolog.add(Exception::Info, _entry);
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

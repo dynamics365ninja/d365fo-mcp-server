@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>FixtureCustTable_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// A Chain of Command class whose shapes broke COC001/002/003 before the shared
+/// lexer landed: a NEW method with default parameters (no next, so no wrapper
+/// rule applies), and a doc comment between the attribute and the first method.
+[ExtensionOf(tableStr(CustTable))]
+final class FixtureCustTable_Extension
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>findByAccount</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// A new method on the extension — not a wrapper, so the default parameter is
+    /// legal. COC001 fired here because it did not check for a call to next.
+    /// </summary>
+    /// <param name = "_accountNum">The account to find.</param>
+    /// <param name = "_forUpdate">Select for update.</param>
+    /// <returns>The record, or an empty buffer.</returns>
+    public static CustTable findByAccount(CustAccount _accountNum, boolean _forUpdate = false)
+    {
+        CustTable custTable;
+
+        custTable.selectForUpdate(_forUpdate);
+
+        select firstonly custTable
+            where custTable.AccountNum == _accountNum;
+
+        return custTable;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateWrite</Name>
+				<Source><![CDATA[
+    /// A real wrapper: next is called, so the CoC rules apply in full.
+    public boolean validateWrite()
+    {
+        boolean ret = next validateWrite();
+
+        if (ret && !this.CustGroup)
+        {
+            ret = checkFailed("@SYS12345");
+        }
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

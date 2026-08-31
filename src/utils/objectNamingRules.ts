@@ -142,6 +142,15 @@ export async function checkObjectNaming(
       }
     }
 
+    // The same courtesy for the UNDERSCORE form. `MyThing_Extension` states its
+    // base just as plainly as `MyThing.ConExtension` does, and without this the
+    // check demanded a parameter the caller had no way to send: `prepare` does
+    // not publish baseObjectName at all, so its answer was
+    // "baseObjectName is required" with no route to supplying one.
+    if (!args.baseObjectName && /_Extension$/i.test(name)) {
+      args.baseObjectName = name.slice(0, name.length - '_Extension'.length);
+    }
+
     const isExtension = EXTENSION_TYPES.has(args.objectType);
 
     // D365FO has a hard 81-character limit on AOT names; exceeding it is a build error.
@@ -219,7 +228,14 @@ export async function checkObjectNaming(
       const baseObjectName = args.baseObjectName;
 
       if (!baseObjectName) {
-        errors.push(`baseObjectName is required for extension types (${args.objectType}).`);
+        // Say what the caller can DO. Not every caller publishes this parameter —
+        // prepare does not — so a bare "it is required" is unactionable there.
+        errors.push(
+          `baseObjectName is required for extension types (${args.objectType}), and it could not be ` +
+          `derived from "${name}". Name the extension after its base — "MyBase_Extension" or ` +
+          `"MyBase.${'${'}ModelToken}Extension" — or ask the check directly, which does accept it: ` +
+          `validate_object_naming(objectType="${args.objectType}", proposedName="${name}", baseObjectName="<base>").`,
+        );
       } else {
         if (args.objectType === 'class-extension') {
           // prefix style → {Base}{Prefix}_Extension; model-name style → {Base}_{ModelToken}_Extension

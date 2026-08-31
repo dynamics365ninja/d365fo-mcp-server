@@ -1,0 +1,23 @@
+{
+  "id": "L2-query-range-expression-sysqueryrangeutil",
+  "title": "Query ranges: filter vs range on an outer join, and a custom range function",
+  "tier": 2,
+  "instruction": "Ground with get_knowledge(topic=\"query-object-model\"). In the sandbox model write a class that builds a Query at run time and shows the distinction that silently changes results: a RANGE restricts a data source before the join, while a QueryFilter (query.addQueryFilter(qbds, fieldStr(...))) restricts the joined result - on an OUTER join a range turns it into an inner join and drops the unmatched parents. Use SysQuery:: to build every value (SysQuery::value, ::valueNot, ::range, ::valueEmptyString) rather than concatenating strings. Then add a user-callable range function: [ExtensionOf(classStr(SysQueryRangeUtil))] public static class <Prefix>Ranges_Extension with a [QueryRangeFunction()] public static str method returning a SysQuery:: value. Build with zero errors and zero BP errors.",
+  "target_artifact_types": [
+    "AxClass",
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-query-range-expression-sysqueryrangeutil/",
+  "golden_pending": false,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "query",
+    "queryfilter",
+    "queryrangefunction",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

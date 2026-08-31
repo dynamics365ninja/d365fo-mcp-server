@@ -101,3 +101,10 @@ data/
 # Machine-specific eval-sandbox wiring: absolute VM paths + the throwaway model
 # name, same category as config/d365fo-mcp.json above.
 config/d365fo-mcp-eval.json
+
+# Oracle harness outputs (scripts/oracles) — measurements, not artefacts.
+# The scripts are committed so anyone can re-measure; the results are a snapshot
+# of one machine at one platform version and go stale silently.
+.oracle-*.json
+.oracle-*.log
+.oracle-probes/

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L3-sysoperation-query-parameter-batch (artifact 2 of 3: Service - unpacks the query and runs it)
+  Captured: 2026-08-31, server SHA: 06f974f
+  Platform: xppc 7.0.7996.33
+-->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoJobHistoryScanService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Service class that implements the business logic for the con demo job history scan operation.
+/// </summary>
+public class ConDemoJobHistoryScanService extends SysOperationServiceBase
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>scanHistory</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Counts the batch job history records selected by the packed query of the contract.
+    /// </summary>
+    /// <param name = "_contract">The contract carrying the packed query.</param>
+    public void scanHistory(ConDemoJobHistoryScanContract _contract)
+    {
+        Query               query;
+        QueryRun            queryRun;
+        BatchJobHistory     batchJobHistory;
+        int                 matched;
+
+        query = new Query(SysOperationHelper::base64Decode(_contract.parmQuery()));
+        queryRun = new QueryRun(query);
+
+        while (queryRun.next())
+        {
+            batchJobHistory = queryRun.get(tableNum(BatchJobHistory));
+
+            if (batchJobHistory.RecId)
+            {
+                matched++;
+            }
+        }
+
+        info(strFmt("@ConDemo:JobHistoryScanned", matched));
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

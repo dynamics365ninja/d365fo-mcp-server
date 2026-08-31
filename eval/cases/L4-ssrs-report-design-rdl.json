@@ -1,0 +1,27 @@
+{
+  "id": "L4-ssrs-report-design-rdl",
+  "title": "The report design: an RDL layout that reads the dataset and the platform parameters",
+  "tier": 4,
+  "instruction": "Ground with get_knowledge(topic=\"rdl-design-expressions\"). In the sandbox model scaffold a full SSRS report (TmpTable + contract + DP + controller + AxReport) and check its DESIGN, not only its X++. The design is stored as an XML type - i:type=\"AxReportPrecisionDesign\" - and its RDL must read the dataset through =Fields!<Column>.Value and show the legal entity through =Parameters!AX_CompanyName.Value. The six platform parameters (AX_CompanyName, AX_UserContext, AX_RenderingCulture, AX_ReportContext, AX_PartitionKey, and AX_RdpPreProcessedId on a pre-processed report) are supplied by the framework: declaring or passing them FAILS this case. Group totals belong in the design as =Sum(Fields!<Column>.Value), not in the DP - aggregating in both double-counts. Build with zero errors and zero BP errors.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxClass",
+    "AxClass",
+    "AxClass",
+    "AxMenuItemOutput",
+    "AxReport"
+  ],
+  "golden_path": "eval/goldens/L4-ssrs-report-design-rdl/",
+  "golden_pending": false,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "ssrs",
+    "rdl",
+    "design",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

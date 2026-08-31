@@ -949,7 +949,23 @@ export async function tryBridgeSearch(
     if (!sr) return null;
 
     // Splice in exact matches the bridge's truncated window missed (#15).
-    const bridgeHits = sr.results ?? [];
+    //
+    // …but first, honour the type filter the caller asked for, because the bridge
+    // does not always honour it. Its C#-side type map has no entry for every AOT
+    // kind — `report` is one — and an unmapped type runs the query UNFILTERED, so
+    // `search(type="report")` answered with tables and queries and looked
+    // authoritative doing it ("Cust" returned six tables). A report reached the
+    // caller only when the SQLite exact-name splice happened to carry one, which
+    // is why the failure looked intermittent rather than total.
+    //
+    // Only the BRIDGE's hits are filtered. The spliced exact and custom matches
+    // are deliberately allowed to differ in type — a `table-extension` is a
+    // wanted answer to a `type="table"` search for the table it extends — and
+    // filtering those too would delete that behaviour.
+    const rawBridgeHits = sr.results ?? [];
+    const bridgeHits = objectType && objectType !== 'all'
+      ? rawBridgeHits.filter(r => r.type === objectType)
+      : rawBridgeHits;
     const known = new Set(bridgeHits.map(r => `${r.name.toLowerCase()}\0${r.type}`));
     const spliced: Array<{ name: string; type: string; model?: string; fromIndex?: boolean }> = [];
     for (const cand of opts?.exactMatches ?? []) {
@@ -2859,6 +2875,30 @@ export async function tryBridgeCompletion(
   }
 }
 
+/**
+ * One line of a member list — NAME first, always.
+ *
+ * This used to print the signature INSTEAD of the name whenever a signature
+ * existed, which made a member unidentifiable the moment the signature was
+ * wrong. It is sometimes wrong: the bridge's extractor hands back the line
+ * preceding the body when a macro sits between the doc block and the signature,
+ * so `SysQuery.range` was listed as `#ISOCountryRegionCodes`. Filtering runs on
+ * the NAME, so asking for prefix "range" returned "1 member" that appeared to be
+ * something else entirely — and a member list that renders a public API as
+ * another string argues the API does not exist. An eval run concluded exactly
+ * that and worked around a method that was there all along.
+ *
+ * The signature is still shown, as detail, and only when it plausibly belongs to
+ * this member. Fixing the extractor is a separate, C#-side change; this makes the
+ * output honest either way.
+ */
+function memberLine(m: { name: string; signature?: string }): string {
+  const sig = m.signature?.trim();
+  const belongs = sig && new RegExp(`\\b${m.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\(`, 'i').test(sig);
+  if (belongs) return `\`${sig}\``;
+  return sig ? `**${m.name}** _(signature unavailable)_` : `**${m.name}**`;
+}
+
 function formatCompletion(r: BridgeCompletionResult, prefix?: string): string {
   let members = r.members;
   if (prefix) {
@@ -2884,8 +2924,9 @@ function formatCompletion(r: BridgeCompletionResult, prefix?: string): string {
     const inheritedCount = methodMembers.filter(m => m.inheritedFrom).length;
     out += `## Methods (${methodMembers.length})\n`;
     for (const m of methodMembers) {
-      const body = m.signature ? `\`${m.signature}\`` : m.name;
-      out += m.inheritedFrom ? `- ${body} _(inherited from ${m.inheritedFrom})_\n` : `- ${body}\n`;
+      out += m.inheritedFrom
+        ? `- ${memberLine(m)} _(inherited from ${m.inheritedFrom})_\n`
+        : `- ${memberLine(m)}\n`;
     }
     if (inheritedCount > 0) {
       out += `\n> ${inheritedCount} of these are inherited — callable on ${r.symbolName}, but ` +
@@ -3047,3 +3088,10 @@ function formatApiUsageCallers(r: BridgeApiUsageCallersResult): string {
 
   return out;
 }
+
+/**
+ * Internals exposed for tests only. `formatCompletion` renders a member list,
+ * and a member list that cannot be trusted to name its members is worse than no
+ * list at all — see tests/bridge/completionMemberLine.test.ts.
+ */
+export const __testing = { formatCompletion, memberLine };

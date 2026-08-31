@@ -593,7 +593,7 @@ export const TAXONOMY: CoverageLeaf[] = [
     // leaf proves the framework is authored correctly, not that a test went green.
     // The knowledge behind it is now read from the shipped SysTestCase/SysTestAssert
     // rather than from memory (there is no assertExpectedException).
-    note: 'Authoring is proven by three captured goldens; no SysTest has RUN — the console runner needs an interactive session, so systest scores stay null.',
+    note: 'Authoring is proven by three captured goldens. No SysTest has RUN yet — but as of 2026-08-31 the runner CONNECTS to the AOS database for the first time (the config drift was fixed on the VM), so the four cases whose runtime score is still null now wait on an eval-run rather than on a blocker.',
   },
   {
     id: 'labels', label: 'Labels & localisation', domain: 'Quality', source: 'topic', tier: 'core', weight: 5,
@@ -658,4 +658,64 @@ export const TAXONOMY: CoverageLeaf[] = [
     note: 'Distinct from the unit-testing leaf: that one proves a SysTest can be authored, this one proves the loop — prepare(test), the failing scaffold, then a run.',
   },
 
+  // ── v3 wave ─────────────────────────────────────────────────────────────
+  // Added 2026-08-31 from a construct-level map of the language plus 1,593 real
+  // MCP calls. Every one of them was invisible before: the taxonomy is indexed by
+  // ARTIFACT, and a lookup, a Global static or an RDL expression is not an
+  // artifact — so no percentage could fall for their absence. They arrive
+  // uncovered on E, which is the honest state until a golden is captured.
+  {
+    id: 'lookups', label: 'Lookups (table, reference, multi-select, override)',
+    domain: 'UI', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['class'], knowledgeIds: ['lookups'], caseIds: ['L2-lookup-reference-multiselect'],
+    note: 'Knowledge and tool path exist (lookup-form pattern, form-control-extension); no captured case yet — L2-lookup-reference-multiselect is the one to author.',
+  },
+  {
+    id: 'global-statics', label: 'Global:: statics (query values, access checks)',
+    domain: 'Code', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['class'], knowledgeIds: ['global-class-statics'], caseIds: ['L2-global-statics-access-checks'],
+    note: 'The third place the compiler looks for a bare call, after intrinsics and predefined functions; FN001 reports them as "Global.fn". No case yet.',
+  },
+  {
+    id: 'system-objects', label: 'System objects (infolog, Box, Debug, session)',
+    domain: 'Code', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['class'], knowledgeIds: ['system-objects'], caseIds: ['L2-system-objects-infolog-box'],
+    note: 'Half of them are kernel classes with no AOT XML, so the metadata index cannot answer for them — which is exactly why the topic exists. No case yet.',
+  },
+  {
+    id: 'query-object-model-advanced', label: 'Query filters, range expressions, custom range functions',
+    domain: 'Code', source: 'topic', tier: 'total', weight: 3,
+    aotTypes: ['query'], knowledgeIds: ['query-object-model'], caseIds: ['L2-query-range-expression-sysqueryrangeutil'],
+    note: 'Range vs filter on an outer join, the range expression language, and [QueryRangeFunction] — all verified by probe, none proven by a case.',
+  },
+  {
+    id: 'sysoperation-query-param', label: 'SysOperation query parameter (batch with a filter)',
+    domain: 'Frameworks', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['class'], knowledgeIds: ['sysoperation'], caseIds: ['L3-sysoperation-query-parameter-batch'],
+    note: '[AifQueryTypeAttribute] + SysOperationHelper::base64Decode, compile-verified. The case to author is L3-sysoperation-query-parameter-batch.',
+  },
+  {
+    id: 'runbase-lifecycle', label: 'RunBase lifecycle & packed state',
+    domain: 'Frameworks', source: 'topic', tier: 'total', weight: 3,
+    aotTypes: ['class'], knowledgeIds: ['deprecated'], caseIds: ['L3-runbase-coc-pack-unpack'],
+    note: 'Legacy, but unavoidable when wrapping shipped classes: the #CurrentVersion bump rule is the one that silently corrupts batch parameters when missed.',
+  },
+  {
+    id: 'rdl-expressions', label: 'Report design & RDL expressions',
+    domain: 'Reporting', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['report'], knowledgeIds: ['rdl-design-expressions'], caseIds: ['L4-ssrs-report-design-rdl'],
+    note: 'Design kind is an XML i:type (precision 416 : auto 56 over 400 shipped reports); the six AX_* parameters are platform-supplied. No case yet.',
+  },
+  {
+    id: 'report-destinations', label: 'Report print destinations (file, e-mail, archive, batch)',
+    domain: 'Reporting', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['report'], knowledgeIds: ['report-print-destinations'], caseIds: ['L4-ssrs-report-print-destinations'],
+    note: 'Member names read from SrsPrintDestinationSettings and compile-verified. L4-ssrs-report-print-destinations is the case to author.',
+  },
+  {
+    id: 'document-attachments', label: 'Attachments (DocuRef / DocumentManagement)',
+    domain: 'Integration', source: 'topic', tier: 'total', weight: 3,
+    aotTypes: ['class'], knowledgeIds: ['document-attachments'], caseIds: ['L3-attachment-docuref-pdf'],
+    note: 'attachFile argument 4 is a DocuTypeId string, not a DocuType record — compile-verified, and the mistake attaches the file to an invisible record.',
+  },
 ];

@@ -1,0 +1,82 @@
+{
+  "run_id": "2026-08-31T11__L4-ssrs-report-design-rdl__993eb10",
+  "case_id": "L4-ssrs-report-design-rdl",
+  "tier": 4,
+  "timestamp": "2026-08-31T11:45:45.535Z",
+  "server_git_sha": "993eb10",
+  "generated_artifacts": [
+    "ConDemoCreditLimitReport.menuitem.metadata.xml",
+    "ConDemoCreditLimitReport.metadata.xml",
+    "ConDemoCreditLimitReportContract.metadata.xml",
+    "ConDemoCreditLimitReportController.metadata.xml",
+    "ConDemoCreditLimitReportDP.metadata.xml",
+    "ConDemoCreditLimitReportTmp.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 4
+  },
+  "classification": "TOOL_DEFECT",
+  "platform_build": "xppc 7.0.7996.33",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": [
+        "SET001 (warning, accepted): delete_from on the report temp table with no where clause - deliberate, and stated in a comment as the rule asks"
+      ]
+    }
+  },
+  "root_cause_hypothesis": "SCORED OUTCOME: build 1 / bp_clean 0 / golden_match 1. One scaffold call produced all six objects; xppc reported 0 errors / 0 warnings on both the incremental and the full build; xppbp reported 0 ERRORS (the case bar) and 10 warnings scoped to this case's objects (9 on the tmp table + 1 menu-item-not-covered-by-privilege; the model-wide run's other 6 warnings are all on the pre-existing fixture table ConDemoNoteHeader).\n\nWHAT THE CASE TESTS - all satisfied by the generated design, unedited: the design is the XML TYPE i:type=\"AxReportPrecisionDesign\" (not a property); the RDL detail cells are =Fields!<Column>.Value; the page header carries =Parameters!AX_CompanyName.Value; the group-header and grand-total cells are =Sum(Fields!CreditMax.Value) in the DESIGN while processReport() inserts detail rows only (no X++ aggregation, so no double count); the six platform parameters appear only where the framework itself declares them (AxReportParameter metadata + the RDL QueryParameters) and no X++ declares or passes one; there is no RDL <Code> block. designStyle=\"GroupedWithTotals\" groups on the first non-numeric field and sums every field whose dataType is System.Double/Int32/Int64 - passing structured fields[] with explicit edt AND dataType is what steers that; fieldsHint alone cannot express it.\n\nMULTI-LINE ATTRIBUTE BLOCKS SURVIVED THE WRITE. The DP declaration on disk still carries the class attribute as a three-line block - [ / SRSReportParameterAttribute(classStr(ConDemoCreditLimitReportContract)) / ] - and the getter still carries [SRSReportDataSetAttribute(tableStr(ConDemoCreditLimitReportTmp))]. Both survived a subsequent d365fo_file(modify, replace-code) on a different method of the same class. The just-fixed write path holds.\n\nDEFECT 1 (TOOL_DEFECT, generator, design-level - the subject of this very case). With caption=\"@SYS313987\" the scaffold labels the metadata correctly (tmp table Label, menu item Label, design Caption all get the label id) but writes the RDL title textbox as a LITERAL: Textbox Name=\"ReportTitle\" with Value @SYS313987. Shipped RDL references a label as =Labels!@SYS313987 (verified: ApplicationSuite/Foundation AxReport files contain =Labels!@SYS... and =Labels!@Module:Id forms). A bare @Id in a Value is not label-transformed at deploy, so the rendered header prints the raw label id to the user. The RDL column-header cells have the same shape one level down: Value CustGroup, the field NAME as text, where shipped designs use =Labels!@... The op-spec already documents the either/or (\"prose titles the RDL header only\"), i.e. today a label id gets you labelled metadata plus a broken title, and prose gets you a readable title plus unlabelled objects. Both halves are available from one input; nothing forces the trade.\n\nDEFECT 2 (TOOL_DEFECT, write path). There is NO supported way to correct an AxReport after generation: d365fo_file(action=\"modify\", objectType=\"report\", operation=\"replace-code\") is rejected outright - \"Operation 'replace-code' on object type 'report' is not supported by the bridge\" - and no report-shaped operation exists in the modify enum. Combined with defect 1 that leaves the grounded path with no way to produce a correct RDL title at all, which is why this golden freezes the literal-@Id title: it is the best the tool can currently emit.\n\nDEFECT 3 (TOOL_DEFECT, generator, functional). The scaffold gives the tmp table a UNIQUE single-field index over the FIRST field and points ClusteredIndex/PrimaryIndex/ReplacementKey at it. For designStyle=\"GroupedWithTotals\" the first field is by construction the GROUP field, i.e. the one value that must repeat across rows - so the generated table can only ever hold one row per group and processReport() would throw a duplicate-key error on the second customer of any group. It builds clean, so nothing catches it. Repaired here through the tool (remove-index + add-index over CustGroup+AccountNum, still unique so the PrimaryIndex/ReplacementKey references stay valid); that repair is what the golden contains.\n\nHARNESS GAP (affects future re-runs, not this score). The RDL carries three per-generation GUIDs inside the CDATA text - rd:DataSourceID, rd:DataSetID, rd:ReportID - and src/eval/oracle/normalize.ts has no GUID masking, while the case ignore globs (**/@Id, **/ModelSaveInfo) cannot reach inside CDATA. Re-running ANY of the five report cases will therefore report a spurious golden mismatch on those three lines. It did not bite here only because this run captured its own golden.\n\nMINOR: (a) the bridge refused replaceCode on the DP with \"oldCode not found\" (whitespace-sensitive match) and this server's XML writer completed the same edit - the fallback worked, but the bridge matcher is stricter than the writer's; (b) get_object_info(options.fieldFilter) treats a comma-separated list as one literal substring and reports 0 of 193 matching rather than splitting it; (c) reports were read via get_object_info(objectType=\"report\") throughout, which works - the known search(type=\"report\") filter defect was not exercised further. (d) ROLLBACK HYGIENE: every d365fo_file(modify) wrote a sibling .backup-<timestamp> file into the AOT folder even with createBackup unset, the REJECTED report replace-code wrote one too (before refusing the operation), and d365fo_file(delete) does not remove them - four .backup files survived the object deletes and had to be swept by hand, or the sandbox would not have been clean.",
+  "suggested_fix_area": "src/tools/smart/generateSmartReport.ts (RDL emission): when `caption` is a label id (starts with @), emit the RDL title textbox as =Labels!<id> instead of the raw id, and do the same for tablix header cells when a field carries a label - the platform label transformation only fires on the =Labels! form, so a bare @Id renders literally. Cheap deterministic unit test, no VM needed: scaffold with caption=\"@SYS313987\" and assert the ReportTitle Value is \"=Labels!@SYS313987\"; scaffold with prose and assert it is the prose. That also dissolves the either/or the op-spec currently documents (\"prose titles the RDL header only\").\n\nsrc/tools/smart/generateSmartReport.ts (index emission): never make the GROUP field a unique single-field index. For designStyle=\"GroupedWithTotals\" the first field repeats by definition; either widen the unique index to (groupField, next distinct field) as this run did through remove-index/add-index, or fall back to a surrogate index. Test: scaffold GroupedWithTotals and assert the index either allows duplicates or carries >= 2 fields.\n\nsrc/tools/d365foFile (modify): give AxReport at least one supported operation, or let replace-code fall back to this server's XML writer for reports the way it already does for classes when the bridge declines. Today the refusal is a hard stop with no alternative path, which forces a hand edit and so breaks the grounded-only rule for anything inside an AxReport.\n\nsrc/eval/oracle/normalize.ts: mask GUIDs (the rd:DataSourceID / rd:DataSetID / rd:ReportID triple, or any 8-4-4-4-12 hex run) before diffing, otherwise every report-case re-run is a false negative on golden_match.",
+  "evidence_refs": [
+    "eval/goldens/L4-ssrs-report-design-rdl/ (6 artifacts, captured this run)",
+    "eval/goldens/L4-ssrs-report-design-rdl/README.md",
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxReport/ConDemoCreditLimitReport.xml (rolled back after the run)",
+    "design verified on disk: i:type=\"AxReportPrecisionDesign\", design Name \"Report\" (matches ssrsReportStr in the controller), =Parameters!AX_CompanyName.Value in the page header and in QueryParameters, =Fields!{CustGroup,AccountNum,CreditRating,CreditMax}.Value, =Sum(Fields!CreditMax.Value) twice (group header + grand total), GroupExpression =Fields!CustGroup.Value, zero Code blocks",
+    "ATTRIBUTE SURVIVAL: AxClass/ConDemoCreditLimitReportDP.xml Declaration holds the 3-line block [ / SRSReportParameterAttribute(classStr(ConDemoCreditLimitReportContract)) / ] and the getter holds [SRSReportDataSetAttribute(tableStr(ConDemoCreditLimitReportTmp))], both still present after a replace-code modify on processReport",
+    "incremental build 89s: xppc 0 errors / 0 warnings; model-wide bpCheck 16 warnings / 0 errors (6 of them on the fixture ConDemoNoteHeader)",
+    "full build (target) 34s: xppc 0 errors / 0 warnings",
+    "run_bp_check objects=[tmp table + 3 classes + report]: 9 warnings / 0 errors, all on ConDemoCreditLimitReportTmp (EDTNotMigrated x2, PrimaryKeyEditable x2, PrimaryKeyNotMandatory x2, MissingFormRef, BPUpgradeMetadataEDTRelation x2); plus 1 BPErrorMenuItemNotCoveredByPrivilege on the menu item = 10 case-scoped",
+    "DEFECT 1 repro: generate_object(scaffold, report, params.caption=\"@SYS313987\") produced a ReportTitle textbox whose Value is the literal @SYS313987, while grep over ApplicationSuite/Foundation/AxReport/*.xml yields =LABELS!@SYS131208, =Labels!@AccountsPayable:Balance and dozens more of the =Labels! form",
+    "DEFECT 2 repro: d365fo_file(action=\"modify\", objectType=\"report\", operation=\"replace-code\") returned \"Operation 'replace-code' on object type 'report' is not supported by the bridge\"",
+    "DEFECT 3 repro: as generated, AxTable/ConDemoCreditLimitReportTmp.xml had index ConDemoCreditLimitReportTmpIdx = [CustGroup] with AllowDuplicates=No and AlternateKey=Yes, and ClusteredIndex/PrimaryIndex/ReplacementKey all pointing at it - on a GroupedWithTotals design CustGroup is the repeating group key",
+    "HARNESS GAP evidence: eval/goldens/L4-ssrs-report-multidataset/ConDemoNoteReportMulti.metadata.xml holds rd:ReportID 26b3e577-7303-47a5-aebe-d7b182ca6431 and L4-ssrs-report-preprocess holds d2d6271c-45e4-43a3-9f27-57ed44b29379; a grep for guid/ReportID across src/eval/oracle/*.ts returns nothing",
+    "EDTs and fields verified this run: CustGroupId, CustAccount, CustCreditRating, CustCreditMaxMST (all Foundation); CustTable.CreditMax (CustCreditMaxMST, Real), CustTable.CreditRating (CustCreditRating)",
+    "rollback residue: AxClass/ConDemoCreditLimitReportDP.xml.backup-2026-08-31T11-38-45-202, AxTable/...backup-11-38-54-849, AxTable/...backup-11-38-55-032 and AxReport/ConDemoCreditLimitReport.xml.backup-2026-08-31T11-39-42-427 (this last one written by the replace-code call that was then REJECTED) all survived d365fo_file(action=delete) and were swept manually"
+  ]
+}

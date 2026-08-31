@@ -1,0 +1,22 @@
+{
+  "id": "L2-lookup-reference-multiselect",
+  "title": "Lookups: the control decides the class, and the compiler enforces it",
+  "tier": 2,
+  "instruction": "Ground with get_knowledge(topic=\"lookups\"). In the sandbox model write a form-control-extension handler class that replaces a standard form's lookup WITHOUT overlayering. It must show three things the compiler is strict about. (1) A string control takes SysTableLookup::newParameters(tableNum(CustGroup), _control), addLookupfield in display order, parmQuery for filtering, performFormLookup last. (2) A REFERENCE (RefRecId) control takes SysReferenceTableLookup::newParameters, whose second argument must be a FormReferenceControl - passing a FormStringControl is the compile error \"Type mismatch in 'SysReferenceTableLookup.newParameters' argument 2. The expected type is 'FormReferenceControl'\", and writing it that way FAILS this case. (3) The binding uses _control.registerOverrideMethod(methodStr(FormStringControl, lookup), methodStr(<your class>, <handler>), this) where the handler is an INSTANCE method - a static one is refused with \"The intrinsic argument '<name>' must not specify a static method\", and that also FAILS this case. Build with zero errors and zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-lookup-reference-multiselect/",
+  "golden_pending": false,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "lookup",
+    "form-extension",
+    "registeroverridemethod",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

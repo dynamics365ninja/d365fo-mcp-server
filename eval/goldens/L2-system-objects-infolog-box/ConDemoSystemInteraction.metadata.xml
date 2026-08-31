@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoSystemInteraction</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Demonstrates the non-form interaction objects: the infolog (message prefix, line counter and
+/// discarding probe messages) and a Box question that must never block a batch job.
+/// </summary>
+class ConDemoSystemInteraction
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>countInvalidQuietly</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Validates every value in the container and discards the messages the validation logged.
+    /// </summary>
+    /// <param name = "_values">The values to validate.</param>
+    /// <returns>The number of values that failed validation.</returns>
+    /// <remarks>
+    /// The infolog position is read with infologLine() on the Global class. The line method on the
+    /// Info class - infolog.line() - is obsolete and the compiler reports it as such.
+    /// </remarks>
+    public int countInvalidQuietly(container _values)
+    {
+        int     lineBeforeProbe = infologLine();
+        int     invalidCount;
+        int     i;
+        str     value;
+
+        // setPrefix nests: every message logged below this point carries the prefix.
+        setPrefix("@ConDemo:SystemInteractionPrefix");
+
+        for (i = 1; i <= conLen(_values); i++)
+        {
+            value = conPeek(_values, i);
+
+            if (!this.isValidValue(value))
+            {
+                warning(strFmt("@ConDemo:SystemInteractionValueEmpty", i));
+                invalidCount++;
+            }
+        }
+
+        // The messages above were diagnostics only - drop everything logged after the entry point.
+        infolog.clear(lineBeforeProbe);
+
+        return invalidCount;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>confirmContinue</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Asks the operator whether to continue; an unattended run never blocks on the dialog.
+    /// </summary>
+    /// <param name = "_invalidCount">The number of values that failed validation.</param>
+    /// <returns>true when the run may continue; otherwise false.</returns>
+    public boolean confirmContinue(int _invalidCount)
+    {
+        DialogButton    answer;
+
+        if (isRunningOnBatch())
+        {
+            // A Box blocks a batch job forever - an unattended run decides without asking.
+            info(strFmt("@ConDemo:SystemInteractionUnattended", _invalidCount));
+            return true;
+        }
+
+        answer = Box::yesNo(strFmt("@ConDemo:SystemInteractionConfirmContinue", _invalidCount),
+            DialogButton::No);
+
+        return answer == DialogButton::Yes;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Runs the probe and the confirmation together.
+    /// </summary>
+    /// <param name = "_values">The values to validate.</param>
+    /// <returns>true when the caller may continue; otherwise false.</returns>
+    public boolean run(container _values)
+    {
+        int invalidCount = this.countInvalidQuietly(_values);
+
+        if (invalidCount == 0)
+        {
+            return true;
+        }
+
+        return this.confirmContinue(invalidCount);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isValidValue</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Determines whether a single value is valid.
+    /// </summary>
+    /// <param name = "_value">The value to check.</param>
+    /// <returns>true when the value is not empty; otherwise false.</returns>
+    protected boolean isValidValue(str _value)
+    {
+        return _value != '';
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,288 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoLegacyNoteJob</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Archives the demo notes whose subject matches a filter that is entered in the dialog of the job.
+/// </summary>
+/// <remarks>
+/// This class is deliberately written on the LEGACY RunBase / RunBaseBatch framework, because that is
+/// what the platform is still full of and what a maintenance change has to match.
+///
+/// NEW code uses the SysOperation framework instead: SysOperation keeps the parameters in a data
+/// contract whose properties are serialized by the framework, so there is no hand written
+/// pack() / unpack() container and therefore no #CurrentVersion to bump - adding a parameter cannot
+/// silently feed an old container into a new list. SysOperation also separates contract, controller
+/// and service, which makes the operation callable outside the dialog - from a batch, from a test or
+/// from a custom service - instead of being welded to a RunBase prompt.
+///
+/// The reverse is NOT true: an existing RunBase class must not be ported to SysOperation just to
+/// modernize it, because the batch jobs that are already saved carry the packed RunBase container and
+/// that container cannot be deserialized into a contract.
+/// </remarks>
+class ConDemoLegacyNoteJob extends RunBaseBatch
+{
+    DialogRunbase   dialog;
+
+    DialogField     dialogSubjectFilter;
+    DialogField     dialogSimulate;
+
+    Name            subjectFilter;
+    NoYes           simulate;
+
+    // The packed state travels as a container and its SHAPE is a contract with every batch record
+    // that is already saved. simulate was added after the first release, so #CurrentVersion was
+    // bumped from 1 to 2 and the version 1 list is still readable - see unpack().
+    #define.CurrentVersion(2)
+    #define.Version1(1)
+
+    #localmacro.CurrentList
+        subjectFilter,
+        simulate
+    #endmacro
+
+    #localmacro.CurrentListV1
+        subjectFilter
+    #endmacro
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>dialog</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Builds the dialog of the job and keeps the <c>DialogField</c> objects that carry the parameters.
+    /// </summary>
+    /// <returns>
+    /// The dialog object that the RunBase framework shows to the user.
+    /// </returns>
+    public Object dialog()
+    {
+        dialog = new DialogRunbase(ConDemoLegacyNoteJob::description(), this);
+
+        dialogSubjectFilter = dialog.addFieldValue(extendedTypeStr(Name), subjectFilter, "@ConDemo:NoteArchiveSubjectFilter");
+        dialogSimulate = dialog.addFieldValue(enumStr(NoYes), simulate, "@ConDemo:NoteArchiveSimulate");
+
+        return dialog;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getFromDialog</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Reads the values that the user entered back from the dialog fields into the class state.
+    /// </summary>
+    /// <returns>
+    /// true when the values were read and the base class accepted the dialog; otherwise false.
+    /// </returns>
+    public boolean getFromDialog()
+    {
+        subjectFilter = dialogSubjectFilter.value();
+        simulate = dialogSimulate.value();
+
+        return super();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Checks that the parameters of the job are complete before the job is allowed to run.
+    /// </summary>
+    /// <param name = "_calledFrom">
+    /// The object that requested the validation; optional, passed on to the base class.
+    /// </param>
+    /// <returns>
+    /// true when the parameters are complete; otherwise false, and the reason is in the infolog.
+    /// </returns>
+    public boolean validate(Object _calledFrom = null)
+    {
+        boolean ret = super(_calledFrom);
+
+        if (!subjectFilter)
+        {
+            ret = checkFailed("@ConDemo:NoteArchiveNoFilter");
+        }
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Counts the demo notes that match the subject filter and deletes them unless the job simulates.
+    /// </summary>
+    public void run()
+    {
+        ConDemoNoteHeader   noteHeader;
+        int                 matched;
+
+        ttsbegin;
+
+        while select forupdate noteHeader
+            where noteHeader.Subject like subjectFilter
+        {
+            matched++;
+
+            if (simulate == NoYes::No)
+            {
+                noteHeader.delete();
+            }
+        }
+
+        ttscommit;
+
+        info(strFmt("@ConDemo:NoteArchiveResult", matched, subjectFilter));
+
+        if (simulate == NoYes::Yes)
+        {
+            info("@ConDemo:NoteArchiveSimulated");
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canRunInNewSession</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Describes whether the job is designed to be executed in a new session.
+    /// </summary>
+    /// <returns>
+    /// false: the job reads its parameters from the packed container and runs in the calling session.
+    /// </returns>
+    /// <remarks>
+    /// <c>RunBase.canRunInNewSession</c> throws <c>Error::missingOverride</c>, so every RunBase subclass
+    /// has to answer this - the best practice check BPUpgradeCodeRunBaseMissingMethod reports the class
+    /// when it does not.
+    /// </remarks>
+    protected boolean canRunInNewSession()
+    {
+        return false;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pack</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Packs the parameters of the job into the container that carries them across the batch boundary.
+    /// </summary>
+    /// <returns>
+    /// A container that holds the current version number followed by the current parameter list.
+    /// </returns>
+    public container pack()
+    {
+        return [#CurrentVersion, #CurrentList];
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unpack</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Restores the parameters of the job from a packed container, honoring the version it was written with.
+    /// </summary>
+    /// <param name = "_packedClass">
+    /// The container that was produced by <c>pack</c>, possibly by an older version of this class.
+    /// </param>
+    /// <returns>
+    /// true when the container was understood and the parameters were restored; false when the container
+    /// carries a version this class does not know, in which case no parameter is assigned.
+    /// </returns>
+    public boolean unpack(container _packedClass)
+    {
+        Integer version = conPeek(_packedClass, 1);
+
+        switch (version)
+        {
+            case #CurrentVersion:
+                [version, #CurrentList] = _packedClass;
+                break;
+
+            case #Version1:
+                // A version 1 container carries the version 1 list only. It is read into the version 1
+                // fields and the field that version 2 added keeps its default - a version 1 container is
+                // never assigned to #CurrentList.
+                [version, #CurrentListV1] = _packedClass;
+                simulate = NoYes::No;
+                break;
+
+            default:
+                // An unknown version is refused rather than assigned blindly: assigning it would read an
+                // old container into the new list and the job would then run with silently wrong
+                // parameters instead of failing.
+                return false;
+        }
+
+        return true;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>description</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the description of the job, used as the caption of the dialog and of the batch task.
+    /// </summary>
+    /// <returns>
+    /// The label that describes what the job does.
+    /// </returns>
+    public static ClassDescription description()
+    {
+        return "@ConDemo:NoteArchiveCaption";
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>construct</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Creates an instance of the job.
+    /// </summary>
+    /// <returns>
+    /// A new, unparameterized instance of <c>ConDemoLegacyNoteJob</c>.
+    /// </returns>
+    public static ConDemoLegacyNoteJob construct()
+    {
+        return new ConDemoLegacyNoteJob();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Entry point of the job: prompts for the parameters and runs the operation when the user confirms.
+    /// </summary>
+    /// <param name = "_args">
+    /// The arguments the menu item passed in; not used by this job.
+    /// </param>
+    public static void main(Args _args)
+    {
+        ConDemoLegacyNoteJob noteJob = ConDemoLegacyNoteJob::construct();
+
+        if (noteJob.prompt())
+        {
+            noteJob.runOperation();
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

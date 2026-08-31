@@ -1,0 +1,61 @@
+{
+  "run_id": "2026-08-31T11__L4-ssrs-report-print-destinations__265cf74",
+  "case_id": "L4-ssrs-report-print-destinations",
+  "tier": 4,
+  "timestamp": "2026-08-31T11:27:02.553Z",
+  "server_git_sha": "265cf74",
+  "generated_artifacts": [
+    "ConDemoReportDestinationController.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 4
+  },
+  "classification": "TOOL_DEFECT",
+  "platform_build": "xppc 7.0.7996.33",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "Scored outcome is a clean sweep on every dimension: build 1 / bp_clean 1 / golden_match 1, on the FIRST write and the FIRST build, with ZERO fix cycles. validate_code(mode=both) was clean before the write (35 syntax rule groups, 27 references resolved) and it stayed truthful: xppc reported 0 errors / 0 warnings on the incremental build AND on the full build, and run_bp_check scoped to the class alone processed 1 element with 0 warnings / 0 errors. The 6 BP warnings the model-wide bpCheck reported are all on the pre-existing FIXTURE table ConDemoNoteHeader and none on the case artifact, hence --bp-warnings 0.\n\nKNOWLEDGE QUALITY (the topic under test). get_knowledge(topic=\"report-print-destinations\") is ACCURATE and sufficient to solve the case without a single correction. Every API it names was independently re-read from the AOT this run and every one checked out: SRSPrintDestinationSettings.printMediumType / fileFormat / fileName / overwriteFile / parmPrintToArchive / parmEMailContract, SrsReportEMailDataContract.parmTo / parmCc / parmSubject / parmBody / parmAttachmentFileFormat / removeInvalidEmails, SrsReportDataContract.parmPrintSettings, and SrsReportRunController.preRunModifyContract (protected void, empty body in the base). The enum member lists are exact: SRSPrintMediumType has precisely Screen/Printer/File/Email/Custom/Archive (extensible) and SRSReportFileFormat precisely CSV/Excel/HTML4_0/Image/MHTML/PDF/XML/Word (not extensible), so the trap this case is built around - inventing a member - is fully defended by the topic text. Two additions would make it stronger, neither of which cost a cycle here:\n  (a) It does not say that parmEMailContract() LAZILY CONSTRUCTS the SrsReportEMailDataContract. SRSPrintDestinationSettings.new() never initialises emailContract - reading the parm method source is the only way to find the if (!emailContract) branch that news one and seeds it from emailTo / emailCc / emailSubject / emailBody / emailAttachmentFileFormat. An agent that does not read that source has no way to know the getter is safe on a fresh settings object, and the defensive alternative (new a contract, push it in) would silently DISCARD the dialog values the topic promises will survive.\n  (b) The topic example fetches parmPrintSettings() in the declaration initialiser, i.e. before super(). That compiles, but declare / super() / assign is the safer shape and is what this golden uses, because super() inside preRunModifyContract is where the framework finishes composing the contract.\n\nTOOL_DEFECT 1 (new; high impact on grounding; deterministic minimal repro). search(type=\"report\") DOES NOT FILTER TO REPORTS - the AOT report type is unreachable through the typed bridge path, and what comes back instead is a confident list of unrelated types. Four probes this run, all against an index that demonstrably CONTAINS the reports:\n  - search(query=\"FM\", type=\"report\") returned 10 results, ALL tables (WHSSourceSystem..., UnitOfMeasure...). Zero reports.\n  - search(query=\"Cust\", type=\"report\") returned 8 results, ALL tables (SysWorkloadSecurity..., ServicesCustomer, SubBill...). Zero reports.\n  - search(query=\"FMCustomer\", type=\"report\") returned 15 results: 5 tables plus 10 classes and EDTs. FleetManagement ships exactly two reports (FMCustomerList, FMRentalsByCustomer, both present in FleetManagement/AxReport/). NEITHER was returned.\n  - search(query=\"RentalsByCustomer\", type=\"report\") returned 2 results, both QUERIES (FMRentalsByCustomer, FMRentalsByCustomerState). FMRentalsByCustomer exists as BOTH a query and a report; asked for reports, the tool returned the query and suppressed the report.\nThe reports ARE indexed: the same search UNTYPED, search(query=\"FMRentalsByCustomer\"), returns a REPORT (1) section containing FMRentalsByCustomer alongside the two queries. So this is not a missing index, it is the type filter. Nor is the filter simply ignored wholesale, because search(query=\"FMCustomerList\", type=\"table\") correctly returns nothing - other type tokens DO filter. The shape that fits all of it: the bridge type map has no entry for the report type, so the bridge query runs UNFILTERED (returning whatever the generic name match hits, dominated by tables), and the only reason a report ever appears under type=\"report\" is the SQLite exact-name fallback appended afterwards. That is precisely what happened on search(query=\"FMCustomerList\", type=\"report\"), where the tool printed its own tell: \"1 exact match(es) came from the SQLite symbol index - the bridge result window (maxResults=10) did not contain them\".\nImpact on the grounded path: this case needs a real report name for ssrsReportStr(). The typed search could not produce one, and gave no signal that the filter had not been applied. FMCustomerList was recovered only by listing FleetManagement/FleetManagement/AxReport/ on disk - that is, by LEAVING the grounded path, which is exactly the TOOL_DEFECT signal this loop exists to catch. Scope is narrow but sharp: get_object_info(objectType=\"report\", name=\"FMCustomerList\") then worked perfectly (1 dataset, both designs, design name Report confirmed for ssrsReportStr), so an agent that already knows a report name is fine and only an agent DISCOVERING one is blocked.\n\nREGRESSION CHECKS REQUESTED FOR THIS SESSION - none reappeared:\n  - Multi-line method attributes surviving create: NOT EXERCISED. The artifact legitimately carries no method-level attributes (an SrsReportRunController subclass needs none), so this run neither confirms nor contradicts the fix landed minutes earlier. What the written XML does show, in that same splitter neighbourhood, is that all 10 methods and all 11 AUTHOR-WRITTEN /// doc blocks survived verbatim - the splitter did NOT replace them with generated docs, which the L3-sysoperation-query-parameter-batch record had suspected it of doing.\n  - unknown-type on a class calling its own statics: did not fire. validate_code(references) resolved 27 of 27 with zero unresolved, including main() constructing its own type by name.\n  - Kernel enums through unknown-static-member / unknown-intrinsic-target: did not fire, but this is weak evidence - the case needed no kernel-enum intrinsic.\n\nMINOR, known and unchanged: d365fo_file(action=\"create\") again reported \"Not added to a project (no projectPath resolved)\". Harmless for a model-wide xppc build, but it is now the reported outcome of every create in every run of this sweep, so it has stopped carrying information and should either be fixed or stop being emitted as a warning.",
+  "suggested_fix_area": "src (search tool, bridge type-filter map): add the AOT report type, and audit the map for any other AOT type it lacks - the same shape would silently affect every type token the bridge does not know. Failing fast beats the current behaviour: when a requested type token has no bridge mapping, either route the whole query to the SQLite index (which types reports correctly - the untyped search returns them under a REPORT heading) or return an explicit \"type not supported on the bridge path\" note, instead of unfiltered results of other types presented as if they were filtered. The regression test is cheap and deterministic on any install: search(query=\"FMRentalsByCustomer\", type=\"report\") must return the FleetManagement REPORT and must NOT return the same-named QUERY.\nsrc/knowledge topic report-print-destinations: (1) state that parmEMailContract() lazily constructs the SrsReportEMailDataContract and seeds it from the emailTo / emailCc / emailSubject / emailBody / emailAttachmentFileFormat already on the settings, so calling the getter on a fresh SRSPrintDestinationSettings is both safe and the only way to keep the dialog values - and warn explicitly against newing a contract and pushing it in, which discards them. (2) In the code example, move the parmPrintSettings() fetch to AFTER super() (declare, super(), assign) so the sample does not teach reading the composite before the framework has finished composing it.",
+  "evidence_refs": [
+    "eval/goldens/L4-ssrs-report-print-destinations/ConDemoReportDestinationController.metadata.xml",
+    "eval/goldens/L4-ssrs-report-print-destinations/README.md",
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxClass/ConDemoReportDestinationController.xml (rolled back after the run)",
+    "incremental build 92s: xppc 0 errors / 0 warnings; bpCheck 6 warnings, ALL on the fixture table ConDemoNoteHeader",
+    "full build (target) 33s: xppc 0 errors / 0 warnings",
+    "run_bp_check objects=[class:ConDemoReportDestinationController]: 1 element processed, 0 warnings / 0 errors",
+    "validate_code(mode=both) before the write: 35 syntax rule groups clean, 27 of 27 references resolved",
+    "TOOL_DEFECT repro A: search(query=\"FMRentalsByCustomer\", type=\"report\") returns 2 QUERIES and no report; the same search untyped returns REPORT (1) FMRentalsByCustomer plus the 2 queries",
+    "TOOL_DEFECT repro B: search(query=\"FM\", type=\"report\") returns 10 results all TABLES; search(query=\"Cust\", type=\"report\") returns 8 results all TABLES",
+    "K:/AosService/PackagesLocalDirectory/FleetManagement/FleetManagement/AxReport/ holds FMCustomerList.xml and FMRentalsByCustomer.xml - the two reports search could not surface",
+    "signatures verified this run: SRSPrintDestinationSettings.parmEMailContract (lazy construct), SRSPrintDestinationSettings.new (emailContract NOT initialised), SrsReportRunController.preRunModifyContract (protected void, empty base), SRSPrintMediumType (6 values), SRSReportFileFormat (8 values)"
+  ]
+}

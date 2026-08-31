@@ -54,9 +54,16 @@ const CodeGenArgsSchema = z.object({
     ),
   testMethods: z.array(z.string()).optional()
     .describe(
-      'For the systest pattern: the target class methods to write a test for. ' +
+      'For the systest pattern: the target methods to write a test for. ' +
       'One [SysTestMethod] per entry, each failing until its assertion is written. ' +
       'Read them from get_object_info(objectType="class", options:{members:"names"}).'
+    ),
+  testTargetType: z.enum(['class', 'table']).optional()
+    .describe(
+      'For the systest pattern: what `name` denotes. "table" emits the buffer-based shape — ' +
+      'initValue(), assertFalse(buffer.validateWrite()) and assertExpectedInfoLogMessage() — ' +
+      'which is what a table CoC rule (validateWrite/validateField/insert/update) needs. ' +
+      'Defaults to "class". prepare(mode="test") reports which one the target is.'
     ),
   targetObject: z.string().optional()
     .describe('For menu-item pattern: target form/class/report name'),
@@ -522,6 +529,7 @@ final class ${className}
  */
 function sysTestTemplate(targetClass: string, methods: string[]): string {
   const testFor = (method: string): string => {
+    // (class targets — the table shape is sysTestTableTemplate below)
     const cap = method.charAt(0).toUpperCase() + method.slice(1);
     return `
     /// <summary>
@@ -582,6 +590,154 @@ ${bodies}
         this.fail('testRejectsInvalidInput is not implemented yet.');
     }
 }`;
+}
+
+/**
+ * SysTest case for a TABLE method — the shape the daily loop actually needs.
+ *
+ * The class template above cannot express it. A table's validation rules are not
+ * reached through `new X()`: they run on a buffer, they answer with a boolean,
+ * and they say why they refused through the infolog rather than by throwing. So
+ * a test for `validateWrite` arranges a buffer, calls the method, and asserts
+ * BOTH halves — the verdict and the message — or it passes for the wrong reason.
+ *
+ * Across 1,593 real MCP calls the single most-requested X++ topic was the table
+ * CoC contract (validateWrite / next placement / checkFailed / orig()), and this
+ * was the one thing the TDD path could not scaffold: both `prepare(mode="test")`
+ * and this generator accepted classes only.
+ *
+ * Every construct below was compiled on the VM before it was written here
+ * (`scripts/oracles/probes/coverage-v3b.ts`, probe `TableMethodTest`):
+ *  - `UtilElementType::Table` is the right second argument to SysTestTarget;
+ *  - `assertExpectedInfoLogMessage(_infoMessage, _message)` exists on SysTestCase
+ *    and is called AFTER the act, because it scans the infolog for the text —
+ *    which is the resolved LABEL TEXT, not the "@Label:Id" the code passes;
+ *  - a buffer needs `initValue()` and no insert: validation runs on an unsaved row.
+ */
+function sysTestTableTemplate(targetTable: string, methods: string[]): string {
+  /** Validation methods answer with a boolean AND an infolog line. */
+  const VALIDATION = new Set(['validatewrite', 'validatefield', 'validatedelete']);
+  /** Write methods need a transaction and a re-read to prove anything. */
+  const WRITE = new Set(['insert', 'update', 'delete']);
+
+  const testFor = (method: string): string => {
+    const cap = method.charAt(0).toUpperCase() + method.slice(1);
+    const lower = method.toLowerCase();
+
+    if (VALIDATION.has(lower)) {
+      const arg = lower === 'validatefield' ? `fieldNum(${targetTable}, <Field>)` : '';
+      return `
+    /// <summary>
+    /// TODO: name the rule this pins down — "rejects a downgrade", not "tests ${method}".
+    /// </summary>
+    [SysTestMethod]
+    public void test${cap}Rejects()
+    {
+        // Arrange — an unsaved buffer is enough; validation does not need a row.
+        ${targetTable} ${lcFirst(targetTable)};
+
+        ${lcFirst(targetTable)}.initValue();
+        // TODO: set the fields that make the rule fire, and only those.
+
+        // Act + Assert — the verdict…
+        this.assertFalse(${lcFirst(targetTable)}.${method}(${arg}), '${method} must reject this row');
+
+        // …and the reason. Pass the RESOLVED label text: the assertion scans the
+        // infolog, which holds the text, not the "@Label:Id" the rule passed.
+        this.assertExpectedInfoLogMessage('TODO: the text the rule writes');
+    }
+
+    /// <summary>
+    /// The other half: a row that must be ACCEPTED. Without it a rule that
+    /// refuses everything passes the test above.
+    /// </summary>
+    [SysTestMethod]
+    public void test${cap}Accepts()
+    {
+        ${targetTable} ${lcFirst(targetTable)};
+
+        ${lcFirst(targetTable)}.initValue();
+        // TODO: set a valid combination.
+
+        this.assertTrue(${lcFirst(targetTable)}.${method}(${arg}), '${method} must accept a valid row');
+    }
+`;
+    }
+
+    if (WRITE.has(lower)) {
+      return `
+    /// <summary>
+    /// TODO: state what ${method}() must do beyond writing the row.
+    /// </summary>
+    [SysTestMethod]
+    public void test${cap}()
+    {
+        ${targetTable} ${lcFirst(targetTable)};
+        ${targetTable} reread;
+
+        ttsbegin;
+        ${lcFirst(targetTable)}.initValue();
+        // TODO: set the fields the logic reads.
+        ${lcFirst(targetTable)}.${method}();
+        ttscommit;
+
+        // Prove it from the DATABASE, not from the buffer in hand.
+        select firstonly reread
+            where reread.RecId == ${lcFirst(targetTable)}.RecId;
+
+        // TODO: assert what ${method}() defaulted, stamped or cascaded.
+        this.fail('test${cap} is not implemented yet.');
+    }
+`;
+    }
+
+    return `
+    /// <summary>
+    /// TODO: state the behaviour this pins down, in one sentence.
+    /// </summary>
+    [SysTestMethod]
+    public void test${cap}()
+    {
+        ${targetTable} ${lcFirst(targetTable)};
+
+        ${lcFirst(targetTable)}.initValue();
+        // TODO: arrange the fields ${method}() reads, then call it.
+
+        // TODO: replace with the assertion this test exists for.
+        this.fail('test${cap} is not implemented yet.');
+    }
+`;
+  };
+
+  const bodies = (methods.length > 0 ? methods : ['validateWrite']).map(testFor).join('');
+
+  return `
+/// <summary>
+/// Unit tests for the table methods of <c>${targetTable}</c>.
+/// </summary>
+/// <remarks>
+/// Each test runs in its own transaction, which the framework rolls back — rows
+/// created here need no cleanup. Table VALIDATION runs on an unsaved buffer, so
+/// most of these tests never touch the database at all.
+/// </remarks>
+[SysTestTarget(tableStr(${targetTable}), UtilElementType::Table)]
+class ${targetTable}Test extends SysTestCase
+{
+    /// <summary>
+    /// Runs before EACH test method. setUpTestCase() runs once for the class.
+    /// </summary>
+    public void setUp()
+    {
+        super();
+
+        // TODO: arrange shared fixtures here, or delete this method.
+    }
+${bodies}}`;
+}
+
+/** `CustTable` → `custTable`, the buffer name the platform's own code uses. */
+function lcFirst(name: string): string {
+  return name.charAt(0).toLowerCase() + name.slice(1);
 }
 
 const extensionTemplates: Record<string, (baseName: string, prefix: string) => string> = {
@@ -2374,19 +2530,32 @@ export async function codeGenTool(request: CallToolRequest) {
         }
       }
     } else if (args.pattern === 'systest') {
-      // name is the TARGET class; the test class is named after it. No prefix is
-      // applied — the target already carries one, and <Target>Test is the naming
-      // the platform's own tests use.
+      // name is the TARGET (class or table); the test class is named after it. No
+      // prefix is applied — the target already carries one, and <Target>Test is
+      // the naming the platform's own tests use.
       const targetClass = args.name.trim();
       const methods = (args.testMethods ?? []).map(m => m.trim()).filter(Boolean);
-      code = sysTestTemplate(targetClass, methods);
+      const isTable = args.testTargetType === 'table';
+      code = isTable
+        ? sysTestTableTemplate(targetClass, methods)
+        : sysTestTemplate(targetClass, methods);
       displayName = `${targetClass}Test`;
       namingNote =
         `📌 **Generated:** \`${targetClass}Test extends SysTestCase\` — one [SysTestMethod] per ` +
-        `target method${methods.length ? ` (${methods.join(', ')})` : ''}, plus the expected-exception shape.\n\n` +
+        `target method${methods.length ? ` (${methods.join(', ')})` : ''}, ` +
+        (isTable
+          ? 'against a **table buffer**: `initValue()`, the boolean verdict, and the infolog line the ' +
+            'rule writes. A validation test gets a rejecting AND an accepting case — a rule that ' +
+            'refuses everything passes the rejecting one.'
+          : 'plus the expected-exception shape.') + '\n\n' +
+        (isTable
+          ? '⚠️ `assertExpectedInfoLogMessage` scans the infolog for TEXT. Pass the resolved label ' +
+            'text, not the `"@Label:Id"` the rule passes to `checkFailed` — the infolog holds the ' +
+            'resolved string, so the id never matches.\n\n'
+          : '') +
         `🔴 **Every test fails as written.** That is the point: run it first and watch it fail, so a ` +
         `later pass means the behaviour arrived rather than the assertion being empty. Replace each ` +
-        `\`this.fail(...)\` with the assertion the test exists for.\n\n` +
+        `\`this.fail(...)\`${isTable ? ' and each TODO' : ''} with the assertion the test exists for.\n\n` +
         `**The cycle:** \`d365fo_file(action="create", objectType="class")\` → ` +
         `\`build_d365fo_project\` (must COMPILE — red means a failing assertion, not a broken file) → ` +
         `\`run_systest_class(className="${targetClass}Test")\` (expect failures) → implement → build → ` +

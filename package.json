@@ -64,7 +64,12 @@
     "eval:fixtures": "tsx src/eval/fixtures/cli.ts",
     "eval:flakes": "tsx src/eval/improver/flakeDetectionCli.ts",
     "eval:mine": "tsx src/eval/improver/caseMiningCli.ts",
-    "eval:brief": "tsx src/eval/improver/fixBriefCli.ts"
+    "eval:brief": "tsx src/eval/improver/fixBriefCli.ts",
+    "oracle:sweep": "tsx scripts/oracles/validatorSweep.ts",
+    "oracle:census": "tsx scripts/oracles/census.ts",
+    "oracle:probe": "tsx scripts/oracles/xppcProbe.ts",
+    "oracle:members": "tsx scripts/oracles/aotMembers.ts",
+    "oracle:kernel-enums": "tsx scripts/oracles/kernelEnumAudit.ts"
   },
   "keywords": [
     "mcp",

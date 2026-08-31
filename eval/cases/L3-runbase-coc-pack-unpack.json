@@ -1,0 +1,22 @@
+{
+  "id": "L3-runbase-coc-pack-unpack",
+  "title": "Wrapping a RunBase: the packed container and the version bump that is not yours to make",
+  "tier": 3,
+  "instruction": "Ground with get_knowledge(topic=\"deprecated\"). In the sandbox model write a RunBaseBatch subclass with the full lifecycle: dialog() building fields with addFieldValue and keeping the DialogField, getFromDialog() reading them back, validate(Object _calledFrom = null) with checkFailed, run() doing the work, and pack()/unpack() carrying state as a container using #define.CurrentVersion and #localmacro.CurrentList. unpack() must switch on conPeek(_packed, 1) and return false for an unknown version rather than assigning blindly - a version-blind unpack FAILS this case, because it reads an old container into a new list and the job then runs with silently wrong parameters. State in a comment why new code uses SysOperation instead. Build with zero errors and zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L3-runbase-coc-pack-unpack/",
+  "golden_pending": false,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "runbase",
+    "pack",
+    "legacy",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

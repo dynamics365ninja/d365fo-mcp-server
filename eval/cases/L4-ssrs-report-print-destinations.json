@@ -1,0 +1,22 @@
+{
+  "id": "L4-ssrs-report-print-destinations",
+  "title": "Sending a report to a file, an e-mail and the archive from the controller",
+  "tier": 4,
+  "instruction": "Ground with get_knowledge(topic=\"report-print-destinations\"). In the sandbox model write an SrsReportRunController subclass that overrides preRunModifyContract() - after the dialog, before the run, so the user's other choices survive - and sets the print destination from code. Show the file/PDF form (printMediumType(SRSPrintMediumType::File), fileFormat(SRSReportFileFormat::PDF), fileName, overwriteFile), the e-mail form via settings.parmEMailContract() with parmTo/parmSubject/parmAttachmentFileFormat, and parmPrintToArchive for the archive. Use only enum members that exist: the mediums are Screen/Printer/File/Email/Custom/Archive and the formats are CSV/Excel/HTML4_0/Image/MHTML/PDF/XML/Word - inventing one FAILS this case. Do NOT reach for SrsProxy.renderReportToByteArray: it compiles but the compiler answers that SrsProxy is marked InternalUseOnly. Build with zero errors and zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L4-ssrs-report-print-destinations/",
+  "golden_pending": false,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "ssrs",
+    "print-destination",
+    "email",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

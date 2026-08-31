@@ -28,7 +28,104 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
-_Nothing released yet._
+### Added
+- **TDD for a TABLE method — the loop's most-asked task had no red-first path.**
+  Across 1,593 real MCP calls the single most-requested X++ topic was the table
+  Chain of Command contract (`validateWrite`, where `next` goes, `checkFailed` vs
+  `error`, `orig()`): roughly thirty `get_knowledge` calls were variations of that
+  one question. Both `prepare(mode="test")` and
+  `generate_object(pattern="systest")` resolved **classes only**, so the rule a
+  developer most wants to pin down could not be tested through the server at all.
+  `prepare(mode="test", objectName="CustTable.validateWrite")` now resolves
+  tables (dotted form included) and emits the scaffold call with
+  `testTargetType: "table"` already set. The scaffold arranges a buffer with
+  `initValue()`, asserts the boolean verdict **and** the infolog line the rule
+  writes, and adds the ACCEPTING case beside the rejecting one — without it a rule
+  that refuses every row passes its own test. Write methods get a transaction and
+  a re-read from the database. Compiler-verified before it was written
+  (`UtilElementType::Table`, `assertExpectedInfoLogMessage` after the act), and it
+  costs no ListTools bytes: the parameter lives in the op-spec.
+- **Six knowledge topics for constructs nothing could measure**: `lookups`,
+  `global-class-statics`, `system-objects`, `report-print-destinations`,
+  `document-attachments`, `rdl-design-expressions` — plus extensions to
+  `query-object-model` (range vs filter on an outer join, the range expression
+  language, `[QueryRangeFunction]`), `sysoperation` (the packed query parameter),
+  `bp-rules` (`SuppressBPWarning`), `deprecated` (the RunBase lifecycle and its
+  `#CurrentVersion` bump) and `ssrs-rdp-preprocess` (`AX_RdpPreProcessedId`).
+- **The oracle harness is in the repo** (`npm run oracle:sweep|census|probe|members`).
+  The census, the validator sweep and the xppc probe harness had lived only in
+  session scratchpads: the measurements behind the compiler-verified wave could
+  not be re-run. `--dry` runs the sweep against `tests/fixtures/oracles` so CI can
+  hold the zero-error bar with no D365FO install.
+
+### Fixed
+- **Nine defects the golden-capture runs found, and a green 5,650-test suite could
+  not.** Each eval case was implemented on the VM through the grounded tool path,
+  which is the only thing that compares INTENT against OUTPUT. All eight cases run
+  so far passed; the defects are what the runs produced on the way:
+  - `create(class)` **silently dropped every multi-line method attribute block**.
+    Attributes are syntactically optional, so xppc and xppbp stayed green — a data
+    contract with no data members, a SysOperation dialog with no fields, and no
+    message anywhere. It had already corrupted a committed golden
+    (`L3-sysoperation-dialog-attributes` contained none of the five attributes its
+    own README describes); that golden is removed and queued for re-capture, and a
+    blast-radius audit confirmed it was the only one.
+  - A member list **renamed methods out of existence**: the completion formatter
+    printed the signature instead of the name, so `SysQuery::range` appeared as
+    `#ISOCountryRegionCodes` and `RunBaseBatch.dialog()` as a doc-comment sentence.
+    Runs concluded the APIs did not exist and worked around them.
+  - `search(type="report")` **did not filter to reports** — the bridge's type map
+    has no entry for that kind, so the query ran unfiltered and answered with
+    tables and queries. Now enforced adapter-side, for every unmapped type.
+  - `validate_code(mode="references")` reported **code that compiles** as errors:
+    kernel enums (`AccessType`, `MenuItemType`, `JoinMode`) and a class calling its
+    own statics — the only spelling X++ accepts. With `GROUNDING_ENFORCE` on, both
+    would have refused the write.
+  - `get_object_info(form, searchControl)` **did nothing**: implemented on the XML
+    path while the bridge answers first, and every existing test used the
+    explicit-`filePath` branch, which returns before the bridge.
+  - `create(class)` doubled the prefix on any `_Extension` name already carrying
+    one, making `SysQueryRangeUtil_Extension`-shaped names unreachable.
+  - Two refusals **named a parameter the caller cannot send** (`query` on
+    bp-moniker search, `baseObjectName` on `prepare`).
+- **Five knowledge errors, all written in this same wave**, caught by the first
+  independent use of the topics: `attachFile` takes nine arguments, not eight, and
+  the short call compiles while storing the notes as the attachment name;
+  `registerOverrideMethod` lives on the concrete `FormStringControl`, not
+  `FormControl`/`FormReferenceControl`; `SysTableLookup` *does* have
+  `addLookupMethod` (inherited); `infolog.num()` and `setPrefix` are not where the
+  entry said to look for them; and RunBase needs `canRunInNewSession()` plus a
+  retained `#CurrentList<n>` — "bump the version" alone makes saved batch jobs stop
+  running rather than run wrong.
+- **The lesson behind most of them:** "it compiles" is not "it is correct". The
+  `attachFile` error came from a probe that passed eight arguments and built clean.
+  For a call with optional tail parameters the compiler cannot answer the question
+  being asked; read the signature and count. Now stated in the probe harness.
+- **Seven validator false positives on Microsoft's own X++**, found by the first
+  full-install sweep (105,686 files, 615 MB): `ATTR001` on an attribute argument
+  carrying an inline comment (72 hits), `SEL010` on `validTimeState` used as an
+  ordinary method name in the SysDa API (14), `FN001` on `new Info()` and on a
+  local function shadowing a predefined name (7), `CS001` on a C#-looking type the
+  file legally aliased with `using string = System.String;` (3, and 448 shipped
+  files use that form), `COC003` on the lower-case `_extension` suffix the
+  platform itself ships (1), `RPT001` on an abstract DP base class (1), and
+  `SEL008` reading a select across a `#localmacro` boundary (1).
+- The shared X++ lexer had **no tests**, which is how its documented "delimiters
+  survive" contract could be false for `*/` without anyone noticing — the reason
+  the `ATTR001` fix initially matched nothing. 16 tests now pin the behaviour.
+
+### Changed
+- Five new validator rules: `XML008` (an `AxTableExtension` carrying `<Methods>`,
+  which the deserializer drops silently), `XML009` (a control bound to a field
+  group the table does not declare — a full build catches it, an incremental build
+  does not), `DOC001` (a bare `&` or `<` in a `///` comment → `BPXmlDocMalformed`;
+  a **warning**, because Microsoft ships it too), `SET001`
+  (`update_recordset`/`delete_from` with no `where`) and `OP001` (`&&` mixed with
+  `||` unparenthesised — they have equal precedence in X++, unlike C#).
+- Coverage falls to **core 90.8% / total 91.7%**. Nine leaves were added for
+  constructs the artifact-indexed taxonomy had no way to count, each with an
+  authored case that is `golden_pending` until captured on a VM. The number was
+  never 100% for these; there was nothing to count.
 
 ---
 

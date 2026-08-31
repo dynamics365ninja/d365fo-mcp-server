@@ -1,0 +1,22 @@
+{
+  "id": "L2-system-objects-infolog-box",
+  "title": "System objects: the obsolete infolog member, and a Box that must not run in batch",
+  "tier": 2,
+  "instruction": "Ground with get_knowledge(topic=\"system-objects\"). In the sandbox model write a class that uses the non-form interaction objects correctly. It must (1) read the infolog position with infologLine() and NOT with infolog.line(), which the compiler reports as obsolete: \"On the Info class or the infolog global variable, the line method is obsolete. For better performance, use the infologLine method on the Global class\" - using infolog.line() FAILS this case; (2) prefix a block of messages with setPrefix and discard probing messages with infolog.clear(n); (3) ask a question with Box::yesNo(..., DialogButton::No) and compare the result to a DialogButton value, guarded by isRunningOnBatch() so the batch path never blocks on a dialog - an unguarded Box FAILS this case. Build with zero errors and zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-system-objects-infolog-box/",
+  "golden_pending": false,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "infolog",
+    "box",
+    "deprecated",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

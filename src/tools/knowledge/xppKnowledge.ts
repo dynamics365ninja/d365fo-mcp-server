@@ -82,6 +82,9 @@ export const KNOWLEDGE_BASE: KnowledgeEntry[] = [
       'Controller: extends SysOperationServiceController, sets caption, calls service',
       'For simple batch: controller.parmClassName / parmMethodName can point directly to a static method',
       'Menu items: type = Action, point to Controller class',
+      'A QUERY PARAMETER (the batch job with a filter dialog) is not a plain DataMember: decorate the parm with BOTH [DataMemberAttribute(\'Query\')] and [AifQueryTypeAttribute(\'_packedQuery\', queryStr(MyAotQuery))] — the second names the AOT query whose ranges the dialog will render, and the first argument is the PARAMETER name with its underscore. Verified to compile',
+      'The contract stores the query PACKED as a string. Unpack it in the service with new Query(SysOperationHelper::base64Decode(contract.parmQuery())), and pack one back with SysOperationHelper::base64Encode(query.pack()). SysOperationAutomaticUIBuilder renders the range dialog from it with no extra code',
+      'Never store a Query OBJECT on the contract. The contract is serialised into the batch record, so anything that is not packable is lost between the dialog and the batch run — which looks like "my filter is ignored in batch, but works interactively"',
     ],
     examples: [
       {
@@ -644,6 +647,12 @@ class MyReportDP extends SrsReportDataProviderBase
       'NEVER call today() or any function directly in a WHERE condition — assign to a variable first',
       'AIF services → Data entities + OData',
       'RunBase → SysOperation framework (RunBase still compiles; it is legacy, not [SysObsolete])',
+      'You will still have to READ RunBase, because the platform is full of it and a CoC wrapper has to match its lifecycle exactly: dialog() builds it (addFieldValue returns the DialogField you keep), getFromDialog() reads the fields back, validate(Object _calledFrom = null) checks them, run() does the work, and pack()/unpack() carry the state across the batch boundary',
+      'Three members the lifecycle list above does NOT contain and a new RunBase still needs: `protected boolean canRunInNewSession()`, whose base implementation is throw error(Error::missingOverride(funcName())) — omitting it compiles clean and then fails at run time, and xppbp raises BPUpgradeCodeRunBaseMissingMethod for it; `static ClassDescription description()` for the dialog and batch caption; and `static void main(Args _args)` as the entry point a menu item calls',
+      'RunBase state travels as a packed CONTAINER, and the shape is a convention the class must keep: #define.CurrentVersion(n) plus #localmacro.CurrentList listing the fields, then pack() returns [#CurrentVersion, #CurrentList] and unpack() switches on conPeek(_packed, 1) and assigns [version, #CurrentList]. ADD A FIELD AND YOU MUST BUMP #CurrentVersion — otherwise unpack reads an old container into the new list and the job runs with silently wrong parameters',
+      'Bumping the version is only half of it: KEEP the old list as #localmacro.CurrentList<n> and give it its own `case <n>:` in the unpack switch. Batch jobs already saved carry the OLD container, so a switch that only knows the new version falls to `default: return false` and every scheduled job stops running — silently dead instead of silently wrong. The shipped convention is on InventCountCreate',
+      'Wrapping pack()/unpack() from an [ExtensionOf] class cannot use the macros (they are private to the class), so extend the container instead: next pack() then conIns/conPoke your own values at a fixed position, and mirror it in unpack. Adding a field to someone else\'s RunBase state is the one place where a version bump is not yours to make — prefer a SysOperation of your own',
+      'Do not port a RunBase class to SysOperation just to modernise it: the batch records already saved carry the packed RunBase container, and they cannot be deserialised into a contract',
       'systemDateGet() → see the datetime-timezones topic — BPUpgradeCodeSystemDate',
       'SysEntryPointAttribute on CUSTOM SERVICE operations → obsolete in AX7 ("This attribute is deprecated in AX7"); still REQUIRED on SysOperation service entry points — see the custom-services topic',
       '[SysObsolete] attribute: ALWAYS read the message — it names the replacement',
@@ -946,6 +955,9 @@ MyRentEquipmentId newId = numSeq.num();
       'An enum-typed table field needs NO EDT: it is AxTableFieldEnum + <EnumType>, written in one call with d365fo_file(operation="add-field", fieldEnumType="MyEnum"). Wrap an enum in an AxEdtEnum only when several tables must share one type — and a root enum EDT has an <EnumType> and NO <Extends> (compare the shipped NoYesId)',
       'BPCheckNestedLoopinCode: never nest while select inside while select — use join, temp table, or Map pre-load; report DP classes use insert_recordset or a single joined query',
       'BPCheckAlternateKeyAbsent: every table needs at least one index with <AlternateKey>Yes</AlternateKey> (generate adds it automatically)',
+      'SUPPRESSING a finding is a last resort and it is an ATTRIBUTE, not a comment: [SuppressBPWarning(\'BPCheckNestedLoopinCode\', \'the outer loop is over a 3-row parameter table\')]. Both arguments are required and the second one is read by a human — "false positive" is not a justification, the reason it is false is',
+      'Suppress on the smallest thing that carries the finding (the method, not the class), and never on an ERROR-severity rule: those block the build and a suppression only moves the failure to run time',
+      'The suppression has a lifecycle in this server: d365fo_file(operation="add-diagnostic-suppression") adds one and operation="remove-diagnostic-suppression" takes it away, so a suppression added for a temporary reason can be found and removed rather than living forever',
       'BPXmlDocNoDocumentationComments: every public/protected class and method needs a MEANINGFUL /// <summary> — "MyClass class." or "validateWrite." fail BP review; describe what it does, parameters, and the semantic meaning of the return value',
       'EDT extensions (AxEdtExtension, objectType="edt-extension") can ONLY change Label, HelpText, FormHelp, ConfigurationKey, HelpAlign, Alignment, NoOfDecimals, DecimalSeparator, SignDisplay — and only when the base EDT has IsExtensible=Yes',
       'EDT extensions can NEVER change Extends (re-parenting) or StringSize/DisplayLength on a derived EDT — to widen a string, create a new EDT extending the existing one, or use a table extension modify-field with stringSize (mind databaseStringSize so data is not truncated)',
@@ -2009,6 +2021,7 @@ public class MyReportDP extends SrsReportDataProviderBase
       'Regular-table staging: the staging table needs a createdTransactionId column; the platform deletes the rows after rendering, and concurrent runs are isolated by transaction id',
       'Migration from a plain DP: swap the base class, adjust the staging table type to match it, keep the SRSReportDataSetAttribute getters unchanged, and make sure the menu item points at the CONTROLLER',
       'Scaffold: generate_object(mode="scaffold", objectType="report", preProcess=true) — emits the TempDB pre-process base, keeps [SrsReportParameterAttribute] and adds NO extra hook method: processReport() itself runs before the render request. VM-verified 2026-08-30 — the framework interface SrsReportDataProviderPreProcessInterface has only cleanUp/initialize/parm* members, and xppc accepts either base with either table type, so the pairing is a runtime contract the compiler will not catch',
+      'The design gets an extra platform parameter, AX_RdpPreProcessedId, which carries the staged transaction id and is how the RDL finds the rows this run staged (346 of 400 shipped reports that have it are pre-processed ones). Do not declare it and do not set it — the framework passes it',
       'Do NOT default to preprocess — the staging machinery costs complexity; profile processReport() first and try set-based population (insert_recordset) before reaching for it',
     ],
     examples: [
@@ -3069,6 +3082,13 @@ while (ss.next(so))
       'Use AOT Query objects when: forms/reports bind to them, reusable across multiple consumers',
       'Use runtime Query when: user can dynamically modify filters (SysQueryRun), batch dialog filtering needed',
       'Use "select" for: inline data access where no dynamic filter UI is needed',
+      'RANGE vs FILTER, and they are not the same: a range restricts the data source BEFORE the join, a QueryFilter restricts the joined RESULT. On an outer join a range on the child table silently turns it into an inner join — a filter is what keeps the unmatched parents. query.addQueryFilter(qbds, fieldStr(T, Field)).value(SysQuery::value(v)). QueryFilter is a kernel class, so no metadata lookup will find it',
+      'Range VALUES are a small expression language, not literals: "A..B" is a range, "!X" excludes, "X*" is a prefix, and "((Field1 == 1) || (Field2 == 2))" is a whole expression in ONE range string. Build them with SysQuery:: rather than by hand — SysQuery::value(v) (escapes reserved characters), ::valueNot(v), ::range(from, to), ::valueEmptyString(), ::valueNotEmptyString(), ::valueUnlimited(), ::valueLike(v)',
+      'qbds.addLink(fieldNum(Parent, F), fieldNum(Child, F)) joins a child data source when no AOT relation exists (or the relation is not the one you want); relations() and fetchMode() decide whether the platform adds its own links on top',
+      'A user-callable range function: put a static method on an extension of SysQueryRangeUtil, decorate it [QueryRangeFunction()], and users can type "(myOpenOnly())" into the filter dialog. Verified to compile: [ExtensionOf(classStr(SysQueryRangeUtil))] public static class MyRanges_Extension with public static str myOpenOnly(). The shipped ones — currentUserId(), currentDate(), dateRange(), monthRange(), greaterThanDate() — are the model to copy',
+      'SysQuery::findOrCreateQueryFilter is the filter twin of findOrCreateRange; both are the idempotent form and are what a form extension should use, since it may run after the base form already added its own',
+      'JoinMode (ExistsJoin / InnerJoin / NoExistsJoin / OuterJoin) is a KERNEL enum, like QueryFilter — no metadata lookup will find it, and that is not evidence against it',
+      'Proving a filter did what a range would not means counting DISTINCT PARENTS, not rows: an outer join returns one row per parent/child pair, so a plain row count hides exactly the difference. Collect the parent keys into a Set',
     ],
     examples: [
       {
@@ -4801,6 +4821,212 @@ select rate
       },
     ],
     related: ['select-statement', 'datetime-timezones'],
+  },
+  {
+    id: 'lookups',
+    title: 'Lookups — SysTableLookup, reference controls, multi-select and overrides',
+    keywords: ['lookup', 'systablelookup', 'sysreferencetablelookup', 'lookupreference', 'multiselect',
+               'syslookupmultiselectctrl', 'registeroverridemethod', 'custom lookup', 'dropdown',
+               'lookup form', 'performformlookup', 'addlookupfield', 'selectmode', 'reference control'],
+    summary:
+      'A custom lookup is built in code and handed to the control, and the class you build it with ' +
+      'depends on the CONTROL, not on the table: a string control takes SysTableLookup, a reference ' +
+      '(RecId) control takes SysReferenceTableLookup, and the compiler enforces the difference.',
+    rules: [
+      'String control (a code/id field): SysTableLookup::newParameters(tableNum(MyTable), _control), then addLookupfield(fieldNum(...)) in display order, parmQuery(query) to filter, and performFormLookup() last. The FIRST field added is the one written back into the control',
+      'Reference control (a RefRecId foreign key): SysReferenceTableLookup::newParameters(tableNum(MyTable), _control) — argument 2 must be a FormReferenceControl. Passing a FormStringControl is a COMPILE error: "Type mismatch in \'SysReferenceTableLookup.newParameters\' argument 2. The expected type is \'FormReferenceControl\'". That argument type is the ONLY difference between the two classes worth remembering — both inherit addLookupfield and addLookupMethod from SysTableLookupBase, so neither is missing a column kind',
+      'Multi-select: SysLookupMultiSelectCtrl::constructWithQuery(element, _control, query) in the control\'s init or the form\'s run; read the picked values back with getSelectedFieldValues(). There is also construct() and constructWithQueryRun()',
+      'Overriding a lookup from an EXTENSION (no overlayering): in a form-control-extension handler call _control.registerOverrideMethod(methodStr(FormStringControl, lookup), methodStr(MyHandlerClass, myLookup), this). The handler named in the second methodStr must be an INSTANCE method — a static one is refused at compile time: "The intrinsic argument \'myLookup\' must not specify a static method"',
+      'The VARIABLE you call registerOverrideMethod on is a FormStringControl — even for a reference group. The method is declared on the concrete control class only: both "Class \'FormControl\' does not contain a definition for method \'registerOverrideMethod\'" and the same message for \'FormReferenceControl\' are compile errors. The design control behind an AxFormReferenceGroupControl child is an AxFormStringControl, so declare the variable as FormStringControl and let only the HANDLER parameter be FormReferenceControl (shipped example: CustFreeInvoice_AppSuite_Tax_BR_Extension)',
+      'The override handler takes the control as its parameter — public void myLookup(FormStringControl _control) — and builds the lookup inside; it does not call super()',
+      'Filter with a Query, not by post-filtering the result: build a Query, addDataSource, add ranges, then parmQuery(query). A lookup that returns everything and hides rows afterwards still reads the whole table',
+      'A lookup FORM (an AOT form with its Design.WindowType = Lookup) is the alternative when the list needs its own layout or several tabs; the control\'s lookup method calls its menu item and the form returns the value through the caller\'s selectMode',
+      'The lookup method must not throw. An exception inside it leaves the user with a dropdown that never opens and no message — validate the caller state first and return quietly instead',
+    ],
+    examples: [
+      {
+        label: 'Custom lookup on a string control, filtered by a Query',
+        code: `public void myLookup(FormStringControl _control)
+{
+    SysTableLookup lookup = SysTableLookup::newParameters(tableNum(MyRentalTable), _control);
+    Query          query  = new Query();
+
+    // Shown columns, in order. The first one is written back to the control.
+    lookup.addLookupfield(fieldNum(MyRentalTable, RentalId));
+    lookup.addLookupfield(fieldNum(MyRentalTable, Description));
+
+    query.addDataSource(tableNum(MyRentalTable))
+         .addRange(fieldNum(MyRentalTable, Blocked))
+         .value(SysQuery::value(NoYes::No));
+
+    lookup.parmQuery(query);
+    lookup.performFormLookup();
+}`,
+      },
+      {
+        label: 'Replacing a standard form\'s lookup without overlayering',
+        code: `[ExtensionOf(formStr(MyRentalForm))]
+final class MyRentalForm_Extension
+{
+    /// <summary>
+    /// registerOverrideMethod binds an INSTANCE method — a static one is a
+    /// compile error ("must not specify a static method").
+    /// </summary>
+    public void init()
+    {
+        FormStringControl control;
+
+        next init();
+
+        control = this.design().controlName(formControlStr(MyRentalForm, RentalId));
+        control.registerOverrideMethod(
+            methodStr(FormStringControl, lookup),
+            methodStr(MyRentalForm_Extension, myLookup),
+            this);
+    }
+}`,
+      },
+    ],
+    related: ['form-patterns', 'formrun-lifecycle', 'query-object-model', 'coc-authoring'],
+  },
+  {
+    id: 'report-print-destinations',
+    title: 'Sending a report somewhere — file, PDF, e-mail, archive, printer, batch',
+    keywords: ['print destination', 'srsprintdestinationsettings', 'printmediumtype', 'pdf', 'file',
+               'email report', 'srsreportemaildatacontract', 'print archive', 'printer', 'run report in batch',
+               'runtoscreen', 'startoperation', 'report to pdf', 'render report', 'attach report'],
+    summary:
+      'Where a report goes is decided on the print-destination settings hanging off the report contract, ' +
+      'and the settings are changed in the CONTROLLER before it runs — not in the DP, not in the design. ' +
+      'Six destinations exist and each needs a different pair of properties set.',
+    rules: [
+      'Get the settings from the composite contract: controller.parmReportContract().parmPrintSettings() returns SRSPrintDestinationSettings. Change it in preRunModifyContract() — after the dialog, before the run — so a user\'s dialog choice is still respected when you do not override it',
+      'The destinations are SRSPrintMediumType::{Screen, Printer, File, Email, Archive, Custom} — set printMediumType() FIRST, because the other properties that matter depend on it',
+      'File/PDF: printMediumType(SRSPrintMediumType::File), fileFormat(SRSReportFileFormat::PDF), fileName(path), overwriteFile(true). The formats that exist are CSV, Excel, HTML4_0, Image, MHTML, PDF, XML, Word — there is no "Text"',
+      'E-mail: printMediumType(SRSPrintMediumType::Email) then settings.parmEMailContract(), which is an SrsReportEMailDataContract with parmTo/parmCc/parmSubject/parmBody/parmAttachmentFileFormat. Addresses are semicolon-separated; the contract\'s own removeInvalidEmails() drops the ones that cannot be sent',
+      'CALL parmEMailContract() WITH NO ARGUMENT and mutate what it returns. It constructs the contract lazily and SEEDS it from the settings\' own fields — emailTo(), emailCc(), emailSubject(), emailBody() and both attachment formats. Passing in a contract you newed yourself replaces that object and silently discards every value the dialog collected, which is the opposite of what the destination code is usually there to preserve',
+      'Fetch the settings AFTER super(), not in a declaration initialiser: `SRSPrintDestinationSettings settings; super(); settings = this.parmReportContract().parmPrintSettings();`. An initialiser runs before super() has built the contract',
+      'Archive: printMediumType(SRSPrintMediumType::Archive) with parmPrintToArchive(true) — the rendered document lands in the print archive, where users find it under Organization administration',
+      'Printer: printMediumType(SRSPrintMediumType::Printer) and printerName(); a network printer only works through the Document Routing Agent, so on a cloud environment a "printer" destination that was never registered fails at run time, not at compile time',
+      'The FILE path is written by the AOS, not by the user\'s machine. On a cloud environment that means a temporary blob, not C:\\ — hand the result to the user with File::SendFileToUser(stream, name) instead of writing a local path they cannot reach',
+      'runToScreen() shows the report interactively; startOperation() honours the dialog including its batch tab, which is how a long report ends up in batch. A report writing to a file or e-mail should run in batch — interactive SSRS rendering times out around 10 minutes',
+      'Rendering to BYTES in your own code (SrsProxy.renderReportToByteArray) compiles, but the compiler answers "Type \'SrsProxy\' is marked InternalUseOnly and is not accessible from the current module" — it is not a supported extension point. To attach a report to a record, render to File and pass the stream to DocumentManagement::attachFile',
+    ],
+    examples: [
+      {
+        label: 'Force a report to PDF in the controller, keeping the rest of the dialog',
+        code: `public class MyInvoiceController extends SrsReportRunController
+{
+    /// <summary>
+    /// After the dialog, before the run: the user's other choices survive.
+    /// </summary>
+    protected void preRunModifyContract()
+    {
+        SRSPrintDestinationSettings settings = this.parmReportContract().parmPrintSettings();
+
+        super();
+
+        settings.printMediumType(SRSPrintMediumType::File);
+        settings.fileFormat(SRSReportFileFormat::PDF);
+        settings.fileName(this.parmReportContract().parmReportName());
+        settings.overwriteFile(true);
+    }
+}`,
+      },
+    ],
+    related: ['ssrs-contracts', 'ssrs-reports', 'print-management', 'document-attachments'],
+  },
+  {
+    id: 'rdl-design-expressions',
+    title: 'The report DESIGN — precision vs auto, and the RDL expressions inside it',
+    keywords: ['rdl', 'report design', 'precisiondesign', 'autodesign', 'fields!', 'parameters!',
+               'ax_companyname', 'ax_renderingculture', 'ax_reportcontext', 'report expression',
+               'tablix', 'report layout', 'report designer', 'labels!', 'report parameter'],
+    summary:
+      'The X++ side of a report ends at the dataset; the layout is RDL, and it is a different language ' +
+      'with its own expression syntax and its own set of platform-supplied parameters. Knowing which ' +
+      'half you are in stops the two most common mistakes: formatting data in the DP, and computing ' +
+      'business values in the design.',
+    rules: [
+      'Two design kinds, and the AOT stores the choice as an XML TYPE, not a property: i:type="AxReportPrecisionDesign" or i:type="AxReportAutoDesign". Across 400 shipped reports it is precision 416 to auto 56 — precision is the norm and the only one that gives pixel control',
+      'AutoDesign is generated from the dataset and is fine for a list nobody has laid out; PrecisionDesign is a real RDL document you edit in the Visual Studio Report Designer. This server writes precision designs; nothing outside the designer can lay one out properly, so a request to "move that column" ends in VS',
+      'Expressions start with = and read the dataset by NAME: =Fields!CustAccount.Value for a column, =Parameters!FromDate.Value for a parameter, =Labels!MyLabelId for a label, =ReportItems!Textbox1.Value to repeat another cell (page headers use this, since they cannot see the dataset)',
+      'Six parameters the platform supplies to every report — do not declare them and do not pass them: AX_CompanyName, AX_UserContext, AX_RenderingCulture, AX_ReportContext, AX_PartitionKey, and AX_RdpPreProcessedId on a pre-processed report (346 of 400 shipped reports carry that last one). AX_CompanyName in the header is how every standard document shows the legal entity',
+      'Aggregates are RDL, not X++: =Sum(Fields!Amount.Value), =Count(...), =RowNumber("DataSetName"). Aggregating in the DP as well as the design double-counts, and the design is where a group total belongs because the design owns the grouping',
+      'Formatting belongs in the design, not the DP: a temp-table field typed with the right EDT carries its format automatically, and forcing a str in the DP throws away the culture. AX_RenderingCulture is what makes a date print correctly for the user',
+      'Custom VB.NET <Code> blocks are supported by RDL and are effectively unused here — ZERO of 400 shipped reports have one. Treat a proposed code block as a sign the logic belongs in the DP',
+      'A design change is not live until the report is DEPLOYED (Deploy Reports in Visual Studio, or the DeployAllReportsToSsrs script). An undeployed change shows the old layout with no error at all, which is the single most common "my change did nothing" in SSRS work',
+      'ssrsReportStr(MyReport, MyDesign) is compile-time checked against the design NAME inside the report — read it off the AxReport rather than assuming "Report", which is only the name this server\'s scaffold happens to use',
+    ],
+    related: ['ssrs-reports', 'ssrs-contracts', 'report-extension-patterns', 'report-print-destinations'],
+  },
+  {
+    id: 'document-attachments',
+    title: 'Attachments — DocuRef, DocuValue and DocumentManagement',
+    keywords: ['attachment', 'docuref', 'docuvalue', 'docutype', 'documentmanagement', 'attachfile',
+               'attach document', 'file attachment', 'notes', 'docu'],
+    summary:
+      'Every attachment in D365FO is a DocuRef row pointing at the record it belongs to, plus a DocuValue ' +
+      'holding the bytes. You never write those tables directly — DocumentManagement does it, and its ' +
+      'argument list is where the mistakes happen.',
+    rules: [
+      'DocumentManagement::attachFile takes NINE arguments and returns the DocuRef: (TableId, RefRecId, DataAreaId, DocuTypeId, System.IO.Stream, str _fileName, str _fileContentType, str _attachmentName, str _notes = \'\'). COUNT THEM. The last one defaults, so an EIGHT-argument call still COMPILES and silently stores your notes text as the attachment NAME, leaving notes empty — no error, wrong data. Read the signature with get_object_info(options={"method":"attachFile","include":"signature"}) before calling',
+      'Argument 4 is a DocuTypeId — a STRING — not a DocuType record: passing the record is a compile error ("The expected type is \'DocuTypeId\', but the actual type is \'DocuType\'"). Take it from DocuType::typeFile(), which is what shipped call sites pass; a hard-coded \'File\' works on a dev box and is configuration, not code',
+      'The overloads differ in ARITY as well as in shape, so choose by signature and never by name: attachFileForRecord(Common, DocuTypeId, Stream, fileName, attachmentName, notes) has 6 and takes the buffer instead of the three owner ids, attachFileToCommon adds _fileContentType for 7, attachFileForReference has 8 with no content type. Prefer a Common overload — there is then only one buffer to get wrong',
+      'The first three arguments identify the OWNER, so they come from the buffer you are attaching to: myRecord.TableId, myRecord.RecId, myRecord.DataAreaId. Getting RecId from the wrong buffer attaches the file to an invisible record — there is no error, the attachment simply is not where anyone looks',
+      'attachFileForRecord / attachFileToCommon take the Common buffer instead of the three ids and are safer for exactly that reason; attachNote and attachUrl cover the two non-file kinds',
+      'Read them back with DocumentManagement::findAttachments / findAttachmentsForCommon, and get the bytes with getAttachmentStream / getAttachmentAsContainer',
+      'The DocuType decides WHERE the bytes go (Azure blob, SharePoint, database) and is configuration, not code — hard-coding \'File\' works on a dev box and can be wrong in production; read the module\'s parameter table where the customer has configured it',
+      'Attachments obey the owner record\'s security, not their own: a user who cannot see the record cannot see the attachment. Do not add a second permission check and do not try to bypass the first',
+    ],
+    related: ['report-print-destinations', 'file-readers', 'security'],
+  },
+  {
+    id: 'global-class-statics',
+    title: 'Global:: — the functions that look predefined but are not',
+    keywords: ['global', 'global class', 'queryvalue', 'queryrange', 'hastableaccess', 'hasmenuitemaccess',
+               'issystemadministrator', 'isconfigurationkeyenabled', 'exceptiontextfallthrough',
+               'isrunningonbatch', 'buf2buf', 'predefined function', 'global static'],
+    summary:
+      'Global is an AOT class of ~375 static methods that X++ lets you call unqualified, so they look ' +
+      'exactly like predefined functions and are not. The difference shows up in error messages ' +
+      '("\'Global.fn\' expects N arguments"), in what the metadata index can find, and in the fact ' +
+      'that a name missing from the compiler\'s intrinsic and predefined tables may still be here.',
+    rules: [
+      'Query range values: queryValue(v) escapes a value for a range string, queryRange(from, to) builds "from..to", queryRangeConcat(...) joins them. Prefer the SysQuery:: equivalents in new code (SysQuery::value, SysQuery::range, SysQuery::valueNot, SysQuery::valueEmptyString, SysQuery::valueUnlimited) — they cover the negation and empty-string cases Global does not',
+      'Security at run time: hasTableAccess(tableNum(T), AccessType::View), hasFieldAccess(...), hasMenuItemAccess(menuItemDisplayStr(M), MenuItemType::Display), hasMenuItemSecurityAccess(...), isSystemAdministrator(). All compile unqualified. SecurityRights also exists (a kernel class, so the metadata index cannot see it), but these are the ones shipped code uses',
+      'Environment questions: isConfigurationkeyEnabled(configurationKeyNum(K)), isRunningOnBatch(), isRunningOnServer(), isFlightEnabled(...), isOnPremEnvironment(), curExt(), curUserId(), getPrefix()/setPrefix()',
+      'Buffer helpers: buf2Buf(from, to) copies field by field skipping system fields, buf2Con/con2Buf pack a record, bufCmp compares two buffers of the same table',
+      'exceptionTextFallThrough() inside a catch re-raises the infolog text the caller expects — the shipped idiom for "log and rethrow" that does not lose the message',
+      'startLengthyOperation() / endLengthyOperation() give the client an hourglass around a long synchronous call; SysOperationProgress is what you want for anything the user should watch',
+      'Global also carries names that overlap the predefined functions (strContains, strStartsWith, strEndsWith, strReplace, strSplit, strLFix, strRFix, dateNull, dateMax) — call them unqualified either way, but expect the compiler to report an arity error as "\'Global.fn\' expects …" rather than "\'fn\' expects …"',
+      'A name that resolves nowhere gets the exact message: "The name \'x\' does not denote a predefined function, a static method on the Global class nor a previously defined local function" — the three places the compiler looks, in order',
+    ],
+    related: ['runtime-functions', 'intrinsic-functions', 'security', 'query-object-model'],
+  },
+  {
+    id: 'system-objects',
+    title: 'System objects — infolog, Box, Debug, session and user info',
+    keywords: ['infolog', 'box', 'dialogbutton', 'debug', 'assert', 'xsession', 'xuserinfo', 'xglobal',
+               'classfactory', 'setprefix', 'infologline', 'yesno', 'confirm', 'message box',
+               'progress', 'sysoperationprogress'],
+    summary:
+      'A handful of global objects carry the interaction that is not a form: messages (infolog), ' +
+      'questions (Box), progress (SysOperationProgress) and identity (session and user info). Half of ' +
+      'them are kernel objects with no AOT XML, so the metadata index cannot answer questions about ' +
+      'them and their exact members are worth writing down.',
+    rules: [
+      'infolog is a global instance of the AOT class Info. Write to it with the unqualified info()/warning()/error()/checkFailed() functions — and pass a LABEL, not a string: xppbp raises BPErrorLabelIsText for a literal in any of them, and in setPrefix and Box::yesNo too',
+      'infolog.line() is OBSOLETE and the compiler says so: "On the Info class or the infolog global variable, the line method is obsolete. For better performance, use the infologLine method on the Global class." Call infologLine() instead',
+      'infolog.clear(n) drops everything after line n — the shipped way to discard messages a validation produced while probing; infolog.copy(from, to) reads a range back. Both are on Info. infolog.num() is NOT: it is inherited from the kernel base xInfo, so get_object_info answers "not found on Info nor any class it extends" even though the call compiles. Same trap as xSession/xGlobal — the tools cannot confirm a kernel member, and that is not evidence against it',
+      'setPrefix()/getPrefix() are PREDEFINED functions, not members of Info or statics on Global — looking them up on either answers "not found". Call them unqualified; the prefix nests, so a method called inside a prefixed block inherits it',
+      'Box::yesNo(text, DialogButton::No) asks a question and returns a DialogButton; Box::confirm, Box::okCancel, Box::info, Box::warning, Box::stop are the rest. A Box BLOCKS a batch job forever — guard any Box behind isRunningOnBatch()',
+      'Debug::assert(condition) is a development-time check (it does nothing in a normal AOS run); Debug::printDebug writes to the debugger output. Neither is a substitute for throwing',
+      'SysOperationProgress::newGeneral(animation, caption, total) creates a progress bar; setText(), setTotal() and incCount() come from its base SysOperationProgressBase — note the first argument of newGeneral is a str, not an int',
+      'Session and user identity: curUserId() for the current user id, xUserInfo::find()/findBySid() for the record, xSession/xGlobal/xApplication for session state. xSession, xGlobal, xApplication and xInfo are KERNEL classes with no AOT XML, so no metadata lookup will find them — that is expected, not a broken index',
+      'classFactory (a global instance of ClassFactory) is the extension point behind formRunClass()/queryRunClass(); code that must swap an implementation goes through SysExtension instead',
+    ],
+    related: ['error-handling', 'telemetry', 'sysoperation', 'global-class-statics'],
   },
 ];
 

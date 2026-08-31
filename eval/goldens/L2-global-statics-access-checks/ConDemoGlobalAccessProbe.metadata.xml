@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoGlobalAccessProbe</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Demonstrates the statics on the <c>Global</c> class that X++ resolves for an unqualified call,
+/// so that they read like predefined functions even though they are ordinary static methods.
+/// </summary>
+final class ConDemoGlobalAccessProbe
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>canViewCustomerGroups</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Checks the run-time security of the current user against the customer group table and its display menu item.
+    /// </summary>
+    /// <returns>true when the user may view customer groups; otherwise false.</returns>
+    public static boolean canViewCustomerGroups()
+    {
+        return hasTableAccess(tableNum(CustGroup), AccessType::View)
+            && hasMenuItemAccess(menuItemDisplayStr(CustGroup), MenuItemType::Display);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isElevatedUser</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Checks whether the current user is a system administrator.
+    /// </summary>
+    /// <returns>true when the user holds the system administrator role; otherwise false.</returns>
+    public static boolean isElevatedUser()
+    {
+        return isSystemAdministrator();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>assertCanViewCustomerGroups</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Posts an error to the infolog when the current user may not view customer groups.
+    /// </summary>
+    /// <returns>true when the user may view customer groups; otherwise false.</returns>
+    public static boolean assertCanViewCustomerGroups()
+    {
+        if (ConDemoGlobalAccessProbe::isElevatedUser())
+        {
+            return true;
+        }
+
+        return ConDemoGlobalAccessProbe::canViewCustomerGroups()
+            ? true
+            : checkFailed("@ConDemo:GlobalAccessDenied");
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isGeneralLedgerAvailable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Checks whether the general ledger configuration key is enabled in this environment.
+    /// </summary>
+    /// <returns>true when the configuration key is enabled; otherwise false.</returns>
+    public static boolean isGeneralLedgerAvailable()
+    {
+        return isConfigurationkeyEnabled(configurationKeyNum(LedgerBasic));
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>runsUnattended</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Checks whether the calling code runs unattended in the batch server.
+    /// </summary>
+    /// <returns>true when the code runs on batch; otherwise false.</returns>
+    public static boolean runsUnattended()
+    {
+        return isRunningOnBatch();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>copyCustomerGroup</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Copies a customer group record field by field, leaving the system fields of the target untouched.
+    /// </summary>
+    /// <param name = "_source">The customer group record to copy from.</param>
+    /// <returns>An unsaved customer group buffer holding the copied field values.</returns>
+    public static CustGroup copyCustomerGroup(CustGroup _source)
+    {
+        CustGroup target;
+
+        buf2Buf(_source, target);
+
+        return target;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

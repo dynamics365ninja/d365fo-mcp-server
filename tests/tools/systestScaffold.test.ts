@@ -13,13 +13,22 @@ import { codeGenTool } from '../../src/tools/smart/codeGen.js';
 import { runRules } from '../../src/tools/analysis/validateXpp.js';
 import { parseSysTestXml } from '../../src/eval/oracle/systest.js';
 
-async function scaffold(name: string, testMethods?: string[]): Promise<string> {
+async function scaffold(
+  name: string,
+  testMethods?: string[],
+  testTargetType?: 'class' | 'table',
+): Promise<string> {
   const res = await codeGenTool(
-    { params: { arguments: { pattern: 'systest', name, testMethods } } } as never,
+    { params: { arguments: { pattern: 'systest', name, testMethods, testTargetType } } } as never,
     {} as never,
   ) as { content: Array<{ text: string }>; isError?: boolean };
   expect(res.isError, res.content?.[0]?.text).not.toBe(true);
   return res.content[0].text;
+}
+
+/** The X++ inside the fenced block, which is what actually gets written. */
+function xppOf(text: string): string {
+  return /```xpp([\s\S]*?)```/.exec(text)?.[1] ?? '';
 }
 
 describe('generate_object(pattern="systest")', () => {
@@ -62,10 +71,88 @@ describe('generate_object(pattern="systest")', () => {
 
   it('emits X++ the offline validator accepts', async () => {
     const text = await scaffold('ConSalesCalculator', ['calculateDiscount']);
-    const code = /```xpp([\s\S]*?)```/.exec(text)?.[1] ?? '';
+    const code = xppOf(text);
     expect(code.length).toBeGreaterThan(100);
     const errors = runRules(code, 'xpp').filter(v => v.severity === 'error');
     expect(errors.map(e => `${e.rule}: ${e.excerpt}`)).toEqual([]);
+  });
+});
+
+/**
+ * The table shape — the one the daily loop needs and the class template cannot
+ * express.
+ *
+ * Every construct asserted here was compiled against real xppc before it was
+ * written (`scripts/oracles/probes/coverage-v3b.ts`, probe `TableMethodTest`):
+ * UtilElementType::Table, a buffer with initValue(), and
+ * assertExpectedInfoLogMessage after the act.
+ */
+describe('generate_object(pattern="systest", testTargetType="table")', () => {
+  it('targets the TABLE, not a class', async () => {
+    const text = await scaffold('CustTable', ['validateWrite'], 'table');
+    expect(text).toContain('[SysTestTarget(tableStr(CustTable), UtilElementType::Table)]');
+    expect(text).toContain('class CustTableTest extends SysTestCase');
+    expect(text).not.toContain('classStr(CustTable)');
+  });
+
+  it('arranges a buffer instead of constructing a class', async () => {
+    const code = xppOf(await scaffold('CustTable', ['validateWrite'], 'table'));
+    expect(code).toContain('CustTable custTable;');
+    expect(code).toContain('custTable.initValue();');
+    // The class template's shape must NOT leak into a table test.
+    expect(code).not.toContain('new CustTable()');
+  });
+
+  it('asserts the verdict AND the infolog reason for a validation method', async () => {
+    const code = xppOf(await scaffold('CustTable', ['validateWrite'], 'table'));
+    expect(code).toContain('this.assertFalse(custTable.validateWrite()');
+    expect(code).toContain('this.assertExpectedInfoLogMessage(');
+    // parmExceptionExpected is the wrong tool here: table validation does not throw.
+    expect(code).not.toContain('this.parmExceptionExpected(true)');
+  });
+
+  it('writes the accepting case too, so a rule that refuses everything fails', async () => {
+    const code = xppOf(await scaffold('CustTable', ['validateWrite'], 'table'));
+    expect(code).toContain('public void testValidateWriteRejects()');
+    expect(code).toContain('public void testValidateWriteAccepts()');
+    expect(code).toContain('this.assertTrue(custTable.validateWrite()');
+  });
+
+  it('passes the field id to validateField, which needs one', async () => {
+    const code = xppOf(await scaffold('CustTable', ['validateField'], 'table'));
+    expect(code).toContain('custTable.validateField(fieldNum(CustTable, <Field>))');
+  });
+
+  it('wraps a write method in a transaction and re-reads from the database', async () => {
+    const code = xppOf(await scaffold('CustTable', ['insert'], 'table'));
+    expect(code).toContain('ttsbegin;');
+    expect(code).toContain('ttscommit;');
+    expect(code).toContain('select firstonly reread');
+  });
+
+  it('warns that the infolog holds resolved TEXT, not the label id', async () => {
+    const text = await scaffold('CustTable', ['validateWrite'], 'table');
+    expect(text).toMatch(/resolved label text/i);
+    expect(text).toMatch(/@Label:Id/);
+  });
+
+  it('defaults to validateWrite when no method is named', async () => {
+    const code = xppOf(await scaffold('CustTable', undefined, 'table'));
+    expect(code).toContain('validateWrite');
+  });
+
+  it('emits X++ the offline validator accepts', async () => {
+    for (const method of ['validateWrite', 'validateField', 'insert', 'update', 'modifiedField']) {
+      const code = xppOf(await scaffold('CustTable', [method], 'table'));
+      const errors = runRules(code, 'xpp').filter(v => v.severity === 'error');
+      expect(errors.map(e => `${method} → ${e.rule}: ${e.excerpt}`)).toEqual([]);
+    }
+  });
+
+  it('leaves the class shape alone when testTargetType is absent', async () => {
+    const text = await scaffold('ConSalesCalculator', ['calculateDiscount']);
+    expect(text).toContain('UtilElementType::Class');
+    expect(text).not.toContain('initValue()');
   });
 });
 

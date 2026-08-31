@@ -176,8 +176,32 @@ function canonicalizeXppDocComments(s: string): string {
  * elements (`Source`/`Declaration`) additionally get indentation canonicalised
  * (see `canonicalizeXppSourceText`) since X++ doesn't care about indent depth.
  */
+/**
+ * Identifiers a report generator mints fresh on every run.
+ *
+ * An AxReport carries its RDL inside CDATA, and the RDL carries
+ * `rd:DataSourceID`, `rd:DataSetID` and `rd:ReportID` — GUIDs regenerated each
+ * time the design is produced. They say nothing about whether the report is
+ * correct, and they make every report golden unreproducible: re-running the case
+ * yields a diff on identifiers that were always going to differ.
+ *
+ * `ignore` globs cannot reach them, because they are not XML nodes in the
+ * document being compared — they live inside a text payload. So they are masked
+ * here, in the same comparison-time canonicalisation that already re-indents X++
+ * source: the stored artifact is never rewritten.
+ *
+ * Six committed goldens carry them today (ssrs-report-advanced, -design-rdl,
+ * -multidataset, -preprocess, -uibuilder and print-mgmt-doctype-extension), so
+ * this is what makes a re-capture of any of them meaningful.
+ */
+const GENERATED_RDL_IDS = /(<rd:(?:DataSourceID|DataSetID|ReportID)>)\s*\{?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}?\s*(<\/rd:(?:DataSourceID|DataSetID|ReportID)>)/g;
+
+function maskGeneratedIds(s: string): string {
+  return s.replace(GENERATED_RDL_IDS, '$1<generated-guid>$2');
+}
+
 function normalizeText(s: string, pathPrefix?: string): string {
-  const crlfNormalized = s.replace(/\r\n/g, '\n').trim();
+  const crlfNormalized = maskGeneratedIds(s.replace(/\r\n/g, '\n').trim());
   return pathPrefix && isXppSourcePath(pathPrefix)
     ? canonicalizeXppSourceText(crlfNormalized)
     : crlfNormalized;

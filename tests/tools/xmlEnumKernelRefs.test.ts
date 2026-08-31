@@ -71,14 +71,30 @@ describe('xml <EnumType> against kernel enums', () => {
 
   it('does not fail the call over an enum the index merely cannot see', async () => {
     // On this installation 44 enum names that shipped Microsoft metadata references
-    // cannot be resolved by it — TableGroup and AccessRight among them. An index-only check
-    // cannot tell those from an invention, so it must not hard-error: the agent
-    // obeys, swaps in a real-but-different enum from search, and the result
-    // compiles clean meaning something else.
-    for (const en of ['TableGroup', 'AccessRight', 'SortOrder', 'HRMApplicantType']) {
+    // cannot be resolved by it. An index-only check cannot tell those from an
+    // invention, so it must not hard-error: the agent obeys, swaps in a
+    // real-but-different enum from search, and the result compiles clean meaning
+    // something else.
+    for (const en of ['TableGroup', 'HRMApplicantType']) {
       const r: any = await call(tableXml(en));
       expect(r.isError, en + ' must not fail the call').toBeFalsy();
       expect(text(r), en + ' must still be reported').toContain(en);
+    }
+  });
+
+  it('says nothing at all about an enum PROVEN to be kernel', async () => {
+    // AccessRight and SortOrder used to land in the list above, as
+    // index-invisible-and-therefore-uncertain. They are no longer uncertain:
+    // `npm run oracle:kernel-enums` finds every Name::Value in shipped X++ with
+    // no AOT element behind it, and both are there in quantity (AccessRight 67
+    // literal uses, SortOrder 141), so they are in kernelEnums.ts with the values
+    // the product itself writes. A warning about a name we have positively
+    // identified is noise, and noise is what trains a reader to skip the warning
+    // that matters.
+    for (const en of ['AccessRight', 'SortOrder', 'MenuItemType', 'AccessType', 'NoYes']) {
+      const r: any = await call(tableXml(en));
+      expect(r.isError, en + ' must not fail the call').toBeFalsy();
+      expect(text(r), en + ' is a known kernel enum and needs no comment').not.toContain(en);
     }
   });
 });

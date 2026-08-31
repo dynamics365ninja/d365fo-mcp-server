@@ -1,0 +1,59 @@
+{
+  "run_id": "2026-08-31T08__L2-global-statics-access-checks__9045b22",
+  "case_id": "L2-global-statics-access-checks",
+  "tier": 2,
+  "timestamp": "2026-08-31T08:39:56.710Z",
+  "server_git_sha": "9045b22",
+  "generated_artifacts": [
+    "/Classes/ConDemoGlobalAccessProbe"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS",
+  "platform_build": "7.0.7996.33",
+  "static_gate": {
+    "references": {
+      "passed": false,
+      "unresolved": [
+        "AccessType::View",
+        "MenuItemType::Display",
+        "ConDemoGlobalAccessProbe::isElevatedUser",
+        "ConDemoGlobalAccessProbe::canViewCustomerGroups"
+      ]
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "Case PASSED on all scored dimensions (build 0 errors on a full build, xppbp 0 warnings/0 errors on the class, golden self-match). The run nevertheless surfaced two validate_code(mode=\"references\") false positives worth fixing. (1) TOOL_DEFECT/KNOWLEDGE_GAP: AccessType and MenuItemType are kernel enums with no AxEnum XML anywhere under PackagesLocalDirectory, but they are absent from the ENTRIES list in src/knowledge/kernelEnums.ts. The X++ resolver therefore reports AccessType::View and MenuItemType::Display as hard unknown-static-member ERRORS under \"Fix all errors before writing\", and get_object_info(objectType=\"enum\") answers \"not found via bridge, symbol index, or on disk\" and advises update_symbol_index on a file that cannot exist - precisely the \"loop with no exit\" the kernelEnums.ts docstring says the module exists to prevent. Both calls compile clean (xppc-verified this run and in the prior SecurityChecks probe). Under GROUNDING_ENFORCE=true this would have BLOCKED the write of correct code; here the gate was off so it was only misleading. (2) Lower severity: gateOnReferenceErrors/resolveXppReferences have no exemption for the object being created, so an ordinary in-class static call written as ClassName::method() - the only spelling X++ accepts, since a bare name resolves only to predefined function, Global static, or local function - is reported as unknown-type until after the write.",
+  "suggested_fix_area": "src/knowledge/kernelEnums.ts (add AccessType and MenuItemType to ENTRIES, with the value names shipped code uses, and re-audit the remaining ~44 index-unresolvable enum names against the AxEnum basename set); secondarily src/tools/write/resolveReferences.ts (pass the object name being created into resolveXppReferences so self-qualified static calls are not reported as unknown-type).",
+  "evidence_refs": [
+    "eval/goldens/L2-global-statics-access-checks/ConDemoGlobalAccessProbe.metadata.xml",
+    "src/knowledge/kernelEnums.ts",
+    "src/tools/write/resolveReferences.ts",
+    "src/tools/analysis/validateCode.ts"
+  ]
+}

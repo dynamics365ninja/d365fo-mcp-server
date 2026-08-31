@@ -1,0 +1,21 @@
+{
+  "id": "L3-attachment-docuref-pdf",
+  "title": "Attaching a file: argument 4 is a DocuTypeId, and the owner ids decide where it lands",
+  "tier": 3,
+  "instruction": "Ground with get_knowledge(topic=\"document-attachments\"). In the sandbox model write a class that attaches a generated file to a record with DocumentManagement::attachFile(tableId, recId, dataAreaId, docuTypeId, stream, fileName, mimeType, notes). Argument 4 is a DocuTypeId - a string - and passing a DocuType RECORD is the compile error \"Type mismatch in 'DocumentManagement.attachFile' argument 4. The expected type is 'DocuTypeId', but the actual type is 'DocuType'\", which FAILS this case. The first three arguments must come from the buffer being attached to (myRecord.TableId, myRecord.RecId, myRecord.DataAreaId): taking RecId from a different buffer attaches the file to a record nobody looks at, with no error. Read the attachments back with findAttachments. Build with zero errors and zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L3-attachment-docuref-pdf/",
+  "golden_pending": false,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "attachment",
+    "docuref",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

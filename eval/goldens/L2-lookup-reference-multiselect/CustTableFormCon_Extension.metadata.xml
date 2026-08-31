@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>CustTableFormCon_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Extension of the <c>CustTable</c> form.
+/// </summary>
+[ExtensionOf(formStr(CustTable))]
+final class CustTableFormCon_Extension
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>init</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Registers the custom lookup overrides once the standard form has been initialized.
+    /// </summary>
+    /// <remarks>
+    /// The overrides are registered from an extension class, so the standard form is never overlayered.
+    /// </remarks>
+    public void init()
+    {
+        next init();
+
+        this.conRegisterLookupOverrides();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>conRegisterLookupOverrides</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Binds the custom lookup handlers to the controls of the <c>CustTable</c> form.
+    /// </summary>
+    /// <remarks>
+    /// The method named in the second <c>methodStr</c> must be an instance method. A static one is
+    /// rejected by the compiler with "The intrinsic argument must not specify a static method".
+    /// </remarks>
+    private void conRegisterLookupOverrides()
+    {
+        FormStringControl custGroupControl;
+        FormStringControl paymIdTypeControl;
+
+        // A string control is overridden through FormStringControl.lookup.
+        custGroupControl = this.design().controlName(formControlStr(CustTable, Posting_CustGroup));
+        custGroupControl.registerOverrideMethod(
+            methodStr(FormStringControl, lookup),
+            methodStr(CustTableFormCon_Extension, conCustGroupLookup),
+            this);
+
+        // A reference control is overridden through FormReferenceControl.lookupReference. The design
+        // control behind a reference group is a FormStringControl and registerOverrideMethod is
+        // declared there - neither FormControl nor FormReferenceControl carries it - while the
+        // handler that receives the control must be typed FormReferenceControl.
+        paymIdTypeControl = this.design().controlName(formControlStr(CustTable, Payment_BankCustPaymIdTable_PaymIdType));
+        paymIdTypeControl.registerOverrideMethod(
+            methodStr(FormReferenceControl, lookupReference),
+            methodStr(CustTableFormCon_Extension, conPaymIdTypeLookupReference),
+            this);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>conCustGroupLookup</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Replaces the standard lookup of the customer group control with a filtered lookup.
+    /// </summary>
+    /// <param name = "_control">The string control the lookup is opened from.</param>
+    /// <remarks>
+    /// A string control is served by <c>SysTableLookup</c>. The first field added is the value written
+    /// back into the control, and the rows are narrowed by the query instead of afterwards.
+    /// </remarks>
+    private void conCustGroupLookup(FormStringControl _control)
+    {
+        SysTableLookup       lookup = SysTableLookup::newParameters(tableNum(CustGroup), _control);
+        Query                query = new Query();
+        QueryBuildDataSource custGroupDataSource;
+
+        // Displayed columns in display order. The first one is written back into the control.
+        lookup.addLookupfield(fieldNum(CustGroup, CustGroup));
+        lookup.addLookupfield(fieldNum(CustGroup, Name));
+        lookup.addLookupfield(fieldNum(CustGroup, PaymTermId));
+
+        // Only customer groups that already carry terms of payment are offered.
+        custGroupDataSource = query.addDataSource(tableNum(CustGroup));
+        custGroupDataSource.addRange(fieldNum(CustGroup, PaymTermId)).value(SysQuery::valueNotEmptyString());
+        custGroupDataSource.addSortField(fieldNum(CustGroup, CustGroup));
+
+        lookup.parmQuery(query);
+
+        // performFormLookup is always the last call.
+        lookup.performFormLookup();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>conPaymIdTypeLookupReference</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Replaces the standard lookup of the customer payment ID reference control.
+    /// </summary>
+    /// <param name = "_control">The reference control the lookup is opened from.</param>
+    /// <returns>The record picked by the user, or an empty buffer when the lookup was cancelled.</returns>
+    /// <remarks>
+    /// A reference (RefRecId) control is served by <c>SysReferenceTableLookup</c>, whose second argument
+    /// must be a <c>FormReferenceControl</c>. Passing a <c>FormStringControl</c> is a compile error.
+    /// </remarks>
+    private Common conPaymIdTypeLookupReference(FormReferenceControl _control)
+    {
+        SysReferenceTableLookup lookup = SysReferenceTableLookup::newParameters(tableNum(BankCustPaymIdTable), _control);
+        Query                   query = new Query();
+        QueryBuildDataSource    paymIdDataSource;
+
+        lookup.addLookupfield(fieldNum(BankCustPaymIdTable, PaymIdType));
+        lookup.addLookupfield(fieldNum(BankCustPaymIdTable, Name));
+
+        // addLookupMethod shows a display method as an extra lookup column.
+        lookup.addLookupMethod(tableMethodStr(BankCustPaymIdTable, paymIdTest));
+
+        // Payment ID types that have not been configured with a length are left out.
+        paymIdDataSource = query.addDataSource(tableNum(BankCustPaymIdTable));
+        paymIdDataSource.addRange(fieldNum(BankCustPaymIdTable, Length)).value(SysQuery::valueNot(0));
+        paymIdDataSource.addSortField(fieldNum(BankCustPaymIdTable, PaymIdType));
+
+        lookup.parmQuery(query);
+
+        return lookup.performFormLookup();
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

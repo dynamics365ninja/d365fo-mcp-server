@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoReportDestinationController</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Runs a report and decides in code where the output goes: a PDF file, an e-mail or the print archive.
+/// </summary>
+/// <remarks>
+/// The destination lives on the print contract that hangs off the composite report contract.
+/// It is changed in <c>preRunModifyContract</c> - after the dialog, before the render - so every
+/// dialog choice this class does not override still survives.
+/// </remarks>
+public class ConDemoReportDestinationController extends SrsReportRunController
+{
+    SRSPrintMediumType  destination;
+    Filename            targetFileName;
+    str                 emailRecipients;
+    str                 emailSubjectText;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Runs the demo report straight to a PDF file, without showing the dialog.
+    /// </summary>
+    /// <param name = "_args">The arguments of the caller.</param>
+    public static void main(Args _args)
+    {
+        ConDemoReportDestinationController controller = new ConDemoReportDestinationController();
+
+        controller.parmReportName(ssrsReportStr(FMCustomerList, Report));
+        controller.parmArgs(_args);
+        controller.parmShowDialog(false);
+        controller.parmDestination(SRSPrintMediumType::File);
+        controller.parmFileName('ConDemoCustomerList.pdf');
+        controller.startOperation();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>preRunModifyContract</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Applies the print destination that was chosen in code.
+    /// </summary>
+    /// <remarks>
+    /// This runs after the dialog and before the report is rendered, which is why the settings are
+    /// only overwritten for the destination this controller was asked for.
+    /// </remarks>
+    protected void preRunModifyContract()
+    {
+        SRSPrintDestinationSettings settings;
+
+        super();
+
+        settings = this.parmReportContract().parmPrintSettings();
+
+        switch (destination)
+        {
+            case SRSPrintMediumType::File:
+                this.applyFileDestination(settings);
+                break;
+
+            case SRSPrintMediumType::Email:
+                this.applyEmailDestination(settings);
+                break;
+
+            case SRSPrintMediumType::Archive:
+                this.applyArchiveDestination(settings);
+                break;
+
+            default:
+                // Screen, Printer and Custom are left exactly as the user configured them on the dialog.
+                break;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>applyFileDestination</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Sends the rendered report to a PDF file.
+    /// </summary>
+    /// <param name = "_settings">The print destination settings of the report contract.</param>
+    /// <remarks>
+    /// The file is written by the AOS, not by the client machine, so the name is a server side name.
+    /// </remarks>
+    private void applyFileDestination(SRSPrintDestinationSettings _settings)
+    {
+        // The medium is set first: the properties that matter afterwards depend on it.
+        _settings.printMediumType(SRSPrintMediumType::File);
+        _settings.fileFormat(SRSReportFileFormat::PDF);
+        _settings.fileName(this.reportFileName());
+        _settings.overwriteFile(true);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>applyEmailDestination</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Sends the rendered report as a PDF attachment on an e-mail.
+    /// </summary>
+    /// <param name = "_settings">The print destination settings of the report contract.</param>
+    private void applyEmailDestination(SRSPrintDestinationSettings _settings)
+    {
+        SrsReportEMailDataContract emailContract;
+
+        _settings.printMediumType(SRSPrintMediumType::Email);
+
+        emailContract = _settings.parmEMailContract();
+        emailContract.parmTo(emailRecipients);
+        emailContract.parmSubject(emailSubjectText);
+        emailContract.parmAttachmentFileFormat(SRSReportFileFormat::PDF);
+
+        // Addresses are semicolon separated; the contract drops the ones that cannot be sent to.
+        emailContract.removeInvalidEmails();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>applyArchiveDestination</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Sends the rendered report to the print archive.
+    /// </summary>
+    /// <param name = "_settings">The print destination settings of the report contract.</param>
+    private void applyArchiveDestination(SRSPrintDestinationSettings _settings)
+    {
+        _settings.printMediumType(SRSPrintMediumType::Archive);
+        _settings.parmPrintToArchive(true);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>reportFileName</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Builds the server side file name the report is written to.
+    /// </summary>
+    /// <returns>The file name, defaulted from the report name when none was supplied.</returns>
+    private Filename reportFileName()
+    {
+        if (targetFileName)
+        {
+            return targetFileName;
+        }
+
+        return strFmt('%1.pdf', this.parmReportName());
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDestination</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets or sets the print destination the report output is sent to.
+    /// </summary>
+    /// <param name = "_destination">The print medium type.</param>
+    /// <returns>The print medium type.</returns>
+    public SRSPrintMediumType parmDestination(SRSPrintMediumType _destination = destination)
+    {
+        destination = _destination;
+
+        return destination;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFileName</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets or sets the file name used by the file destination.
+    /// </summary>
+    /// <param name = "_fileName">The file name.</param>
+    /// <returns>The file name.</returns>
+    public Filename parmFileName(Filename _fileName = targetFileName)
+    {
+        targetFileName = _fileName;
+
+        return targetFileName;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmEmailTo</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets or sets the semicolon separated recipients used by the e-mail destination.
+    /// </summary>
+    /// <param name = "_emailTo">The recipients.</param>
+    /// <returns>The recipients.</returns>
+    public str parmEmailTo(str _emailTo = emailRecipients)
+    {
+        emailRecipients = _emailTo;
+
+        return emailRecipients;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmEmailSubject</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets or sets the subject used by the e-mail destination.
+    /// </summary>
+    /// <param name = "_emailSubject">The subject.</param>
+    /// <returns>The subject.</returns>
+    public str parmEmailSubject(str _emailSubject = emailSubjectText)
+    {
+        emailSubjectText = _emailSubject;
+
+        return emailSubjectText;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

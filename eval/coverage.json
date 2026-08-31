@@ -1,15 +1,15 @@
 {
   "core": {
     "tier": "core",
-    "total": 59,
-    "covered": 59,
+    "total": 65,
+    "covered": 65,
     "percent": 100
   },
   "total": {
     "tier": "all",
-    "total": 100,
-    "covered": 100,
-    "percent": 100
+    "total": 109,
+    "covered": 108,
+    "percent": 99.1
   },
   "leaves": [
     {
@@ -430,29 +430,37 @@
         "L2-dotnet-interop-clrerror",
         "L2-edt-extension-basic",
         "L2-feature-management-flight",
+        "L2-global-statics-access-checks",
         "L2-implicit-conversions",
         "L2-interface-abstract-basic",
         "L2-intrinsic-functions",
         "L2-license-code-configkey",
+        "L2-lookup-reference-multiselect",
         "L2-numberseq-basic",
         "L2-occ-retry-basic",
         "L2-operators-precedence",
+        "L2-query-range-expression-sysqueryrangeutil",
         "L2-reflection-dict-fieldwalk",
         "L2-runtime-functions-arity",
         "L2-select-find-options-joins",
         "L2-statements-switch-loops",
         "L2-sysda-fluent-query",
         "L2-sysextension-plugin",
+        "L2-system-objects-infolog-box",
         "L2-systest-authoring-basic",
         "L2-table-caching-basic",
         "L2-table-extension",
         "L2-table-inheritance-basic",
         "L2-table-modify-lifecycle",
+        "L3-attachment-docuref-pdf",
         "L3-custom-service-basic",
         "L3-form-detailstransaction",
         "L3-form-event-handler-class",
         "L3-report-dataset-extension",
-        "L3-sysoperation-dialog-attributes"
+        "L3-runbase-coc-pack-unpack",
+        "L3-sysoperation-query-parameter-batch",
+        "L4-ssrs-report-design-rdl",
+        "L4-ssrs-report-print-destinations"
       ]
     },
     {
@@ -498,29 +506,37 @@
         "L2-dotnet-interop-clrerror",
         "L2-edt-extension-basic",
         "L2-feature-management-flight",
+        "L2-global-statics-access-checks",
         "L2-implicit-conversions",
         "L2-interface-abstract-basic",
         "L2-intrinsic-functions",
         "L2-license-code-configkey",
+        "L2-lookup-reference-multiselect",
         "L2-numberseq-basic",
         "L2-occ-retry-basic",
         "L2-operators-precedence",
+        "L2-query-range-expression-sysqueryrangeutil",
         "L2-reflection-dict-fieldwalk",
         "L2-runtime-functions-arity",
         "L2-select-find-options-joins",
         "L2-statements-switch-loops",
         "L2-sysda-fluent-query",
         "L2-sysextension-plugin",
+        "L2-system-objects-infolog-box",
         "L2-systest-authoring-basic",
         "L2-table-caching-basic",
         "L2-table-extension",
         "L2-table-inheritance-basic",
         "L2-table-modify-lifecycle",
+        "L3-attachment-docuref-pdf",
         "L3-custom-service-basic",
         "L3-form-detailstransaction",
         "L3-form-event-handler-class",
         "L3-report-dataset-extension",
-        "L3-sysoperation-dialog-attributes"
+        "L3-runbase-coc-pack-unpack",
+        "L3-sysoperation-query-parameter-batch",
+        "L4-ssrs-report-design-rdl",
+        "L4-ssrs-report-print-destinations"
       ]
     },
     {
@@ -1457,29 +1473,37 @@
         "L2-dotnet-interop-clrerror",
         "L2-edt-extension-basic",
         "L2-feature-management-flight",
+        "L2-global-statics-access-checks",
         "L2-implicit-conversions",
         "L2-interface-abstract-basic",
         "L2-intrinsic-functions",
         "L2-license-code-configkey",
+        "L2-lookup-reference-multiselect",
         "L2-numberseq-basic",
         "L2-occ-retry-basic",
         "L2-operators-precedence",
+        "L2-query-range-expression-sysqueryrangeutil",
         "L2-reflection-dict-fieldwalk",
         "L2-runtime-functions-arity",
         "L2-select-find-options-joins",
         "L2-statements-switch-loops",
         "L2-sysda-fluent-query",
         "L2-sysextension-plugin",
+        "L2-system-objects-infolog-box",
         "L2-systest-authoring-basic",
         "L2-table-caching-basic",
         "L2-table-extension",
         "L2-table-inheritance-basic",
         "L2-table-modify-lifecycle",
+        "L3-attachment-docuref-pdf",
         "L3-custom-service-basic",
         "L3-form-detailstransaction",
         "L3-form-event-handler-class",
         "L3-report-dataset-extension",
-        "L3-sysoperation-dialog-attributes"
+        "L3-runbase-coc-pack-unpack",
+        "L3-sysoperation-query-parameter-batch",
+        "L4-ssrs-report-design-rdl",
+        "L4-ssrs-report-print-destinations"
       ]
     },
     {
@@ -1573,12 +1597,10 @@
       "tier": "total",
       "weight": 3,
       "k": true,
-      "e": true,
+      "e": false,
       "t": true,
-      "covered": true,
-      "cases": [
-        "L3-sysoperation-dialog-attributes"
-      ]
+      "covered": false,
+      "cases": []
     },
     {
       "id": "report-extension",
@@ -1606,6 +1628,132 @@
       "covered": true,
       "cases": [
         "L2-systest-authoring-basic"
+      ]
+    },
+    {
+      "id": "lookups",
+      "label": "Lookups (table, reference, multi-select, override)",
+      "domain": "UI",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L2-lookup-reference-multiselect"
+      ]
+    },
+    {
+      "id": "global-statics",
+      "label": "Global:: statics (query values, access checks)",
+      "domain": "Code",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L2-global-statics-access-checks"
+      ]
+    },
+    {
+      "id": "system-objects",
+      "label": "System objects (infolog, Box, Debug, session)",
+      "domain": "Code",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L2-system-objects-infolog-box"
+      ]
+    },
+    {
+      "id": "query-object-model-advanced",
+      "label": "Query filters, range expressions, custom range functions",
+      "domain": "Code",
+      "tier": "total",
+      "weight": 3,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L2-query-range-expression-sysqueryrangeutil"
+      ]
+    },
+    {
+      "id": "sysoperation-query-param",
+      "label": "SysOperation query parameter (batch with a filter)",
+      "domain": "Frameworks",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L3-sysoperation-query-parameter-batch"
+      ]
+    },
+    {
+      "id": "runbase-lifecycle",
+      "label": "RunBase lifecycle & packed state",
+      "domain": "Frameworks",
+      "tier": "total",
+      "weight": 3,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L3-runbase-coc-pack-unpack"
+      ]
+    },
+    {
+      "id": "rdl-expressions",
+      "label": "Report design & RDL expressions",
+      "domain": "Reporting",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L4-ssrs-report-design-rdl"
+      ]
+    },
+    {
+      "id": "report-destinations",
+      "label": "Report print destinations (file, e-mail, archive, batch)",
+      "domain": "Reporting",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L4-ssrs-report-print-destinations"
+      ]
+    },
+    {
+      "id": "document-attachments",
+      "label": "Attachments (DocuRef / DocumentManagement)",
+      "domain": "Integration",
+      "tier": "total",
+      "weight": 3,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L3-attachment-docuref-pdf"
       ]
     }
   ],

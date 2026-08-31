@@ -65,7 +65,10 @@ export const CreateLabelArgsSchema = z.object({
       /^[A-Za-z][A-Za-z0-9_]*$/,
       'Label file ID must start with a letter and contain only letters, digits and underscores — ' +
       'it is the first half of an @LabelFileId:LabelId reference, so a hyphen or dot ends the ' +
-      'identifier and makes every label in the file unreferenceable (BPErrorLabelIsText)',
+      'identifier and makes every label in the file unreferenceable (BPErrorLabelIsText). ' +
+      'If you passed the MODEL name and the model name itself contains a hyphen ("fm-mcp"), that is ' +
+      'expected and there is nothing to fix in the model: pass a valid identifier instead ("fmmcp"), ' +
+      'and the label file still lives in the model directory.',
     )
     .describe(
       'Label file ID to add the label to (e.g. ContosoExt). Must exist in the model, or be creatable ' +

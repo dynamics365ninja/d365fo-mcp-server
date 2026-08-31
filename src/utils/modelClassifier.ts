@@ -338,6 +338,26 @@ export function applyObjectPrefix(objectName: string, prefix: string, modelName?
       return objectName; // Already has the correct infix, return as-is
     }
 
+    // …or at the START, which is where it sits on a class that is NOT named after
+    // a base object. `_Extension` does not only mean "CoC wrapper": Microsoft
+    // ships SysQueryRangeUtil_Extension, and a model's own ConDemoRanges_Extension
+    // is the same shape. Only checking the END turned that into
+    // ConDemoRangesCon_Extension — the prefix at both ends — and the declaration
+    // was rewritten to match, so the name the case asked for was unreachable
+    // through any grounded path.
+    //
+    // The discriminator is the PascalCase boundary, which keeps a real base name
+    // that merely begins with the same letters safe: "ConDemoRanges" is Con|D…
+    // (already prefixed), while "ConfigKey" is Con|f… (a word, not a prefix), so
+    // ConfigKey_Extension still becomes ConfigKeyCon_Extension as it should.
+    const infixLower = extensionInfix.toLowerCase();
+    if (baseName.toLowerCase().startsWith(infixLower)) {
+      const rest = baseName.slice(extensionInfix.length);
+      if (rest.length > 0 && rest[0] === rest[0].toUpperCase() && /[A-Za-z]/.test(rest[0])) {
+        return objectName;
+      }
+    }
+
     // Inject the extension infix before "_Extension"
     return `${baseName}${extensionInfix}_Extension`;
   }

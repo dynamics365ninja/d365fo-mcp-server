@@ -40,7 +40,11 @@ export const GENERATE_OBJECT_PARAM_SPECS: Record<string, { type: string; descrip
       'Extending a STANDARD report: report-dataset-extension (name=DP class, baseName=its temp table, ' +
       'optional datasetAccessor), report-custom-design (name=standard report, baseName=its controller, ' +
       'documentType, designName), report-menu-redirect (name=controller, baseName=your report, designName). ' +
-      'Recipes with the metadata half: object_patterns(domain="report").',
+      'Recipes with the metadata half: object_patterns(domain="report").\n' +
+      'Also accepted but NOT in the published enum, because the byte budget is spent where the demand ' +
+      'is: business-event, custom-service, custom-telemetry, feature-class, composite-entity, ' +
+      'er-custom-function. Pass one by name if you want it (tests/tools/patternEnumParity.test.ts ' +
+      'records why each stays unpublished).',
   },
   menuItemType: {
     type: 'string (display | action | output)',
@@ -59,9 +63,21 @@ export const GENERATE_OBJECT_PARAM_SPECS: Record<string, { type: string; descrip
   testMethods: {
     type: 'string[]',
     description:
-      'systest: target-class methods to write a test for — one [SysTestMethod] each. ' +
+      'systest: target methods to write a test for — one [SysTestMethod] each. ' +
       'Every generated test fails until its assertion is written, which is what makes the ' +
-      'first run meaningful. Read the method names from get_object_info(objectType="class").',
+      'first run meaningful. Read the method names from get_object_info, or let ' +
+      'prepare(mode="test", objectName="<target>") list them.',
+  },
+  testTargetType: {
+    type: '"class" | "table"',
+    description:
+      'systest: what `name` denotes (default "class"). Pass "table" to test TABLE methods — ' +
+      'validateWrite/validateField/insert/update, including the ones a [ExtensionOf] CoC class ' +
+      'wraps. It emits the only shape that works there: a buffer with initValue(), ' +
+      'assertFalse(buffer.validateWrite()) for the verdict, assertExpectedInfoLogMessage() for the ' +
+      'reason (table rules report through the infolog, they do not throw), and an ACCEPTING case ' +
+      'beside the rejecting one. prepare(mode="test") reports which kind the target is and emits ' +
+      'this parameter for you.',
   },
   serviceMethod: {
     type: 'string',
