@@ -73,6 +73,16 @@ export interface ProbeResult extends Probe {
 
 const MODEL = process.env.PROBE_MODEL ?? 'fm-mcp';
 const CLASS_DIR = `${PACKAGES_ROOT}/${MODEL}/${MODEL}/AxClass`;
+/**
+ * Where xppc writes the metadata it generates for each compiled class.
+ *
+ * Deleting the SOURCE does not delete this, and a probe run writes hundreds of
+ * classes — 955 orphaned files had accumulated in the sandbox before anyone
+ * looked. Beyond the litter, stale metadata for a class whose source is gone is
+ * the wrong kind of leftover in a directory whose whole purpose is telling the
+ * compiler what exists.
+ */
+const XPP_METADATA_CLASS_DIR = `${PACKAGES_ROOT}/${MODEL}/XppMetadata/${MODEL}/AxClass`;
 const XPPC = `${PACKAGES_ROOT}/bin/xppc.exe`;
 const TMP = path.join(REPO_ROOT, '.oracle-probes');
 
@@ -211,7 +221,14 @@ export function runProbeBatch(probes: Probe[], passName: string): ProbeResult[] 
       };
     });
   } finally {
-    for (const file of written) { try { fs.unlinkSync(file); } catch { /* best effort */ } }
+    for (const file of written) {
+      try { fs.unlinkSync(file); } catch { /* best effort */ }
+      // …and the metadata the build generated from it. Named after the class, so
+      // only this run's probes are removed; anything else in the folder is left
+      // alone.
+      const generated = path.join(XPP_METADATA_CLASS_DIR, path.basename(file));
+      try { fs.unlinkSync(generated); } catch { /* absent when the build never got that far */ }
+    }
   }
 }
 
