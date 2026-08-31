@@ -104,6 +104,20 @@ Two consequences for triage:
   captured from defective output can never fail on the thing its case exists to
   catch — score the live behaviour (a chain walk, a SysTest), not just the shape.
 
+## Corpus integrity
+
+`loadJsonRecords` **silently skips** a record it cannot parse — its own doc
+comment says so and asks the caller to compare the returned count against the
+directory listing. Nobody did, so a `TOOL_DEFECT` record written on 2026-07-07
+(`L4-headerlines-document-slice`) sat unreadable for eight weeks: invisible to
+every cluster, report and held-out check, which were all computed over a corpus
+that was quietly one run short. The cause was a writer emitting Windows paths
+into JSON without escaping the backslashes.
+
+`tests/eval/corpusRecordsParse.test.ts` is the check that doc comment asked for.
+A BOM is a different, already-handled hazard — `stripBom` covers it, and 52
+records rely on that.
+
 ## Improver toolchain
 
 `npm run eval:clusters` (prioritized failure clusters) · `eval:report` (corpus
