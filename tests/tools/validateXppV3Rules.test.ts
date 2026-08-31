@@ -160,6 +160,18 @@ describe('OP001 — && and || have equal precedence in X++', () => {
     expect(rulesOn(code)).not.toContain('OP001');
   });
 
+  it('says nothing about the && -first order, which groups the same everywhere', () => {
+    // "a && b || c" is (a && b) || c in X++ AND in C#. Flagging it was half of the
+    // 971 findings the shipped-source sweep produced — noise that trains a reader
+    // to skip the case that matters.
+    const code = `
+    public boolean m(boolean a, boolean b, boolean c)
+    {
+        return a && b || c;
+    }`;
+    expect(rulesOn(code)).not.toContain('OP001');
+  });
+
   it('says nothing about either operator on its own', () => {
     const code =
       'public boolean m(boolean a, boolean b, boolean c)\n{\n' +

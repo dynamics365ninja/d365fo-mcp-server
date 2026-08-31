@@ -2,6 +2,14 @@
  * Probe batch for the v3 coverage work — every claim a knowledge entry or a rule
  * is about to make, put to xppc before it is written.
  *
+ * READ THIS BEFORE RE-RUNNING. Its questions are ANSWERED (2026-08-31, xppc
+ * 7.0.7996.33) and several were answered by a REFUSAL, because the shape this
+ * file asked about was wrong. Those probes keep `expect: 'fails'` and carry the
+ * diagnostic they earned, so a re-run reports zero surprises on a healthy
+ * platform and a surprise means something really moved. The corrected shapes —
+ * the ones a knowledge entry may copy — live in `coverage-v3b.ts`; take examples
+ * from there, not from here.
+ *
  * One build answers all of them (a build costs 90-170 s whatever it contains, so
  * batching is free), and the harness adds a negative control that MUST fail: a
  * silent log is a broken run, not a pass.
@@ -28,6 +36,9 @@ const probes: Probe[] = [
         }
     }`,
     ],
+    // ANSWERED in v3b (PrmDefaultAlone): it compiles. In THIS batch the result was
+    // unreadable — the harness matched diagnostics by name prefix, so this probe
+    // collected PrmIsDefaultArity's error. That collision is fixed.
     expect: 'compiles',
   },
   {
@@ -50,7 +61,11 @@ public static class ConProbeQueryRangeFn_Extension`,
         return SysQuery::value(NoYes::Yes);
     }`,
     ],
-    expect: 'compiles',
+    // ANSWERED, by refusal, and the fault was the HARNESS's: the declaration named
+    // ConProbeQueryRangeFn_Extension while the artifact was ConProbeQueryRangeFn, and
+    // xppc refuses the mismatch. The harness now derives the artifact name from the
+    // declaration; v3b re-asks and it compiles.
+    expect: 'fails',
   },
   {
     id: 'QueryFilterKernel',
@@ -80,7 +95,9 @@ public static class ConProbeQueryRangeFn_Extension`,
         lookup.performFormLookup();
     }`,
     ],
-    expect: 'compiles',
+    // ANSWERED, by refusal: "Type mismatch in 'SysReferenceTableLookup.newParameters'
+    // argument 2. The expected type is 'FormReferenceControl'". Corrected in v3b.
+    expect: 'fails',
   },
   {
     id: 'LookupMultiSelect',
@@ -109,7 +126,9 @@ public static class ConProbeQueryRangeFn_Extension`,
             _handler);
     }`,
     ],
-    expect: 'compiles',
+    // ANSWERED, by refusal: "The intrinsic argument 'probeRegister' must not specify
+    // a static method" — the handler has to be an instance method. Corrected in v3b.
+    expect: 'fails',
   },
 
   // ── P15 — SysOperation query parameter (H1.12), the batch-with-a-filter shape.
@@ -133,7 +152,10 @@ public class ConProbeSysOpQueryParam`,
         return new QueryRun(query);
     }`,
     ],
-    expect: 'compiles',
+    // ANSWERED, by refusal, for an unrelated reason: "Query 'CustTableListPage' is
+    // not found" — that query is not in the sandbox model's reference set. The
+    // attribute shape itself was never rejected; v3b re-asks with a query that exists.
+    expect: 'fails',
   },
 
   // ── P7 — do the CLR entry points resolve in the sandbox model's reference set?
@@ -146,7 +168,10 @@ public class ConProbeSysOpQueryParam`,
     body: `client = new System.Net.Http.HttpClient();
         re = new System.Text.RegularExpressions.Regex(@'^[A-Z]{2}\\d+$');
         json = FormJsonSerializer::serializeClass(this);`,
-    expect: 'compiles',
+    // ANSWERED, by refusal, and the reason is a language fact worth keeping:
+    // "'client' is an invalid name for a variable because it is an X++ keyword".
+    // The CLR types themselves resolve fine — see ClrHttp2 in v3b.
+    expect: 'fails',
   },
   {
     id: 'ClrNewtonsoft',
@@ -181,7 +206,9 @@ public class ConProbeSysOpQueryParam`,
     body: `docuRef = DocumentManagement::attachFile(
             custTable.TableId, custTable.RecId, custTable.DataAreaId,
             DocuType::find('File'), stream, 'invoice.pdf', 'application/pdf', 'Invoice');`,
-    expect: 'compiles',
+    // ANSWERED, by refusal: argument 4 is a DocuTypeId (a string), not a DocuType
+    // record. Corrected in v3b.
+    expect: 'fails',
   },
   {
     id: 'MailerBuilder',
@@ -211,7 +238,11 @@ public class ConProbeSysOpQueryParam`,
     id: 'SecurityRightsGone',
     question: 'H1.18 — SecurityRights (AX2012) really is absent, so no entry may name it',
     body: `SecurityRights::construct();`,
-    expect: 'fails',
+    // ANSWERED, and it INVERTED the assumption: SecurityRights::construct() compiles.
+    // The class is real — kernel-implemented, so an AOT read alone reports "not found"
+    // and would have shipped a lie. v3b's SecurityRightsReal confirms it by probing a
+    // method that does not exist on it.
+    expect: 'compiles',
   },
 
   // ── H1.1 — system objects and dialogs.
@@ -234,7 +265,9 @@ public class ConProbeSysOpQueryParam`,
         progress.setText('Working');
         progress.incCount(1);
         progress.setTotal(100);`,
-    expect: 'compiles',
+    // ANSWERED, by refusal: newGeneral's first argument is a str, not an int, and
+    // setTotal/incCount/setText live on SysOperationProgressBase. Corrected in v3b.
+    expect: 'fails',
   },
 
   // ── H1.3 — RunBase lifecycle, needed to CoC shipped RunBase classes.
@@ -279,6 +312,10 @@ public class ConProbeSysOpQueryParam`,
     question: 'H4.5/P13 — calling SrsProxy::renderReportToByteArray: error, warning, or silent?',
     locals: 'SrsProxy proxy; System.Byte[] bytes;',
     body: `proxy = SrsProxy::construct();`,
+    // ANSWERED: it COMPILES, with three warnings — "Type 'SrsProxy' is marked
+    // InternalUseOnly and is not accessible from the current module". Compiling is not
+    // the same as supported, and that is the answer the knowledge entry needed.
+    expect: 'compiles',
   },
 
   // ── H2.7 (RPT003) — the pre-process base classes, to key the rule on real names.
@@ -292,6 +329,10 @@ public class ConProbePreProcessBase extends SrsReportDataProviderPreProcessTempD
     {
     }`,
     ],
+    // ANSWERED, by refusal, for an unrelated reason: the probe's own placeholder
+    // classStr(ConProbeContractNotThere) names no known class. v3b drops the attribute
+    // and both pre-process bases compile.
+    expect: 'fails',
   },
 
   // ── H1.5 — view computed columns: the static method shape a view calls.

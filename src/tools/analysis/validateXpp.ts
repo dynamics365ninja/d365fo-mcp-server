@@ -2218,13 +2218,20 @@ function checkSetBasedWithoutWhere(code: string): ValidationViolation[] {
 }
 
 /**
- * OP001 — `&&` and `||` mixed in one expression without parentheses.
+ * OP001 — `||` followed by `&&` in one expression, unparenthesised.
  *
- * In X++ they have EQUAL precedence and evaluate left to right, unlike C#, Java,
- * SQL and every language a developer arrives from — where `&&` binds tighter. So
- * `a || b && c` means `(a || b) && c` here and `a || (b && c)` almost everywhere
- * else, and the code reads correct in both readings. Parentheses are the fix
- * because they make the two readings the same.
+ * In X++ the two have EQUAL precedence and evaluate left to right, unlike C#,
+ * Java, SQL and every language a developer arrives from — where `&&` binds
+ * tighter. Only ONE order actually diverges, and it is worth being exact about
+ * which:
+ *
+ *   a || b && c   X++ reads (a || b) && c   ·   C# reads a || (b && c)   ← differs
+ *   a && b || c   X++ reads (a && b) || c   ·   C# reads (a && b) || c   ← same
+ *
+ * So the rule fires on the first order only. Flagging both was measurably wrong
+ * as advice: over the 105,686 shipped files it produced 971 findings, roughly
+ * half of them on the `&&`-first order that means the same thing in every
+ * language — noise that trains a reader to skip the rule that matters.
  */
 function checkMixedBooleanOperators(code: string): ValidationViolation[] {
   const masked = maskStringsAndComments(code);
@@ -2244,7 +2251,11 @@ function checkMixedBooleanOperators(code: string): ValidationViolation[] {
       if (next === flat) break;
       flat = next;
     }
-    if (!flat.includes('&&') || !flat.includes('||')) continue;
+    // Only `||` BEFORE `&&` reads differently in X++ than in C#. The reverse
+    // order groups identically in both, so it is not worth a word.
+    const firstOr = flat.indexOf('||');
+    const lastAnd = flat.lastIndexOf('&&');
+    if (firstOr < 0 || lastAnd < 0 || firstOr > lastAnd) continue;
 
     violations.push({
       rule: 'OP001',
@@ -2253,8 +2264,10 @@ function checkMixedBooleanOperators(code: string): ValidationViolation[] {
       excerpt: original[i]?.trim().slice(0, 120) ?? line.trim(),
       fix:
         '&& and || have EQUAL precedence in X++ and evaluate left to right — unlike C#, Java and SQL, ' +
-        'where && binds tighter. "a || b && c" is (a || b) && c here. Parenthesise the intended ' +
-        'grouping so the code means the same thing to the compiler and to the next reader.',
+        'where && binds tighter. So "a || b && c" is (a || b) && c HERE and a || (b && c) almost ' +
+        'everywhere else, and the line reads correct under both. Parenthesise the intended grouping ' +
+        'so it means the same thing to the compiler and to the next reader. ' +
+        '("a && b || c" needs nothing — that order groups the same in every language.)',
     });
   }
   return violations;
