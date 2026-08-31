@@ -44,6 +44,10 @@ const BpMonikerArgsSchema = z.object({
   ),
   moniker: z.string().optional().describe('[validate, suppress] The exact moniker, e.g. "BPErrorPrivilegeNotCoveredByDuty".'),
   query: z.string().optional().describe('[search] Free-text description of the scenario, e.g. "privilege not linked to any duty".'),
+  // The published get_knowledge schema exposes `topic`, not `query`, so `topic`
+  // is what a caller can actually send. Accepting both keeps the older internal
+  // spelling working while making the tool satisfiable from its own contract.
+  topic: z.string().optional().describe('[search] Same as `query` — the free-text scenario. This is the name the published get_knowledge schema uses.'),
   limit: z.number().int().positive().max(50).optional().default(10).describe('[search] Max results (default 10).'),
   path: z.string().optional().describe('[suppress] The dynamics:// path copied verbatim from the finding — preferred, and the only way to target a control/field/method/enum value.'),
   elementType: z.enum(ELEMENT_TYPES).optional().describe('[suppress] Top-level AOT element type; used with elementName to derive the path when `path` is not given.'),
@@ -102,21 +106,34 @@ export async function bpMonikerHelpTool(request: CallToolRequest) {
   }
 
   if (args.action === 'search') {
-    if (!args.query) {
-      return { content: [{ type: 'text', text: '❌ search requires `query`.' }], isError: true };
+    // `topic` is the free-text slot the PUBLISHED get_knowledge schema exposes;
+    // `query` exists only in this internal zod schema. Demanding `query` was
+    // therefore unsatisfiable for a strict MCP client, which sees the published
+    // schema and nothing else — it could read the error and still have no way to
+    // comply. Accept either, and name the published one when neither is given.
+    const searchText = args.query ?? args.topic;
+    if (!searchText) {
+      return {
+        content: [{
+          type: 'text',
+          text: '❌ bp-moniker search needs the scenario text in `topic`, e.g. ' +
+            'get_knowledge(kind="bp-moniker", action="search", topic="privilege not linked to any duty").',
+        }],
+        isError: true,
+      };
     }
-    const results = searchMonikers(args.query, args.limit);
+    const results = searchMonikers(searchText, args.limit);
     if (results.length === 0) {
       return {
         content: [{
           type: 'text',
-          text: `No catalog matches for "${args.query}". ${MONIKERS_WITH_RULE_TEXT} of the ${BP_MONIKER_CATALOG.length} entries carry real rule text, ` +
+          text: `No catalog matches for "${searchText}". ${MONIKERS_WITH_RULE_TEXT} of the ${BP_MONIKER_CATALOG.length} entries carry real rule text, ` +
             `so a miss is meaningful: most likely no BP rule covers this, or the wording shares no words with the rule's own. ` +
             `Try the rule's vocabulary (e.g. "duty", "privilege", "label", "extensible") before concluding there is none.`,
         }],
       };
     }
-    const lines = [`Candidates for "${args.query}" — verify against a real finding before suppressing:`, ''];
+    const lines = [`Candidates for "${searchText}" — verify against a real finding before suppressing:`, ''];
     for (const r of results) {
       lines.push(
         `• ${r.entry.moniker}${r.entry.canonical ? '' : ' (not in any AxRuleSet — less certain)'}  [matched: ${r.matchedIn.join(', ')}]`,

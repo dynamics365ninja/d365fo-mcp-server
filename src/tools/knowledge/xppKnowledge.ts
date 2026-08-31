@@ -5007,9 +5007,10 @@ final class MyRentalForm_Extension
       'them are kernel objects with no AOT XML, so the metadata index cannot answer questions about ' +
       'them and their exact members are worth writing down.',
     rules: [
-      'infolog is a global instance of the AOT class Info. Write to it with the unqualified info()/warning()/error()/checkFailed() functions, and prefix a block of messages with setPrefix(\'…\') — the prefix nests, so a called method inherits the caller\'s',
+      'infolog is a global instance of the AOT class Info. Write to it with the unqualified info()/warning()/error()/checkFailed() functions — and pass a LABEL, not a string: xppbp raises BPErrorLabelIsText for a literal in any of them, and in setPrefix and Box::yesNo too',
       'infolog.line() is OBSOLETE and the compiler says so: "On the Info class or the infolog global variable, the line method is obsolete. For better performance, use the infologLine method on the Global class." Call infologLine() instead',
-      'infolog.clear(n) drops everything after line n — the shipped way to discard messages a validation produced while probing. infolog.copy(from, to) and infolog.num() read them back',
+      'infolog.clear(n) drops everything after line n — the shipped way to discard messages a validation produced while probing; infolog.copy(from, to) reads a range back. Both are on Info. infolog.num() is NOT: it is inherited from the kernel base xInfo, so get_object_info answers "not found on Info nor any class it extends" even though the call compiles. Same trap as xSession/xGlobal — the tools cannot confirm a kernel member, and that is not evidence against it',
+      'setPrefix()/getPrefix() are PREDEFINED functions, not members of Info or statics on Global — looking them up on either answers "not found". Call them unqualified; the prefix nests, so a method called inside a prefixed block inherits it',
       'Box::yesNo(text, DialogButton::No) asks a question and returns a DialogButton; Box::confirm, Box::okCancel, Box::info, Box::warning, Box::stop are the rest. A Box BLOCKS a batch job forever — guard any Box behind isRunningOnBatch()',
       'Debug::assert(condition) is a development-time check (it does nothing in a normal AOS run); Debug::printDebug writes to the debugger output. Neither is a substitute for throwing',
       'SysOperationProgress::newGeneral(animation, caption, total) creates a progress bar; setText(), setTotal() and incCount() come from its base SysOperationProgressBase — note the first argument of newGeneral is a str, not an int',

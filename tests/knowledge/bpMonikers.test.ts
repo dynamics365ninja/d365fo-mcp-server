@@ -420,3 +420,35 @@ describe('bpMonikerHelpTool', () => {
     expect(result.isError).toBe(true);
   });
 });
+
+/**
+ * The published get_knowledge schema exposes `topic`; this handler's internal
+ * schema called the same thing `query`. So `action: "search"` answered "requires
+ * `query`" to a caller that had no way to send one — an error a strict MCP client
+ * could read and still not comply with. Found by an eval implementer, which is
+ * exactly the kind of contract gap only a real caller hits.
+ */
+describe('bp-moniker search is satisfiable from the published schema', () => {
+  it('accepts the scenario text in topic', async () => {
+    const result = await bpMonikerHelpTool(
+      req({ action: 'search', topic: 'privilege not linked to any duty' }),
+    );
+    expect(result.isError).toBeFalsy();
+    expect(textOf(result)).toMatch(/privilege not linked to any duty/);
+  });
+
+  it('still accepts the older internal spelling', async () => {
+    const result = await bpMonikerHelpTool(
+      req({ action: 'search', query: 'privilege not linked to any duty' }),
+    );
+    expect(result.isError).toBeFalsy();
+  });
+
+  it('names the parameter a caller can actually send when neither is given', async () => {
+    const result = await bpMonikerHelpTool(req({ action: 'search' }));
+    expect(result.isError).toBe(true);
+    const text = textOf(result);
+    expect(text).toMatch(/`topic`/);
+    expect(text).not.toMatch(/requires `query`/);
+  });
+});
