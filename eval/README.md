@@ -447,15 +447,29 @@ Blocked / declined (not planned):
       EvalL2CocCarFactsTest.testWrapperPreservesBaseValueForDifferentInput  success  390 ms
 
   That is the first time in this project's history that X++ test code ran and
-  reported. **What is NOT yet proven is that the oracle can report a FAILURE.**
-  The run was stopped while performing exactly that negative control, so every
-  observation so far is of the runner saying "success" — and this repo has already
-  paid twice for treating an all-green instrument as a working one (a probe that
-  reported nothing, a golden that lost its attributes silently). Until a
-  deliberately-failing test is shown to come back failed, `systest_pending` stays
-  true on all four cases and no systest score is recorded. Running that control is
-  the first thing the next session should do; the passing run above is not the
-  hard part any more.
+  reported.
+
+  **The negative control then proved the oracle DISCRIMINATES** (2026-08-31 16:33).
+  A run of "success" only tells you the instrument is on, so `ConDemoOracleControlTest`
+  was built with three methods — one that must pass, one that fails an assertion,
+  one that fails by throwing — and run in a single pass:
+
+  | method | reported |
+  |---|---|
+  | `testControlPasses` | **true** |
+  | `testControlFailsByAssertion` | **false** — "DELIBERATE: … (Expected: 99; Actual: 2)" |
+  | `testControlFailsByThrow` | **false** — "An unknown exception caught! (Actual: DELIBERATE: …)" |
+
+  Suite `success="false"`, and `run_systest_class` returned `❌ Tests failed`. Both
+  failure modes are distinguished from the pass IN THE SAME RUN, so the result is
+  not a coincidence of ordering. `parseSysTestXml` was then run over that document
+  and returned the same 3 outcomes with both messages — so the repo's own reader
+  agrees with the runner, which is the half a passing run cannot show.
+
+  **The runtime oracle is therefore trustworthy, not merely alive.** What remains
+  is ordinary work: the four `systest_pending` cases still have to RUN their own
+  tests, because the control proves the instrument, not those cases. The sandbox
+  was restored and a full build is green.
   The four cases (`L2-coc-extension`, `L3-batch-basic`, `L2-event-handler-basic`,
   `L3-enum-field-form-downgrade-guard`) keep `systest_pending: true` until each one
   actually RUNS: their test classes were rolled back after their goldens were
