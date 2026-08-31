@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemOutput xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
+	<Name>ConDemoCreditLimitReport</Name>
+	<Label>@SYS313987</Label>
+	<Object>ConDemoCreditLimitReportController</Object>
+	<ObjectType>Class</ObjectType>
+</AxMenuItemOutput>

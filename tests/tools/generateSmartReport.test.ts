@@ -494,3 +494,50 @@ describe('generate_object(scaffold, report) controller hook', () => {
     expect(text).toContain('contract.parmCustAccount(custTable.CustAccount);');
   });
 });
+
+/**
+ * A report temp table has no natural key: it is a bag of rows produced by
+ * processReport(). The scaffold built its UNIQUE index on the table's FIRST
+ * field, which under designStyle="GroupedWithTotals" is by construction the GROUP
+ * key — so the table could hold exactly one row per group, and the second record
+ * in a group failed on a duplicate key. At RUN time; the metadata builds clean
+ * and nothing else notices, which is why an eval run had to find it and repair
+ * the table by hand.
+ */
+describe('report temp table index', () => {
+  const originalPlatform = process.platform;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Same reason as above: the non-Windows path RETURNS the XML instead of
+    // writing it. Without this the test scaffolds a real package into
+    // PackagesLocalDirectory — which is exactly what happened while writing it.
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform });
+  });
+
+  it('keys the unique index on RecId, not on the first data column', async () => {
+    const symbolIndex = createSymbolIndexStub();
+
+    const result = await handleGenerateSmartReport(
+      {
+        name: 'ConDemoIdxProbe',
+        fieldsHint: 'CustGroup, AccountNum, CreditMax',
+        designStyle: 'GroupedWithTotals',
+        modelName: 'MyModel',
+      } as any,
+      symbolIndex,
+    );
+
+    const text = result.content[0].text as string;
+    const indexBlock = /<Indexes>([\s\S]*?)<\/Indexes>/.exec(text)?.[1] ?? '';
+
+    expect(indexBlock, 'no <Indexes> block was emitted for the temp table').not.toBe('');
+    expect(indexBlock).toContain('RecId');
+    // The group column must not be made unique by accident.
+    expect(indexBlock).not.toContain('CustGroup');
+  });
+});

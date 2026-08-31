@@ -45,6 +45,23 @@ import { canonicalSymbolName, lookupSymbolNocase } from '../../utils/symbolLooku
 import { scaffoldWriteRefusalResult } from '../write/writeAnchorGuard.js';
 import { upsertWrittenFileIntoIndex } from '../write/inlineIndexUpsert.js';
 
+/**
+ * The field a report temp table's unique index is built on.
+ *
+ * `buildPrimaryKeyIndex` always emits a UNIQUE index, and this scaffold used to
+ * hand it the table's FIRST field. A report temp table has no natural key — it is
+ * a bag of rows produced by processReport() — so that made the first column
+ * unique by accident, and under `designStyle="GroupedWithTotals"` the first
+ * column is by construction the GROUP key: the table could then hold exactly one
+ * row per group, and the second customer in a group failed on a duplicate key.
+ * At RUN time. The metadata builds clean and nothing else notices, which is why
+ * an eval run had to find it.
+ *
+ * RecId is the honest answer: every table has one, it is always unique, and it
+ * asserts nothing false about the data.
+ */
+const REPORT_TMP_KEY_FIELD = 'RecId';
+
 interface ReportFieldSpec {
   /** Field name on the TmpTable (e.g. "ItemId", "Amount") */
   name: string;
@@ -548,7 +565,7 @@ export async function handleGenerateSmartReport(
     tableGroup: 'Main',
     tableType: 'TempDB',
     fields: tableFields,
-    indexes: [builder.buildPrimaryKeyIndex(tmpTableName, [tableFields[0]?.name || 'RecId'])],
+    indexes: [builder.buildPrimaryKeyIndex(tmpTableName, [REPORT_TMP_KEY_FIELD])],
   });
 
   generatedObjects.push({
@@ -571,7 +588,7 @@ export async function handleGenerateSmartReport(
       tableGroup: 'Main',
       tableType: 'TempDB',
       fields: ds.tableFields,
-      indexes: [builder.buildPrimaryKeyIndex(ds.tmpTableName, [ds.tableFields[0]?.name || 'RecId'])],
+      indexes: [builder.buildPrimaryKeyIndex(ds.tmpTableName, [REPORT_TMP_KEY_FIELD])],
     });
     generatedObjects.push({
       objectType: 'table',

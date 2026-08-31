@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoCreditLimitReportDP</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Data provider for the @SYS313987 report.
+/// Extends <c>SrsReportDataProviderBase</c> and populates the <c>ConDemoCreditLimitReportTmp</c> temporary table.
+/// </summary>
+[
+    SRSReportParameterAttribute(classStr(ConDemoCreditLimitReportContract))
+]
+public class ConDemoCreditLimitReportDP extends SrsReportDataProviderBase
+{
+    ConDemoCreditLimitReportTmp conDemoCreditLimitReportTmp;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getConDemoCreditLimitReportTmp</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the temporary table buffer used by the report dataset.
+    /// </summary>
+    /// <returns>The <c>ConDemoCreditLimitReportTmp</c> table buffer.</returns>
+    [SRSReportDataSetAttribute(tableStr(ConDemoCreditLimitReportTmp))]
+    public ConDemoCreditLimitReportTmp getConDemoCreditLimitReportTmp()
+    {
+        select conDemoCreditLimitReportTmp;
+        return conDemoCreditLimitReportTmp;
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>processReport</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Main data processing method. Populates the <c>ConDemoCreditLimitReportTmp</c> temporary table
+    /// with report data based on the contract parameters.
+    /// </summary>
+    public void processReport()
+    {
+        CustTable custTable;
+
+        // Temporary table for this report run only — clearing it whole is deliberate.
+        delete_from conDemoCreditLimitReportTmp;
+
+        // Detail rows only. The group subtotal and the grand total are RDL aggregates
+        // (=Sum(Fields!CreditMax.Value)) in the design; summing here as well double-counts.
+        insert_recordset conDemoCreditLimitReportTmp (CustGroup, AccountNum, CreditRating, CreditMax)
+            select CustGroup, AccountNum, CreditRating, CreditMax
+                from custTable
+                where custTable.CreditMax > 0;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
