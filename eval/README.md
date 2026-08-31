@@ -333,11 +333,23 @@ only as a recovery hint) or at `get_form_info` / `get_label_info` /
 `find_object`, which were never tool names at all, and 7 specs under-declared
 their own golden.
 
-**Warehouse-app screen cases — what has and has not been run (2026-08-30).**
-Four cases now cover the mobile device (scanner) surface:
-`L3-processguide-flow-slice`, `L2-processguide-page-control`,
-`L3-legacy-workexecutedisplay-extend` and `L3-warehouse-scan-resolve-slice`.
-All four are `golden_pending`. What ran here, VM-free, and what it proved:
+**Warehouse-app screen cases — CAPTURED 2026-08-30 (`09dfcc2`, PR #970).** All
+four ran on the VM: `L3-processguide-flow-slice`,
+`L2-processguide-page-control`, `L3-legacy-workexecutedisplay-extend` and
+`L3-warehouse-scan-resolve-slice` are `golden_pending: false`, their goldens are
+committed under `eval/goldens/`, and each has a corpus record scoring `build: 1`
+and `bp_clean: 1`. Nothing is owed on them.
+
+*(One neighbour is not quite finished: `L3-warehouse-work-slice` has a captured
+golden and `build: 1`, but its corpus record carries `bp_clean: null` — BP never
+ran for it. That is a real, small gap, not a claim to fix in prose.)*
+
+The dry-run table below is kept because it is what could honestly be claimed
+BEFORE the capture, and because the asymmetry it describes is the point: a
+grounding test proves the ground truth is reachable, and nothing more.
+
+<details>
+<summary>What ran VM-free first, and what it proved (2026-08-30, before the capture)</summary>
 
 | Ran | Result |
 |---|---|
@@ -347,13 +359,14 @@ All four are `golden_pending`. What ran here, VM-free, and what it proved:
 | `npm run eval:knowledge-audit` | 0 refs outside the audited snapshot — the new topics name AOT elements in prose only, so no re-capture is owed |
 | `npm run eval:coverage -- --check` | core 100%, total 98/100 — the two new leaves are the visible gap |
 
-**Not run, and why:** the implement → build → score → record cycle needs the
-D365FO VM (full-mode server, C# bridge, Contoso model, `xppc`). This work was
-done in a cloud session with no VM attached, so there is no build result, no BP
-result, no golden and no corpus record for these four cases — and none was
-written, because a corpus record asserts that a run happened. `eval-run` on the
-VM is what closes them; the grounding dry-run above is what can be honestly
-claimed until then.
+**Why nothing more could be claimed then:** the implement → build → score →
+record cycle needs the D365FO VM (full-mode server, C# bridge, sandbox model,
+`xppc`). That authoring session had no VM attached, so there was no build result,
+no BP result, no golden and no corpus record — and none was written, because a
+corpus record asserts that a run happened. `eval-run` on the VM is what closed
+them, the next day.
+
+</details>
 
 Standing queues:
 
