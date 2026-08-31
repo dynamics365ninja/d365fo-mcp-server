@@ -225,3 +225,43 @@ describe('applyObjectPrefix — model-name style (EXTENSION_NAMING_STYLE=model-n
       .toBe('CustTable.CRExtension');
   });
 });
+
+/**
+ * `_Extension` does not only mean "Chain of Command wrapper named after a base
+ * object". Microsoft ships `SysQueryRangeUtil_Extension`, and a model's own
+ * `ConDemoRanges_Extension` is the same shape — a class that simply ends in the
+ * word.
+ *
+ * The idempotency check only looked at the END of the base name, where a CoC
+ * infix sits, so a name the caller had ALREADY prefixed at the start collected a
+ * second one: ConDemoRanges_Extension → ConDemoRangesCon_Extension, with the
+ * declaration rewritten to match. An eval run could not produce the name its own
+ * instruction asked for through any grounded path.
+ *
+ * The discriminator is the PascalCase boundary, which is what keeps a real base
+ * name that merely begins with the same letters working.
+ */
+describe('applyObjectPrefix — _Extension classes not named after a base object', () => {
+  it('does not prefix a name that already carries the prefix', () => {
+    expect(applyObjectPrefix('ConDemoRanges_Extension', 'Con')).toBe('ConDemoRanges_Extension');
+  });
+
+  it('is idempotent — applying it twice changes nothing', () => {
+    const once = applyObjectPrefix('ConDemoRanges_Extension', 'Con');
+    expect(applyObjectPrefix(once, 'Con')).toBe(once);
+  });
+
+  it('still infixes a CoC class named after a Microsoft base', () => {
+    expect(applyObjectPrefix('CustTable_Extension', 'Con')).toBe('CustTableCon_Extension');
+  });
+
+  it('still infixes a base whose name merely BEGINS with the prefix letters', () => {
+    // "ConfigKey" is Con|f… — a word, not a prefix boundary. Treating it as
+    // already-prefixed would silently drop the infix from a real extension.
+    expect(applyObjectPrefix('ConfigKey_Extension', 'Con')).toBe('ConfigKeyCon_Extension');
+  });
+
+  it('keeps the existing end-infix behaviour untouched', () => {
+    expect(applyObjectPrefix('CustTableCon_Extension', 'Con')).toBe('CustTableCon_Extension');
+  });
+});

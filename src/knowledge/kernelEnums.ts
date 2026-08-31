@@ -83,6 +83,11 @@ const ENTRIES: KernelEnum[] = [
   { name: 'AccessType', values: ['Add', 'Correction', 'Delete', 'Edit', 'NoAccess', 'View'] },
   { name: 'AccessRight', values: ['Add', 'Correction', 'Delete', 'Edit', 'NoAccess', 'View'] },
   { name: 'SortOrder', values: ['Ascending', 'Descending'] },
+  // QueryBuildDataSource.joinMode(). Reported by a second eval run, through the
+  // static-member rule rather than the declared-type one — the two rules did not
+  // share the kernel-name exemption, so the same fact was a warning in one place
+  // and an error in the other.
+  { name: 'JoinMode', values: ['ExistsJoin', 'InnerJoin', 'NoExistsJoin', 'OuterJoin'] },
   // The argument to an `unchecked(...)` block. Only these two members exist —
   // DBSchemaDrift and Deadlock read plausibly and are not real (xppc-verified).
   { name: 'Uncheck', values: ['TableSecurityPermission', 'XDS'] },

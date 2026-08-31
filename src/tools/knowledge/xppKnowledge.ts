@@ -3085,6 +3085,8 @@ while (ss.next(so))
       'qbds.addLink(fieldNum(Parent, F), fieldNum(Child, F)) joins a child data source when no AOT relation exists (or the relation is not the one you want); relations() and fetchMode() decide whether the platform adds its own links on top',
       'A user-callable range function: put a static method on an extension of SysQueryRangeUtil, decorate it [QueryRangeFunction()], and users can type "(myOpenOnly())" into the filter dialog. Verified to compile: [ExtensionOf(classStr(SysQueryRangeUtil))] public static class MyRanges_Extension with public static str myOpenOnly(). The shipped ones — currentUserId(), currentDate(), dateRange(), monthRange(), greaterThanDate() — are the model to copy',
       'SysQuery::findOrCreateQueryFilter is the filter twin of findOrCreateRange; both are the idempotent form and are what a form extension should use, since it may run after the base form already added its own',
+      'JoinMode (ExistsJoin / InnerJoin / NoExistsJoin / OuterJoin) is a KERNEL enum, like QueryFilter — no metadata lookup will find it, and that is not evidence against it',
+      'Proving a filter did what a range would not means counting DISTINCT PARENTS, not rows: an outer join returns one row per parent/child pair, so a plain row count hides exactly the difference. Collect the parent keys into a Set',
     ],
     examples: [
       {
