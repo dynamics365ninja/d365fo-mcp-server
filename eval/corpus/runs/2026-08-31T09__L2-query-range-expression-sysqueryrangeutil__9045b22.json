@@ -1,0 +1,65 @@
+{
+  "run_id": "2026-08-31T09__L2-query-range-expression-sysqueryrangeutil__9045b22",
+  "case_id": "L2-query-range-expression-sysqueryrangeutil",
+  "tier": 2,
+  "timestamp": "2026-08-31T09:27:32.878Z",
+  "server_git_sha": "9045b22",
+  "generated_artifacts": [
+    "AxClass/ConDemoQueryRanges.xml",
+    "AxClass/ConDemoRangesCon_Extension.xml",
+    "AxLabelFile/ConDemo_en-US.xml (run residue, removed at rollback)"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS",
+  "platform_build": "xppc 7.0.7996.33",
+  "static_gate": {
+    "references": {
+      "passed": false,
+      "unresolved": [
+        "unknown-static-member (ConDemoQueryRanges line 18): JoinMode::OuterJoin - \"Static method OuterJoin not found on JoinMode\"; JoinMode is a KERNEL enum with no AOT metadata (the index knows it only from method signatures and a same-named TmpSysQueryAddDataSource field). FALSE POSITIVE: xppc compiled it with 0 errors / 0 warnings.",
+        "unknown-type x5 (ConDemoQueryRanges lines 46, 74, 154, 155, 157, 158): ConDemoQueryRanges::addTransactionDataSource / ::countCustomers / ::buildQueryWithChildRange / ::buildQueryWithChildFilter - the class SELF-REFERENCING its own static methods. FALSE POSITIVE: the validator resolves against the index only, so a not-yet-created class calling itself is always unknown.",
+        "unknown-label (warning, line 160): @ConDemo:QueryRangeVersusFilter - CORRECT at the time; the label file did not exist yet. Resolved by labels(action=\"create\", labelFileId=\"ConDemo\", createIfMissing=true) before the write.",
+        "ConDemoRangesCon_Extension: all 7 references resolved, 0 errors, 0 warnings."
+      ]
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "Scored outcome is a clean PASS (build 1 / bp_clean 1 / golden_match 1) on the FIRST build - no compile-fix cycles. The grounding topic under test, get_knowledge(topic=\"query-object-model\"), was ACCURATE and SUFFICIENT: every claim it makes was independently confirmed this run - RANGE-before-join vs QueryFilter-on-the-joined-result; query.addQueryFilter(qbds, fieldStr(T,F)) returning a QueryFilter; SysQuery::value / ::valueNot / ::range / ::valueEmptyString / ::findOrCreateRange / ::findOrCreateQueryFilter all existing with the documented shapes (::range carries a third optional treatOnlyNullAsUnbound); addLink + relations(false) + joinMode(); and [ExtensionOf(classStr(SysQueryRangeUtil))] public static class X_Extension with [QueryRangeFunction()] public static str compiling in a real object, not just a probe. Nothing in the topic had to be worked around.\n\nTOOL_DEFECT 1 (blocks the case instruction literally): d365fo_file(action=\"create\", objectType=\"class\") applies the class-EXTENSION naming heuristic to any objectName ending in \"_Extension\" and infixes the model prefix before the suffix, with no opt-out. Passing the already-correct, already-prefixed ConDemoRanges_Extension produced ConDemoRangesCon_Extension - prefix at BOTH ends - and rewrote the declaration to match. The heuristic assumes every _Extension class is a CoC wrapper named after its base class, which is false for the SysQueryRangeUtil range-function pattern: an [ExtensionOf] class that only ADDS new static members is conventionally named after what it contributes (Microsoft's own shipped one is SysQueryRangeUtil_Extension in Foundation, and the case asks for <Prefix>Ranges_Extension). No grounded path produces that name; the golden had to pin the tool output. Fix shape: only infix when the passed name actually starts with the base object name, and make prefixing idempotent (a name already starting with the prefix is already final).\n\nTOOL_DEFECT 2 (dead-end guidance): prepare(mode=\"create\", objectType=\"class\", objectName=\"DemoRanges_Extension\") classifies the object as class-extension and fails naming validation with \"baseObjectName is required for extension types (class-extension)\" - but the prepare schema has NO baseObjectName parameter. The error asks for something the caller cannot supply. It still returns a usable groundingToken, so it is guidance noise rather than a hard block, but it is unactionable as written.\n\nVALIDATOR_GAP 1 (self-reference): validate_code(mode=\"references\") flags a class calling its OWN static methods as unknown-type (5 errors here, e.g. ConDemoQueryRanges::countCustomers). The declared class/table name in the submitted source should seed the local symbol table before the index is consulted; this shape hits every new class with a static helper, which is very common. The printed advice - search(\"ConDemoQueryRanges\") - can never succeed for an object that does not exist yet.\n\nVALIDATOR_GAP 2 (kernel enum, known family): JoinMode::OuterJoin -> unknown-static-member ERROR. Same root cause as the documented kernel-enum allowlist gap (NoYes, TableGroup, ...) but reached through the static-MEMBER rule rather than the type rule, so the warning-not-error downgrade does not apply and the message misdescribes a kernel enum as a class (\"Static method OuterJoin not found on JoinMode\", \"Use get_object_info(objectType=class, name=JoinMode)\"). JoinMode should join the kernel-name allowlist and the downgrade should be inherited by the static-member and intrinsic-target rules - this is the second consecutive run in this session reporting the same inheritance gap (see the L2-lookup-reference-multiselect record).\n\nTOOL_DEFECT 3 (silent omission): get_object_info(objectType=\"class\", name=\"SysQuery\", options={\"members\":\"names\"}) listed 80 members but SysQuery::range was NOT among them, while non-members were: a bare macro line \"#ISOCountryRegionCodes\" and two doc-comment sentences (\"Deletes ranges in Q which is in InitQ.\", \"Method to test a packed queryrun container is legal.\") appear as if they were members. A targeted options={\"method\":\"range\"} read returned the real public static str range(anytype, anytype, boolean=false). The extractor appears to take the line preceding the method body when a macro or stray comment sits between the doc block and the signature, consuming the signature it should have emitted. A member list that silently DROPS a public API is worse than a slow full read - it argues the API does not exist.\n\nTOOL_DEFECT 4 (minor): table fieldFilter is a plain substring match, so \"AccountNum|CustGroup|Blocked\" on CustTable reported \"0 of 193 matching\". The name invites a pattern; either support alternation or document substring semantics in the option description.\n\nPERF observation (not a defect): the first d365fo_file(action=\"create\") took 166.8s, of which 154.0s was \"symbol index upsert\" against 12.8s of actual bridge Create(). The second create in the same session returned promptly.\n\nKNOWLEDGE_GAP (small, in the topic under test): query-object-model already warns that QueryFilter is a kernel class \"so no metadata lookup will find it\". It should say the same about JoinMode (the JoinMode::OuterJoin validator error is otherwise unexplained mid-run), it should warn that the write tool renames a <Prefix>Ranges_Extension class until TOOL_DEFECT 1 is fixed, and the RANGE-vs-FILTER bullet could add that verifying the effect means counting DISTINCT parents - an outer join returns parent/child pairs, so a plain row count hides the very difference the bullet is about.",
+  "suggested_fix_area": "src/tools/d365fo_file create naming: gate the class-extension infix on \"passed name starts with the base object name\", and make prefix application idempotent so an already-prefixed name is returned unchanged (currently ConDemoRanges_Extension -> ConDemoRangesCon_Extension).\nsrc/tools/prepare (create mode): either accept baseObjectName or stop emitting the \"baseObjectName is required\" error it cannot let the caller satisfy.\nsrc/validation references resolver: (a) seed the symbol table with the class/table declared in the submitted source so self-referencing static calls resolve; (b) extend the kernel-name allowlist/downgrade from the type rule to the unknown-static-member and unknown-intrinsic-target rules, and add JoinMode to the kernel enum list.\nsrc/tools/get_object_info: class members=\"names\" extractor must not emit macro/comment lines as members nor drop the member that follows them (SysQuery::range is missing today); table fieldFilter: document substring semantics or support alternation.\nsrc/knowledge topic query-object-model: add the JoinMode kernel-enum note next to the existing QueryFilter one, the extension-class naming caveat, and the distinct-parent counting note in the RANGE vs FILTER bullet.",
+  "evidence_refs": [
+    "eval/goldens/L2-query-range-expression-sysqueryrangeutil/ConDemoQueryRanges.metadata.xml",
+    "eval/goldens/L2-query-range-expression-sysqueryrangeutil/ConDemoRangesCon_Extension.metadata.xml",
+    "eval/goldens/L2-query-range-expression-sysqueryrangeutil/README.md",
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxClass/ConDemoQueryRanges.xml (rolled back)",
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxClass/ConDemoRangesCon_Extension.xml (rolled back)",
+    "full build (target) 77s: 0 errors / 0 warnings; prior incremental build 116s: 0 errors / 0 warnings",
+    "run_bp_check objects=[class:ConDemoQueryRanges, class:ConDemoRangesCon_Extension]: 0 findings (the 6 BP warnings of the model-wide bpCheck all belong to the fixture table ConDemoNoteHeader)",
+    "shipped reference implementations: SysQueryRangeUtil_Extension (Foundation), SysQueryRangeUtil.currentUserId (ApplicationPlatform)"
+  ]
+}

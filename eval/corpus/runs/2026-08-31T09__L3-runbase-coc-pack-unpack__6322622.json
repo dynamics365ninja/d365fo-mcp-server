@@ -1,0 +1,65 @@
+{
+  "run_id": "2026-08-31T09__L3-runbase-coc-pack-unpack__6322622",
+  "case_id": "L3-runbase-coc-pack-unpack",
+  "tier": 3,
+  "timestamp": "2026-08-31T09:59:05.673Z",
+  "server_git_sha": "6322622",
+  "generated_artifacts": [
+    "AxClass/ConDemoLegacyNoteJob.xml",
+    "AxClass/ConDemoNoteArchive.xml (first name, deleted before the golden was captured - name clash with the L2-performance-set-based table)",
+    "AxLabelFile/ConDemo_en-US.xml + LabelResources/en-US/ConDemo.en-US.label.txt (run residue, removed at rollback)",
+    "Resources/ConDemo.dll + Resources/en-US/ConDemo.resources.dll (compiled label residue, removed at rollback)"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "PASS",
+  "platform_build": "xppc 7.0.7996.33",
+  "static_gate": {
+    "references": {
+      "passed": false,
+      "unresolved": [
+        "unknown-type x2: <Class>::description / <Class>::construct - the class SELF-REFERENCING its own statics. FALSE POSITIVE, xppc 0 errors / 0 warnings. Third consecutive run in this session reporting this shape.",
+        "unknown-intrinsic-target x1: enumStr(NoYes) - NoYes is a KERNEL enum with no AOT metadata. FALSE POSITIVE, xppc 0 errors / 0 warnings. The kernel-name downgrade still does not reach the intrinsic-target rule.",
+        "No NEW shape. Both families are already documented and their fixes are committed at HEAD 6322622; the LIVE server process in this session was started from 9045b22 and still serves the pre-fix build. validate_code was run once, on the pre-rename source text; the rename changed only identifiers, not the reference shapes."
+      ]
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "Scored outcome is a clean PASS (build 1 / bp_clean 1 / golden_match 1). xppc reported 0 errors / 0 warnings on the FIRST build of the generated class and run_bp_check on the class alone reports 0 findings. Exactly one BP-fix cycle was needed and its cause is KNOWLEDGE_GAP 1 below. The artifact was then renamed once (ConDemoNoteArchive -> ConDemoLegacyNoteJob) for corpus hygiene, not because of a defect - see the CORPUS HYGIENE note at the end.\n\nKNOWLEDGE_GAP 1 (in the topic under test, and it costs a build cycle). get_knowledge(topic=deprecated) enumerates the RunBase lifecycle as: dialog() builds it (addFieldValue returns the DialogField you keep), getFromDialog() reads the fields back, validate(Object _calledFrom = null) checks them, run() does the work, and pack()/unpack() carry the state. That list is INCOMPLETE in a way the compiler does not catch: a RunBase subclass must ALSO override canRunInNewSession(). A class written to the topic literally compiles clean, but xppbp raises BPUpgradeCodeRunBaseMissingMethod - \"Class ConDemoNoteArchive should override the canRunInNewSession method\" - and the base implementation Runbase.canRunInNewSession() is itself a throw error(Error::missingOverride(funcName())), so it is a runtime landmine too, not a style note. This was the ONLY reason the first bpCheck was dirty; adding \"protected boolean canRunInNewSession() { return false; }\" cleared it. The bullet should name canRunInNewSession as part of the mandatory lifecycle and, while it is there, the static description() used as the dialog and batch caption plus the static main(Args) entry point - both were needed by this case and neither is mentioned.\n\nKNOWLEDGE_GAP 2 (same topic, the half-told half of what this case is about). The topic says: ADD A FIELD AND YOU MUST BUMP #CurrentVersion - otherwise unpack reads an old container into the new list and the job runs with silently wrong parameters. It never says what the bumped class then does with the OLD containers, and read literally, bumping the version means every already-saved batch job stops unpacking (default: return false) - trading silently-wrong parameters for silently-dead batch jobs. The shipped convention, confirmed this run on InventCountCreate (ApplicationSuite), is a RETAINED #LOCALMACRO.CurrentList<n> per retired version plus a \"case <n>:\" branch that reads the old list and defaults the added fields. One clause closes it: keep the previous list as #localmacro.CurrentList<n> and give it its own case, so \"default: return false\" is reserved for versions you never shipped. The golden captures that shape (#CurrentVersion(2) + #Version1(1) + #localmacro.CurrentListV1).\n\nTOOL_DEFECT 1 (repeat family, worse instance). get_object_info(objectType=class, name=RunBaseBatch, options={members:names}) returned 93 members, of which 26 (28%) are not members at all but DOC-COMMENT SENTENCES - \"The method returns a BatchInfo class.\", \"A RunbaseBatch new CAN NOT take any parameters.\", \"This static method should exist in every class.\", \"This method returns a class containing the methods described by the RunBaseDialogable interface.\" (twice), and so on. Each prose row CONSUMES the signature it should have emitted, so the member list of RunBaseBatch contains no dialog(), no description(), no batchInfo(), no canGoBatch(), no canGoBatchJournal() and no new() - for the class this case is about, the member list omits the very method the instruction names first. Same extractor bug family as the SysQuery::range omission recorded in the previous run, but systemic rather than a single miss: the extractor appears to fall back to the line preceding the body whenever the declaration is fronted by a legacy // comment block instead of an XML doc block. A member list that silently DROPS public API while printing prose cannot be used as a grounding source.\n\nTOOL_DEFECT 2 (new, low severity, wrong-answer-shaped). analyze_code(mode=implementations, className=RunBaseBatch, methodName=unpack) returned five \"similar implementations to learn from\", four of which are ABSTRACT or INTERFACE declarations with empty bodies (PriceComponentCriteria, PriceComponentResult, IWorkspacePinContract, FormRunConfigurationPinContract) and the fifth an empty stub - zero lines of real body for a method whose entire value is its body convention. It then synthesised a \"Suggested Implementation Pattern\" that is a TODO stub and mangled the parameter name to \"container __packedClass\" (doubled underscore). The mode should rank candidates by body size and exclude abstract/interface declarations; as it stands it argues the platform contains no unpack implementations. The usable answer came from get_object_info(options={method:unpack, include:source}) on a concrete shipped class instead.\n\nTOOL_DEFECT 3 (minor, rollback hygiene). d365fo_file(action=modify, operation=add-method) wrote ConDemoNoteArchive.xml.backup-2026-08-31T09-42-46-117 next to the object although createBackup was NOT passed and its schema default is false. An unrequested sibling file inside the AOT metadata folder is residue the caller does not know to clean up.\n\nNOT A DEFECT, worth keeping: the class-extension naming trap recorded in the previous run did not fire - a base name with no _Extension suffix produced exactly the prefixed name, and the tool said so explicitly. The write again reported \"Not added to a project (no projectPath resolved)\", as in every run of this session; the model-wide xppc build is unaffected by it. d365fo_file(action=delete) cleanly removed the first class (11 symbols de-indexed) and the recreate under the new name needed no workaround.\n\nCORPUS HYGIENE (not a run failure, but it should be a guardrail). The first, natural name for this artifact - ConDemoNoteArchive - is ALREADY the name of a TABLE that case L2-performance-set-based produces (npm run eval:fixtures lists DemoNoteArchive under that case, and K:/AosService/.../XppMetadata/fm-mcp/AxTable/ConDemoNoteArchive.xml is left over from its run). prepare(mode=create) reported \"No collision\" because it only consults the live symbol index of the sandbox, which had been rolled back. Two goldens pinning the same base name as different AOT types is exactly the NEEDS_REVIEW class the fixtures CLI flags, and in a shared sandbox a table and a class of the same name would collide in X++ type resolution. The artifact was therefore renamed to ConDemoLegacyNoteJob before the golden was committed. A cheap fix: have prepare(mode=create) also check the eval case catalog / other goldens for the proposed base name, or at least have the fixtures CLI fail when two cases claim one base name.",
+  "suggested_fix_area": "src/knowledge topic deprecated, RunBase lifecycle bullet: add canRunInNewSession() to the mandatory lifecycle (BPUpgradeCodeRunBaseMissingMethod, plus the Error::missingOverride throw in the base implementation), and mention the static description() and static main(Args) that every RunBase job also needs.\nsrc/knowledge topic deprecated, pack/unpack bullet: state the old-version branch convention - keep the retired list as #localmacro.CurrentList<n> with its own \"case <n>:\" so an old container is upgraded rather than rejected, and \"default: return false\" is reserved for versions never shipped.\nsrc/tools/get_object_info class members=names extractor: stop emitting doc-comment / legacy // comment lines as members and stop consuming the signature that follows them - RunBaseBatch currently loses dialog(), description(), batchInfo(), canGoBatch(), canGoBatchJournal(), new() (26 of 93 rows are prose). Same root cause as the SysQuery::range omission; one regression test over a class with legacy // doc blocks pins both.\nsrc/tools/analyze_code mode=implementations: exclude abstract and interface declarations, rank the survivors by body length, and when nothing real is found say so instead of synthesising a TODO stub with a mangled parameter name (__packedClass).\nsrc/tools/d365fo_file action=modify: honour createBackup=false (the schema default) instead of always writing a .backup-<timestamp> sibling into the AOT folder; if a safety copy is unconditional, put it outside the metadata directory and report its path as removable.\nsrc/eval/fixtures (or tests/eval/caseCatalog.test.ts): fail when two cases claim the same output base name, so a golden cannot pin ConDemoNoteArchive as a class while another case pins it as a table.",
+  "evidence_refs": [
+    "eval/goldens/L3-runbase-coc-pack-unpack/ConDemoLegacyNoteJob.metadata.xml",
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxClass/ConDemoLegacyNoteJob.xml (rolled back)",
+    "incremental build 82s (first name, before canRunInNewSession): xppc 0 errors / 0 warnings; bpCheck 7 warnings = 6 on the fixture table ConDemoNoteHeader + BPUpgradeCodeRunBaseMissingMethod on the class",
+    "full build (target) 46s after adding canRunInNewSession: xppc 0 errors / 0 warnings; bpCheck 6 warnings, ALL on the fixture table",
+    "full build (target) 109s after the rename to ConDemoLegacyNoteJob: xppc 0 errors / 0 warnings; bpCheck 6 warnings, ALL on the fixture table",
+    "run_bp_check objects=[class:ConDemoLegacyNoteJob]: 1 element processed, 0 warnings / 0 errors",
+    "shipped references read this run: AddressZipCodeImportDialog (classDeclaration + dialog/getFromDialog/pack/unpack/canRunInNewSession), InventCountCreate (multi-version unpack with #LOCALMACRO.CurrentList9 / CurrentList7), Runbase.canRunInNewSession (ApplicationPlatform, throws Error::missingOverride)",
+    "get_object_info(class RunBaseBatch, members=names): 26 of 93 rows are doc-comment sentences; dialog(), description(), batchInfo(), canGoBatch(), new() absent from the list"
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "run_id": "2026-08-31T08__L2-lookup-reference-multiselect__9045b22",
+  "case_id": "L2-lookup-reference-multiselect",
+  "tier": 2,
+  "timestamp": "2026-08-31T08:58:11.143Z",
+  "server_git_sha": "9045b22",
+  "generated_artifacts": [
+    "AxClass/CustTableFormCon_Extension.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS",
+  "static_gate": {
+    "references": {
+      "passed": false,
+      "unresolved": [
+        "unknown-intrinsic-target (line 32): methodStr(FormStringControl, lookup) — FormStringControl is a KERNEL class with no AOT metadata; false positive",
+        "unknown-intrinsic-target (line 39): methodStr(FormReferenceControl, lookupReference) — kernel class; false positive",
+        "unknown-type (warning): FormReferenceControl — same kernel class, but emitted as WARNING here while the identical root cause is an ERROR in the intrinsic-target rule"
+      ]
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "Scored outcome is a clean PASS (build 1 / bp_clean 1 / golden_match 1), but the run needed two extra build cycles, both caused by the same gap in get_knowledge(topic=\"lookups\").\nKNOWLEDGE_GAP 1 (cost 2 builds): the topic teaches the reference-control override as _control.registerOverrideMethod(methodStr(FormReferenceControl, lookupReference), ...) without saying which X++ TYPE the control variable must have. xppc rejects both obvious readings:\n  build 1: ClassDoesNotContainMethod: Class FormReferenceControl does not contain a definition for method registerOverrideMethod\n  build 2: ClassDoesNotContainMethod: Class FormControl does not contain a definition for method registerOverrideMethod\n  Verified fact: registerOverrideMethod is declared on the CONCRETE control class (FormStringControl compiled first try), NOT on FormControl and NOT on FormReferenceControl. The design control behind an AxFormReferenceGroupControl child is an AxFormStringControl, so the variable is a FormStringControl; only the HANDLER parameter is typed FormReferenceControl. The topic should state this, otherwise every agent following it burns 2 build cycles.\nKNOWLEDGE_GAP 2 (cosmetic): the topic claims addLookupMethod is something \"which SysTableLookup does not have\". get_object_info shows addLookupMethod(str,boolean) inherited from SysTableLookupBase on BOTH SysTableLookup and SysReferenceTableLookup. The claim is false; the real reference-only difference is the newParameters argument-2 type.\nTOOL_DEFECT 1: get_object_info(objectType=\"form\", options={searchControl:\"...\"}) is IGNORED. Verified with an EXACT existing control name (form CustGroup, searchControl \"Grid_TaxGroupId\") and with a prefix (\"Grid_\"): both returned the full control tree, byte-identical to the unfiltered call. The tool then advises \"Use searchControl to jump straight to one control\" in its own truncation message. Consequence: form CustTable (635 controls) blew the token cap and had to be dumped to a file and grepped — exactly the workaround the tool exists to prevent.\nTOOL_DEFECT 2 (minor): get_object_info(objectType=\"class\", options={include:\"xml\"}) failed with \"no file on disk\" for CustFreeInvoice_AppSuite_Tax_BR_Extension although find_references had just returned its absolute path; it only resolved after options.modelName=\"Foundation\" was added. Model resolution for include:\"xml\" should fall back to the index path.\nTOOL_DEFECT 3 (minor, self-healing): d365fo_file modify/replace-code — the C# bridge rejected 2 of 4 replacements with \"oldCode not found\" while the same oldCode WAS present; the server XML-writer fallback applied them correctly. Bridge-side oldCode matching appears to normalise whitespace differently from the writer.\nVALIDATOR_GAP: validate_code(mode=\"references\") flags kernel classes used as methodStr intrinsic targets as ERRORS, while flagging the SAME class in a type declaration as a WARNING with an explicit \"if it is a kernel class this is a false positive\" hint. Same root cause as the known kernel-enum gap; the intrinsic-target rule should inherit the same kernel-name allowlist/downgrade.\nCASE-DEFINITION NOTE: the case id says \"multiselect\" but neither the instruction (three numbered requirements) nor the tags mention SysLookupMultiSelectCtrl. The golden deliberately omits it: a multi-select writes a comma list through an unbound control and there is no coherent place for it on a standard form extension (its real home is a SysOperation UIBuilder dialog). Either drop \"multiselect\" from the id or move it to a dialog-based case.",
+  "suggested_fix_area": "src/knowledge (topic \"lookups\"): add the control-TYPE rule for registerOverrideMethod (declared on the concrete control class; FormControl/FormReferenceControl do NOT carry it; reference-group child = FormStringControl, handler param = FormReferenceControl) and delete the false \"SysTableLookup does not have addLookupMethod\" claim.\nget_object_info form reader: honour options.searchControl (and make maxControls/searchControl interact) — currently dead.\nget_object_info include:\"xml\": resolve the file path from the symbol index when modelName is not supplied.\nvalidate_code references: extend the kernel-name downgrade from the type-declaration rule to the unknown-intrinsic-target rule.\nbridge replaceCode: align oldCode whitespace normalisation with the server XML writer, or stop erroring when the fallback would succeed.",
+  "evidence_refs": [
+    "eval/goldens/L2-lookup-reference-multiselect/CustTableFormCon_Extension.metadata.xml",
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxClass/CustTableFormCon_Extension.xml",
+    "C:/Users/ADMIN7~1/AppData/Local/Temp/2/d365build_log_d2ef84db64.log",
+    "shipped reference implementation: K:/AosService/PackagesLocalDirectory/ApplicationSuite/Foundation/AxClass/CustFreeInvoice_AppSuite_Tax_BR_Extension.xml",
+    "full build (target) 36s: 0 errors 0 warnings; run_bp_check filter class:CustTableFormCon_Extension: 0 warnings 0 errors"
+  ]
+}

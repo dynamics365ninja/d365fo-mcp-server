@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L2-query-range-expression-sysqueryrangeutil: [ExtensionOf(classStr(SysQueryRangeUtil))] public static class carrying two [QueryRangeFunction()] static str methods. NOTE the name: d365fo_file(create) infixed the prefix into the passed name ConDemoRanges_Extension and produced ConDemoRangesCon_Extension. Captured 2026-08-31, SHA 9045b22. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoRangesCon_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// User callable query range functions. A user types "(conDemoNotBlocked())" into any filter field
+/// and the platform calls the method to produce the range value.
+/// </summary>
+[ExtensionOf(classStr(SysQueryRangeUtil))]
+public static class ConDemoRangesCon_Extension
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>conDemoNotBlocked</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Builds a range value that matches everything except customers blocked for all activity.
+    /// </summary>
+    /// <returns>The negated range expression for <c>CustVendorBlocked::All</c>.</returns>
+    [QueryRangeFunction()]
+    public static str conDemoNotBlocked()
+    {
+        return SysQuery::valueNot(CustVendorBlocked::All);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>conDemoCurrentMonth</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Builds a range value covering the current month.
+    /// </summary>
+    /// <returns>The range expression from the first to the last day of the current month.</returns>
+    [QueryRangeFunction()]
+    public static str conDemoCurrentMonth()
+    {
+        date today;
+
+        today = DateTimeUtil::date(DateTimeUtil::utcNow());
+
+        return SysQuery::range(mkDate(1, mthOfYr(today), year(today)), endmth(today));
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

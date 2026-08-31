@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L2-query-range-expression-sysqueryrangeutil: runtime Query showing a RANGE on an OUTER joined data source (degrades the join to inner) vs query.addQueryFilter on the same field (keeps unmatched parents), with every range value built by SysQuery::value / ::valueNot / ::range / ::valueEmptyString. Captured 2026-08-31, SHA 9045b22. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoQueryRanges</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Demonstrates the difference between a query RANGE and a query FILTER on an outer join, and
+/// builds every range value through the <c>SysQuery</c> value builders instead of concatenating
+/// strings.
+/// </summary>
+public class ConDemoQueryRanges
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>addTransactionDataSource</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Adds the customer transactions as an OUTER joined child data source.
+    /// </summary>
+    /// <param name = "_custTableDs">The parent customer data source.</param>
+    /// <returns>The outer joined <c>CustTrans</c> data source.</returns>
+    private static QueryBuildDataSource addTransactionDataSource(QueryBuildDataSource _custTableDs)
+    {
+        QueryBuildDataSource custTransDs;
+
+        custTransDs = _custTableDs.addDataSource(tableNum(CustTrans));
+        custTransDs.joinMode(JoinMode::OuterJoin);
+        custTransDs.relations(false);
+        custTransDs.addLink(fieldNum(CustTable, AccountNum), fieldNum(CustTrans, AccountNum));
+
+        return custTransDs;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>buildQueryWithChildRange</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Builds the customer query whose outer joined transactions are restricted by a RANGE.
+    /// </summary>
+    /// <param name = "_custGroupId">The customer group the parent data source is restricted to.</param>
+    /// <param name = "_currencyCode">The currency the joined transactions are restricted to.</param>
+    /// <returns>A <c>Query</c> whose outer join is silently degraded to an inner join.</returns>
+    /// <remarks>
+    /// A range is evaluated on its own data source BEFORE the join, so customers without a matching
+    /// transaction are dropped and the outer join behaves as an inner join.
+    /// </remarks>
+    public static Query buildQueryWithChildRange(CustGroupId _custGroupId, CustCurrencyCode _currencyCode)
+    {
+        Query query = new Query();
+        QueryBuildDataSource custTableDs;
+        QueryBuildDataSource custTransDs;
+
+        custTableDs = query.addDataSource(tableNum(CustTable));
+
+        // A range on the data source it belongs to is the correct use of a range.
+        SysQuery::findOrCreateRange(custTableDs, fieldNum(CustTable, CustGroup)).value(SysQuery::value(_custGroupId));
+
+        custTransDs = ConDemoQueryRanges::addTransactionDataSource(custTableDs);
+
+        // The same restriction added as a RANGE on the joined data source removes the unmatched parents.
+        SysQuery::findOrCreateRange(custTransDs, fieldNum(CustTrans, CurrencyCode)).value(SysQuery::value(_currencyCode));
+
+        return query;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>buildQueryWithChildFilter</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Builds the customer query whose outer joined transactions are restricted by a QUERY FILTER.
+    /// </summary>
+    /// <param name = "_custGroupId">The customer group the parent data source is restricted to.</param>
+    /// <param name = "_currencyCode">The currency the joined transactions are restricted to.</param>
+    /// <returns>A <c>Query</c> that keeps the customers without a matching transaction.</returns>
+    /// <remarks>
+    /// A query filter is evaluated on the joined RESULT, so the outer join is preserved. This is the
+    /// only way to restrict an outer joined data source without turning the join into an inner join.
+    /// </remarks>
+    public static Query buildQueryWithChildFilter(CustGroupId _custGroupId, CustCurrencyCode _currencyCode)
+    {
+        Query query = new Query();
+        QueryBuildDataSource custTableDs;
+        QueryBuildDataSource custTransDs;
+        QueryFilter currencyFilter;
+
+        custTableDs = query.addDataSource(tableNum(CustTable));
+        SysQuery::findOrCreateRange(custTableDs, fieldNum(CustTable, CustGroup)).value(SysQuery::value(_custGroupId));
+
+        custTransDs = ConDemoQueryRanges::addTransactionDataSource(custTableDs);
+
+        // The filter is added on the QUERY, not on the data source, and it names the field as a
+        // string. SysQuery::findOrCreateQueryFilter is the idempotent twin of this call and is what
+        // a form extension should use, because the base form may already have added its own filter.
+        currencyFilter = query.addQueryFilter(custTransDs, fieldStr(CustTrans, CurrencyCode));
+        currencyFilter.value(SysQuery::value(_currencyCode));
+
+        return query;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>buildExpressionQuery</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Builds the range expressions through <c>SysQuery</c> rather than by formatting strings.
+    /// </summary>
+    /// <param name = "_excludedCustGroupId">The customer group that is excluded.</param>
+    /// <param name = "_fromAccount">The lower bound of the customer account interval.</param>
+    /// <param name = "_toAccount">The upper bound of the customer account interval.</param>
+    /// <returns>A <c>Query</c> carrying one range of each expression kind.</returns>
+    public static Query buildExpressionQuery(
+        CustGroupId _excludedCustGroupId,
+        CustAccount _fromAccount,
+        CustAccount _toAccount)
+    {
+        Query query = new Query();
+        QueryBuildDataSource custTableDs;
+
+        custTableDs = query.addDataSource(tableNum(CustTable));
+
+        // "!value" - every group except one.
+        SysQuery::findOrCreateRange(custTableDs, fieldNum(CustTable, CustGroup)).value(SysQuery::valueNot(_excludedCustGroupId));
+
+        // "from..to" - one bounded interval in a single range string.
+        SysQuery::findOrCreateRange(custTableDs, fieldNum(CustTable, AccountNum)).value(SysQuery::range(_fromAccount, _toAccount));
+
+        // The empty string expression - a hand written '' drops the range instead of matching blanks.
+        SysQuery::findOrCreateRange(custTableDs, fieldNum(CustTable, InvoiceAccount)).value(SysQuery::valueEmptyString());
+
+        // The enum is escaped by SysQuery, never formatted into the range string by hand.
+        SysQuery::findOrCreateRange(custTableDs, fieldNum(CustTable, Blocked)).value(SysQuery::value(CustVendorBlocked::No));
+
+        return query;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>countCustomers</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Counts the distinct customers a query returns.
+    /// </summary>
+    /// <param name = "_query">The query to run.</param>
+    /// <returns>The number of distinct customer accounts in the result.</returns>
+    public static int countCustomers(Query _query)
+    {
+        Set accounts = new Set(Types::String);
+        QueryRun queryRun;
+        CustTable custTable;
+
+        queryRun = new QueryRun(_query);
+
+        while (queryRun.next())
+        {
+            custTable = queryRun.get(tableNum(CustTable));
+
+            if (custTable.RecId)
+            {
+                accounts.add(custTable.AccountNum);
+            }
+        }
+
+        return accounts.elements();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>showRangeVersusFilter</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Writes both customer counts to the infolog so the difference between a range and a filter
+    /// on the same outer join is visible.
+    /// </summary>
+    /// <param name = "_custGroupId">The customer group the parent data source is restricted to.</param>
+    /// <param name = "_currencyCode">The currency the joined transactions are restricted to.</param>
+    public static void showRangeVersusFilter(CustGroupId _custGroupId, CustCurrencyCode _currencyCode)
+    {
+        int rangeCustomers;
+        int filterCustomers;
+
+        rangeCustomers = ConDemoQueryRanges::countCustomers(
+            ConDemoQueryRanges::buildQueryWithChildRange(_custGroupId, _currencyCode));
+
+        filterCustomers = ConDemoQueryRanges::countCustomers(
+            ConDemoQueryRanges::buildQueryWithChildFilter(_custGroupId, _currencyCode));
+
+        info(strFmt("@ConDemo:QueryRangeVersusFilter", rangeCustomers, filterCustomers));
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

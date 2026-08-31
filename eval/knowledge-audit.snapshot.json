@@ -1,6 +1,6 @@
 {
-  "capturedAt": "2026-08-31T08:37:07.493Z",
-  "indexedAt": "2026-08-31T08:32:25.770Z",
+  "capturedAt": "2026-08-31T10:09:52.101Z",
+  "indexedAt": "2026-08-31T09:56:14.898Z",
   "ok": [
     "alerts-business-events|attribute|DataContract",
     "alerts-business-events|attribute|DataContractAttribute",
@@ -69,6 +69,7 @@
     "deprecated|attribute|SysObsolete",
     "deprecated|static-call|DateTimeUtil::getToday",
     "deprecated|static-call|DateTimeUtil::getUserPreferredTimeZone",
+    "deprecated|static-call|Error::missingOverride",
     "deprecated|static-call|Ledger::primaryForLegalEntity",
     "direct-sql|declaration|Connection",
     "direct-sql|declaration|ResultSet",
