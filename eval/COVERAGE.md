@@ -8,8 +8,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
-| core | 59 | 59 | **100%** |
-| total | 100 | 100 | 100% |
+| core | 59 | 65 | **90.8%** |
+| total | 100 | 109 | 91.7% |
 
 ## Data model (12/12)
 
@@ -28,7 +28,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Relations, indexes, field groups | core | ✅ | ✅ | ✅ | L2-table-modify-lifecycle, L3-form-detailstransaction |
 | Table inheritance (SupportInheritance/Extends) | total | ✅ | ✅ | ✅ | L2-table-inheritance-basic |
 
-## Code (33/33)
+## Code (33/36)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -65,8 +65,11 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Run-time (predefined) functions | core | ✅ | ✅ | ✅ | L2-runtime-functions-arity |
 | Implicit conversions & explicit converters | core | ✅ | ✅ | ✅ | L2-implicit-conversions |
 | select find options, join kinds and clause order | core | ✅ | ✅ | ✅ | L2-select-find-options-joins |
+| Global:: statics (query values, access checks) | core | ✅ | — | ✅ | The third place the compiler looks for a bare call, after intrinsics and predefined functions; FN001 reports them as "Global.fn". No case yet. |
+| System objects (infolog, Box, Debug, session) | core | ✅ | — | ✅ | Half of them are kernel classes with no AOT XML, so the metadata index cannot answer for them — which is exactly why the topic exists. No case yet. |
+| Query filters, range expressions, custom range functions | total | ✅ | — | ✅ | Range vs filter on an outer join, the range expression language, and [QueryRangeFunction] — all verified by probe, none proven by a case. |
 
-## UI (10/10)
+## UI (10/11)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -80,8 +83,9 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Args — record, caller and parameters | core | ✅ | ✅ | ✅ | L2-args-record-caller |
 | display / edit methods | core | ✅ | ✅ | ✅ | L2-display-edit-methods |
 | Form event handlers | core | ✅ | ✅ | ✅ | L3-form-event-handler-class |
+| Lookups (table, reference, multi-select, override) | core | ✅ | — | ✅ | Knowledge and tool path exist (lookup-form pattern, form-control-extension); no captured case yet — L2-lookup-reference-multiselect is the one to author. |
 
-## Reporting (8/8)
+## Reporting (8/10)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -93,8 +97,10 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Report dialog UI builders | total | ✅ | ✅ | ✅ | L4-ssrs-report-uibuilder |
 | Electronic Reporting (ER) | total | ✅ | ✅ | ✅ | L3-electronic-reporting-integration |
 | Extending a standard report | core | ✅ | ✅ | ✅ | L3-report-dataset-extension |
+| Report design & RDL expressions | core | ✅ | — | ✅ | Design kind is an XML i:type (precision 416 : auto 56 over 400 shipped reports); the six AX_* parameters are platform-supplied. No case yet. |
+| Report print destinations (file, e-mail, archive, batch) | core | ✅ | — | ✅ | Member names read from SrsPrintDestinationSettings and compile-verified. L4-ssrs-report-print-destinations is the case to author. |
 
-## Frameworks (19/19)
+## Frameworks (19/21)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -117,8 +123,10 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Warehouse-app screens (ProcessGuide / legacy) | total | ✅ | ✅ | ✅ | L2-processguide-page-control, L3-legacy-workexecutedisplay-extend, L3-processguide-flow-slice |
 | Trade agreements & pricing | total | ✅ | ✅ | ✅ | L3-trade-agreement-price-lookup |
 | SysOperation dialog from contract attributes | total | ✅ | ✅ | ✅ | L3-sysoperation-dialog-attributes |
+| SysOperation query parameter (batch with a filter) | core | ✅ | — | ✅ | [AifQueryTypeAttribute] + SysOperationHelper::base64Decode, compile-verified. The case to author is L3-sysoperation-query-parameter-batch. |
+| RunBase lifecycle & packed state | total | ✅ | — | ✅ | Legacy, but unavoidable when wrapping shipped classes: the #CurrentVersion bump rule is the one that silently corrupts batch parameters when missed. |
 
-## Integration (9/9)
+## Integration (9/10)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -131,6 +139,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Reading Excel / CSV files | total | ✅ | ✅ | ✅ | L3-file-csv-import |
 | Direct SQL execution | total | ✅ | ✅ | ✅ | L2-direct-sql-connection |
 | Aggregate measurements / analytics | total | ✅ | ✅ | ✅ | L3-aggregate-measurement-basic |
+| Attachments (DocuRef / DocumentManagement) | total | ✅ | — | ✅ | attachFile argument 4 is a DocuTypeId string, not a DocuType record — compile-verified, and the mistake attaches the file to an invisible record. |
 
 ## Security (6/6)
 
@@ -153,11 +162,21 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 ## Closure queue (uncovered, by frequency weight)
 
-Nothing uncovered.
+| Weight | Leaf | Missing |
+| ---: | --- | --- |
+| 4 | Global:: statics (query values, access checks) | missing E |
+| 4 | Lookups (table, reference, multi-select, override) | missing E |
+| 4 | Report design & RDL expressions | missing E |
+| 4 | Report print destinations (file, e-mail, archive, batch) | missing E |
+| 4 | SysOperation query parameter (batch with a filter) | missing E |
+| 4 | System objects (infolog, Box, Debug, session) | missing E |
+| 3 | Attachments (DocuRef / DocumentManagement) | missing E |
+| 3 | Query filters, range expressions, custom range functions | missing E |
+| 3 | RunBase lifecycle & packed state | missing E |
 
 ## Orphans
 
 - Knowledge entries no leaf claims (**unproven knowledge**): none
 - Eval cases no leaf claims (**unmapped proof**): L0-create-readback-no-reindex, L2-batched-object-reads, L2-entity-query-range-roundtrip, L2-form-control-removal-lifecycle, L2-object-delete-and-entry-point-cleanup, L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice
 
-_Generated 2026-08-30._
+_Generated 2026-08-31._

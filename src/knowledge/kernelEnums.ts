@@ -64,6 +64,13 @@ const ENTRIES: KernelEnum[] = [
     'Integer', 'List', 'RString', 'Real', 'Record', 'String', 'Time',
     'UserType', 'UtcDateTime', 'VarArg', 'VarString', 'Void',
   ] },
+  // What Box::yesNo/confirm/okCancel answer with. Found by the knowledge audit,
+  // which reported "DialogButton does not exist in the symbol index" for a topic
+  // whose call shape had already compiled in an xppc probe — the same
+  // absent-from-the-AOT-is-not-absent trap this module exists for. Values are the
+  // ones shipped code actually uses, counted over 30,000 AxClass/AxForm files:
+  // Yes 602, No 561, Cancel 154, Ok 129, YesToAll 7, NoToAll 6.
+  { name: 'DialogButton', values: ['Cancel', 'No', 'NoToAll', 'Ok', 'Yes', 'YesToAll'] },
   { name: 'TableScope', values: ['CurrentTableOnly', 'IncludeBaseTables', 'IncludeDerivedTables'] },
   { name: 'ConcurrencyModel', values: ['Auto', 'Optimistic', 'Pessimistic'] },
   { name: 'StatementType', values: ['Delete', 'Insert', 'Select', 'Update'] },

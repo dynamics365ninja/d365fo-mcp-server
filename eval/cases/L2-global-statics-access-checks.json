@@ -1,0 +1,21 @@
+{
+  "id": "L2-global-statics-access-checks",
+  "title": "Global:: statics: the third place the compiler looks for a bare call",
+  "tier": 2,
+  "instruction": "Ground with get_knowledge(topic=\"global-class-statics\"). In the sandbox model write a class whose methods call the Global statics that look predefined but are not: hasTableAccess(tableNum(CustGroup), AccessType::View) and hasMenuItemAccess(...) and isSystemAdministrator() for run-time security, isConfigurationkeyEnabled(...) and isRunningOnBatch() for environment, and buf2Buf for a field-by-field copy that skips system fields. Do NOT name SecurityRights: it exists as a kernel class but these Global statics are what shipped code uses. Every call is unqualified - do not prefix them with Global::. Build with zero errors and zero BP errors.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-global-statics-access-checks/",
+  "golden_pending": true,
+  "ignore": [
+    "**/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "global",
+    "security",
+    "deterministic"
+  ],
+  "split": "holdout"
+}

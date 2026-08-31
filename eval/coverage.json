@@ -1,15 +1,15 @@
 {
   "core": {
     "tier": "core",
-    "total": 59,
+    "total": 65,
     "covered": 59,
-    "percent": 100
+    "percent": 90.8
   },
   "total": {
     "tier": "all",
-    "total": 100,
+    "total": 109,
     "covered": 100,
-    "percent": 100
+    "percent": 91.7
   },
   "leaves": [
     {
@@ -1607,6 +1607,114 @@
       "cases": [
         "L2-systest-authoring-basic"
       ]
+    },
+    {
+      "id": "lookups",
+      "label": "Lookups (table, reference, multi-select, override)",
+      "domain": "UI",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "global-statics",
+      "label": "Global:: statics (query values, access checks)",
+      "domain": "Code",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "system-objects",
+      "label": "System objects (infolog, Box, Debug, session)",
+      "domain": "Code",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "query-object-model-advanced",
+      "label": "Query filters, range expressions, custom range functions",
+      "domain": "Code",
+      "tier": "total",
+      "weight": 3,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "sysoperation-query-param",
+      "label": "SysOperation query parameter (batch with a filter)",
+      "domain": "Frameworks",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "runbase-lifecycle",
+      "label": "RunBase lifecycle & packed state",
+      "domain": "Frameworks",
+      "tier": "total",
+      "weight": 3,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "rdl-expressions",
+      "label": "Report design & RDL expressions",
+      "domain": "Reporting",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "report-destinations",
+      "label": "Report print destinations (file, e-mail, archive, batch)",
+      "domain": "Reporting",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
+    },
+    {
+      "id": "document-attachments",
+      "label": "Attachments (DocuRef / DocumentManagement)",
+      "domain": "Integration",
+      "tier": "total",
+      "weight": 3,
+      "k": true,
+      "e": false,
+      "t": true,
+      "covered": false,
+      "cases": []
     }
   ],
   "orphans": {
