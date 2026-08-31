@@ -16,7 +16,7 @@
  *   npm run oracle:census                                   # built-in pattern set
  *   npm run oracle:census -- --dry                          # fixture corpus (CI)
  *   npm run oracle:census -- --types AxReport --patterns rdl
- *   npm run oracle:census -- --grep "SysComputedColumn::\\w+" --examples 5
+ *   npm run oracle:census -- --grep "SysComputedColumn::" --examples 5   # literal
  *   npm run oracle:census -- --sample 500 --out sample.json  # blocks for the lexer test
  *
  * `--examples N` prints N real excerpts per pattern: a count says "used", an
@@ -156,6 +156,11 @@ const PATTERN_SETS: Record<string, Pattern[]> = {
   ],
 };
 
+/** Treat a string as literal text inside a regex. */
+function escapeForRegExp(literal: string): string {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 interface Tally {
   pattern: string;
   hits: number;
@@ -176,7 +181,17 @@ function main(): void {
 
   let patterns: Pattern[];
   if (typeof args.grep === 'string') {
-    patterns = [{ name: args.grep, re: new RegExp(args.grep, 'g'), raw: args.raw === true }];
+    // LITERAL, not a pattern. `--grep` used to compile its argument as a regex,
+    // which is a command-line string reaching a RegExp constructor — CodeQL flags
+    // it, and it is genuinely the weakest part of this CLI: a stray quantifier
+    // turns an ad-hoc census into a hang over 100k files.
+    //
+    // Nothing real is lost. The two uses this flag has had were
+    // "DialogButton::\w+" and "SysComputedColumn::\w+", both of which a literal
+    // "DialogButton::" or "SysComputedColumn::" answers just as well, since the
+    // point is the examples it prints. Anything that genuinely needs a pattern
+    // belongs in PATTERN_SETS, where it is committed, named and reviewed.
+    patterns = [{ name: args.grep, re: new RegExp(escapeForRegExp(args.grep), 'g'), raw: args.raw === true }];
   } else if (typeof args.patterns === 'string' && args.patterns !== 'builtin') {
     patterns = args.patterns.split(',').flatMap(set => {
       const found = PATTERN_SETS[set];

@@ -123,8 +123,24 @@ export function methodNameOf(source: string): string {
  * compiler then ignores.
  */
 export function classNameOf(probe: Probe): string {
-  const declared = probe.declaration ? /\b(?:class|interface)\s+([A-Za-z_]\w*)/.exec(probe.declaration) : null;
-  return declared ? declared[1] : `ConProbe${probe.id}`;
+  // Capture up to the next delimiter, NOT just the identifier-shaped prefix. A
+  // declaration of `class Bad.Name` would otherwise yield `Bad`, pass the check
+  // below, and produce an artifact whose <Name> disagrees with its own source —
+  // the exact mismatch over which xppc silently ignores the body, and the reason
+  // this harness derives names instead of accepting them.
+  const declared = probe.declaration ? /\b(?:class|interface)\s+(\S+)/.exec(probe.declaration) : null;
+  const name = declared ? declared[1] : `ConProbe${probe.id}`;
+  // An X++ class name is an identifier, and this one is interpolated into both a
+  // file path and a regex. Anything else is a probe-authoring mistake, and the
+  // failure it produces is this harness's own nightmare: the marker stops
+  // matching, the log looks silent, and silence reads as success.
+  if (!/^[A-Za-z_]\w*$/.test(name)) {
+    throw new Error(
+      `probe "${probe.id}" resolves to the class name "${name}", which is not a valid identifier — ` +
+      'it would be written to a path and matched as a pattern. Use letters, digits and underscores.',
+    );
+  }
+  return name;
 }
 
 function classXml(probe: Probe): string {
@@ -193,7 +209,11 @@ export function runProbeBatch(probes: Probe[], passName: string): ProbeResult[] 
      * failure mode this whole harness exists to avoid.
      */
     const diagnosticsFor = (probe: Probe): string[] => {
-      const marker = new RegExp(`\\b${classNameOf(probe)}(?![A-Za-z0-9_])`);
+      // classNameOf() already refuses anything that is not an identifier, so this
+      // escape is a no-op — it makes the sanitisation explicit where the pattern
+      // is built, which is where a reader (and a scanner) looks for it.
+      const escaped = classNameOf(probe).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const marker = new RegExp(`\\b${escaped}(?![A-Za-z0-9_])`);
       return lines
         .filter(l => marker.test(l) && /error|warning/i.test(l))
         // A "compiling …" progress line names the file too; keep only diagnostics.

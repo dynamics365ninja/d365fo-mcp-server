@@ -2,14 +2,14 @@
   "core": {
     "tier": "core",
     "total": 65,
-    "covered": 63,
-    "percent": 96.9
+    "covered": 65,
+    "percent": 100
   },
   "total": {
     "tier": "all",
     "total": 109,
-    "covered": 106,
-    "percent": 97.2
+    "covered": 108,
+    "percent": 99.1
   },
   "leaves": [
     {
@@ -458,7 +458,9 @@
         "L3-form-event-handler-class",
         "L3-report-dataset-extension",
         "L3-runbase-coc-pack-unpack",
-        "L3-sysoperation-query-parameter-batch"
+        "L3-sysoperation-query-parameter-batch",
+        "L4-ssrs-report-design-rdl",
+        "L4-ssrs-report-print-destinations"
       ]
     },
     {
@@ -532,7 +534,9 @@
         "L3-form-event-handler-class",
         "L3-report-dataset-extension",
         "L3-runbase-coc-pack-unpack",
-        "L3-sysoperation-query-parameter-batch"
+        "L3-sysoperation-query-parameter-batch",
+        "L4-ssrs-report-design-rdl",
+        "L4-ssrs-report-print-destinations"
       ]
     },
     {
@@ -1497,7 +1501,9 @@
         "L3-form-event-handler-class",
         "L3-report-dataset-extension",
         "L3-runbase-coc-pack-unpack",
-        "L3-sysoperation-query-parameter-batch"
+        "L3-sysoperation-query-parameter-batch",
+        "L4-ssrs-report-design-rdl",
+        "L4-ssrs-report-print-destinations"
       ]
     },
     {
@@ -1715,10 +1721,12 @@
       "tier": "core",
       "weight": 4,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L4-ssrs-report-design-rdl"
+      ]
     },
     {
       "id": "report-destinations",
@@ -1727,10 +1735,12 @@
       "tier": "core",
       "weight": 4,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L4-ssrs-report-print-destinations"
+      ]
     },
     {
       "id": "document-attachments",

@@ -8,8 +8,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
-| core | 63 | 65 | **96.9%** |
-| total | 106 | 109 | 97.2% |
+| core | 65 | 65 | **100%** |
+| total | 108 | 109 | 99.1% |
 
 ## Data model (12/12)
 
@@ -46,8 +46,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Error handling & infolog | core | ✅ | ✅ | ✅ | L2-error-handling-infolog |
 | SysExtension plug-in pattern | total | ✅ | ✅ | ✅ | L2-sysextension-plugin |
 | Performance patterns | core | ✅ | ✅ | ✅ | L2-performance-set-based |
-| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +59 |
-| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +58 |
+| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +61 |
+| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +60 |
 | Optimistic concurrency & UnitOfWork | core | ✅ | ✅ | ✅ | L2-occ-retry-basic |
 | Caching (CacheLookup, SysGlobalObjectCache, RecordViewCache) | total | ✅ | ✅ | ✅ | L2-table-caching-basic |
 | X++ collections & containers (List/Map/Set/Struct) | total | ✅ | ✅ | ✅ | L2-collections-map-list-container |
@@ -85,7 +85,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Form event handlers | core | ✅ | ✅ | ✅ | L3-form-event-handler-class |
 | Lookups (table, reference, multi-select, override) | core | ✅ | ✅ | ✅ | L2-lookup-reference-multiselect |
 
-## Reporting (8/10)
+## Reporting (10/10)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -97,8 +97,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Report dialog UI builders | total | ✅ | ✅ | ✅ | L4-ssrs-report-uibuilder |
 | Electronic Reporting (ER) | total | ✅ | ✅ | ✅ | L3-electronic-reporting-integration |
 | Extending a standard report | core | ✅ | ✅ | ✅ | L3-report-dataset-extension |
-| Report design & RDL expressions | core | ✅ | — | ✅ | Design kind is an XML i:type (precision 416 : auto 56 over 400 shipped reports); the six AX_* parameters are platform-supplied. No case yet. |
-| Report print destinations (file, e-mail, archive, batch) | core | ✅ | — | ✅ | Member names read from SrsPrintDestinationSettings and compile-verified. L4-ssrs-report-print-destinations is the case to author. |
+| Report design & RDL expressions | core | ✅ | ✅ | ✅ | L4-ssrs-report-design-rdl |
+| Report print destinations (file, e-mail, archive, batch) | core | ✅ | ✅ | ✅ | L4-ssrs-report-print-destinations |
 
 ## Frameworks (20/21)
 
@@ -157,15 +157,13 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | SysTest unit testing | core | ✅ | ✅ | ✅ | L2-coc-extension, L2-event-handler-basic, L2-systest-authoring-basic +1 |
-| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +58 |
+| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +60 |
 | TDD loop (red-first SysTest authoring) | core | ✅ | ✅ | ✅ | L2-systest-authoring-basic |
 
 ## Closure queue (uncovered, by frequency weight)
 
 | Weight | Leaf | Missing |
 | ---: | --- | --- |
-| 4 | Report design & RDL expressions | missing E |
-| 4 | Report print destinations (file, e-mail, archive, batch) | missing E |
 | 3 | SysOperation dialog from contract attributes | missing E |
 
 ## Orphans
