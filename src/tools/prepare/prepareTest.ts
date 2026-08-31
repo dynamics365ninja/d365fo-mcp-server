@@ -24,7 +24,7 @@ import { lookupSymbolsNocase } from '../../utils/symbolLookup.js';
 
 const prepareTestArgsSchema = z.object({
   goal: z.string().optional(),
-  objectName: z.string().min(1, 'objectName (the class under test) is required'),
+  objectName: z.string().min(1, 'objectName (the class or table under test) is required'),
   methodName: z.string().optional(),
   modelName: z.string().optional(),
 }).passthrough();
@@ -33,6 +33,26 @@ interface ClassMember {
   name: string;
   signature?: string;
   visibility?: string;
+}
+
+/**
+ * Is the target a class or a table?
+ *
+ * It decides the whole answer: a table's rules run on a BUFFER and report through
+ * the infolog, so `new X()` and "expect an exception" are the wrong shape for
+ * them. The distinction used to be unaskable here — this mode resolved classes
+ * only — which left the most-requested X++ task in real sessions (a validateWrite
+ * CoC) with no red-first path through the server at all.
+ */
+function targetKind(context: XppServerContext, name: string): 'class' | 'table' | 'unknown' {
+  try {
+    const db = context.symbolIndex.getReadDb();
+    const hit = lookupSymbolsNocase(db, name, { types: ['class', 'table'], limit: 1 })[0];
+    if (hit?.type === 'table' || hit?.type === 'class') return hit.type;
+    return 'unknown';
+  } catch {
+    return 'unknown';
+  }
 }
 
 /** Public/protected instance and static methods of the target, from the index. */
@@ -56,7 +76,9 @@ function targetMethods(context: XppServerContext, className: string): ClassMembe
     );
     let rows = read.all(className) as Array<{ name: string; signature?: string; visibility?: string }>;
     if (rows.length === 0) {
-      const canonical = lookupSymbolsNocase(db, className, { types: ['class'], limit: 1 })[0]?.name;
+      // Both kinds: a table's methods hang off parent_name exactly like a class's,
+      // and resolving only classes here is what hid table targets from this mode.
+      const canonical = lookupSymbolsNocase(db, className, { types: ['class', 'table'], limit: 1 })[0]?.name;
       if (canonical && canonical !== className) {
         rows = read.all(canonical) as Array<{ name: string; signature?: string; visibility?: string }>;
       }
@@ -116,19 +138,24 @@ export async function prepareTestTool(request: unknown, context: XppServerContex
       content: [{
         type: 'text',
         text:
-          '❌ prepare(mode="test") needs the class under test:\n' +
+          '❌ prepare(mode="test") needs the class or TABLE under test:\n' +
           '  prepare(mode="test", objectName="ConSalesCalculator", goal="cover the discount rules")\n' +
+          '  prepare(mode="test", objectName="CustTable.validateWrite")  — a table method, dotted form\n' +
           '  Optional: methodName (focus on one method), modelName (the model that will hold the test).',
       }],
     };
   }
 
   const { goal, objectName, methodName, modelName } = parsed.data;
-  const target = objectName.trim();
+  // "CustTable.validateWrite" is how a developer names the thing under test, and
+  // how real sessions asked for it. Split it rather than failing to resolve it.
+  const dotted = /^([A-Za-z_]\w*)\.([A-Za-z_]\w*)$/.exec(objectName.trim());
+  const target = (dotted ? dotted[1] : objectName).trim();
   const testClass = `${target}Test`;
 
+  const kind = targetKind(context, target);
   const methods = targetMethods(context, target);
-  const focus = methodName?.trim();
+  const focus = (methodName ?? dotted?.[2])?.trim();
   // Lifecycle and serialisation members are not what a unit test pins down.
   const skip = new Set(['new', 'finalize', 'typenew', 'pack', 'unpack', 'classdeclaration']);
   const testable = methods.filter(m => !skip.has(m.name.toLowerCase()));
@@ -143,7 +170,7 @@ export async function prepareTestTool(request: unknown, context: XppServerContex
   const token = createProvenanceToken({
     goal: goal ?? `unit tests for ${target}`,
     objectName: target,
-    objectType: 'class',
+    objectType: kind === 'table' ? 'table' : 'class',
     proposedName: testClass,
   });
 
@@ -154,10 +181,10 @@ export async function prepareTestTool(request: unknown, context: XppServerContex
   lines.push('');
 
   if (methods.length === 0) {
-    lines.push(`⚠️ \`${target}\` is not in the symbol index as a class. Check the name, or run ` +
-      '`update_symbol_index` if it was written outside this server. The rest of this answer is generic.');
+    lines.push(`⚠️ \`${target}\` is not in the symbol index as a class or a table. Check the name, or ` +
+      'run `update_symbol_index` if it was written outside this server. The rest of this answer is generic.');
   } else {
-    lines.push(`**Methods worth a test** (${methods.length} found on the class` +
+    lines.push(`**Methods worth a test** (${methods.length} found on the ${kind === 'unknown' ? 'target' : kind}` +
       `${focus ? `, focused on \`${focus}\`` : ''}):`);
     for (const m of suggested) {
       lines.push(`  • \`${m.name}\`${m.signature ? ` — ${m.signature}` : ''}`);
@@ -167,8 +194,29 @@ export async function prepareTestTool(request: unknown, context: XppServerContex
     lines.push('Scaffold them in one call:');
     lines.push('```');
     lines.push(`generate_object(mode="pattern", pattern="systest", name="${target}",`);
-    lines.push(`  params: { testMethods: [${suggested.map(m => `"${m.name}"`).join(', ')}] })`);
+    lines.push(`  params: { testMethods: [${suggested.map(m => `"${m.name}"`).join(', ')}]` +
+      `${kind === 'table' ? ', testTargetType: "table"' : ''} })`);
     lines.push('```');
+  }
+
+  if (kind === 'table') {
+    lines.push('');
+    lines.push('**This is a TABLE, so the test has a different shape** — and `testTargetType: "table"` ' +
+      'above is what selects it:');
+    lines.push('  • Arrange a BUFFER and call `initValue()`. Table validation runs on an unsaved row, ' +
+      'so most of these tests never touch the database.');
+    lines.push('  • `validateWrite` / `validateField` / `validateDelete` answer with a **boolean** and ' +
+      'explain themselves through the **infolog** — they do not throw. Assert both: ' +
+      '`this.assertFalse(buffer.validateWrite())` and then ' +
+      '`this.assertExpectedInfoLogMessage(<the text>)`.');
+    lines.push('  • Pass the **resolved label text** to that assertion, not the `"@Label:Id"` the rule ' +
+      'hands to `checkFailed` — it scans the infolog, which holds the resolved string.');
+    lines.push('  • Write the ACCEPTING case too. A rule that refuses every row passes the rejecting ' +
+      'test on its own.');
+    lines.push('  • The logic under test usually lives in a CoC class, not on the table: ' +
+      `\`extension_info(mode="coc", target="${target}")\` shows the wrappers, and ` +
+      '`get_knowledge(topic="coc-authoring")` the `next` placement rules. The test still calls the ' +
+      'TABLE method — that is the point, it proves the wrapper is in the chain.');
   }
   lines.push('');
 
