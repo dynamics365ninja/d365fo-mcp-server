@@ -1,4 +1,4 @@
-﻿{
+{
   "run_id": "2026-07-07T15__L4-master-security-slice__cb1b73d",
   "case_id": "L4-master-security-slice",
   "tier": 4,
@@ -27,42 +27,54 @@
     "errors": [],
     "bpWarnings": [
       {
+        "code": "BPErrorDutyHasNoPrivileges",
         "message": "AxSecurityDuty ConDemoAssetDuty: BPErrorDutyHasNoPrivileges."
       },
       {
+        "code": "BPErrorDutyNotCoveredByRole",
         "message": "AxSecurityDuty ConDemoAssetDuty: BPErrorDutyNotCoveredByRole."
       },
       {
+        "code": "BPErrorPrivilegeNotCoveredByDuty",
         "message": "AxSecurityPrivilege ConDemoAssetView: BPErrorPrivilegeNotCoveredByDuty."
       },
       {
+        "code": "BPErrorPrivilegeNotCoveredByDuty",
         "message": "AxSecurityPrivilege ConDemoAssetMaintain: BPErrorPrivilegeNotCoveredByDuty."
       },
       {
         "message": "AxForm ConDemoAssetDetails FormDesign: Unknown label @EnterpriseAssetManagementAppSuite:EntAssetObject (model not referenced by contoso)."
       },
       {
+        "code": "BPErrorLabelIsText",
         "message": "AxForm ConDemoAssetDetails TabPageOverview: BPErrorLabelIsText: Caption 'Overview' is raw text, not a label ID."
       },
       {
+        "code": "BPErrorLabelIsText",
         "message": "AxForm ConDemoAssetDetails TabPageGeneral: BPErrorLabelIsText: Caption 'General' is raw text, not a label ID."
       },
       {
+        "code": "BPCheckAlternateKeyAbsent",
         "message": "AxTable ConDemoAsset: BPCheckAlternateKeyAbsent (no AlternateKey-flagged index)."
       },
       {
+        "code": "BPErrorTableMissingGroupAutoReport",
         "message": "AxTable ConDemoAsset: BPErrorTableMissingGroupAutoReport."
       },
       {
+        "code": "BPErrorLabelNotDefined",
         "message": "AxTable ConDemoAsset TableFieldGroup Overview: BPErrorLabelNotDefined."
       },
       {
+        "code": "BPErrorDeveloperDocumentationNotDefined",
         "message": "AxTable ConDemoAsset: BPErrorDeveloperDocumentationNotDefined."
       },
       {
+        "code": "BPErrorTableNoCaching",
         "message": "AxTable ConDemoAsset: BPErrorTableNoCaching."
       },
       {
+        "code": "BPErrorTableMissingFormRef",
         "message": "AxTable ConDemoAsset: BPErrorTableMissingFormRef."
       }
     ]

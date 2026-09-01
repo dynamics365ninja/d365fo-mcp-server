@@ -150,7 +150,12 @@ export const GENERATE_OBJECT_PARAM_SPECS: Record<string, { type: string; descrip
     type: 'boolean',
     description: 'Inject pattern-appropriate lifecycle method stubs with TODO markers.',
   },
-  generateControls: { type: 'boolean', description: 'Auto-generate grid controls for the datasource.' },
+  generateControls: {
+    type: 'boolean',
+    description:
+      'Default TRUE: the datasource fields are bound into the pattern\'s grid and detail groups. ' +
+      'Pass false to get the pattern\'s containers EMPTY and place every field yourself via add-control.',
+  },
   fields: {
     type: 'array of {name, edt?, enumType?, type?, dataType?, label?, mandatory?}',
     description:

@@ -1,4 +1,4 @@
-﻿{
+{
   "run_id": "2026-07-07T05__L2-enum-extension-empty-values__cb1b73d",
   "case_id": "L2-enum-extension-empty-values",
   "tier": 2,
@@ -10,10 +10,8 @@
   "build": {
     "succeeded": true,
     "errors": [],
-    "bpWarnings": [
-      {},
-      {}
-    ]
+    "bpWarnings": null,
+    "bpWarningCount": 2
   },
   "golden_diff": {
     "matched": true,

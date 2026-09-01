@@ -9,7 +9,10 @@
  *                         (L3/L4 cases that produce several objects). Mutually
  *                         exclusive with the single <actualXml> positional/--golden.
  *     --build-failed      mark build as failed (default: succeeded)
- *     --bp-warnings <n>   number of BP warnings xppbp reported (OMIT = BP not checked -> bp_clean: null)
+ *     --bp-output <file>  raw run_bp_check output; parsed into the warnings THEMSELVES
+ *                         ({code, object, message}) — prefer this over --bp-warnings
+ *     --bp-warnings <n>   COUNT of BP warnings xppbp reported, when the output is not to
+ *                         hand (OMIT BOTH = BP not checked -> bp_clean: null)
  *     --systest <file>    text file with the `run_systest_class` output (runtime oracle)
  *     --classification <C> rubric class for the record (default: derived)
  *     --case-spec <path>  score against THIS case-spec JSON instead of
@@ -40,9 +43,22 @@ import {
   scoreRun, GOLDEN_CAPTURE_PREFIXES, type CaseSpec, type GoldenDiff, type Score,
 } from './index.js';
 import { resolveRegularObjectPrefixToken } from '../../utils/modelClassifier.js';
+import { parseBpFindings } from '../../tools/sdlc/runBpCheck.js';
 import {
-  buildActualArtifactsMap, listActualArtifactFiles, renderPairingProblems,
+  aotRelativeArtifactPath, aotRelativeArtifactPaths,
+  buildActualArtifactsMap, renderPairingProblems,
 } from './actualArtifactResolution.js';
+
+/**
+ * One BP finding as the corpus records it. `code` is what `eval:clusters`,
+ * `eval:report` and `eval:brief` rank on, so it is required by the schema — a
+ * warning with no code is a finding nothing can act on (#982).
+ */
+interface BpWarningRecord {
+  code: string;
+  object: string;
+  message: string;
+}
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '..', '..', '..');
@@ -83,7 +99,7 @@ const CLASSIFICATIONS = ['PASS', 'TOOL_DEFECT', 'KNOWLEDGE_GAP', 'VALIDATOR_GAP'
 
 /** Flags that consume the following argv element as their value. */
 const VALUE_FLAGS = [
-  '--golden', '--actual-dir', '--bp-warnings', '--systest', '--classification',
+  '--golden', '--actual-dir', '--bp-warnings', '--bp-output', '--systest', '--classification',
   '--golden-prefix', '--actual-prefix', '--case-spec',
 ];
 
@@ -106,7 +122,7 @@ async function main(): Promise<void> {
   const actualPath = actualDir ? undefined : positionals[1];
 
   if (!caseId || (!actualDir && !actualPath)) {
-    console.error('usage: tsx src/eval/oracle/cli.ts <caseId> <actualXml> [--golden p] [--build-failed] [--bp-warnings n] [--write]');
+    console.error('usage: tsx src/eval/oracle/cli.ts <caseId> <actualXml> [--golden p] [--build-failed] [--bp-output f | --bp-warnings n] [--write]');
     console.error('   or: tsx src/eval/oracle/cli.ts <caseId> --actual-dir <dir> [options]   (multi-artifact)');
     process.exit(2);
   }
@@ -127,19 +143,59 @@ async function main(): Promise<void> {
   // for every run whose operator forgot the flag and made the dimension
   // untrendable (the 2026-07-21 eval sweep, finding #3). Leave bpWarnings
   // undefined so the score records `bp_clean: null` (BP not checked), and say so.
+  //
+  // `--bp-output <file>` is the preferred input: the raw run_bp_check text, parsed
+  // into `{code, object, message}` by the very parser the tool uses. `--bp-warnings <n>`
+  // records only how many there were.
+  //
+  // It used to inflate that count into N EMPTY objects — `[{}, {}, {} …]` — and
+  // write them as the warnings themselves. `eval:clusters`, `eval:report` and
+  // `eval:brief` all rank by BP code, so a record full of `{}` contributed N
+  // findings with no code, no object and no message: every BP defect that run hit
+  // was silently under-counted, and the operator had to fill the array in by hand
+  // (#982). A count is a count; it is now recorded as one.
+  const bpOutputFile = arg('--bp-output');
   const bpArg = arg('--bp-warnings');
-  const bpChecked = bpArg !== undefined;
-  const bpCount = Number(bpArg ?? '0');
-  const build = {
-    succeeded: buildSucceeded,
-    bpWarnings: bpChecked ? Array.from({ length: bpCount }, () => ({})) : undefined,
-  };
-  if (!bpChecked) {
+  const bpChecked = bpOutputFile !== undefined || bpArg !== undefined;
+
+  let bpWarnings: BpWarningRecord[] | undefined;
+  let bpWarningCount: number | undefined;
+
+  if (bpOutputFile !== undefined) {
+    const raw = fs.readFileSync(path.resolve(bpOutputFile), 'utf8');
+    bpWarnings = parseBpFindings(raw).map(f => ({
+      code: f.moniker ?? 'BPUnknown',
+      object: f.path ?? f.target,
+      message: f.message ?? f.description ?? '',
+    }));
+    bpWarningCount = bpWarnings.length;
+    if (bpArg !== undefined && Number(bpArg) !== bpWarnings.length) {
+      console.error(
+        `note: --bp-warnings ${bpArg} disagrees with the ${bpWarnings.length} finding(s) parsed from ` +
+        `${bpOutputFile}. The parsed findings win — a count cannot be ranked by code.`,
+      );
+    }
+  } else if (bpArg !== undefined) {
+    bpWarningCount = Number(bpArg);
+    if (!Number.isFinite(bpWarningCount) || bpWarningCount < 0) {
+      console.error(`--bp-warnings must be a non-negative number, got "${bpArg}".`);
+      process.exit(2);
+    }
+    if (bpWarningCount > 0) {
+      console.error(
+        `note: --bp-warnings ${bpWarningCount} records a COUNT only. The improver ranks BP defects by ` +
+        `code (eval:clusters / eval:report / eval:brief), and a count carries none — pass ` +
+        `\`--bp-output <file>\` with the run_bp_check output to record which warnings they were.`,
+      );
+    }
+  } else {
     console.error(
-      'note: --bp-warnings not supplied → bp_clean: null (BP NOT CHECKED). ' +
+      'note: neither --bp-output nor --bp-warnings supplied → bp_clean: null (BP NOT CHECKED). ' +
       'Pass `--bp-warnings 0` only if run_bp_check actually ran and reported none.',
     );
   }
+
+  const build = { succeeded: buildSucceeded, bpWarnings, bpWarningCount };
 
   const systestFile = arg('--systest');
   const systest = systestFile
@@ -193,10 +249,10 @@ async function main(): Promise<void> {
       // list by hand afterwards. Silent zero, not an error. (Corpus:
       // eval/corpus/runs/2026-08-31T22__L4-headerlines-document-slice__278eee3.json,
       // "ORACLE DEFECT"; the resolver has always accepted both shapes, hence the
-      // now-shared `listActualArtifactFiles`.)
-      generatedArtifacts = listActualArtifactFiles(path.resolve(actualDir));
+      // now-shared `listActualArtifactFiles`, via `aotRelativeArtifactPaths`.)
+      generatedArtifacts = aotRelativeArtifactPaths(path.resolve(actualDir));
     } else {
-      generatedArtifacts = actualPath ? [path.basename(actualPath)] : [];
+      generatedArtifacts = actualPath ? [aotRelativeArtifactPath(path.resolve(actualPath))] : [];
     }
     // Say what a `--write` would record: with no golden diff this list is the only
     // account of what the run produced, so it must not be silently empty.
@@ -234,7 +290,11 @@ async function main(): Promise<void> {
     ({ goldenDiff, score, systest: systestOut } = await evaluateMulti({
       caseSpec, actualArtifacts, goldenArtifacts, build, systest, goldenPrefix, actualPrefix,
     }));
-    generatedArtifacts = Object.keys(actualArtifacts);
+    // The files the RUN produced, not the golden filenames it was scored against:
+    // `Object.keys(actualArtifacts)` is keyed by golden name (`Foo.metadata.xml`),
+    // so this field carried two different shapes depending on which branch wrote
+    // it, and the record had to be corrected by hand (#982).
+    generatedArtifacts = aotRelativeArtifactPaths(resolvedActualDir);
     debugLabel = `${artifactNames.length} artifact(s) in ${actualDir}`;
   } else {
     const goldenPath = arg('--golden') ?? findGolden(caseId);
@@ -243,7 +303,7 @@ async function main(): Promise<void> {
     ({ goldenDiff, score, systest: systestOut } = await evaluate({
       caseSpec, actualXml, goldenXml, build, systest, goldenPrefix, actualPrefix,
     }));
-    generatedArtifacts = [path.basename(actualPath!)];
+    generatedArtifacts = [aotRelativeArtifactPath(path.resolve(actualPath!))];
     debugLabel = path.basename(goldenPath);
     if (flagSet('--debug')) {
       console.error('\n--- normalized actual ---\n' + renderNormalized(await normalizeAotXml(actualXml, caseSpec.ignore ?? [], actualPrefix)));
@@ -288,10 +348,18 @@ async function main(): Promise<void> {
       timestamp: new Date().toISOString(),
       server_git_sha: sha,
       generated_artifacts: generatedArtifacts,
-      // `bp_checked` is the provenance flag that makes bp_clean trendable: a record
-      // WITHOUT it (every pre-2026-07-22 record) has unknown BP provenance and is
-      // reported separately rather than averaged in (#3).
-      build: { succeeded: build.succeeded, errors: [], bp_checked: bpChecked, bpWarnings: build.bpWarnings ?? null },
+      build: {
+        succeeded: build.succeeded,
+        errors: [],
+        // `bp_checked` is the provenance flag that makes bp_clean trendable: a record
+        // WITHOUT it (every pre-2026-07-22 record) has unknown BP provenance and is
+        // reported separately rather than averaged in (#3).
+        bp_checked: bpChecked,
+        // The findings themselves when --bp-output parsed them; `null` when only a
+        // count was supplied. Never a synthetic array of empty objects (#982).
+        bpWarnings: build.bpWarnings ?? null,
+        bpWarningCount: bpWarningCount ?? null,
+      },
       golden_diff: goldenDiff,
       systest: systestOut,
       score,

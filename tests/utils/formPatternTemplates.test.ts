@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { FormPatternTemplates } from '../../src/utils/formPatternTemplates';
+import { CAPTION_LABELS, FormPatternTemplates, type FormPattern } from '../../src/utils/formPatternTemplates';
 import { validateFormPatternXml } from '../../src/validation/formPatternValidator';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -632,4 +632,45 @@ describe('generated forms pass the pattern validator', () => {
       expect(errors, JSON.stringify(errors, null, 2)).toHaveLength(0);
     });
   }
+});
+
+// ─── Captions are label ids, never raw text (issue #980) ─────────────────────
+
+/**
+ * xppbp reports `BPErrorLabelIsText` for any Caption that is not a label ID, so
+ * a template that writes `<Caption>General</Caption>` hands every scaffolded
+ * form five BP findings the caller did not cause — and hard-codes English into
+ * a product that ships in 40 languages. Five of the eight BP findings in the
+ * 2026-08-31 L4 capture run came from this one cause.
+ */
+describe('no template writes a raw-text caption', () => {
+  const ALL: FormPattern[] = [
+    'SimpleList', 'SimpleListDetails', 'DetailsMaster', 'DetailsTransaction',
+    'Dialog', 'TableOfContents', 'Lookup', 'ListPage', 'Workspace',
+  ];
+
+  for (const pattern of ALL) {
+    it(`${pattern} captions are all @Label ids`, () => {
+      const xml = FormPatternTemplates.build(pattern, {
+        ...defaultOpts,
+        linesDsName: 'Lines',
+        linesDsTable: 'LineT',
+        linesFields: ['LineField1'],
+        titleField: 'Field1',
+        caption: '@SYS1', // the caller's own caption is the caller's business
+      });
+      const rawCaptions = [...xml.matchAll(/<Caption[^>]*>([^<]*)<\/Caption>/g)]
+        .map((m) => m[1])
+        .filter((c) => c.length > 0 && !c.startsWith('@'));
+      expect(rawCaptions).toEqual([]);
+    });
+  }
+
+  it('uses the platform label ids the census picked', () => {
+    // Guards against a well-meaning edit swapping in a plausible-looking id:
+    // each of these is the exact text in SYS.en-us.label.txt.
+    expect(CAPTION_LABELS.general).toBe('@SYS2952');
+    expect(CAPTION_LABELS.overview).toBe('@SYS9039');
+    expect(CAPTION_LABELS.lineDetails).toBe('@SYS23823');
+  });
 });

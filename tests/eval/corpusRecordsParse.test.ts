@@ -56,3 +56,47 @@ describe('corpus records are all readable', () => {
     expect(files().length).toBeGreaterThan(100);
   });
 });
+
+/**
+ * `build.bpWarnings` must SAY something (issue #982).
+ *
+ * `eval:score --bp-warnings 13` wrote thirteen empty objects — `[{}, {}, {} …]` —
+ * as the warnings themselves, so forty records in this corpus carried findings
+ * with no code, no object and no message. A reader of those records learned only
+ * that there had been some. The scorer now records `{code, object, message}` from
+ * the run_bp_check output (`--bp-output`), or a plain `bpWarningCount` when only
+ * the number is known — never a synthetic array.
+ */
+describe('BP findings in the corpus name what they found', () => {
+  const named = (w: unknown): boolean =>
+    typeof w === 'object' && w !== null &&
+    ['code', 'rule', 'moniker', 'message'].some(k => Boolean((w as Record<string, unknown>)[k]));
+
+  it('no record records a finding that says nothing', () => {
+    const empty: string[] = [];
+    for (const f of files()) {
+      const r = readJsonLenient<{ build?: { bpWarnings?: unknown } }>(path.join(RUNS, f));
+      const warnings = r.build?.bpWarnings;
+      if (!Array.isArray(warnings)) continue;
+      const blanks = warnings.filter(w => !named(w)).length;
+      if (blanks > 0) empty.push(`${f}: ${blanks}/${warnings.length}`);
+    }
+    expect(
+      empty,
+      'An entry in bpWarnings[] with no code/rule/moniker and no message is a finding nothing ' +
+      'can act on. If only the COUNT is known, record `bpWarningCount` and set `bpWarnings: null`.',
+    ).toEqual([]);
+  });
+
+  it('a count is recorded as a count, not as that many empty objects', () => {
+    const inflated: string[] = [];
+    for (const f of files()) {
+      const r = readJsonLenient<{ build?: { bpWarnings?: unknown } }>(path.join(RUNS, f));
+      const warnings = r.build?.bpWarnings;
+      if (Array.isArray(warnings) && warnings.length > 0 && warnings.every(w => named(w) === false)) {
+        inflated.push(f);
+      }
+    }
+    expect(inflated).toEqual([]);
+  });
+});

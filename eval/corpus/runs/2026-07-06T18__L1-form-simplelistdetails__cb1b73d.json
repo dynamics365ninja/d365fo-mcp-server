@@ -1,4 +1,4 @@
-﻿{
+{
   "run_id": "2026-07-06T18__L1-form-simplelistdetails__cb1b73d",
   "case_id": "L1-form-simplelistdetails",
   "tier": 1,
@@ -10,10 +10,8 @@
   "build": {
     "succeeded": true,
     "errors": [],
-    "bpWarnings": [
-      {},
-      {}
-    ]
+    "bpWarnings": null,
+    "bpWarningCount": 2
   },
   "golden_diff": {
     "matched": false,

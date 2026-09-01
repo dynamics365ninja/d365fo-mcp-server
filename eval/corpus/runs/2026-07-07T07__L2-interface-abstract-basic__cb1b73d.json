@@ -1,4 +1,4 @@
-﻿{
+{
   "run_id": "2026-07-07T07__L2-interface-abstract-basic__cb1b73d",
   "case_id": "L2-interface-abstract-basic",
   "tier": 2,
@@ -12,11 +12,8 @@
   "build": {
     "succeeded": true,
     "errors": [],
-    "bpWarnings": [
-      {},
-      {},
-      {}
-    ]
+    "bpWarnings": null,
+    "bpWarningCount": 3
   },
   "golden_diff": {
     "matched": true,

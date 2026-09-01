@@ -1,4 +1,4 @@
-﻿{
+{
   "run_id": "2026-07-07T11__L2-table-modify-lifecycle__cb1b73d",
   "case_id": "L2-table-modify-lifecycle",
   "tier": 2,
@@ -20,21 +20,27 @@
     "errors": [],
     "bpWarnings": [
       {
+        "code": "BPTableWithRecIdIndexMissingReplacementKey",
         "message": "AxTable ConDemoModLifecycle: BPTableWithRecIdIndexMissingReplacementKey."
       },
       {
+        "code": "BPErrorEDTNotMigrated",
         "message": "AxTable ConDemoModLifecycle CustAccount: BPErrorEDTNotMigrated."
       },
       {
+        "code": "BPErrorTableRelationshipPropertiesCompleteness",
         "message": "AxTable ConDemoModLifecycle CustTable: BPErrorTableRelationshipPropertiesCompleteness."
       },
       {
+        "code": "BPErrorTableMissingGroupAutoReport",
         "message": "AxTable ConDemoModLifecycle: BPErrorTableMissingGroupAutoReport."
       },
       {
+        "code": "BPErrorTableFieldNotInFieldGroup",
         "message": "AxTable ConDemoModLifecycle CustAccount: BPErrorTableFieldNotInFieldGroup."
       },
       {
+        "code": "BPUpgradeMetadataEDTRelation",
         "message": "AxTable ConDemoModLifecycle: BPUpgradeMetadataEDTRelation."
       }
     ]

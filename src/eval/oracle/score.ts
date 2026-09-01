@@ -8,11 +8,20 @@ import type { GoldenDiff } from './diff.js';
 export interface BuildResult {
   succeeded: boolean;
   /**
-   * The BP warnings xppbp actually reported. `undefined` means the best-practice
-   * check was NOT RUN — which is NOT the same as "ran and found nothing", and
-   * must not be scored as clean (see `Score.bp_clean`).
+   * The BP warnings xppbp actually reported. `undefined` means either that the
+   * check was NOT RUN, or that only its COUNT is known (`bpWarningCount`) —
+   * neither of which is "ran and found nothing" (see `Score.bp_clean`).
    */
   bpWarnings?: unknown[];
+  /**
+   * How many warnings xppbp reported, when the findings themselves were not
+   * captured. Scoring `bp_clean` needs a number, not a list, so a count is
+   * enough for THIS dimension — but only the findings carry a BP code, which is
+   * what the improver ranks on. The scorer used to reconcile the two by
+   * inflating the count into N empty objects, which produced N findings with no
+   * code and silently under-counted every BP defect downstream (#982).
+   */
+  bpWarningCount?: number;
 }
 
 export interface Score {
@@ -50,11 +59,16 @@ export interface ScoreInput {
   systest?: { passed: boolean | null } | null;
 }
 
+/** The number of BP findings this run has evidence of, or undefined when BP was not checked. */
+function bpFindingCount(build: BuildResult): number | undefined {
+  return build.bpWarnings?.length ?? build.bpWarningCount;
+}
+
 export function scoreRun(input: ScoreInput): Score {
   const { build, goldenDiff, tier, systest } = input;
   return {
     build: build.succeeded ? 1 : 0,
-    bp_clean: build.bpWarnings === undefined ? null : (build.bpWarnings.length === 0 ? 1 : 0),
+    bp_clean: bpFindingCount(build) === undefined ? null : (bpFindingCount(build) === 0 ? 1 : 0),
     golden_match: goldenDiff.matched ? 1 : 0,
     systest: systest == null || systest.passed == null ? null : (systest.passed ? 1 : 0),
     tier_weight: tier,

@@ -10,13 +10,8 @@
   "build": {
     "succeeded": true,
     "errors": [],
-    "bpWarnings": [
-      {},
-      {},
-      {},
-      {},
-      {}
-    ]
+    "bpWarnings": null,
+    "bpWarningCount": 5
   },
   "golden_diff": {
     "matched": true,

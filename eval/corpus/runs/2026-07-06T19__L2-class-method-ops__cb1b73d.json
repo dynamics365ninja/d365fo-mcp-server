@@ -1,4 +1,4 @@
-﻿{
+{
   "run_id": "2026-07-06T19__L2-class-method-ops__cb1b73d",
   "case_id": "L2-class-method-ops",
   "tier": 2,
@@ -20,13 +20,34 @@
     "succeeded": true,
     "errors": [],
     "bpWarnings": [
-      { "message": "AxTable ConDemoCalcData: BPErrorTableMissingGroupAutoReport: The table has no fields in the AutoReport field group." },
-      { "message": "AxTable ConDemoCalcData: BPErrorTableTitleField1NotDeclared: No field has been specified for the Title Field1 property." },
-      { "message": "AxTable ConDemoCalcData: BPErrorDeveloperDocumentationNotDefined: The mandatory property DeveloperDocumentation is not specified." },
-      { "message": "AxTable ConDemoCalcData/TableFieldString/ItemName: BPErrorTableFieldNotInFieldGroup: The table's field is not a member of a field group." },
-      { "message": "AxTable ConDemoCalcData/TableFieldReal/Qty: BPErrorTableFieldNotInFieldGroup: The table's field is not a member of a field group." },
-      { "message": "AxClass ConDemoCalcOps/Method/multiply: BPXmlDocNoDocumentationComments: No XML documentation headers are provided for 'ConDemoCalcOps.multiply'." },
-      { "message": "AxClass ConDemoCalcOps: BPXmlDocNoDocumentationComments: No XML documentation headers are provided for 'ConDemoCalcOps'." }
+      {
+        "code": "BPErrorTableMissingGroupAutoReport",
+        "message": "AxTable ConDemoCalcData: BPErrorTableMissingGroupAutoReport: The table has no fields in the AutoReport field group."
+      },
+      {
+        "code": "BPErrorTableTitleField1NotDeclared",
+        "message": "AxTable ConDemoCalcData: BPErrorTableTitleField1NotDeclared: No field has been specified for the Title Field1 property."
+      },
+      {
+        "code": "BPErrorDeveloperDocumentationNotDefined",
+        "message": "AxTable ConDemoCalcData: BPErrorDeveloperDocumentationNotDefined: The mandatory property DeveloperDocumentation is not specified."
+      },
+      {
+        "code": "BPErrorTableFieldNotInFieldGroup",
+        "message": "AxTable ConDemoCalcData/TableFieldString/ItemName: BPErrorTableFieldNotInFieldGroup: The table's field is not a member of a field group."
+      },
+      {
+        "code": "BPErrorTableFieldNotInFieldGroup",
+        "message": "AxTable ConDemoCalcData/TableFieldReal/Qty: BPErrorTableFieldNotInFieldGroup: The table's field is not a member of a field group."
+      },
+      {
+        "code": "BPXmlDocNoDocumentationComments",
+        "message": "AxClass ConDemoCalcOps/Method/multiply: BPXmlDocNoDocumentationComments: No XML documentation headers are provided for 'ConDemoCalcOps.multiply'."
+      },
+      {
+        "code": "BPXmlDocNoDocumentationComments",
+        "message": "AxClass ConDemoCalcOps: BPXmlDocNoDocumentationComments: No XML documentation headers are provided for 'ConDemoCalcOps'."
+      }
     ]
   },
   "systest": {

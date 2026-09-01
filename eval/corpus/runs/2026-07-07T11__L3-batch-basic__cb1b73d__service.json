@@ -1,4 +1,4 @@
-﻿{
+{
   "run_id": "2026-07-07T11__L3-batch-basic__cb1b73d",
   "case_id": "L3-batch-basic",
   "tier": 3,
@@ -10,18 +10,8 @@
   "build": {
     "succeeded": true,
     "errors": [],
-    "bpWarnings": [
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {}
-    ]
+    "bpWarnings": null,
+    "bpWarningCount": 10
   },
   "golden_diff": {
     "matched": false,

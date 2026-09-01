@@ -204,10 +204,16 @@ Per run, layered from cheap to expensive:
 | `systest` | runtime assertions pass (when present) | deep correctness (optional) |
 
 `bp_clean` is only scored when the capture supplies BP evidence: `tsx src/eval/oracle/cli.ts`
-without `--bp-warnings` records `bp_clean: null` and `build.bp_checked: false`. Pass
-`--bp-warnings 0` **only** when `run_bp_check` actually ran and reported none — the flag used to
+with neither `--bp-output` nor `--bp-warnings` records `bp_clean: null` and `build.bp_checked: false`.
+Pass `--bp-warnings 0` **only** when `run_bp_check` actually ran and reported none — the flag used to
 default to 0, which minted a fake `bp_clean: 1` for every capture that skipped xppbp and made the
 dimension untrendable.
+
+**Prefer `--bp-output <file>`** — the raw `run_bp_check` output — over `--bp-warnings <n>`. It is
+parsed into the findings themselves (`{code, object, message}`) by the parser the tool itself uses,
+so the record says WHICH warnings were hit. `--bp-warnings <n>` records only `build.bpWarningCount`;
+it used to inflate that count into *n* empty objects and write them as the warnings, so forty
+committed records claim findings with no code, no object and no message (#982).
 
 Aggregate metrics tracked over time, per tier: `pass@build`, `pass@bp_clean`, `pass@golden`, `pass@systest`, and the headline **tool-defect rate** (should trend down as the improver lands fixes).
 `pass@bp_clean` is averaged over **BP-verified runs only** (`build.bp_checked === true`, or a

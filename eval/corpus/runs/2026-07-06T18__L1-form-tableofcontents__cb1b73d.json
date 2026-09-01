@@ -1,4 +1,4 @@
-﻿{
+{
   "run_id": "2026-07-06T18__L1-form-tableofcontents__cb1b73d",
   "case_id": "L1-form-tableofcontents",
   "tier": 1,
@@ -10,13 +10,8 @@
   "build": {
     "succeeded": true,
     "errors": [],
-    "bpWarnings": [
-      {},
-      {},
-      {},
-      {},
-      {}
-    ]
+    "bpWarnings": null,
+    "bpWarningCount": 5
   },
   "golden_diff": {
     "matched": false,

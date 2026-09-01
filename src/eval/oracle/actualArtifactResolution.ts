@@ -61,6 +61,29 @@ export function listActualArtifactFiles(dir: string): string[] {
     : [];
 }
 
+/**
+ * `generated_artifacts` entries for an actual dir: `AxTable/ConDemoRentHeader.xml`.
+ *
+ * The corpus schema calls this field "AOT paths the run produced", and every
+ * record before 2026-09-01 spells it that way. One branch of the CLI recorded
+ * the GOLDEN filenames instead (`ConDemoRentHeader.metadata.xml`), so a single
+ * field carried two shapes and the record had to be corrected by hand (#982).
+ *
+ * The AOT folder is the dir's own name when it looks like one; a dir pointed
+ * somewhere else keeps the bare filename rather than gaining a made-up folder.
+ */
+export function aotRelativeArtifactPaths(dir: string): string[] {
+  const folder = path.basename(dir);
+  const prefix = /^Ax[A-Za-z]+$/.test(folder) ? `${folder}/` : '';
+  return listActualArtifactFiles(dir).map(f => `${prefix}${f}`);
+}
+
+/** The same for one file path, e.g. `…/fm-mcp/AxTable/Foo.xml` → `AxTable/Foo.xml`. */
+export function aotRelativeArtifactPath(file: string): string {
+  const folder = path.basename(path.dirname(file));
+  return /^Ax[A-Za-z]+$/.test(folder) ? `${folder}/${path.basename(file)}` : path.basename(file);
+}
+
 /** Lazily-read `.xml` inventory of an actual dir, so one dir is read once per run. */
 class ActualDirIndex {
   private readonly heads = new Map<string, string | undefined>();

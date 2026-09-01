@@ -70,6 +70,34 @@ export interface FormTemplateOptions {
 }
 
 /**
+ * Platform label ids for the captions these templates write.
+ *
+ * A `Caption` holding raw text is a Best Practice ERROR — xppbp reports
+ * `BPErrorLabelIsText` ("Property Caption must have a label ID as its value, and
+ * X is not a label ID") — and it is untranslatable, which is why the rule
+ * exists. Every form these templates scaffolded therefore started life BP-dirty
+ * with five findings that were not the caller's doing, and the eval loop's
+ * `bp_clean` dimension scored 0 for a case that had done nothing wrong (#980).
+ *
+ * The ids are not remembered, they are verified: each is the exact text in
+ * ApplicationPlatform's SYS.en-us.label.txt, and each is the most-used caption
+ * of that wording across a census of shipped Foundation forms (@SYS2952
+ * "General" 93 uses, @SYS9039 "Overview" 52, @SYS23823 "Line details" 8,
+ * @SYS2186 "Setup" 8, @SYS15451 "Lines" 4, @SYS101051 "Header",
+ * @SYS15560 "Summary"). @SYS labels ship with the platform, so no model needs to
+ * declare them.
+ */
+export const CAPTION_LABELS = {
+  general: '@SYS2952',
+  overview: '@SYS9039',
+  header: '@SYS101051',
+  lines: '@SYS15451',
+  lineDetails: '@SYS23823',
+  setup: '@SYS2186',
+  summary: '@SYS15560',
+} as const;
+
+/**
  * The `<DataGroup>` line for a grid or group control, or '' when the caller has
  * proven the group is not there. `indent` is the tab prefix of the sibling
  * elements, so the line lands in the same column.
@@ -425,11 +453,11 @@ ${listFieldControls}\t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t\ti:type="AxFormGroupControl">
 \t\t\t\t\t\t<Name>Overview</Name>
 \t\t\t\t\t\t<Type>Group</Type>
-${dataGroupLine(gridDataGroup, '\t\t\t\t\t\t')}\t\t\t\t\t\t<DataSource>${dsName}</DataSource>
 \t\t\t\t\t\t<FormControlExtension
 \t\t\t\t\t\t\ti:nil="true" />
 \t\t\t\t\t\t<Controls>
 ${detailFieldControls}\t\t\t\t\t\t</Controls>
+${dataGroupLine(gridDataGroup, '\t\t\t\t\t\t')}\t\t\t\t\t\t<DataSource>${dsName}</DataSource>
 \t\t\t\t\t\t<FrameType>None</FrameType>
 \t\t\t\t\t</AxFormControl>
 \t\t\t\t</Controls>
@@ -463,7 +491,7 @@ ${tabFieldControls}\t\t\t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t\t</AxFormControl>
 \t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t<ColumnsMode>Fill</ColumnsMode>
-\t\t\t\t\t\t<Caption>General</Caption>
+\t\t\t\t\t\t<Caption>${CAPTION_LABELS.general}</Caption>
 \t\t\t\t\t</AxFormControl>
 \t\t\t\t</Controls>
 \t\t\t\t<Style>FastTabs</Style>
@@ -688,7 +716,7 @@ ${dataGroupLine(gridDataGroup, '\t\t\t\t\t\t\t\t\t\t\t\t')}\t\t\t\t\t\t\t\t\t\t\
 \t\t\t\t\t\t\t\t\t\t\t</AxFormControl>
 \t\t\t\t\t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t\t\t\t\t<ColumnsMode>Fill</ColumnsMode>
-\t\t\t\t\t\t\t\t\t\t<Caption>Overview</Caption>
+\t\t\t\t\t\t\t\t\t\t<Caption>${CAPTION_LABELS.overview}</Caption>
 \t\t\t\t\t\t\t\t\t</AxFormControl>
 \t\t\t\t\t\t\t\t\t<AxFormControl xmlns=""
 \t\t\t\t\t\t\t\t\t\t\ti:type="AxFormTabPageControl">
@@ -710,7 +738,7 @@ ${generalFieldControls}\t\t\t\t\t\t\t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t\t\t\t\t\t</AxFormControl>
 \t\t\t\t\t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t\t\t\t\t<ColumnsMode>Fill</ColumnsMode>
-\t\t\t\t\t\t\t\t\t\t<Caption>General</Caption>
+\t\t\t\t\t\t\t\t\t\t<Caption>${CAPTION_LABELS.general}</Caption>
 \t\t\t\t\t\t\t\t\t</AxFormControl>
 \t\t\t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t\t\t<Style>FastTabs</Style>
@@ -1066,7 +1094,7 @@ ${headerFieldControls}\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</AxFormControl>
 \t\t\t\t\t\t\t\t\t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t\t\t\t\t\t\t\t\t<ColumnsMode>Fill</ColumnsMode>
-\t\t\t\t\t\t\t\t\t\t\t\t\t\t<Caption>Header</Caption>
+\t\t\t\t\t\t\t\t\t\t\t\t\t\t<Caption>${CAPTION_LABELS.header}</Caption>
 \t\t\t\t\t\t\t\t\t\t\t\t\t\t<FastTabExpanded>No</FastTabExpanded>
 \t\t\t\t\t\t\t\t\t\t\t\t\t</AxFormControl>
 \t\t\t\t\t\t\t\t\t\t\t\t\t<AxFormControl xmlns=""
@@ -1122,7 +1150,7 @@ ${linesColumns}\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<VisibleRowsMode>Fixed</VisibleRowsMode>
 \t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</AxFormControl>
 \t\t\t\t\t\t\t\t\t\t\t\t\t\t</Controls>
-\t\t\t\t\t\t\t\t\t\t\t\t\t\t<Caption>Lines</Caption>
+\t\t\t\t\t\t\t\t\t\t\t\t\t\t<Caption>${CAPTION_LABELS.lines}</Caption>
 \t\t\t\t\t\t\t\t\t\t\t\t\t\t<FastTabExpanded>Always</FastTabExpanded>
 \t\t\t\t\t\t\t\t\t\t\t\t\t</AxFormControl>
 \t\t\t\t\t\t\t\t\t\t\t\t\t<AxFormControl xmlns=""
@@ -1162,14 +1190,14 @@ ${lineDetailControls}\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</AxFormControl>
 \t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<ColumnsMode>Fill</ColumnsMode>
-\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<Caption>General</Caption>
+\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<Caption>${CAPTION_LABELS.general}</Caption>
 \t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</AxFormControl>
 \t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<AlignChild>No</AlignChild>
 \t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<Style>Tabs</Style>
 \t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</AxFormControl>
 \t\t\t\t\t\t\t\t\t\t\t\t\t\t</Controls>
-\t\t\t\t\t\t\t\t\t\t\t\t\t\t<Caption>Line details</Caption>
+\t\t\t\t\t\t\t\t\t\t\t\t\t\t<Caption>${CAPTION_LABELS.lineDetails}</Caption>
 \t\t\t\t\t\t\t\t\t\t\t\t\t\t<DataSource>${linesDsName}</DataSource>
 \t\t\t\t\t\t\t\t\t\t\t\t\t\t<FastTabExpanded>No</FastTabExpanded>
 \t\t\t\t\t\t\t\t\t\t\t\t\t</AxFormControl>
@@ -1218,7 +1246,7 @@ ${headerViewFieldControls}\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</AxFormControl>
 \t\t\t\t\t\t\t\t\t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t\t\t\t\t\t\t\t\t<ColumnsMode>Fill</ColumnsMode>
-\t\t\t\t\t\t\t\t\t\t\t\t\t\t<Caption>General</Caption>
+\t\t\t\t\t\t\t\t\t\t\t\t\t\t<Caption>${CAPTION_LABELS.general}</Caption>
 \t\t\t\t\t\t\t\t\t\t\t\t\t</AxFormControl>
 \t\t\t\t\t\t\t\t\t\t\t\t</Controls>
 \t\t\t\t\t\t\t\t\t\t\t\t<AlignChild>No</AlignChild>
@@ -1480,8 +1508,8 @@ ${dialogBodyLayout}\t\t\t\t<Style>DialogContent</Style>
     const effectiveSections = sections.length > 0
       ? sections
       : [
-          { name: 'TabPageGeneral',  caption: 'General' },
-          { name: 'TabPageSetup',    caption: 'Setup' },
+          { name: 'TabPageGeneral',  caption: CAPTION_LABELS.general },
+          { name: 'TabPageSetup',    caption: CAPTION_LABELS.setup },
         ];
 
     // TableOfContents = a single TOC navigation Tab whose every page carries a
@@ -2019,9 +2047,9 @@ ${captionXml}\t\t<Pattern xmlns="">WorkspaceOperational</Pattern>
 \t\t\t\t<AutoDeclaration>Yes</AutoDeclaration>
 \t\t\t\t<ElementPosition>268435455</ElementPosition>
 \t\t\t\t<ExtendedStyle>tab_simpleFastTab</ExtendedStyle>
+\t\t\t\t<HeightMode>SizeToAvailable</HeightMode>
 \t\t\t\t<Type>Tab</Type>
 \t\t\t\t<WidthMode>SizeToAvailable</WidthMode>
-\t\t\t\t<HeightMode>SizeToAvailable</HeightMode>
 \t\t\t\t<FormControlExtension
 \t\t\t\t\ti:nil="true" />
 \t\t\t\t<Controls>
@@ -2061,9 +2089,8 @@ ${captionXml}\t\t<Pattern xmlns="">WorkspaceOperational</Pattern>
 \t\t\t\t\t\t\t\t<FrameType>None</FrameType>
 \t\t\t\t\t\t\t</AxFormControl>
 \t\t\t\t\t\t</Controls>
+\t\t\t\t\t\t<Caption>${CAPTION_LABELS.summary}</Caption>
 \t\t\t\t\t\t<FastTabExpanded>Yes</FastTabExpanded>
-\t\t\t\t\t\t<FrameType>None</FrameType>
-\t\t\t\t\t\t<Caption>Summary</Caption>
 \t\t\t\t\t</AxFormControl>
 ${listSections}\t\t\t\t</Controls>
 \t\t\t\t<AlignChild>No</AlignChild>
