@@ -98,6 +98,18 @@ export interface ObjectNamingInput {
   baseObjectName?: string;
   modelPrefix?: string;
   modelName?: string;
+  /**
+   * Whether the object an extension EXTENDS exists, already answered by a caller
+   * that has a better source than this one.
+   *
+   * These rules can only probe the SYMBOL INDEX, while `search`, `get_object_info`
+   * and the write path all prefer the C# bridge. On an instance indexed with
+   * `extractMode: "custom"` the index deliberately holds only custom models, so
+   * the index answer for a Microsoft base enum is "not found in symbol index —
+   * ensure it's indexed": false, and advice that re-indexing can never satisfy.
+   * `undefined` keeps the index probe, which is the only option without a bridge.
+   */
+  baseObjectExists?: boolean;
 }
 
 /** Every verdict the rules reach, before anything decides how to print it. */
@@ -373,14 +385,24 @@ export async function checkObjectNaming(
                 ? ['enum']
                 : ['edt'];
 
-        // Case-insensitive: the base object may be spelled with different casing
-        // than the canonical AOT name (#686).
-        const baseExists = lookupSymbolNocase(db, baseObjectName, dbTypes);
-
-        if (!baseExists) {
+        // A caller with a metadata provider has already answered this better than
+        // the index can — see ObjectNamingInput.baseObjectExists.
+        if (args.baseObjectExists === false) {
           warnings.push(
-            `Base object "${baseObjectName}" not found in symbol index for types: ${dbTypes.join(', ')}. Ensure it's indexed.`,
+            `Base object "${baseObjectName}" does not exist as a ${dbTypes.join('/')} ` +
+            `(checked against the metadata provider). An extension of a missing object cannot build.`,
           );
+        } else if (args.baseObjectExists === undefined) {
+          // Case-insensitive: the base object may be spelled with different casing
+          // than the canonical AOT name (#686).
+          const baseExists = lookupSymbolNocase(db, baseObjectName, dbTypes);
+          if (!baseExists) {
+            warnings.push(
+              `Base object "${baseObjectName}" not found in the symbol index for types: ${dbTypes.join(', ')}. ` +
+              `If the base is a standard Microsoft object this may just mean the index is scoped to custom ` +
+              `models (extractMode "custom") — confirm with get_object_info before treating it as missing.`,
+            );
+          }
         }
       }
     }
