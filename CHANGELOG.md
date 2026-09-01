@@ -28,6 +28,12 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+_Nothing released yet._
+
+---
+
+## [1.16.0] — 2026-09-01
+
 ### Added
 - **TDD for a TABLE method — the loop's most-asked task had no red-first path.**
   Across 1,593 real MCP calls the single most-requested X++ topic was the table
@@ -57,12 +63,28 @@ those are called out explicitly below.
   session scratchpads: the measurements behind the compiler-verified wave could
   not be re-run. `--dry` runs the sweep against `tests/fixtures/oracles` so CI can
   hold the zero-error bar with no D365FO install.
+- **The runtime oracle runs, and it discriminates.** X++ test code had never once
+  executed in this project: `SysTestConsole.exe` stopped at `Login failed for user
+  'AOSUser'`, diagnosed twice as a rotated credential and twice wrong — the shipped
+  `SysTestConsole.exe.config` had simply never been configured for the machine. With
+  the four `DataAccess.*` values copied from the AOS's own `web.config`, the runner
+  opens a real AOS session. A passing run only proves the instrument is on, so a
+  negative control was built and run in one pass: a deliberate assertion failure and
+  a deliberate throw come back **failed** beside a passing method, and
+  `parseSysTestXml` reports all three. That real failing document is committed as
+  `tests/fixtures/systest/negative-control.xml` — every earlier parser test used
+  synthetic XML, which only proves the parser handles what its author imagined.
+  All twelve remaining goldens and every runtime-tagged case have since run:
+  **0 of 120 cases are `golden_pending`, 0 are `systest_pending`**, both for the
+  first time.
 
 ### Fixed
-- **Nine defects the golden-capture runs found, and a green 5,650-test suite could
-  not.** Each eval case was implemented on the VM through the grounded tool path,
-  which is the only thing that compares INTENT against OUTPUT. All eight cases run
-  so far passed; the defects are what the runs produced on the way:
+- **Thirty-one defects the golden-capture runs found, and a green 5,700-test suite
+  could not.** Each eval case was implemented on the VM through the grounded tool
+  path, which is the only thing in this repo that compares INTENT against OUTPUT;
+  the test suite compares code against expectations someone already held. Twenty-one
+  runs across the wave, and the passes are the least interesting part — these are
+  the defects the runs produced on the way:
   - `create(class)` **silently dropped every multi-line method attribute block**.
     Attributes are syntactically optional, so xppc and xppbp stayed green — a data
     contract with no data members, a SysOperation dialog with no fields, and no
@@ -113,6 +135,77 @@ those are called out explicitly below.
 - The shared X++ lexer had **no tests**, which is how its documented "delimiters
   survive" contract could be false for `*/` without anyone noticing — the reason
   the `ATTR001` fix initially matched nothing. 16 tests now pin the behaviour.
+- **The scoring oracle could diff a form against the menu item that opens it.**
+  `resolveActualFile` matched on a lossy logical key with `find()` — first match
+  wins — and `artifactKey` strips the `.Ax<Type>` infix, so a golden folder holding
+  a form and its display menu item reduced both to one key. Swept over all 119
+  committed golden folders: 10 artifacts mispair under canonical capture naming and
+  18 under the other assignment of the undecorated filename, 8 of them outright
+  cross-pairings — two unrelated objects compared against each other, or one
+  artifact silently vanishing from the run. Pairing now resolves in three ranked
+  stages (the golden's own filename, type-CHECKED · the identity each document
+  DECLARES plus its root element · the legacy key with ties broken by type), and an
+  undecidable pairing is **reported and scored missing, never guessed**. In the same
+  pass: `canonicalizePrefix` could not see a prefix used as an INFIX, which is
+  Microsoft's own `{Base}{Prefix}_Extension` convention — a differential sweep over
+  326 golden files x 5 prefix specs shows that silently cost 7 golden folders, and a
+  collision sweep over 7,095 identifiers adds no new collision. The fix proposed for
+  this eight weeks ago in a corpus record was measured here and does **not** work.
+- **Capture runs recorded `generated_artifacts: []` for eight weeks.** The CLI's
+  golden-pending branch kept a private "what counts as an artifact" filter
+  (`*.metadata.xml`) while the resolver accepted both shapes, and a capture points
+  `--actual-dir` at an AOT folder, which holds bare `<Name>.xml`. One shared filter
+  now, and the list is printed.
+- **A golden captured before the writer documented classes can never match.** The
+  create path started injecting a class-level `///` block in August; goldens
+  captured in July could not be reproduced by any faithful re-run — 34 of the 159
+  goldens carrying a class or interface `<Declaration>` have no doc comment, 32 of
+  which the writer would inject into. The presence signal is **directional** now: a
+  doc comment on the ACTUAL side only compares equal
+  (`BPXmlDocNoDocumentationComments` fires on ABSENCE, and the content was already
+  canonicalised to a placeholder), while one present in the GOLDEN and missing from
+  the actual still fails — that is a real regression. Replayed over the whole
+  corpus, this and a symmetric blank-line rule resolve 14 real false-mismatches
+  across 69 stored `changed` entries and suppress nothing else. Deliberately not a
+  batch re-capture: each case refreshes its own golden the next time it runs.
+- **Report goldens were unreproducible by construction.** An AxReport carries its
+  RDL inside CDATA and the RDL carries `rd:DataSourceID` / `rd:DataSetID` /
+  `rd:ReportID`, minted afresh on every generation — text inside a payload, which a
+  case's `ignore` globs cannot reach. Six committed goldens carry them. Masked at
+  comparison time only; the stored artifact is never rewritten and a real design
+  change still fails.
+- **The report scaffold made a temp table's first column unique.**
+  `buildPrimaryKeyIndex` always emits a unique index and the report path handed it
+  `tableFields[0]` — which under `designStyle="GroupedWithTotals"` is by
+  construction the GROUP key, so the second row in a group failed on a duplicate key
+  at RUN time, from metadata that builds clean. A report temp table has no natural
+  key; it is `RecId` now, confirmed on live scaffold output.
+- **A corpus record had been silently dropped since July.** A writer put Windows
+  paths into JSON without escaping the backslashes, so a strict parser rejected the
+  whole document — and `loadJsonRecords` skips an unparseable file without a word.
+  A record classified `TOOL_DEFECT` was therefore invisible to every cluster, report
+  and held-out check for eight weeks: the improver had been ranking failures over a
+  corpus it did not know was short. Repaired by **escaping only** — the separators
+  the original writer dropped are not reconstructed, because guessing them would
+  turn damaged data into something that reads as evidence.
+  `tests/eval/corpusRecordsParse.test.ts` now fails on any unparseable record, and
+  asserts the corpus is of real size so a broken path cannot make it pass forever.
+- **A root element could be read out of an XML comment** (CodeQL,
+  `js/incomplete-multi-character-sanitization`, 2 high). `aotRootElement` found the
+  root by `replace()`-ing the prologue away, and a single-pass strip leaves an
+  unterminated `<!--` in place — so the type deciding which golden pairs with which
+  file could come out of a comment. Replaced with an ordered token scan; ordered
+  alternation alone was not enough, which the new test caught before it was pushed.
+  `tests/eval/oracleScoringIntegrity.test.ts` carried its own copy of both readers
+  (the second alert) and imports the shipped ones now, so it cannot drift from the
+  code under test.
+- **Two `js/regex-injection` findings in the oracle CLIs** (high, CodeQL):
+  `census.ts --grep` compiled its argument as a regex and is a literal substring
+  match now; `xppcProbe.ts` interpolated a probe's class name into a regex, and the
+  name is validated as an identifier before use. Testing that guard is what made it
+  worth doing — the first version captured `Bad` out of `class Bad.Name`, a valid
+  identifier producing an artifact whose `<Name>` disagrees with its own source,
+  which is exactly the silence the harness exists to prevent.
 
 ### Changed
 - Five new validator rules: `XML008` (an `AxTableExtension` carrying `<Methods>`,
@@ -122,10 +215,50 @@ those are called out explicitly below.
   a **warning**, because Microsoft ships it too), `SET001`
   (`update_recordset`/`delete_from` with no `where`) and `OP001` (`&&` mixed with
   `||` unparenthesised — they have equal precedence in X++, unlike C#).
-- Coverage falls to **core 90.8% / total 91.7%**. Nine leaves were added for
-  constructs the artifact-indexed taxonomy had no way to count, each with an
-  authored case that is `golden_pending` until captured on a VM. The number was
-  never 100% for these; there was nothing to count.
+- Coverage fell to **core 90.8% / total 91.7%** mid-wave and finished at **core
+  100% (65/65) / total 109/109**. Nine leaves were added for constructs the
+  artifact-indexed taxonomy had no way to count, each starting `golden_pending`,
+  and the number climbed one captured golden at a time. It was never 100% for those
+  constructs before; there was nothing to count.
+- Two standing claims in the docs were false and were quietly steering work: that
+  the runtime oracle had never executed because `SysTestConsole.exe` gates on an
+  interactive console (it does not — that was configuration drift), and the eval
+  README's standing "capture the pending goldens" queue. Both closed. One survivor
+  is left alone as out of scope: `src/server/serverMode.ts` still repeats the
+  interactive-console claim in a tool-tiering rationale, where the tiering decision
+  is unaffected but the sentence is wrong.
+- `docs/XPP_LANGUAGE_COVERAGE_PLAN.md` is **deleted**, under the lifecycle rule it
+  carried itself: the capture it was waiting on is done. The durable record is
+  `eval/COVERAGE.md`, `eval/README.md`, the goldens' READMEs and this entry; its
+  non-goals and still-open decisions moved to `docs/BACKLOG.md` rather than
+  disappearing with it.
+
+### Known issues
+- **Three write-path defects the last capture wave found are still open**, each
+  recorded in the corpus with a reproduction. All three build with 0 errors, are
+  xppbp-clean and read back as plausible metadata, which is why the test suite and
+  a golden diff both pass them:
+  - `create(enum)` drops explicit `<Value>` elements when the numbering is plain
+    sequential, on purpose — but the premise is false: an `<AxEnumValue>` with no
+    `<Value>` is 0, not the next ordinal, so a four-tier ladder collapses to
+    all-zero and `enum2int()` returns 0 for every member.
+  - Any table property written by the XML-writer fallback is destroyed by the next
+    bridge-backed modify on the same object (reproduced twice — `CacheLookup`, then
+    `DeleteAction`). "Verified: on disk" only checks that the file exists, never
+    that the value survived.
+  - `create(class, xmlContent=…)` writes three identities into one file: the prefix
+    reaches the filename and the X++ declaration but not `<Name>`. It reports
+    success and the next build dies with a naming-consistency fatal error.
+  `L4-headerlines-document-slice` therefore FAILS, and its golden deliberately
+  enshrines the corrupted output — the fix must update that golden in the same
+  change, where `+<DeleteAction>Cascade</DeleteAction>` is the evidence the defect
+  is gone. Two older defects did **not** reproduce, each checked with a negative
+  control rather than an assertion: the data-entity create no longer drops
+  `primaryTable`/fields, and multi-line attribute blocks survive `create(class)`
+  verbatim (12 sent, 12 on disk).
+- `L3-warehouse-work-slice` has a captured golden and `build: 1`, but its corpus
+  record still carries `bp_clean: null` — BP never ran for it. A small, real gap,
+  named rather than papered over.
 
 ---
 
