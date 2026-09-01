@@ -134,7 +134,8 @@ plan filled the day:
   owner** before it ships; it is also the domain of the only live user in the
   usage data.
 
-**Why deferred.** Each is P3 on the demand evidence (§2 of the v3 plan): the
+**Why deferred.** Each is P3 on the demand evidence mined for the v3 coverage
+round (1,593 real MCP calls, since-deleted plan file): the
 daily loop is table/form/enum/label extension work, and the knowledge payload is
 a token budget where every rule competes with every other rule for attention.
 
@@ -181,7 +182,8 @@ at run time. Refusing foreign designs is what keeps that bounded.
 
 **Status:** **rejected 2026-08-31** · **Area:** `src/tools/analysis/validateXpp.ts`
 
-**What was proposed.** Two error-severity rules from the v2.1 plan: DECL001 for
+**What was proposed.** Two error-severity rules carried over from the v2.1
+coverage plan (deleted 2026-09-01): DECL001 for
 local-variable shadowing, CONV001 for the implicit conversions the compiler
 refuses (`int i = 1.5`, `str s = 1`, `"a" + 1`).
 
@@ -349,3 +351,43 @@ reopen it on the grounds that it would now be easy to build.
 - Maintenance cost of a second codebase/release pipeline; VS Copilot LM/MCP APIs
   are still moving. Keep the server fully usable without the VSIX (graceful
   degradation), never make it a hard dependency.
+
+---
+
+## X++ coverage v3 non-goals — recorded here when the plan file was deleted
+
+**Status:** deferred / non-goal 2026-09-01 · **Area:** knowledge, generator, eval
+taxonomy
+
+**What.** `docs/XPP_LANGUAGE_COVERAGE_PLAN.md` was deleted on 2026-09-01 under its
+own lifecycle rule (the capture wave finished: 0 of 120 cases `golden_pending`,
+0 `systest_pending`, core coverage back to 100%). Its D2/D3/D4 decisions already
+live above as their own entries. These four items had no entry anywhere, so they
+would otherwise have been lost with the file:
+
+- **Domain breadth left out on purpose:** extensible controls, SSRS sub-reports,
+  Power BI embedded, Key Vault / Blob SDK, Financial Reporting. Each is a
+  multi-day domain with no demand behind it in the 1,593 real MCP calls that
+  round was mined from, where the daily loop is table/form/enum/label extension
+  work. **Trigger:** a corpus record or a real session that needed one.
+- **The `anytype` run-time re-typing probe (P2)** — the one language question the
+  compiler cannot answer, because the behaviour is a run-time one. It was blocked
+  while no SysTest had ever executed; since the runner reached the database
+  (2026-08-31) it is merely **unwritten**. **Sketch:** a SysTest that assigns two
+  different types into one `anytype` and asserts what `typeOf()` reports at each
+  point; capture it as a golden the way the runtime-tagged cases are.
+- **Rejected on compiler evidence, and staying rejected:** a generics rule, a
+  rule for `*=` / `/=`, `EVT001`, and the buffer-select-expression rule. The
+  compiler accepts (or diagnoses exactly) what each of them would have flagged.
+  **What would reopen one:** a probe result contradicting the one that dropped it,
+  not a re-reading of the docs.
+- **The six unpublished `generate_object` patterns stay unpublished** — declined
+  on schema budget: `generate_object` was 5 calls in 1,593.
+  `tests/tools/patternEnumParity.test.ts` keeps every difference an explicit,
+  justified entry, so the gap cannot drift back into an accident.
+
+**Why it is worth a backlog entry at all.** The plan's durable outputs are
+`eval/COVERAGE.md`, `eval/README.md`, the goldens' READMEs and CHANGELOG 1.16.0.
+Those record what SHIPPED. A non-goal that is only recorded in a deleted file is
+indistinguishable from an idea nobody had, which is the failure this file was
+restored to prevent.

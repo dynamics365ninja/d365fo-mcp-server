@@ -610,7 +610,8 @@ export const TAXONOMY: CoverageLeaf[] = [
   // ── Language surface the artifact-type taxonomy hid ─────────────────────
   //
   // These nine leaves exist because the compiler answered questions this server
-  // used to answer from memory (see docs/XPP_LANGUAGE_COVERAGE_PLAN.md §1). Each
+  // used to answer from memory — a construct-level map of the language against
+  // the live sources, rather than an artifact-indexed one. Each
   // has a knowledge entry written from a probe and an eval case. Those cases were
   // authored but NOT captured when these leaves were written, so `golden_pending`
   // held E false and the published number fell — the intended direction. As of
