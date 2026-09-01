@@ -14,6 +14,7 @@ import { type SysTestResult } from './systest.js';
 export {
   normalizeAotXml, normalizeMultiArtifact, renderNormalized, globToRegExp,
   GOLDEN_CAPTURE_PREFIX, GOLDEN_CAPTURE_PREFIXES, canonicalizePrefix, type PrefixSpec,
+  valuesEquivalent, XMLDOC_PLACEHOLDER,
 } from './normalize.js';
 export { artifactKey, artifactKeyMap } from './artifactKey.js';
 export { diffNormalized, renderDiff, type GoldenDiff } from './diff.js';
