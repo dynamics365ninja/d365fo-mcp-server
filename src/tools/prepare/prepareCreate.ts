@@ -22,7 +22,12 @@ import { normalizeObjectName } from '../../utils/objectNaming.js';
 import { renderPrepareOpSpec } from '../specs/opSpecs.js';
 import { rankContext, renderRankedContext } from '../../workspace/contextRanker.js';
 import { budgetRankedContext } from './prepareChange.js';
-import { lookupSymbolsNocase, type SymbolHit } from '../../utils/symbolLookup.js';
+import {
+  canonicalSymbolName,
+  lookupChildSymbolsNocase,
+  lookupSymbolsNocase,
+  type SymbolHit,
+} from '../../utils/symbolLookup.js';
 import { formatLabelReference } from '../../utils/labelReference.js';
 import { RESERVED_SYSTEM_FIELD_NAMES } from '../smart/generateSmartTable.js';
 
@@ -61,6 +66,109 @@ export const prepareCreateArgsSchema = z.object({
   ),
 });
 
+/** A literal newline, kept as a constant so shell-authored patches cannot eat the escape. */
+const NEWLINE = String.fromCharCode(10);
+
+/** Extension objectType → the type of the object it extends. */
+const EXTENSION_BASE_TYPE: Record<string, string> = {
+  'table-extension': 'table',
+  'class-extension': 'class',
+  'form-extension': 'form',
+  'enum-extension': 'enum',
+  'edt-extension': 'edt',
+};
+
+/**
+ * What the caller needs to know about the object an extension EXTENDS.
+ *
+ * Publishing the extension objectTypes (#983) made the write reachable; it did
+ * not make it grounded. Everything that decides whether an enum extension can
+ * work at all lives on the BASE: it has to exist, it has to be extensible (a
+ * sealed enum cannot be extended at all), and a member name already on it is a
+ * build error, not a merge. `prepare(mode="change")` is built around reading the
+ * base object; `prepare(mode="create")` was not, so the one call an agent makes
+ * before writing an extension said nothing about the thing being extended.
+ *
+ * Asked of the BRIDGE first, and that is the point. The existence check in
+ * `checkObjectNaming` reads the symbol index, while `search`, `get_object_info`
+ * and the write path all prefer the metadata provider. On an instance indexed
+ * with `extractMode: "custom"` the index deliberately holds only custom models,
+ * so the index answer for a Microsoft base enum is "not found — ensure it's
+ * indexed": false, and advice that re-indexing can never satisfy.
+ */
+async function describeExtensionBase(
+  baseName: string,
+  objectType: string,
+  context: XppServerContext,
+): Promise<{ exists: boolean | undefined; text: string }> {
+  const baseType = EXTENSION_BASE_TYPE[objectType];
+  if (!baseType || !baseName) return { exists: undefined, text: '' };
+
+  const bridge = context.bridge;
+  const bridgeUsable = Boolean(bridge?.isReady && bridge?.metadataAvailable);
+
+  if (bridgeUsable && baseType === 'enum') {
+    try {
+      const info = await bridge!.readEnum(baseName);
+      if (info) {
+        const taken = info.values.map(v => v.name);
+        const lines = [
+          `\`${info.name}\`${info.model ? ` (${info.model})` : ''} — **Extensible: ${info.isExtensible ? 'Yes' : 'NO'}**`,
+        ];
+        if (!info.isExtensible) {
+          lines.push(
+            '🔴 A non-extensible enum CANNOT be extended — the write will not build. ' +
+            'Add the member to the enum itself, or ask the owner to mark it extensible.',
+          );
+        }
+        if (taken.length > 0) {
+          lines.push(
+            `Member names already taken (${taken.length}): ${taken.join(', ')} — ` +
+            'reusing one is a build error, not a merge.',
+          );
+        }
+        return { exists: true, text: lines.join(String.fromCharCode(10)) };
+      }
+      return {
+        exists: false,
+        text: `🔴 \`${baseName}\` does not exist as an enum (checked via the metadata provider) — ` +
+          'an extension of a missing object cannot build.',
+      };
+    } catch {
+      /* fall through to the generic probe */
+    }
+  }
+
+  if (bridgeUsable) {
+    try {
+      const resolved = await bridge!.resolveObjectInfo(baseType, baseName);
+      if (resolved) {
+        return resolved.exists
+          ? { exists: true, text: `\`${baseName}\`${resolved.model ? ` (${resolved.model})` : ''} — exists.` }
+          : {
+              exists: false,
+              text: `🔴 \`${baseName}\` does not exist as a ${baseType} (checked via the metadata provider).`,
+            };
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+
+  // No bridge: the index is all there is, and it may be scoped to custom models.
+  try {
+    const hit = lookupSymbolsNocase(context.symbolIndex.getReadDb(), baseName, { types: [baseType], limit: 1 })[0];
+    if (hit) return { exists: true, text: `\`${baseName}\` (${hit.model ?? '?'}) — found in the symbol index.` };
+  } catch {
+    /* index unavailable */
+  }
+  return {
+    exists: undefined,
+    text: `\`${baseName}\` — could not be verified (the C# bridge is not available and the symbol ` +
+      'index has no matching ' + baseType + '; an index built with extractMode "custom" holds only custom models).',
+  };
+}
+
 // Lookups below are all index-only, run in parallel.
 
 /** Exact + prefixed collision check. */
@@ -85,10 +193,31 @@ function checkCollisions(
         }
       }
     }
+    // Extension rows are INVISIBLE to the lookup above: it requires
+    // `parent_name IS NULL` (the marker of a top-level object), and every one of
+    // the index's extension rows records its BASE there instead. So
+    // `NumberSeqModule.Kitting` — present in the index as an enum-extension of
+    // NumberSeqModule, in model Kitting — came back as "✅ No collision",
+    // clearing a name that is already taken, immediately before a write (#995).
+    //
+    // Probed by exact name here rather than by relaxing the shared helper, whose
+    // top-level-only contract the rest of the server depends on.
+    for (const n of new Set([finalName, baseName])) {
+      if (!n.includes('.')) continue;
+      const taken = lookupChildSymbolsNocase(db, n);
+      for (const r of taken) {
+        const key = `${r.name} ${r.type} ${r.model ?? ''}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          rows.push(r);
+        }
+      }
+    }
+
     if (rows.length > 0) {
       return rows
         .map(r => `⚠️  "${r.name}" already exists as ${r.type} in model "${r.model}" — pick a different name or extend it instead.`)
-        .join('\n');
+        .join(NEWLINE);
     }
     return `✅ No collision — neither "${finalName}" nor "${baseName}" exists in the index.`;
   } catch {
@@ -204,6 +333,43 @@ function findSimilarObjects(
 ): string {
   try {
     const db = context.symbolIndex.getReadDb();
+
+    // For an EXTENSION, the useful siblings are the other extensions of the same
+    // base — not names that happen to share a token with the suffix (#995).
+    //
+    // The CamelCase heuristic below picks the LAST token of the proposed name,
+    // which for `NumberSeqModule.ConDemoRent` is "Rent": a word out of the half
+    // the caller just invented. It matched nothing, so prepare answered
+    // "greenfield" while the index held 25 extensions of that exact enum —
+    // including NumberSeqModule.RentalManagement, all but a worked example of the
+    // thing being written. (The tokeniser does not know about the dot either, so
+    // it emits "Module." as a token and gets both halves wrong.)
+    //
+    // Extension rows record their base in `parent_name`, which makes this exact
+    // rather than a LIKE, and idx_type_parent serves it directly.
+    const extensionBase = objectType.endsWith('-extension') && baseName.includes('.')
+      ? baseName.slice(0, baseName.indexOf('.'))
+      : '';
+    if (extensionBase) {
+      // BINARY, deliberately. `parent_name = ? COLLATE NOCASE` drops the planner
+      // from `(type=? AND parent_name=?)` to `(type=?)` — it cannot use the
+      // BINARY-collated idx_type_parent — and then walks every extension row of
+      // that type. The module-level rule in symbolLookup.ts is the one to follow:
+      // canonicalize the name ONCE through a nocase lookup, then stay binary.
+      const canonicalBase =
+        canonicalSymbolName(db, extensionBase, [EXTENSION_BASE_TYPE[objectType]]) ?? extensionBase;
+      const siblings = db.prepare(
+        `SELECT name, model FROM symbols INDEXED BY idx_type_parent
+         WHERE type = ? AND parent_name = ?
+         ORDER BY name LIMIT 6`,
+      ).all(objectType, canonicalBase) as Array<{ name: string; model: string }>;
+      if (siblings.length > 0) {
+        return siblings.map(r => `  ${r.name} (${r.model})`).join(NEWLINE) +
+          NEWLINE + `_How the platform's own models name their suffix on this base — evidence, not convention._`;
+      }
+      return `(no other ${objectType} of "${extensionBase}" in the index — this is the first)`;
+    }
+
     // Split CamelCase into tokens and search for the most specific ones
     const tokens = baseName.split(/(?=[A-Z])/).filter(t => t.length >= 4);
     const needle = tokens.length > 0 ? tokens[tokens.length - 1] : baseName;
@@ -321,105 +487,6 @@ function minedPropertyDefaults(objectType: string, context: XppServerContext): s
   return '(no mined statistics — run build-database to mine standard models)';
 }
 
-/** Extension objectType → the type of the object it extends. */
-const EXTENSION_BASE_TYPE: Record<string, string> = {
-  'table-extension': 'table',
-  'class-extension': 'class',
-  'form-extension': 'form',
-  'enum-extension': 'enum',
-  'edt-extension': 'edt',
-};
-
-/**
- * What the caller needs to know about the object an extension EXTENDS.
- *
- * Publishing the extension objectTypes (#983) made the write reachable; it did
- * not make it grounded. Everything that decides whether an enum extension can
- * work at all lives on the BASE: it has to exist, it has to be extensible (a
- * sealed enum cannot be extended at all), and a member name already on it is a
- * build error, not a merge. `prepare(mode="change")` is built around reading the
- * base object; `prepare(mode="create")` was not, so the one call an agent makes
- * before writing an extension said nothing about the thing being extended.
- *
- * Asked of the BRIDGE first, and that is the point. The existence check in
- * `checkObjectNaming` reads the symbol index, while `search`, `get_object_info`
- * and the write path all prefer the metadata provider. On an instance indexed
- * with `extractMode: "custom"` the index deliberately holds only custom models,
- * so the index answer for a Microsoft base enum is "not found — ensure it's
- * indexed": false, and advice that re-indexing can never satisfy.
- */
-async function describeExtensionBase(
-  baseName: string,
-  objectType: string,
-  context: XppServerContext,
-): Promise<{ exists: boolean | undefined; text: string }> {
-  const baseType = EXTENSION_BASE_TYPE[objectType];
-  if (!baseType || !baseName) return { exists: undefined, text: '' };
-
-  const bridge = context.bridge;
-  const bridgeUsable = Boolean(bridge?.isReady && bridge?.metadataAvailable);
-
-  if (bridgeUsable && baseType === 'enum') {
-    try {
-      const info = await bridge!.readEnum(baseName);
-      if (info) {
-        const taken = info.values.map(v => v.name);
-        const lines = [
-          `\`${info.name}\`${info.model ? ` (${info.model})` : ''} — **Extensible: ${info.isExtensible ? 'Yes' : 'NO'}**`,
-        ];
-        if (!info.isExtensible) {
-          lines.push(
-            '🔴 A non-extensible enum CANNOT be extended — the write will not build. ' +
-            'Add the member to the enum itself, or ask the owner to mark it extensible.',
-          );
-        }
-        if (taken.length > 0) {
-          lines.push(
-            `Member names already taken (${taken.length}): ${taken.join(', ')} — ` +
-            'reusing one is a build error, not a merge.',
-          );
-        }
-        return { exists: true, text: lines.join(String.fromCharCode(10)) };
-      }
-      return {
-        exists: false,
-        text: `🔴 \`${baseName}\` does not exist as an enum (checked via the metadata provider) — ` +
-          'an extension of a missing object cannot build.',
-      };
-    } catch {
-      /* fall through to the generic probe */
-    }
-  }
-
-  if (bridgeUsable) {
-    try {
-      const resolved = await bridge!.resolveObjectInfo(baseType, baseName);
-      if (resolved) {
-        return resolved.exists
-          ? { exists: true, text: `\`${baseName}\`${resolved.model ? ` (${resolved.model})` : ''} — exists.` }
-          : {
-              exists: false,
-              text: `🔴 \`${baseName}\` does not exist as a ${baseType} (checked via the metadata provider).`,
-            };
-      }
-    } catch {
-      /* fall through */
-    }
-  }
-
-  // No bridge: the index is all there is, and it may be scoped to custom models.
-  try {
-    const hit = lookupSymbolsNocase(context.symbolIndex.getReadDb(), baseName, { types: [baseType], limit: 1 })[0];
-    if (hit) return { exists: true, text: `\`${baseName}\` (${hit.model ?? '?'}) — found in the symbol index.` };
-  } catch {
-    /* index unavailable */
-  }
-  return {
-    exists: undefined,
-    text: `\`${baseName}\` — could not be verified (the C# bridge is not available and the symbol ` +
-      'index has no matching ' + baseType + '; an index built with extractMode "custom" holds only custom models).',
-  };
-}
 
 export async function prepareCreateTool(request: any, context: XppServerContext): Promise<any> {
   const raw = request?.params?.arguments ?? request;

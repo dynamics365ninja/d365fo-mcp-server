@@ -140,3 +140,53 @@ export function distinctSymbolTypesNocase(db: DbLike, name: string, limit = 10):
   }
   return [...types].slice(0, limit);
 }
+
+/**
+ * Case-insensitive lookup of NON-top-level symbols by exact name — the rows
+ * `lookupSymbolsNocase` deliberately cannot see.
+ *
+ * Every helper above requires `parent_name IS NULL`, which is the index's marker
+ * for a top-level object. EXTENSION rows do not carry it: they record the object
+ * they extend in `parent_name` instead (all 278 enum extensions in a production
+ * index do). So an extension is invisible to every lookup in this module, and
+ * `prepare`'s collision check cleared `NumberSeqModule.Kitting` — an
+ * enum-extension that is right there in the index — as "no collision", moments
+ * before a write (#995).
+ *
+ * Same two-step as `lookupSymbolsNocase`, and for the same reason: the exact-case
+ * probe rides idx_name_type (0.2 ms), while `name = ? COLLATE NOCASE` alone
+ * cannot use that BINARY index and scans it — measured at 60 SECONDS on a
+ * production-size DB, which node:sqlite would spend blocking the event loop.
+ */
+export function lookupChildSymbolsNocase(
+  db: DbLike,
+  name: string,
+  limit = 3,
+): SymbolHit[] {
+  if (!name) return [];
+  const exact = db.prepare(
+    `SELECT ${HIT_COLS} FROM symbols s INDEXED BY idx_name_type
+     WHERE s.name = ? AND s.parent_name IS NOT NULL
+     LIMIT ?`,
+  ).all(name, limit) as SymbolHit[];
+  if (exact.length >= limit) return exact;
+
+  const fts = db.prepare(
+    `SELECT ${HIT_COLS} FROM symbols_fts fts
+     JOIN symbols s ON s.id = fts.rowid
+     WHERE symbols_fts MATCH ?
+       AND s.name = ? COLLATE NOCASE AND s.parent_name IS NOT NULL
+     LIMIT ?`,
+  ).all(`{name} : ${ftsPhrase(name)}`, name, limit) as SymbolHit[];
+
+  const key = (r: SymbolHit) => `${r.name}\0${r.type}\0${r.model ?? ''}`;
+  const seen = new Set(exact.map(key));
+  const merged = [...exact];
+  for (const r of fts) {
+    if (!seen.has(key(r))) {
+      seen.add(key(r));
+      merged.push(r);
+    }
+  }
+  return merged.slice(0, limit);
+}

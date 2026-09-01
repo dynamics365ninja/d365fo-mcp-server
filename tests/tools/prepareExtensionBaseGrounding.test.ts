@@ -133,3 +133,83 @@ describe('prepare(create) grounds an extension in its base object', () => {
     expect(text).toMatch(/only the suffix after the dot is yours to choose/);
   });
 });
+
+/**
+ * Extension siblings and extension collisions (issue #995).
+ *
+ * Both come from one fact about the index: an extension row does NOT carry
+ * `parent_name IS NULL`. It records the object it EXTENDS there instead — all 278
+ * enum extensions in a production index do. Every helper in symbolLookup requires
+ * the NULL, so extensions are invisible to all of them.
+ *
+ * Consequences, both measured against a real index:
+ *   • `prepare` answered "greenfield" for NumberSeqModule.ConDemoRent while 25
+ *     extensions of that exact enum sat in the index.
+ *   • the collision check cleared `NumberSeqModule.Kitting` — an enum-extension
+ *     that IS in the index — as "✅ No collision", right before a write.
+ */
+describe('prepare(create) sees extension rows (#995)', () => {
+  const SIBLINGS = [
+    { name: 'NumberSeqModule.Administration', type: 'enum-extension', model: 'ApplicationFoundation', extends_class: null, file_path: null },
+    { name: 'NumberSeqModule.RentalManagement', type: 'enum-extension', model: 'RentalManagement', extends_class: null, file_path: null },
+  ];
+
+  /**
+   * A db that answers only the two shapes extensions live under, so a query that
+   * still demands `parent_name IS NULL` gets nothing — the pre-fix behaviour.
+   */
+  const extensionAwareDb = (opts: { siblings?: unknown[]; taken?: unknown[] } = {}) => {
+    const prepare = vi.fn((sql: string) => ({
+      all: vi.fn((..._p: unknown[]) => {
+        if (sql.includes('parent_name IS NULL')) return [];
+        if (sql.includes('parent_name = ?')) return opts.siblings ?? [];
+        if (sql.includes('parent_name IS NOT NULL')) return opts.taken ?? [];
+        return [];
+      }),
+      get: vi.fn(() => undefined),
+      run: vi.fn(),
+    }));
+    return { prepare };
+  };
+
+  const runWith = async (db: unknown, objectName: string, objectType: string) => {
+    const { prepareCreateTool } = await import('../../src/tools/prepare/prepareCreate.js');
+    const res = await prepareCreateTool(
+      { params: { arguments: { goal: 'test', objectName, objectType } } },
+      {
+        symbolIndex: { db, getReadDb: () => db } as any,
+        bridge: readyBridge(),
+        parser: {} as any, cache: {} as any, workspaceScanner: {} as any, hybridSearch: {} as any,
+      } as any,
+    );
+    return String(res.content[0].text);
+  };
+
+  it('lists the other extensions of the same base instead of "greenfield"', async () => {
+    const text = await runWith(extensionAwareDb({ siblings: SIBLINGS }), 'NumberSeqModule.ConDemoRent', 'enum-extension');
+    expect(text).not.toContain('greenfield');
+    expect(text).toContain('NumberSeqModule.RentalManagement');
+    expect(text).toContain('RentalManagement');
+  });
+
+  it('says "this is the first" rather than "greenfield" when the base truly has none', async () => {
+    const text = await runWith(extensionAwareDb({ siblings: [] }), 'NumberSeqModule.ConDemoRent', 'enum-extension');
+    expect(text).toMatch(/no other enum-extension of "NumberSeqModule" in the index — this is the first/);
+  });
+
+  it('does NOT clear a name an existing extension already holds', async () => {
+    const taken = [{ name: 'NumberSeqModule.Kitting', type: 'enum-extension', model: 'Kitting', extends_class: null, file_path: null }];
+    const text = await runWith(extensionAwareDb({ taken }), 'NumberSeqModule.Kitting', 'enum-extension');
+    expect(text).not.toContain('✅ No collision');
+    expect(text).toContain('already exists as enum-extension');
+    expect(text).toContain('Kitting');
+  });
+
+  it('does not run the child probe for an undotted name', async () => {
+    const db = extensionAwareDb();
+    await runWith(db, 'ImportParameters', 'table');
+    const childProbes = (db.prepare as any).mock.calls
+      .filter((c: unknown[]) => String(c[0]).includes('parent_name IS NOT NULL'));
+    expect(childProbes).toHaveLength(0);
+  });
+});
