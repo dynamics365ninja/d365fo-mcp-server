@@ -24,6 +24,15 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { describe, it, expect, beforeAll } from 'vitest';
 
+/** Drop block comments and whole-line // comments, so examples in docs are not read as imports. */
+function stripComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split(/\r?\n/)
+    .filter(line => !/^\s*\/\//.test(line))
+    .join('\n');
+}
+
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 
 /** Whether `npm run build` has produced anything for `npm pack` to publish. */
@@ -109,5 +118,44 @@ describe.skipIf(!isBuilt)('published package contents', () => {
     expect(packed.filter(p => p.endsWith('.map'))).toEqual([]);
     expect(packed.filter(p => p.startsWith('dist/eval/'))).toEqual([]);
     expect(packed.filter(p => p.startsWith('data/'))).toEqual([]);
+  });
+
+  /**
+   * The exclusions above cut whole trees out of a tarball that is otherwise
+   * built from one tsc run — so a shipped module can still `import` a file that
+   * was left behind, and nothing in the repo notices: typecheck, lint and the
+   * whole test suite resolve against src/, where the excluded tree is present.
+   * The failure lands on the user, at startup, as
+   *   ERR_MODULE_NOT_FOUND: Cannot find module '<pkg>/dist/eval/oracle/systest.js'
+   *   imported from '<pkg>/dist/tools/sdlc/sysTestRunner.js'
+   * with the server dead — which is exactly what `!dist/eval/**` did to
+   * v1.16.x once run_systest_class started reading its XML parser from the eval
+   * oracle. Checking the closure rather than that one pair means the next
+   * exclusion is covered too.
+   */
+  it('publishes every module its published modules import', () => {
+    const packedSet = new Set(packed);
+    // Static `from '…'`, bare side-effect `import '…'`, and literal `import('…')`.
+    const SPECIFIER =
+      /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)['"](\.[^'"]*)['"]/g;
+    const dangling: string[] = [];
+
+    for (const file of packed.filter(p => p.startsWith('dist/') && p.endsWith('.js'))) {
+      // Comments first: src/bridge/index.ts documents its own import path in a
+      // JSDoc example, and a doc line is not a module edge.
+      const source = stripComments(fs.readFileSync(path.join(REPO_ROOT, file), 'utf8'));
+      for (const [, specifier] of source.matchAll(SPECIFIER)) {
+        const target = path.posix.join(path.posix.dirname(file), specifier);
+        if (!packedSet.has(target)) dangling.push(`${file} → ${specifier}`);
+      }
+    }
+
+    expect(
+      dangling,
+      'these published modules import files the `files` list excludes; the installed ' +
+      'server fails to start with ERR_MODULE_NOT_FOUND. Move the imported code into a ' +
+      'published tree (see src/tools/sdlc/sysTestXml.ts) rather than publishing the ' +
+      'excluded one',
+    ).toEqual([]);
   });
 });

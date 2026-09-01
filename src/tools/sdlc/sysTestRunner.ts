@@ -1,5 +1,5 @@
 import { execFile } from 'child_process';
-import { parseSysTestXml } from '../../eval/oracle/systest.js';
+import { parseSysTestXml } from './sysTestXml.js';
 import util from 'util';
 import path from 'path';
 import os from 'os';
