@@ -12,6 +12,10 @@
  *     --bp-warnings <n>   number of BP warnings xppbp reported (OMIT = BP not checked -> bp_clean: null)
  *     --systest <file>    text file with the `run_systest_class` output (runtime oracle)
  *     --classification <C> rubric class for the record (default: derived)
+ *     --case-spec <path>  score against THIS case-spec JSON instead of
+ *                         eval/cases/<caseId>.json — for a spec that is not (yet)
+ *                         committed to the catalog, e.g. one `eval:mine` just
+ *                         drafted, or a synthetic spec in a test.
  *     --golden-prefix <p> EXTENSION_PREFIX the golden was captured under (default: every GOLDEN_CAPTURE_PREFIXES token)
  *     --actual-prefix <p> EXTENSION_PREFIX the actual was produced under (default: read from THIS
  *                         process's EXTENSION_PREFIX env var — the session that ran the case)
@@ -36,7 +40,9 @@ import {
   scoreRun, GOLDEN_CAPTURE_PREFIXES, type CaseSpec, type GoldenDiff, type Score,
 } from './index.js';
 import { resolveRegularObjectPrefixToken } from '../../utils/modelClassifier.js';
-import { buildActualArtifactsMap } from './actualArtifactResolution.js';
+import {
+  buildActualArtifactsMap, listActualArtifactFiles, renderPairingProblems,
+} from './actualArtifactResolution.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '..', '..', '..');
@@ -78,7 +84,7 @@ const CLASSIFICATIONS = ['PASS', 'TOOL_DEFECT', 'KNOWLEDGE_GAP', 'VALIDATOR_GAP'
 /** Flags that consume the following argv element as their value. */
 const VALUE_FLAGS = [
   '--golden', '--actual-dir', '--bp-warnings', '--systest', '--classification',
-  '--golden-prefix', '--actual-prefix',
+  '--golden-prefix', '--actual-prefix', '--case-spec',
 ];
 
 function positionalArgs(argv: string[]): string[] {
@@ -105,8 +111,14 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
+  // `--case-spec` lets the oracle score a spec that isn't in the committed catalog
+  // (a freshly mined draft, or a synthetic spec under test), so nothing has to be
+  // written into eval/cases/ just to exercise a scoring path.
+  const caseSpecPath = arg('--case-spec')
+    ? path.resolve(arg('--case-spec')!)
+    : path.join(REPO_ROOT, 'eval', 'cases', `${caseId}.json`);
   const caseSpec = JSON.parse(
-    fs.readFileSync(path.join(REPO_ROOT, 'eval', 'cases', `${caseId}.json`), 'utf8'),
+    fs.readFileSync(caseSpecPath, 'utf8'),
   ) as CaseSpec & { ignore?: string[]; golden_pending?: boolean };
 
   const buildSucceeded = !flagSet('--build-failed');
@@ -174,13 +186,23 @@ async function main(): Promise<void> {
     score = { ...scoreRun({ build, goldenDiff: { matched: false, missing: [], extra: [], changed: [] }, tier: caseSpec.tier, systest }), golden_match: null };
     systestOut = systest && 'ran' in systest ? systest : { ran: false as const, passed: null, failures: [] as [] };
     if (actualDir) {
-      const resolvedActualDir = path.resolve(actualDir);
-      generatedArtifacts = fs.existsSync(resolvedActualDir)
-        ? fs.readdirSync(resolvedActualDir).filter(f => f.endsWith('.metadata.xml')).sort()
-        : [];
+      // Bare `<Name>.xml` counts. This used to filter for `*.metadata.xml` only,
+      // while an actual dir idiomatically holds the AOT files a VM session wrote
+      // (`--actual-dir <Model>/<Model>/AxClass`) — so EVERY golden-capture run
+      // recorded `generated_artifacts: []` and the operator had to reconstruct the
+      // list by hand afterwards. Silent zero, not an error. (Corpus:
+      // eval/corpus/runs/2026-08-31T22__L4-headerlines-document-slice__278eee3.json,
+      // "ORACLE DEFECT"; the resolver has always accepted both shapes, hence the
+      // now-shared `listActualArtifactFiles`.)
+      generatedArtifacts = listActualArtifactFiles(path.resolve(actualDir));
     } else {
       generatedArtifacts = actualPath ? [path.basename(actualPath)] : [];
     }
+    // Say what a `--write` would record: with no golden diff this list is the only
+    // account of what the run produced, so it must not be silently empty.
+    console.error(
+      `generated_artifacts (${generatedArtifacts.length}): ${generatedArtifacts.join(', ') || '(none found)'}`,
+    );
     debugLabel = `not evaluated — ${reason}`;
   } else if (actualDir) {
     const resolvedActualDir = path.resolve(actualDir);
@@ -190,8 +212,18 @@ async function main(): Promise<void> {
     for (const name of artifactNames) {
       goldenArtifacts[name] = fs.readFileSync(path.join(goldenDir(caseId), name), 'utf8');
     }
-    const { actualArtifacts, matchedActualFiles } =
-      buildActualArtifactsMap(resolvedActualDir, artifactNames, goldenPrefix, actualPrefix);
+    // Golden contents go in so the resolver can pair on the object each document
+    // DECLARES (name + root element), not just on its filename — the only signal
+    // that separates two artifacts sharing one object name, e.g. a form and the
+    // display menu item a table's `FormRef` requires.
+    const { actualArtifacts, matchedActualFiles, pairingProblems } =
+      buildActualArtifactsMap(resolvedActualDir, artifactNames, goldenPrefix, actualPrefix, goldenArtifacts);
+    if (pairingProblems.length > 0) {
+      // Loud, never silent: a refused pairing scores as `missing`, and the
+      // operator needs to know it was refused rather than genuinely absent.
+      console.error(`\n# Artifact pairing refused for ${pairingProblems.length} golden artifact(s):`);
+      console.error(renderPairingProblems(pairingProblems));
+    }
     // Surface extra actual files (produced but not golden-expected, and not already
     // matched to a golden artifact above under prefix-canonicalised filename matching) too.
     for (const f of fs.readdirSync(resolvedActualDir).filter(f => f.endsWith('.metadata.xml'))) {
