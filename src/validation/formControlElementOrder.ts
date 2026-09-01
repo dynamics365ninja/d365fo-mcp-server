@@ -69,6 +69,25 @@ interface Frame {
 }
 
 /**
+ * How many `<AxFormControl>` elements a form document actually contains.
+ *
+ * Uses the shared token scanner, so a control written inside an XML COMMENT (the
+ * Workspace pattern template ships two such examples) is not counted as a real
+ * one. Lives here rather than beside its first caller because the number is now
+ * used to answer two different questions: what the scaffold wrote, and whether
+ * the document disagrees with what the metadata provider can see.
+ */
+export function countFormControls(xml: string): number {
+  const scanner = createXmlTokenScanner();
+  let count = 0;
+  let token: RegExpExecArray | null;
+  while ((token = scanner.exec(xml)) !== null) {
+    if (token[2] === 'AxFormControl') count++;
+  }
+  return count;
+}
+
+/**
  * Every place a form control writes a child element earlier than the canonical
  * order for its `i:type` allows.
  *
