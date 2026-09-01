@@ -93,6 +93,21 @@ export function typeInfixOf(filename: string): string | undefined {
 }
 
 /**
+ * One prologue token: a comment, a processing instruction, a doctype, or the
+ * start tag whose name is captured. Ordered so the skippable forms win, which is
+ * what makes this safe without a sanitising `replace()`.
+ *
+ * The UNTERMINATED comment and PI branches are load-bearing, not defensive
+ * padding. Without them the scanner merely fails to match at the `<!--` and
+ * then advances one position and happily matches an element name INSIDE the
+ * comment — which is the same class of bug as the single-pass strip this
+ * replaced. Consuming to end-of-input instead stops the scan, so a document
+ * whose remainder is commented out reports no root element, which is the honest
+ * answer.
+ */
+const PROLOGUE_TOKEN = /<!--[\s\S]*?-->|<!--[\s\S]*$|<\?[\s\S]*?\?>|<\?[\s\S]*$|<!DOCTYPE[^>]*>|<\s*([A-Za-z_][\w.\-]*)[\s>/]/gi;
+
+/**
  * The document's root element — `AxForm`, `AxMenuItemDisplay`, `AxTableExtension`,
  * … — i.e. the artifact's AOT type as the file itself declares it. Ground truth,
  * and available for both goldens and actual files, so it beats any filename
@@ -100,12 +115,17 @@ export function typeInfixOf(filename: string): string | undefined {
  */
 export function aotRootElement(xml: string | undefined): string | undefined {
   if (!xml) return undefined;
-  const head = xml
-    .replace(/^﻿/, '')
-    .replace(/<\?[\s\S]*?\?>/g, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<!DOCTYPE[^>]*>/gi, '');
-  return /<\s*([A-Za-z_][\w.\-]*)[\s>/]/.exec(head)?.[1];
+  // Walk the prologue token by token rather than stripping comments/PIs with
+  // replace(): a single-pass strip leaves a stray `<!--` behind on malformed
+  // input (CodeQL js/incomplete-multi-character-sanitization) and can then read
+  // markup out of a comment. Consuming alternatives IN ORDER cannot: an
+  // unterminated comment simply never matches the element branch.
+  PROLOGUE_TOKEN.lastIndex = 0;
+  let token: RegExpExecArray | null;
+  while ((token = PROLOGUE_TOKEN.exec(xml)) !== null) {
+    if (token[1]) return token[1];
+  }
+  return undefined;
 }
 
 /** The object name the document declares (its first `<Name>`), if readable. */

@@ -14,6 +14,7 @@ import * as path from 'path';
 import {
   evaluate, evaluateMulti, scoreRun, canonicalizePrefix, normalizeAotXml,
   artifactKey, artifactKeyMap, GOLDEN_CAPTURE_PREFIXES,
+  aotRootElement, declaredObjectNameOf,
 } from '../../src/eval/oracle/index';
 import { resolveActualFile, buildActualArtifactsMap } from '../../src/eval/oracle/actualArtifactResolution';
 import { buildReport, bpState, renderReport, type RunForReport } from '../../src/eval/improver/report';
@@ -366,9 +367,11 @@ describe('committed goldens under the tolerant default prefixes', () => {
    * So the invariant is the one that matters: simulate the capture directory
    * from the goldens' own contents and require a bijection.
    */
-  const declaredName = (xml: string): string | undefined => /<Name>([^<]+)<\/Name>/.exec(xml)?.[1]?.trim();
-  const rootElement = (xml: string): string | undefined =>
-    /<\s*([A-Za-z_][\w.\-]*)[\s>/]/.exec(xml.replace(/<\?[\s\S]*?\?>/g, '').replace(/<!--[\s\S]*?-->/g, ''))?.[1];
+  // Use the shipped readers rather than re-deriving them here: a duplicate
+  // regex drifts from the code under test, and the comment-stripping version
+  // this used to carry was the same fragile single-pass strip CodeQL flags.
+  const declaredName = declaredObjectNameOf;
+  const rootElement = aotRootElement;
 
   /**
    * The flat `--actual-dir` a capture produces: every AOT file is named after the

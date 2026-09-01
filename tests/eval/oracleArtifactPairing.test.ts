@@ -24,7 +24,7 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { evaluateMulti, artifactKey, GOLDEN_CAPTURE_PREFIXES } from '../../src/eval/oracle/index';
+import { evaluateMulti, artifactKey, GOLDEN_CAPTURE_PREFIXES, aotRootElement } from '../../src/eval/oracle/index';
 import {
   resolveActualFile, resolveActualFileDetailed, buildActualArtifactsMap,
 } from '../../src/eval/oracle/actualArtifactResolution';
@@ -248,5 +248,39 @@ describe('dot-notation extension filenames (corpus: L3-numberseq-module-slice, f
     }, dir => {
       expect(resolveActualFile(dir, goldenName, P, P, goldenXml)).toBeUndefined();
     });
+  });
+});
+
+describe('aotRootElement reads the real root, not markup inside the prologue', () => {
+  it('ignores an element name that only appears inside a comment', () => {
+    expect(aotRootElement('<!-- <AxForm> was here --><AxMenuItemDisplay><Name>X</Name>'))
+      .toBe('AxMenuItemDisplay');
+  });
+
+  it('ignores an element name inside the XML declaration and a doctype', () => {
+    expect(aotRootElement('<?xml version="1.0" encoding="utf-8"?><AxTable><Name>X</Name>'))
+      .toBe('AxTable');
+    expect(aotRootElement('<!DOCTYPE AxForm SYSTEM "x.dtd"><AxTableExtension>'))
+      .toBe('AxTableExtension');
+  });
+
+  it('does not read a type out of an UNTERMINATED comment', () => {
+    // Ordered alternation alone is NOT enough here, which this test caught:
+    // the scanner fails at the `<!--`, advances one character, and then matches
+    // `<AxForm>` inside the comment — the same bug as the single-pass strip it
+    // replaced. It takes an explicit unterminated-comment branch that consumes
+    // to end-of-input to stop the scan.
+    expect(aotRootElement('<!-- <AxForm><Name>Injected</Name>')).toBeUndefined();
+  });
+
+  it('still returns undefined for a document with no element at all', () => {
+    expect(aotRootElement('')).toBeUndefined();
+    expect(aotRootElement(undefined)).toBeUndefined();
+  });
+
+  it('is not left stateful by a previous call (global regex lastIndex)', () => {
+    const xml = '<AxForm><Name>A</Name></AxForm>';
+    expect(aotRootElement(xml)).toBe('AxForm');
+    expect(aotRootElement(xml)).toBe('AxForm');
   });
 });

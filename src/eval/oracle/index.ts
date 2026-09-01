@@ -16,7 +16,7 @@ export {
   GOLDEN_CAPTURE_PREFIX, GOLDEN_CAPTURE_PREFIXES, canonicalizePrefix, type PrefixSpec,
   valuesEquivalent, XMLDOC_PLACEHOLDER,
 } from './normalize.js';
-export { artifactKey, artifactKeyMap } from './artifactKey.js';
+export { artifactKey, artifactKeyMap, aotRootElement, declaredObjectNameOf } from './artifactKey.js';
 export { diffNormalized, renderDiff, type GoldenDiff } from './diff.js';
 export { scoreRun, type Score, type BuildResult, type ScoreInput } from './score.js';
 export { parseSysTestResult, type SysTestResult, type SysTestFailure } from './systest.js';
