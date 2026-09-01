@@ -28,6 +28,19 @@
 const XML_TOKEN =
   /<!--[\s\S]*?-->|<!--[\s\S]*$|<!\[CDATA\[[\s\S]*?\]\]>|<!\[CDATA\[[\s\S]*$|<\?[\s\S]*?\?>|<\?[\s\S]*$|<!DOCTYPE[^>]*>|<\/([A-Za-z_][\w.\-]*)\s*>|<([A-Za-z_][\w.\-]*)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>/g;
 
+/**
+ * A private token scanner over the same grammar, for callers that need the raw
+ * token stream rather than leaves — element ORDER, for instance, which no XML
+ * object model in this repo preserves.
+ *
+ * Each caller gets its own RegExp: a module-level one carries `lastIndex`
+ * between calls, so two scans that interleave (a nested walk, a generator the
+ * caller stops early) would silently skip half a document.
+ */
+export function createXmlTokenScanner(): RegExp {
+  return new RegExp(XML_TOKEN.source, 'g');
+}
+
 /** A leaf element: one with text content and no child element. */
 export interface XmlLeaf {
   name: string;
