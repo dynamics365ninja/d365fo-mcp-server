@@ -85,6 +85,32 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# -- Console report ---------------------------------------------------------
+# Progress is printed as one indented label/value table rather than a flat run
+# of sentences. Two reasons that is worth the helpers: the run is nested under
+# a step line the CLI caller prints (commands/bpCatalog.ts), so flush-left
+# output reads as if the step had already finished; and the two scans below
+# take minutes, so these lines appear one at a time and only line up as a
+# table if every caller shares the same widths.
+$script:FieldWidth = 34
+
+function Write-Section([string]$Title) {
+    Write-Host ''
+    Write-Host "  $Title"
+}
+
+function Write-Field([string]$Label, [string]$Value) {
+    # Trailing space before the leader, so a label never runs into the dots.
+    $leader = ($Label + ' ').PadRight($script:FieldWidth, '.')
+    Write-Host ("      {0} {1}" -f $leader, $Value)
+}
+
+function Write-Count([string]$Label, [int]$Value) {
+    # Right-aligned in a fixed column: counts are read down the page, and
+    # ragged ones hide an order-of-magnitude difference between two lines.
+    Write-Field $Label ('{0,6}' -f $Value)
+}
+
 if (-not $PackagesPath) {
     $dynamicsDir = Join-Path $env:LOCALAPPDATA 'Microsoft\Dynamics365'
     $candidate = Get-ChildItem $dynamicsDir -Directory -ErrorAction SilentlyContinue |
@@ -100,7 +126,8 @@ if (-not (Test-Path $PackagesPath)) {
     throw "PackagesPath does not exist: $PackagesPath"
 }
 $binDir = Join-Path $PackagesPath 'bin'
-Write-Host "Scanning: $PackagesPath"
+Write-Host ''
+Write-Host "  Scanning $PackagesPath"
 
 # -- 1. Canonical names: union of every AxRuleSet/BPRules.xml ----------------
 $canonical = [System.Collections.Generic.SortedSet[string]]::new()
@@ -115,7 +142,12 @@ $canonical = [System.Collections.Generic.SortedSet[string]]::new()
 $ruleSetFailures = 0
 $ruleSetFiles = Get-ChildItem $PackagesPath -Recurse -Filter 'BPRules.xml' -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -match '\\AxRuleSet\\' }
-Write-Host "AxRuleSet/BPRules.xml files found: $($ruleSetFiles.Count)"
+# Measure-Object, not @($ruleSetFiles).Count: a pipeline that matched nothing
+# assigns $null, and @($null) is a one-element array - an empty scan would
+# report 1 file found, and report it into `sources` too.
+$ruleSetCount = ($ruleSetFiles | Measure-Object).Count
+Write-Section 'Rule sets (AxRuleSet\BPRules.xml)'
+Write-Count 'files found' $ruleSetCount
 foreach ($f in $ruleSetFiles) {
     try {
         [xml]$xml = Get-Content $f.FullName -Raw
@@ -128,7 +160,7 @@ foreach ($f in $ruleSetFiles) {
         Write-Warning "Skipped $($f.FullName): $_"
     }
 }
-Write-Host "Canonical monikers: $($canonical.Count)"
+Write-Count 'canonical monikers' $canonical.Count
 
 # -- 2. Real message/description text from the .NET-authored rule DLLs ------
 # AssemblyResolve against bin/ and bin/BPExtensions/ so cross-referenced
@@ -151,7 +183,8 @@ $messages = @{}
 $dllFailures = 0
 $dllTargets = @(Get-ChildItem $binDir -Filter '*.dll' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'BestPractice' })
 $dllTargets += Get-ChildItem (Join-Path $binDir 'BPExtensions') -Filter '*.dll' -ErrorAction SilentlyContinue
-Write-Host "Rule DLLs to reflect over: $($dllTargets.Count)"
+Write-Section 'Rule DLLs (bin, bin\BPExtensions)'
+Write-Count 'assemblies to reflect over' @($dllTargets).Count
 
 foreach ($dll in $dllTargets) {
     try {
@@ -188,7 +221,7 @@ foreach ($dll in $dllTargets) {
         }
     }
 }
-Write-Host "Monikers with real message/description text: $($messages.Count)"
+Write-Count 'monikers with rule text' $messages.Count
 
 # -- 3. Merge --------------------------------------------------------------
 # Union of both sources - a resource-only key not in any AxRuleSet.xml (e.g. a
@@ -218,7 +251,7 @@ if ($OutFile) {
         packagesPath = $PackagesPath
         version      = $Version
         sources      = [PSCustomObject]@{
-            ruleSetFiles    = @($ruleSetFiles).Count
+            ruleSetFiles    = $ruleSetCount
             ruleSetFailures = $ruleSetFailures
             ruleDlls        = @($dllTargets).Count
             dllFailures     = $dllFailures
@@ -237,10 +270,14 @@ if ($OutFile) {
     # multi-minute recursive scan re-runs on every rebuild instead of never.
     $fullOut = if ([System.IO.Path]::IsPathRooted($OutFile)) { $OutFile } else { Join-Path (Get-Location).ProviderPath $OutFile }
     [System.IO.File]::WriteAllText($fullOut, ($payload | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
-    Write-Host "Wrote $($allMonikers.Count) entries to $fullOut"
-    Write-Host "  canonical (in an AxRuleSet):        $($canonical.Count)"
-    Write-Host "  with real message/description text: $($messages.Count)"
-    Write-Host "  skipped BPRules.xml / rule DLLs:    $ruleSetFailures / $dllFailures"
+    # Only what the two sections above have not already said: the merged
+    # total (a union, so neither source's count predicts it), what was lost,
+    # and where the file landed.
+    Write-Section 'Catalog'
+    Write-Count 'entries written' $allMonikers.Count
+    Write-Field 'skipped rule sets / rule DLLs' "$ruleSetFailures / $dllFailures"
+    Write-Field 'file' $fullOut
+    Write-Host ''
     return
 }
 
@@ -316,6 +353,8 @@ Set-Content -Path $outFile -Value $header -Encoding utf8
 Add-Content -Path $outFile -Value $lines -Encoding utf8
 Add-Content -Path $outFile -Value $footer -Encoding utf8
 
-Write-Host "Wrote $($allMonikers.Count) entries to $outFile"
-Write-Host "  canonical (in an AxRuleSet):        $($canonical.Count)"
-Write-Host "  with real message/description text: $($messages.Count)"
+Write-Section 'Catalog'
+Write-Count 'entries written' $allMonikers.Count
+Write-Field 'skipped rule sets / rule DLLs' "$ruleSetFailures / $dllFailures"
+Write-Field 'module' $outFile
+Write-Host ''
