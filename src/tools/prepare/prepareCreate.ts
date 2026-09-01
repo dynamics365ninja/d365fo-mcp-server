@@ -115,6 +115,14 @@ async function validateNaming(
   objectType: string,
   modelName: string | undefined,
   context: XppServerContext,
+  /**
+   * Whether the object an extension EXTENDS exists, as answered by the metadata
+   * provider. `undefined` leaves the shared rules to probe the symbol index, which
+   * is the only option without a bridge — and is wrong on an index scoped to
+   * custom models, where a Microsoft base reads as "not found — ensure it's
+   * indexed" and no amount of re-indexing will change that.
+   */
+  baseObjectExists?: boolean,
 ): Promise<string> {
   const issues: string[] = [];
   if (finalName.length > 81) {
@@ -163,6 +171,7 @@ async function validateNaming(
       proposedName: baseName,
       objectType,
       modelName,
+      baseObjectExists,
     });
   } catch {
     // index unavailable
@@ -312,6 +321,106 @@ function minedPropertyDefaults(objectType: string, context: XppServerContext): s
   return '(no mined statistics — run build-database to mine standard models)';
 }
 
+/** Extension objectType → the type of the object it extends. */
+const EXTENSION_BASE_TYPE: Record<string, string> = {
+  'table-extension': 'table',
+  'class-extension': 'class',
+  'form-extension': 'form',
+  'enum-extension': 'enum',
+  'edt-extension': 'edt',
+};
+
+/**
+ * What the caller needs to know about the object an extension EXTENDS.
+ *
+ * Publishing the extension objectTypes (#983) made the write reachable; it did
+ * not make it grounded. Everything that decides whether an enum extension can
+ * work at all lives on the BASE: it has to exist, it has to be extensible (a
+ * sealed enum cannot be extended at all), and a member name already on it is a
+ * build error, not a merge. `prepare(mode="change")` is built around reading the
+ * base object; `prepare(mode="create")` was not, so the one call an agent makes
+ * before writing an extension said nothing about the thing being extended.
+ *
+ * Asked of the BRIDGE first, and that is the point. The existence check in
+ * `checkObjectNaming` reads the symbol index, while `search`, `get_object_info`
+ * and the write path all prefer the metadata provider. On an instance indexed
+ * with `extractMode: "custom"` the index deliberately holds only custom models,
+ * so the index answer for a Microsoft base enum is "not found — ensure it's
+ * indexed": false, and advice that re-indexing can never satisfy.
+ */
+async function describeExtensionBase(
+  baseName: string,
+  objectType: string,
+  context: XppServerContext,
+): Promise<{ exists: boolean | undefined; text: string }> {
+  const baseType = EXTENSION_BASE_TYPE[objectType];
+  if (!baseType || !baseName) return { exists: undefined, text: '' };
+
+  const bridge = context.bridge;
+  const bridgeUsable = Boolean(bridge?.isReady && bridge?.metadataAvailable);
+
+  if (bridgeUsable && baseType === 'enum') {
+    try {
+      const info = await bridge!.readEnum(baseName);
+      if (info) {
+        const taken = info.values.map(v => v.name);
+        const lines = [
+          `\`${info.name}\`${info.model ? ` (${info.model})` : ''} — **Extensible: ${info.isExtensible ? 'Yes' : 'NO'}**`,
+        ];
+        if (!info.isExtensible) {
+          lines.push(
+            '🔴 A non-extensible enum CANNOT be extended — the write will not build. ' +
+            'Add the member to the enum itself, or ask the owner to mark it extensible.',
+          );
+        }
+        if (taken.length > 0) {
+          lines.push(
+            `Member names already taken (${taken.length}): ${taken.join(', ')} — ` +
+            'reusing one is a build error, not a merge.',
+          );
+        }
+        return { exists: true, text: lines.join(String.fromCharCode(10)) };
+      }
+      return {
+        exists: false,
+        text: `🔴 \`${baseName}\` does not exist as an enum (checked via the metadata provider) — ` +
+          'an extension of a missing object cannot build.',
+      };
+    } catch {
+      /* fall through to the generic probe */
+    }
+  }
+
+  if (bridgeUsable) {
+    try {
+      const resolved = await bridge!.resolveObjectInfo(baseType, baseName);
+      if (resolved) {
+        return resolved.exists
+          ? { exists: true, text: `\`${baseName}\`${resolved.model ? ` (${resolved.model})` : ''} — exists.` }
+          : {
+              exists: false,
+              text: `🔴 \`${baseName}\` does not exist as a ${baseType} (checked via the metadata provider).`,
+            };
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+
+  // No bridge: the index is all there is, and it may be scoped to custom models.
+  try {
+    const hit = lookupSymbolsNocase(context.symbolIndex.getReadDb(), baseName, { types: [baseType], limit: 1 })[0];
+    if (hit) return { exists: true, text: `\`${baseName}\` (${hit.model ?? '?'}) — found in the symbol index.` };
+  } catch {
+    /* index unavailable */
+  }
+  return {
+    exists: undefined,
+    text: `\`${baseName}\` — could not be verified (the C# bridge is not available and the symbol ` +
+      'index has no matching ' + baseType + '; an index built with extractMode "custom" holds only custom models).',
+  };
+}
+
 export async function prepareCreateTool(request: any, context: XppServerContext): Promise<any> {
   const raw = request?.params?.arguments ?? request;
   const parsed = prepareCreateArgsSchema.safeParse(raw);
@@ -333,9 +442,15 @@ export async function prepareCreateTool(request: any, context: XppServerContext)
   // a name that never gets written, so a real collision read as "No collision".
   const finalName = normalizeObjectName(objectName, objectType, modelName);
 
+  // For an extension type, the BASE object decides whether the write can work at
+  // all — so it is resolved FIRST and its verdict feeds the naming check, which
+  // would otherwise answer from the symbol index alone (#983 follow-up).
+  const baseObjectName = objectName.includes('.') ? objectName.slice(0, objectName.indexOf('.')) : '';
+  const base = await describeExtensionBase(baseObjectName, objectType, context);
+
   // Naming is the one asynchronous check (the shared rules await model detection),
   // so it is started first and collected below — the rest still run in one tick.
-  const namingPromise = validateNaming(objectName, finalName, objectType, modelName, context);
+  const namingPromise = validateNaming(objectName, finalName, objectType, modelName, context, base.exists);
 
   // All lookups are synchronous index queries — run them in one tick.
   const [collisions, naming, similar, edts, labels, propertyDefaults] = [
@@ -380,7 +495,10 @@ export async function prepareCreateTool(request: any, context: XppServerContext)
   // cached context.
   lines.push(
     `Next: call \`d365fo_file(action="create", objectType="${objectType}", objectName="${objectName}", groundingToken=...)\` ` +
-    '— pass the BASE name, the prefix is applied for you. Syntax/BP linting and (under GROUNDING_ENFORCE=true) ' +
+    (objectName.includes('.')
+      ? '— the name is written as given; only the suffix after the dot is yours to choose. '
+      : '— pass the BASE name, the prefix is applied for you. ') +
+    'Syntax/BP linting and (under GROUNDING_ENFORCE=true) ' +
     'reference resolution run INSIDE that call, so no separate validate_code round trip is needed; ' +
     'use `validate_code(mode="both")` only as an optional pre-check on hand-written X++. ' +
     'The token is bound to this object and expires in 30 minutes.',
@@ -391,6 +509,9 @@ export async function prepareCreateTool(request: any, context: XppServerContext)
 
   lines.push('### Collision check _(symbol index)_', collisions, '');
   lines.push('### Naming', naming, '');
+  if (base.text) {
+    lines.push('### Base object _(the thing this extends)_', base.text, '');
+  }
   lines.push('### Similar existing objects _(copy patterns from these)_', similar, '');
   if (edts) {
     lines.push('### EDT suggestions for planned fields _(edt index)_', edts, '');
