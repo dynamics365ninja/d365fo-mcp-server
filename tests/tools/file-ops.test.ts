@@ -2269,3 +2269,70 @@ describe('EDT base-type resolution cost', () => {
     expect(readEdt).toHaveBeenCalledTimes(2);
   });
 });
+
+// ─── validate_object_naming — both element-extension suffix forms (issue #986) ─
+//
+// `Base.{Infix}Extension` and `Base.{ModelToken}` are BOTH shipped AOT. A census
+// of all 214 packages in PackagesLocalDirectory finds 1,453 of 2,563 dotted
+// extension names — 57 % — using the bare model token
+// (CustTable.AdvancedQualityManagement, AppCopilotAgentType.Foundation,
+// ModuleAxapta.ApplicationCommon). Under the prefix style the validator called
+// that an ERROR and offered to rename it, while under the model-name style the
+// same name was correct — and `applyObjectPrefix` has always written a bare
+// model-token suffix through unchanged. The checker was refusing what the writer
+// supports.
+describe('validate_object_naming — element-extension suffix forms', () => {
+  let ctx: XppServerContext;
+
+  beforeEach(() => {
+    ctx = buildContext();
+    (ctx.symbolIndex.db as any).stmt.get.mockReturnValue(undefined);
+    (ctx.symbolIndex.db as any).stmt.all.mockReturnValue([]);
+    // The DEFAULT style — the one that used to error.
+    vi.mocked(getExtensionNamingStyle).mockReturnValue('prefix');
+  });
+
+  const check = (proposedName: string) =>
+    validateObjectNamingTool(
+      req('validate_object_naming', {
+        proposedName,
+        objectType: 'enum-extension',
+        baseObjectName: 'NumberSeqModule',
+        modelName: 'ContosoRobotics',
+        modelPrefix: 'CR',
+      }),
+      ctx,
+    );
+
+  it('accepts the bare model-token suffix under the PREFIX style too', async () => {
+    const result = await check('NumberSeqModule.ContosoRobotics');
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).not.toMatch(/ERRORS \(\d/);
+    expect(result.content[0].text).not.toMatch(/must end with 'Extension'/);
+  });
+
+  it('still accepts the infix form', async () => {
+    const result = await check('NumberSeqModule.CRExtension');
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).not.toMatch(/ERRORS \(\d/);
+    expect(result.content[0].text).not.toMatch(/neither of the two forms/);
+  });
+
+  it('warns — never errors — for a suffix that is neither form, and names both', async () => {
+    const result = await check('NumberSeqModule.ConDemoRent');
+    expect(result.isError).toBeFalsy();
+    // The house convention still shows...
+    expect(result.content[0].text).toMatch(/neither of the two forms/);
+    // Both acceptable forms are named: the model's infix one and the bare token.
+    expect(result.content[0].text).toMatch(/CRExtension/);
+    expect(result.content[0].text).toMatch(/ContosoRobotics \(bare model name\)/);
+    // ...but a legal, buildable AOT name is not an error.
+    expect(result.content[0].text).not.toMatch(/ERRORS \(\d/);
+  });
+
+  it('still errors when the base half does not match the object being extended', async () => {
+    // The rule that IS about correctness, not convention, is untouched.
+    const result = await check('SomeOtherEnum.ContosoRobotics');
+    expect(result.content[0].text).toMatch(/Extension base \(before '\.'\) must exactly match/);
+  });
+});

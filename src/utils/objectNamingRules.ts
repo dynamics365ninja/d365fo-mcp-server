@@ -329,11 +329,33 @@ export async function checkObjectNaming(
                 `Extension base (before '.') must exactly match baseObjectName.\n  Expected: ${baseObjectName}.xxx\n  Got: ${basePart}.xxx`,
               );
             }
-            if (!extPart.endsWith('Extension')) {
-              errors.push(
-                `Extension suffix (after '.') must end with 'Extension'.\n  Expected: ${extensionInfix}Extension\n  Got: ${extPart}`,
+            // Both suffix forms are legal AOT, and the platform's own metadata is
+            // the evidence: a census of all 214 packages in PackagesLocalDirectory
+            // finds 1,453 of 2,563 dotted extension names — 57 % — NOT ending in
+            // "Extension" (CustTable.AdvancedQualityManagement,
+            // AppCopilotAgentType.Foundation, ModuleAxapta.ApplicationCommon).
+            // They use the bare model token, which is what
+            // EXTENSION_NAMING_STYLE=model-name produces and what the branch above
+            // treats as correct. The same fact was a warning under one style and a
+            // hard ERROR under the other (#986), and `prepare` printed that ❌ for a
+            // name d365fo_file writes and xppc builds — applyObjectPrefix has always
+            // returned a bare model-token suffix unchanged ("Bare model-name suffix
+            // — return as-is"), so the checker was refusing what the writer supports.
+            //
+            // The house convention still shows: a suffix that is NEITHER form gets a
+            // warning naming both. What is gone is calling a shipped, buildable name
+            // an error and offering to rename it.
+            const isInfixForm = extPart.endsWith('Extension');
+            const isModelTokenForm =
+              !!modelToken && extPart.toLowerCase() === modelToken.toLowerCase();
+            if (!isInfixForm && !isModelTokenForm) {
+              warnings.push(
+                `Extension suffix (after '.') is neither of the two forms the platform uses.\n` +
+                `  Expected: ${extensionInfix}Extension` +
+                (modelToken ? ` (this model's style) or ${modelToken} (bare model name)` : '') +
+                `\n  Got: ${extPart}`,
               );
-            } else if (extensionInfix && !extPart.toLowerCase().startsWith(extensionInfix.toLowerCase())) {
+            } else if (isInfixForm && extensionInfix && !extPart.toLowerCase().startsWith(extensionInfix.toLowerCase())) {
               warnings.push(
                 `Extension suffix should start with model "${modelName || '(unknown)'}"'s infix "${extensionInfix}".\n  Current: ${extPart}\n  Recommended: ${extensionInfix}Extension`,
               );
