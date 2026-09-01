@@ -18,7 +18,7 @@
  */
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { settingByPath } from '../../config/settings.js';
 import { findPackagesRoot } from '../../utils/packagesRoot.js';
 import { commandExists, runExe } from '../exec.js';
@@ -269,7 +269,10 @@ async function refreshCatalog(target: Target, deps: BpCatalogDeps): Promise<void
     }
   }
 
-  p.log.step(`Refreshing BP moniker catalog (${target.label}, ${basename(source.packagesPath)})…`);
+  // No packages path in this line: the script's own report opens with the
+  // full path, and the tail of it ('PackagesLocalDirectory') identified
+  // nothing on a box with several installs.
+  p.log.step(`Refreshing BP moniker catalog (${target.label})…`);
   // Extract beside the real catalog, not over it. The script writes its output
   // in one go with no staging of its own, so pointing it straight at the live
   // file means a partial run destroys a good catalog before anything can judge
