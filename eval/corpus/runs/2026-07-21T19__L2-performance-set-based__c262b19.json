@@ -11,9 +11,8 @@
   "build": {
     "succeeded": true,
     "errors": [],
-    "bpWarnings": [
-      {}
-    ]
+    "bpWarnings": null,
+    "bpWarningCount": 1
   },
   "golden_diff": {
     "matched": true,

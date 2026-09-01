@@ -43,7 +43,8 @@ customisation model; **all writes are pinned to the `Contoso` sandbox** (§11).
 5. **Build** — `build_d365fo_project`; capture structured `errors[]` and `bpWarnings[]`.
 6. **Oracle** — score against the golden (VM-free scorer):
    ```
-   npm run eval:score -- <caseId> <actualXml.xml> [--bp-warnings N] [--build-failed] [--systest <file>] [--write]
+   npm run eval:score -- <caseId> <actualXml.xml> [--bp-output <bpOutput.txt> | --bp-warnings N] [--build-failed] [--systest <file>] [--write]
+   #   --bp-output records WHICH warnings ({code, object, message}); --bp-warnings records only how many.
    npm run eval:score -- <caseId> --actual-dir <dir> ...   # multi-artifact cases
    ```
    For a case with a `systest` path: after a clean build, deploy `eval/systests/<id>.xml`,

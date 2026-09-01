@@ -1,4 +1,4 @@
-﻿{
+{
   "run_id": "2026-07-06T16__L0-enum-basic__cc58c3f",
   "case_id": "L0-enum-basic",
   "tier": 0,
@@ -10,9 +10,8 @@
   "build": {
     "succeeded": true,
     "errors": [],
-    "bpWarnings": [
-      {}
-    ]
+    "bpWarnings": null,
+    "bpWarningCount": 1
   },
   "golden_diff": {
     "matched": true,

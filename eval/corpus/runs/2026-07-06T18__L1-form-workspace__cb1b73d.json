@@ -1,4 +1,4 @@
-﻿{
+{
   "run_id": "2026-07-06T18__L1-form-workspace__cb1b73d",
   "case_id": "L1-form-workspace",
   "tier": 1,
@@ -10,12 +10,8 @@
   "build": {
     "succeeded": true,
     "errors": [],
-    "bpWarnings": [
-      {},
-      {},
-      {},
-      {}
-    ]
+    "bpWarnings": null,
+    "bpWarningCount": 4
   },
   "golden_diff": {
     "matched": false,

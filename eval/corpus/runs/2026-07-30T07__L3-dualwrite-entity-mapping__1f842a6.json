@@ -13,11 +13,8 @@
     "succeeded": true,
     "errors": [],
     "bp_checked": true,
-    "bpWarnings": [
-      {},
-      {},
-      {}
-    ]
+    "bpWarnings": null,
+    "bpWarningCount": 3
   },
   "golden_diff": {
     "matched": false,

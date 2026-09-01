@@ -256,3 +256,89 @@ describe('listActualArtifactFiles', () => {
     expect(listActualArtifactFiles(path.join(dir, 'nope'))).toEqual([]);
   });
 });
+
+/**
+ * BP evidence the scorer records (issue #982).
+ *
+ * `--bp-warnings 13` wrote thirteen EMPTY objects into `build.bpWarnings` —
+ * `[{}, {}, {} …]` — as the warnings themselves. The corpus record then said
+ * there had been thirteen findings and nothing about which. Forty committed
+ * records carry that shape. A count is now recorded as `bpWarningCount`, and
+ * `--bp-output <file>` records the findings themselves, parsed from the
+ * run_bp_check output by the very parser the tool uses.
+ */
+describe('oracle CLI BP evidence', () => {
+  const SYNTHETIC_CASE_ID = 'L2-synthetic-oracle-bp-probe';
+  let tmp: string;
+  let actualDir: string;
+
+  function writeCaseSpec(): string {
+    const spec = {
+      id: SYNTHETIC_CASE_ID,
+      title: 'Synthetic case spec for the BP-evidence path',
+      tier: 2,
+      instruction: 'Not executed — this spec only drives the VM-free scorer.',
+      target_artifact_types: ['AxClass'],
+      golden_path: `eval/goldens/${SYNTHETIC_CASE_ID}`,
+      golden_pending: true,
+    };
+    const file = path.join(tmp, 'case.json');
+    fs.writeFileSync(file, JSON.stringify(spec, null, 2), 'utf8');
+    return file;
+  }
+
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-bp-'));
+    actualDir = path.join(tmp, 'actual');
+    fs.mkdirSync(actualDir);
+    fs.writeFileSync(path.join(actualDir, 'ConDemoProbe.xml'), '<AxClass><Name>ConDemoProbe</Name></AxClass>', 'utf8');
+  });
+
+  afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
+
+  it('scores bp_clean: 0 from a bare count without inventing findings', () => {
+    const { out } = runOracleCli([
+      SYNTHETIC_CASE_ID, '--case-spec', writeCaseSpec(), '--actual-dir', actualDir, '--bp-warnings', '13',
+    ]);
+    expect(out).toMatch(/"bp_clean":0/);
+    // …and it says the count carries no code, so the operator knows to pass --bp-output.
+    expect(out).toMatch(/records a COUNT only/);
+  }, 60_000);
+
+  it('scores bp_clean: 1 for an explicit zero, and null when BP was not checked', () => {
+    const spec = writeCaseSpec();
+    expect(runOracleCli([SYNTHETIC_CASE_ID, '--case-spec', spec, '--actual-dir', actualDir, '--bp-warnings', '0']).out)
+      .toMatch(/"bp_clean":1/);
+    expect(runOracleCli([SYNTHETIC_CASE_ID, '--case-spec', spec, '--actual-dir', actualDir]).out)
+      .toMatch(/"bp_clean":null/);
+  }, 90_000);
+
+  it('parses the findings themselves out of --bp-output', () => {
+    const bpFile = path.join(tmp, 'bp.txt');
+    fs.writeFileSync(bpFile, [
+      'BestPractices Warning: AxClass dynamics://Class/ConDemoProbe/Method/run: [(6,5),(8,6)]: ' +
+        "BPXmlDocNoDocumentationComments: No XML documentation headers are provided for 'ConDemoProbe.run'.",
+      'BPErrorTableMissingFormRef: K:/Pkg/ConDemoTicket.xml',
+    ].join('\n'), 'utf8');
+
+    const { out } = runOracleCli([
+      SYNTHETIC_CASE_ID, '--case-spec', writeCaseSpec(), '--actual-dir', actualDir, '--bp-output', bpFile,
+    ]);
+    expect(out).toMatch(/"bp_clean":0/);
+    expect(out).not.toMatch(/records a COUNT only/);
+  }, 60_000);
+
+  it('records generated_artifacts as AOT-relative paths', () => {
+    // `AxTable/Foo.xml`, the shape the corpus schema documents and every record
+    // used before one branch started writing golden filenames instead.
+    const aotDir = path.join(tmp, 'AxClass');
+    fs.mkdirSync(aotDir);
+    fs.writeFileSync(path.join(aotDir, 'ConDemoProbe.xml'), '<AxClass><Name>ConDemoProbe</Name></AxClass>', 'utf8');
+
+    const { out } = runOracleCli([
+      SYNTHETIC_CASE_ID, '--case-spec', writeCaseSpec(), '--actual-dir', aotDir,
+    ]);
+    const line = out.split(/\r?\n/).find(l => l.startsWith('generated_artifacts'));
+    expect(line).toContain('AxClass/ConDemoProbe.xml');
+  }, 60_000);
+});

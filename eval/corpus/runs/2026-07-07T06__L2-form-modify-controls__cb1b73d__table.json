@@ -1,4 +1,4 @@
-﻿{
+{
   "run_id": "2026-07-07T06__L2-form-modify-controls__cb1b73d",
   "case_id": "L2-form-modify-controls",
   "tier": 2,
@@ -18,14 +18,8 @@
   "build": {
     "succeeded": true,
     "errors": [],
-    "bpWarnings": [
-      {},
-      {},
-      {},
-      {},
-      {},
-      {}
-    ]
+    "bpWarnings": null,
+    "bpWarningCount": 6
   },
   "golden_diff": {
     "matched": true,

@@ -1,4 +1,4 @@
-﻿{
+{
   "run_id": "2026-07-07T10__L2-numberseq-basic__cb1b73d",
   "case_id": "L2-numberseq-basic",
   "tier": 2,
@@ -12,9 +12,8 @@
   "build": {
     "succeeded": true,
     "errors": [],
-    "bpWarnings": [
-      {}
-    ]
+    "bpWarnings": null,
+    "bpWarningCount": 1
   },
   "golden_diff": {
     "matched": false,

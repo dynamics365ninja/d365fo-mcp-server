@@ -14,9 +14,18 @@
     "errors": [],
     "bp_checked": true,
     "bpWarnings": [
-      "BPErrorPrivilegeNotCoveredByDuty: AxSecurityPrivilege ConDemoVirtualSourceEntityMaintain is not referenced on any duty",
-      "BPErrorDeveloperDocumentationNotDefined: AxTable ConDemoVirtualSource",
-      "BPErrorTableMissingFormRef: AxTable ConDemoVirtualSource"
+      {
+        "code": "BPErrorPrivilegeNotCoveredByDuty",
+        "message": "BPErrorPrivilegeNotCoveredByDuty: AxSecurityPrivilege ConDemoVirtualSourceEntityMaintain is not referenced on any duty"
+      },
+      {
+        "code": "BPErrorDeveloperDocumentationNotDefined",
+        "message": "BPErrorDeveloperDocumentationNotDefined: AxTable ConDemoVirtualSource"
+      },
+      {
+        "code": "BPErrorTableMissingFormRef",
+        "message": "BPErrorTableMissingFormRef: AxTable ConDemoVirtualSource"
+      }
     ]
   },
   "golden_diff": {

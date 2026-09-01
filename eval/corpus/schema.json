@@ -51,7 +51,30 @@
         "succeeded": { "type": "boolean" },
         "bp_checked": { "type": "boolean", "description": "Provenance flag: whether BP actually ran. Absent on every pre-2026-07-22 record, whose bp_clean provenance is unknown." },
         "errors": { "type": "array", "items": { "type": "object" } },
-        "bpWarnings": { "type": "array", "items": { "type": "object" } }
+        "bpWarnings": {
+          "type": ["array", "null"],
+          "description": "The BP findings themselves. Every entry must SAY something — a rule name (code; the legacy hand-written records also use rule/moniker) or at least a message. The scorer used to inflate a --bp-warnings COUNT into N empty objects, so 40 records carried findings with no code, no object and no message (#982); those now record bpWarningCount instead. null = only the count is known. New records written by the oracle CLI always use {code, object, message}.",
+          "items": {
+            "type": "object",
+            "anyOf": [
+              { "required": ["code"] },
+              { "required": ["rule"] },
+              { "required": ["moniker"] },
+              { "required": ["message"] }
+            ],
+            "properties": {
+              "code": { "type": "string", "minLength": 1 },
+              "object": { "type": "string" },
+              "message": { "type": "string" },
+              "fixHint": { "type": "string" }
+            }
+          }
+        },
+        "bpWarningCount": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "How many BP warnings xppbp reported, when the findings themselves were not captured. Scores bp_clean; carries no code, so it cannot be clustered."
+        }
       }
     },
     "golden_diff": {

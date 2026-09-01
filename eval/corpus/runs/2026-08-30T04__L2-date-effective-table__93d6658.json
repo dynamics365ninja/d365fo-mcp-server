@@ -12,10 +12,8 @@
     "succeeded": true,
     "errors": [],
     "bp_checked": true,
-    "bpWarnings": [
-      {},
-      {}
-    ]
+    "bpWarnings": null,
+    "bpWarningCount": 2
   },
   "golden_diff": {
     "matched": true,

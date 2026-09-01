@@ -1,4 +1,4 @@
-﻿{
+{
   "run_id": "2026-07-06T10__L0-edt-basic__4fafcd8",
   "case_id": "L0-edt-basic",
   "tier": 0,
@@ -10,9 +10,8 @@
   "build": {
     "succeeded": true,
     "errors": [],
-    "bpWarnings": [
-      {}
-    ]
+    "bpWarnings": null,
+    "bpWarningCount": 1
   },
   "golden_diff": {
     "matched": false,

@@ -1,4 +1,4 @@
-﻿{
+{
   "run_id": "2026-07-06T19__L1-table-basic__cb1b73d",
   "case_id": "L1-table-basic",
   "tier": 1,
@@ -10,16 +10,8 @@
   "build": {
     "succeeded": true,
     "errors": [],
-    "bpWarnings": [
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {},
-      {}
-    ]
+    "bpWarnings": null,
+    "bpWarningCount": 8
   },
   "golden_diff": {
     "matched": false,

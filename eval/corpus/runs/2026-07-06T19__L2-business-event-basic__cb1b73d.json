@@ -1,4 +1,4 @@
-﻿{
+{
   "run_id": "2026-07-06T19__L2-business-event-basic__cb1b73d",
   "case_id": "L2-business-event-basic",
   "tier": 2,
@@ -22,15 +22,19 @@
     "errors": [],
     "bpWarnings": [
       {
+        "code": "BPXmlDocNoDocumentationComments",
         "message": "BestPractices Warning: AxClass ConDemoNoteHeaderCreatedContract/Method/newFromNoteHeader: BPXmlDocNoDocumentationComments: No XML documentation headers are provided for 'ConDemoNoteHeaderCreatedContract.newFromNoteHeader'."
       },
       {
+        "code": "BPXmlDocNoDocumentationComments",
         "message": "BestPractices Warning: AxClass ConDemoNoteHeaderCreatedContract: BPXmlDocNoDocumentationComments: No XML documentation headers are provided for 'ConDemoNoteHeaderCreatedContract'."
       },
       {
+        "code": "BPXmlDocNoDocumentationComments",
         "message": "BestPractices Warning: AxClass ConDemoNoteHeaderCreatedBusinessEvent/Method/newFromContract: BPXmlDocNoDocumentationComments: No XML documentation headers are provided for 'ConDemoNoteHeaderCreatedBusinessEvent.newFromContract'."
       },
       {
+        "code": "BPXmlDocNoDocumentationComments",
         "message": "BestPractices Warning: AxClass ConDemoNoteHeaderCreatedBusinessEvent: BPXmlDocNoDocumentationComments: No XML documentation headers are provided for 'ConDemoNoteHeaderCreatedBusinessEvent'."
       }
     ]
