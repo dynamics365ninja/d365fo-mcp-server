@@ -65,6 +65,36 @@ export interface ExtensionMetadataRecord {
   model: string;
 }
 
+/**
+ * Construction-time switches for the deferred file_path index builds.
+ *
+ * The defaults describe the long-running server: build in the background, treat
+ * anything over 200 MB as big enough to be worth a thread. A one-shot CLI wants
+ * the opposite of both — see scripts/build-database.ts.
+ */
+export interface XppSymbolIndexOptions {
+  /**
+   * Dispatch large index builds to a worker thread (default true).
+   *
+   * Set false in one-shot scripts. A worker writes through a SECOND connection to
+   * the same file, which cannot coexist with `locking_mode = EXCLUSIVE` on the
+   * writer — the build script takes that lock and the worker (or the writer,
+   * depending on who gets there first) fails with SQLITE_BUSY. Blocking the event
+   * loop, the reason the worker exists at all, costs a CLI nothing.
+   */
+  backgroundIndexBuilds?: boolean;
+  /**
+   * Skip the file_path index builds during construction; the caller runs
+   * ensureFilePathIndexes() itself once its bulk load is done (default false).
+   *
+   * Building them up front makes a bulk load maintain two extra B-trees per row,
+   * and on a full rebuild the work is thrown away by clear() anyway.
+   */
+  deferFilePathIndexes?: boolean;
+  /** Byte size at which a DB is "large" enough to hand its index build to a worker. */
+  largeDbThresholdBytes?: number;
+}
+
 export class XppSymbolIndex {
   public db: Database; // Public for direct pragma access in build scripts
   public labelsDb: Database; // Separate DB for labels (performance optimization)
@@ -103,6 +133,15 @@ export class XppSymbolIndex {
   // Per-connection prepared-statement cache.  Prepared statements are bound to
   // their originating connection and cannot be shared across connections.
   private perConnStmtCache = new WeakMap<Database, Map<string, Statement>>();
+  // See XppSymbolIndexOptions. Held as fields so ensureFilePathIndexes() reads the
+  // same answer whether it runs from the constructor or from a build script later.
+  private backgroundIndexBuilds: boolean;
+  private deferFilePathIndexes: boolean;
+  private largeDbThresholdBytes: number;
+  // Index-build workers still running. closeReadPool() cannot drain these (it only
+  // owns the read pool), so track them to warn about the EXCLUSIVE-lock race and to
+  // tear them down in close().
+  private pendingIndexWorkers = new Set<Worker>();
 
   /**
    * Directory holding the metadata databases. Sibling marker files (the blob-download
@@ -112,8 +151,11 @@ export class XppSymbolIndex {
     return path.dirname(this.dbPath);
   }
 
-  constructor(dbPath: string, labelsDbPath?: string) {
+  constructor(dbPath: string, labelsDbPath?: string, options: XppSymbolIndexOptions = {}) {
     this.dbPath = dbPath;
+    this.backgroundIndexBuilds = options.backgroundIndexBuilds !== false;
+    this.deferFilePathIndexes = options.deferFilePathIndexes === true;
+    this.largeDbThresholdBytes = options.largeDbThresholdBytes ?? 200 * 1024 * 1024;
     // Ensure database directory exists
     const dbDir = path.dirname(dbPath);
     if (!fs.existsSync(dbDir)) {
@@ -205,13 +247,32 @@ export class XppSymbolIndex {
     return this.readPool[this.readPoolRR++ % this.readPool.length];
   }
 
+  /** True while a background file_path index build is still running. */
+  hasPendingIndexBuilds(): boolean {
+    return this.pendingIndexWorkers.size > 0;
+  }
+
   /**
    * Close and drain all read-pool connections.
    * Must be called before setting locking_mode = EXCLUSIVE on the writer
    * connection (e.g. in build scripts) — SQLite cannot grant EXCLUSIVE while
    * any other connection (even read-only, even in-process) holds a shared lock.
+   *
+   * The read pool is NOT the only other connection this class opens: an index
+   * build dispatched to a worker holds a writer connection to the same file, and
+   * this method cannot drain it (worker shutdown is asynchronous; this is not).
+   * Callers that take an EXCLUSIVE lock must construct with
+   * `backgroundIndexBuilds: false` so no such worker ever exists — the warning
+   * below is the tripwire for the ones that forget.
    */
   closeReadPool(): void {
+    if (this.pendingIndexWorkers.size > 0) {
+      console.error(
+        `[SymbolIndex] closeReadPool() with ${this.pendingIndexWorkers.size} background index ` +
+        `build(s) still running — these hold their own write connections and will contend ` +
+        `with locking_mode = EXCLUSIVE. Construct with { backgroundIndexBuilds: false }.`
+      );
+    }
     for (const conn of this.readPool) {
       try { conn.close(); } catch { /* ignore */ }
     }
@@ -792,7 +853,9 @@ export class XppSymbolIndex {
       CREATE INDEX IF NOT EXISTS idx_md_model ON macro_defines(model);
     `);
 
-    this.ensureFilePathIndexes();
+    if (!this.deferFilePathIndexes) {
+      this.ensureFilePathIndexes();
+    }
   }
 
   /**
@@ -896,8 +959,11 @@ export class XppSymbolIndex {
    * build is instant and runs here; on a large existing DB it is handed to a
    * worker thread, and until it finishes those deletes simply stay as slow as
    * they are today.
+   *
+   * Public because build scripts defer it (see XppSymbolIndexOptions) and run it
+   * themselves after their bulk load, with the worker dispatch turned off.
    */
-  private ensureFilePathIndexes(): void {
+  ensureFilePathIndexes(): void {
     const missing = (db: Database, indexName: string): boolean =>
       !db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?`).get(indexName);
 
@@ -906,7 +972,7 @@ export class XppSymbolIndex {
     const isLarge = (dbFile: string): boolean => {
       if (dbFile === ':memory:') return false;
       try {
-        return fs.statSync(dbFile).size > 200 * 1024 * 1024;
+        return fs.statSync(dbFile).size > this.largeDbThresholdBytes;
       } catch {
         return false;
       }
@@ -949,7 +1015,12 @@ export class XppSymbolIndex {
     // neither the deferral nor the worker dispatch the per-label table needed.
 
     for (const item of work) {
-      if (isLarge(item.dbFile)) {
+      // A worker writes through its own connection, which only works while the
+      // database is in WAL mode and nothing holds an EXCLUSIVE lock. Build scripts
+      // switch to journal_mode = MEMORY and take that lock, so the journal mode is
+      // checked here rather than assumed — off WAL the only safe build is inline.
+      const inWal = (item.db.pragma('journal_mode', { simple: true }) as string) === 'wal';
+      if (isLarge(item.dbFile) && this.backgroundIndexBuilds && inWal) {
         this.buildIndexInWorker(item.dbFile, item.sql, item.name);
       } else {
         item.db.exec(item.sql);
@@ -959,7 +1030,12 @@ export class XppSymbolIndex {
 
   /**
    * Build one index on a separate thread so the main event loop keeps serving.
-   * WAL mode allows the worker's write to proceed alongside main-thread readers.
+   *
+   * The worker opens its OWN write connection to the same file, so this is only
+   * legal while the database stays in WAL mode and no one takes an EXCLUSIVE lock
+   * on it for the duration — both guaranteed by the caller (ensureFilePathIndexes
+   * checks the journal mode, and build scripts opt out of workers entirely).
+   *
    * Best-effort: a failure leaves the index absent, which is exactly the state
    * the server ran in before, so it is logged and never thrown.
    */
@@ -968,6 +1044,7 @@ export class XppSymbolIndex {
       const worker = new Worker(new URL('./buildIndexWorker.js', import.meta.url), {
         workerData: { dbPath, sql, indexName },
       });
+      this.pendingIndexWorkers.add(worker);
       // unref() so a pending index build never keeps the process alive on exit.
       worker.unref();
       worker.once('message', (msg: { ok: boolean; elapsedMs?: number; error?: string }) => {
@@ -976,9 +1053,14 @@ export class XppSymbolIndex {
         } else {
           console.error(`[SymbolIndex] Background build of ${indexName} failed: ${msg.error}`);
         }
+        this.pendingIndexWorkers.delete(worker);
         void worker.terminate();
       });
-      worker.once('error', e => console.error(`[SymbolIndex] ${indexName} worker error: ${e}`));
+      worker.once('error', e => {
+        this.pendingIndexWorkers.delete(worker);
+        console.error(`[SymbolIndex] ${indexName} worker error: ${e}`);
+      });
+      worker.once('exit', () => this.pendingIndexWorkers.delete(worker));
     } catch (e) {
       console.error(`[SymbolIndex] Could not start ${indexName} worker: ${e}`);
     }
@@ -4274,6 +4356,15 @@ export class XppSymbolIndex {
       console.error(`[SymbolIndex] Final labels FTS flush failed: ${e}`);
       this._labelsFtsTimer = null;
     }
+
+    // Background index builds hold their own write connection to the same file;
+    // leaving one running past close() writes into a database the owner considers
+    // shut. terminate() is async and best-effort — we do not await it, we only stop
+    // the build from outliving us.
+    for (const worker of this.pendingIndexWorkers) {
+      void worker.terminate();
+    }
+    this.pendingIndexWorkers.clear();
 
     // Drain read pools first — writer close will fail on WAL if readers hold a lock.
     this.closeReadPool();

@@ -64,8 +64,21 @@ async function buildDatabase() {
   console.log(kv('VACUUM', EXTRACT_MODE === 'all' || FORCE_VACUUM ? c.green('enabled') : c.dim('disabled (incremental build)')));
   console.log('');
 
-  // Create symbol index with separate labels database
-  const symbolIndex = new XppSymbolIndex(OUTPUT_DB, OUTPUT_LABELS_DB);
+  // Create symbol index with separate labels database.
+  //
+  // backgroundIndexBuilds: false — this script takes locking_mode = EXCLUSIVE a few
+  // lines below, and an index worker holds a second write connection to the same
+  // file, which EXCLUSIVE cannot coexist with (the setup run died on that lock).
+  // The worker exists to keep the server's event loop free; a one-shot CLI has no
+  // event loop to protect, so inline is strictly better here.
+  //
+  // deferFilePathIndexes: true — building them now would make every row of the bulk
+  // load maintain two more B-trees, and on a full rebuild clear() throws the result
+  // away regardless. They are created after the load instead (see below).
+  const symbolIndex = new XppSymbolIndex(OUTPUT_DB, OUTPUT_LABELS_DB, {
+    backgroundIndexBuilds: false,
+    deferFilePathIndexes: true,
+  });
 
   // The extract phase is the only place that knows which models are non-Microsoft on UDE
   // (path rule under the custom root; CUSTOM_MODELS is empty there by design). Read the
@@ -377,6 +390,15 @@ async function buildDatabase() {
     console.log('');
     log.info('Skipping label indexing (INCLUDE_LABELS=false)');
   }
+
+  // Deferred at construction so the bulk load did not have to maintain them.
+  // Runs inline on the writer connection, which already holds the EXCLUSIVE lock —
+  // no second connection, so nothing to contend with.
+  console.log('');
+  log.step('Building file_path indexes...');
+  const filePathIdxStart = Date.now();
+  symbolIndex.ensureFilePathIndexes();
+  log.ok(`file_path indexes built in ${((Date.now() - filePathIdxStart) / 1000).toFixed(2)}s`);
 
   if (SKIP_FTS) {
     console.log('');
