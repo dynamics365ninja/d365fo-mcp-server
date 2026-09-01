@@ -46,10 +46,20 @@ const EXTENSION_COUNTERPART: Record<string, string> = {
 };
 
 /**
- * A name that can only be an extension: `Base.PrefixExtension` (element extensions) or
+ * A name that can only be an extension: `Base.Suffix` (element extensions) or
  * `BasePrefix_Extension` (class CoC).
+ *
+ * The suffix does NOT have to spell "Extension". This pattern used to require it
+ * (`\w*Extension$`), which made `NumberSeqModule.ConDemoRent` — a perfectly
+ * ordinary enum-extension name — unreadable as an extension, so it was validated
+ * as a plain enum, refused for containing a dot, and "corrected" to
+ * `ConNumberSeqModule.ConDemoRent`: a prefix on the BASE, naming an object that
+ * does not exist (#983). Shipped metadata settles it — `AppCopilotAgentType.Foundation`
+ * and `ModuleAxapta.ApplicationCommon` are Microsoft's own AxEnumExtensions.
+ *
+ * A dot is unambiguous: no non-extension AOT element name may contain one.
  */
-const DOTTED_EXTENSION = /^[A-Za-z]\w*\.\w*Extension$/;
+const DOTTED_EXTENSION = /^[A-Za-z]\w*\.[A-Za-z]\w*$/;
 const UNDERSCORE_EXTENSION = /^[A-Za-z]\w*_Extension$/;
 
 /**
@@ -134,12 +144,16 @@ export async function checkObjectNaming(
     const reinterpreted = reinterpretExtensionType(args.objectType, name);
     if (reinterpreted) {
       args.objectType = reinterpreted.objectType as typeof args.objectType;
-      // The base is the part before the dot; supplying it here keeps the
-      // "baseObjectName is required for extension types" check from firing on a
-      // name that spells its base out.
-      if (!args.baseObjectName && name.includes('.')) {
-        args.baseObjectName = name.slice(0, name.indexOf('.'));
-      }
+    }
+
+    // The base is the part before the dot. Deriving it only after a
+    // reinterpretation punished the caller who named the type CORRECTLY:
+    // `objectType="enum-extension", proposedName="NumberSeqModule.ConDemoRent"`
+    // answered "baseObjectName is required … and it could not be derived", while
+    // the same name under `objectType="enum"` was understood. A dotted name
+    // states its base whichever way the type arrived (#983).
+    if (!args.baseObjectName && DOTTED_EXTENSION.test(name)) {
+      args.baseObjectName = name.slice(0, name.indexOf('.'));
     }
 
     // The same courtesy for the UNDERSCORE form. `MyThing_Extension` states its

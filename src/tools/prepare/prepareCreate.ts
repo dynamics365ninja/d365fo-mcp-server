@@ -41,10 +41,19 @@ export const prepareCreateArgsSchema = z.object({
     'menu-item-output', 'menu', 'security-privilege', 'security-duty', 'security-role',
     'business-event', 'tile', 'kpi', 'map', 'service', 'service-group',
     'macro', 'configuration-key', 'security-policy', 'aggregate-measurement', 'license-code',
+    // Extension artefacts. prepare(mode="change") is still the richer route for
+    // extending an object — it reads the base and plans the change — but it is
+    // not the ONLY thing an agent does with an extension, and the artefact is
+    // created by d365fo_file(action="create"), which has published these types
+    // all along. Omitting them here forced a caller who wanted an enum extension
+    // to pick "enum", whose name rules then refused the only name an enum
+    // extension can have (#983): two tools disagreeing about what exists.
+    'table-extension', 'class-extension', 'form-extension', 'enum-extension', 'edt-extension',
   ]).describe(
-    'Type of the new D365FO object. Wholly new standalone objects only — for ' +
-    'extending an EXISTING object (table-extension, form-extension, CoC class-extension, ' +
-    'etc.) use prepare(mode="change") instead, which auto-detects the base object\'s type.'
+    'Type of the new D365FO object. For a NEW artefact, including an extension of an ' +
+    'existing object (Base.Suffix). To PLAN a change to an existing object — read its ' +
+    'members, pick CoC vs event handler — prepare(mode="change") is richer: it auto-detects ' +
+    'the base object\'s type and bundles its methods and existing extensions.'
   ),
   fieldsHint: z.array(z.string()).optional().describe(
     'For tables/views: planned field names (e.g. ["CustAccount", "ImportDate", "Qty"]). ' +
@@ -111,8 +120,21 @@ async function validateNaming(
   if (finalName.length > 81) {
     issues.push(`❌ Final name "${finalName}" exceeds the 81-char AOT limit (${finalName.length}).`);
   }
-  if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(baseName)) {
-    issues.push('❌ Name may contain only letters, digits and underscores, and must not start with a digit.');
+  // An extension ELEMENT is named `Base.Suffix`, and the dot is mandatory, not a
+  // typo. This check used to see only the undotted form, so every extension name
+  // was refused with "Name may contain only letters, digits and underscores" on
+  // the way to an operation d365fo_file supports perfectly well (#983). Only the
+  // SUFFIX is the caller's to choose — the base names an object that already
+  // exists — so both halves must be legal identifiers and nothing more is asked.
+  const dotCount = (baseName.match(/\./g) ?? []).length;
+  const identifier = /^[A-Za-z][A-Za-z0-9_]*$/;
+  if (dotCount > 1 || !baseName.split('.').every((part) => identifier.test(part))) {
+    issues.push(
+      dotCount > 0
+        ? '❌ An extension name is "Base.Suffix": one dot, and each half letters, digits and ' +
+          'underscores only, not starting with a digit.'
+        : '❌ Name may contain only letters, digits and underscores, and must not start with a digit.',
+    );
   }
   // An extension name is derived from a base name the caller did not choose —
   // `{Base}{Prefix}_Extension` for a class, `Base.Suffix` for an element — and
