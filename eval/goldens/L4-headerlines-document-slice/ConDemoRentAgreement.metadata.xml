@@ -308,7 +308,7 @@ public class ConDemoRentAgreement extends FormRun
 															</AxFormControl>
 														</Controls>
 														<ColumnsMode>Fill</ColumnsMode>
-														<Caption>Header</Caption>
+														<Caption>@SYS101051</Caption>
 														<FastTabExpanded>No</FastTabExpanded>
 													</AxFormControl>
 													<AxFormControl xmlns=""
@@ -409,7 +409,7 @@ public class ConDemoRentAgreement extends FormRun
 																<VisibleRowsMode>Fixed</VisibleRowsMode>
 															</AxFormControl>
 														</Controls>
-														<Caption>Lines</Caption>
+														<Caption>@SYS15451</Caption>
 														<FastTabExpanded>Always</FastTabExpanded>
 													</AxFormControl>
 													<AxFormControl xmlns=""
@@ -494,14 +494,14 @@ public class ConDemoRentAgreement extends FormRun
 																			</AxFormControl>
 																		</Controls>
 																		<ColumnsMode>Fill</ColumnsMode>
-																		<Caption>General</Caption>
+																		<Caption>@SYS2952</Caption>
 																	</AxFormControl>
 																</Controls>
 																<AlignChild>No</AlignChild>
 																<Style>Tabs</Style>
 															</AxFormControl>
 														</Controls>
-														<Caption>Line details</Caption>
+														<Caption>@SYS23823</Caption>
 														<DataSource>ConDemoRentLine</DataSource>
 														<FastTabExpanded>No</FastTabExpanded>
 													</AxFormControl>
@@ -595,7 +595,7 @@ public class ConDemoRentAgreement extends FormRun
 															</AxFormControl>
 														</Controls>
 														<ColumnsMode>Fill</ColumnsMode>
-														<Caption>General</Caption>
+														<Caption>@SYS2952</Caption>
 													</AxFormControl>
 												</Controls>
 												<AlignChild>No</AlignChild>

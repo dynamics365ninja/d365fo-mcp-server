@@ -213,7 +213,7 @@ public class ConDemoNoteHeaderMaster extends FormRun
 											</AxFormControl>
 										</Controls>
 										<ColumnsMode>Fill</ColumnsMode>
-										<Caption>Overview</Caption>
+										<Caption>@SYS9039</Caption>
 									</AxFormControl>
 									<AxFormControl xmlns=""
 											i:type="AxFormTabPageControl">
@@ -253,7 +253,7 @@ public class ConDemoNoteHeaderMaster extends FormRun
 											</AxFormControl>
 										</Controls>
 										<ColumnsMode>Fill</ColumnsMode>
-										<Caption>General</Caption>
+										<Caption>@SYS2952</Caption>
 									</AxFormControl>
 								</Controls>
 								<Style>FastTabs</Style>

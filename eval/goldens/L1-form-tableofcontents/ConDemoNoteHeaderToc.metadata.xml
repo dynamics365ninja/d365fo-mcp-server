@@ -120,7 +120,7 @@ public class ConDemoNoteHeaderToc extends FormRun
 										</AxFormControl>
 									</Controls>
 									<ColumnsMode>Fill</ColumnsMode>
-									<Caption>General</Caption>
+									<Caption>@SYS2952</Caption>
 								</AxFormControl>
 							</Controls>
 							<Style>FastTabs</Style>
@@ -204,7 +204,7 @@ public class ConDemoNoteHeaderToc extends FormRun
 										</AxFormControl>
 									</Controls>
 									<ColumnsMode>Fill</ColumnsMode>
-									<Caption>Setup</Caption>
+									<Caption>@SYS2186</Caption>
 								</AxFormControl>
 							</Controls>
 							<Style>FastTabs</Style>
