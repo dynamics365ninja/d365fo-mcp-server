@@ -195,7 +195,7 @@ public class ConDemoTaxChangeLogDetails extends FormRun
 							</AxFormControl>
 						</Controls>
 						<ColumnsMode>Fill</ColumnsMode>
-						<Caption>General</Caption>
+						<Caption>@SYS2952</Caption>
 					</AxFormControl>
 				</Controls>
 				<Style>FastTabs</Style>

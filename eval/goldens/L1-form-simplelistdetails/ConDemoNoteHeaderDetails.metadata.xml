@@ -163,8 +163,6 @@ public class ConDemoNoteHeaderDetails extends FormRun
 							i:type="AxFormGroupControl">
 						<Name>Overview</Name>
 						<Type>Group</Type>
-						<DataGroup>Overview</DataGroup>
-						<DataSource>ConDemoNoteHeader</DataSource>
 						<FormControlExtension
 							i:nil="true" />
 						<Controls>
@@ -187,6 +185,8 @@ public class ConDemoNoteHeaderDetails extends FormRun
 											<DataSource>ConDemoNoteHeader</DataSource>
 										</AxFormControl>
 						</Controls>
+						<DataGroup>Overview</DataGroup>
+						<DataSource>ConDemoNoteHeader</DataSource>
 						<FrameType>None</FrameType>
 					</AxFormControl>
 				</Controls>
@@ -238,7 +238,7 @@ public class ConDemoNoteHeaderDetails extends FormRun
 							</AxFormControl>
 						</Controls>
 						<ColumnsMode>Fill</ColumnsMode>
-						<Caption>General</Caption>
+						<Caption>@SYS2952</Caption>
 					</AxFormControl>
 				</Controls>
 				<Style>FastTabs</Style>
