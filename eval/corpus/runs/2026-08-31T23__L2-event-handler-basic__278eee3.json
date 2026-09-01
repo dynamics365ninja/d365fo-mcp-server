@@ -1,0 +1,78 @@
+{
+  "run_id": "2026-08-31T23__L2-event-handler-basic__278eee3",
+  "case_id": "L2-event-handler-basic",
+  "tier": 2,
+  "timestamp": "2026-08-31T23:22:59.252Z",
+  "server_git_sha": "278eee3",
+  "generated_artifacts": [
+    "ConDemoNoteHeaderEH.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {
+        "moniker": "BPParameterNotUsed",
+        "path": "dynamics://Class/ConDemoNoteHeaderEH/Method/onInserting",
+        "message": "The parameter '_e' is not used.",
+        "note": "Inherent to the mandatory DataEventHandler signature (Common _sender, DataEventArgs _e); the committed golden carries the identical signature and would produce the identical warning. The other 6 BP warnings in the build belong to the shared fixture table ConDemoNoteHeader, not to this case artifact."
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [],
+    "changed": [
+      {
+        "path": "AxClass/SourceCode/Declaration",
+        "expected": "class PFXDemoNoteHeaderEH\n{\n}",
+        "actual": "/// <xmldoc/>\nclass PFXDemoNoteHeaderEH\n{\n}"
+      },
+      {
+        "path": "AxClass/SourceCode/Methods/Method[onInserting]/Source",
+        "expected": "[DataEventHandler(tableStr(PFXDemoNoteHeader), DataEventType::Inserting)]\npublic static void onInserting(Common _sender, DataEventArgs _e)\n{\n    PFXDemoNoteHeader noteHeader = _sender as PFXDemoNoteHeader;\n\n    if (!noteHeader.Subject)\n    {\n        noteHeader.Subject = '(no subject)';\n    }\n}",
+        "actual": "/// <xmldoc/>\n[DataEventHandler(tableStr(PFXDemoNoteHeader), DataEventType::Inserting)]\npublic static void onInserting(Common _sender, DataEventArgs _e)\n{\n    PFXDemoNoteHeader noteHeader = _sender as PFXDemoNoteHeader;\n\n    if (!noteHeader.Subject)\n    {\n        noteHeader.Subject = '(no subject)';\n    }\n}"
+      }
+    ]
+  },
+  "systest": {
+    "ran": true,
+    "passed": true,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": 1,
+    "tier_weight": 2
+  },
+  "classification": "TOOL_DEFECT",
+  "platform_build": "X++ Compiler 7.0.7996.33",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": [
+        "DataEventArgs (kernel class - informational warning, not an error)"
+      ]
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "Two findings. (1) PRIMARY, reproducible TOOL_DEFECT (harness plumbing, not the case artifact): d365fo_file(action=\"create\", objectType=\"class\", xmlContent=<verbatim AxClass XML>) produces a self-inconsistent object and still reports \"Created\" + \"Verified: on disk\". Passing objectName=\"EvalL2EventHandlerDefaultSubjectTest\" with verbatim XML wrote filename ConDemoEvalL2EventHandlerDefaultSubjectTest.xml and X++ declaration \"class ConDemoEvalL2EventHandlerDefaultSubjectTest extends SysTestCase\", while <Name> stayed EvalL2EventHandlerDefaultSubjectTest - three identities in one file, which xppc rejects with \"must be named X instead of Y to be consistent with its file name\". Either the prefix must be applied to all three identities or to none when xmlContent is supplied verbatim; the create verification only checks file existence, so it cannot see the inconsistency. Worked around with delete + direct verbatim write + update_symbol_index (harness plumbing only - the case artifact went through the full grounded path). (2) SECONDARY, oracle staleness explaining golden_match=0: the sole diff is a /// XmlDoc block that d365fo_file injects unconditionally via ensureXppDocComment. Commit 0a95198 (2026-08-09, \"Bridge creates get the same doc comments and indentation the XML fallback gives them\") deliberately unified doc-comment injection across the bridge and XML-fallback write paths. This golden was captured 2026-07-01/committed 2026-07-07, i.e. BEFORE that change, so no faithful rerun through the current grounded path can ever match it. This is systematic, not local: all 17 AxClass goldens that lack /// comments were committed 2026-07-07 or 2026-07-23 (8 cases: L1-class-basic, L1-macro-library-flight, L2-business-event-basic, L2-class-method-ops, L2-delegate-basic, L2-enum-extension-empty-values, L2-event-handler-basic, L2-interface-abstract-basic, L2-numberseq-basic, L3-batch-basic, L4-ssrs-report-basic), every one predating 0a95198; every class golden captured after it carries doc comments. The oracle intentionally keeps doc-comment PRESENCE load-bearing (src/eval/oracle/normalize.ts, canonicalizeXppDocComments) because BPXmlDocNoDocumentationComments measures it, so the fix is to RE-CAPTURE those goldens, not to relax the normaliser. The implementation itself is behaviourally correct: full build 0 errors / 0 warnings and the runtime oracle passed 2/2.",
+  "suggested_fix_area": "(1) src/tools/*/d365fo_file create path - prefix canonicalisation when xmlContent is supplied verbatim (all three identities: filename, <Name>, X++ declaration) + strengthen the post-write verification to compare filename/<Name>/declaration rather than only asserting file existence. (2) eval/goldens - re-capture the 17 pre-0a95198 AxClass goldens (8 cases) so they carry the doc comments the current write path emits; do NOT relax src/eval/oracle/normalize.ts.",
+  "evidence_refs": [
+    "d365fo_file(create, xmlContent) response: \"Created class ConDemoEvalL2EventHandlerDefaultSubjectTest (prefixed from EvalL2EventHandlerDefaultSubjectTest)\" + \"Verified: on disk (1572 bytes)\"; file on disk had <Name>EvalL2EventHandlerDefaultSubjectTest</Name> at line 3 but \"class ConDemoEvalL2EventHandlerDefaultSubjectTest extends SysTestCase\" at line 9",
+    "commit 0a95198 (2026-08-09) src/bridge/bridgeAdapter.ts imports ensureXppDocComment; message: \"Bridge creates get the same doc comments and indentation the XML fallback gives them, so the same create no longer lands documented or undocumented depending on whether the bridge was up.\"",
+    "src/utils/xppDocGen.ts ensureXppDocComment is unconditional when the source has no leading /// run (lines 367-409) - no opt-out parameter exists",
+    "prior corpus record 2026-07-07T05__L2-event-handler-basic__cb1b73d.json shows the same case previously produced NO doc comments (its only diff was indentation, since fixed by reindent canonicalisation)",
+    "SysTest raw output: \"Rainier Test Suite : 2 Run, 0 Failed\"; both methods success=true; Isolation: AutoRollback",
+    "run_systest_class per-method: testInsertingWithBlankSubjectGetsDefaulted PASS (asserts Subject == '(no subject)' after insert with blank Subject), testInsertingWithExplicitSubjectIsPreserved PASS (asserts Subject == 'Explicit subject' untouched)",
+    "dbSync NOT needed: CONDEMONOTEHEADER already present in AxDB with NOTEID/SUBJECT/DATAAREAID/PARTITION/RECID/RECVERSION, 0 rows before and after; SysTest isolation AutoRollback left no rows",
+    "build_d365fo_project(fullBuild=true) after test deploy: Errors: 0, Warnings: 0"
+  ]
+}

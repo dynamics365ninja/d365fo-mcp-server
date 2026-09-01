@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoIndexProbeStatus</Name>
+	<Label>ConDemoIndexProbeStatus</Label>
+	<UseEnumValue>No</UseEnumValue>
+	<EnumValues>
+		<AxEnumValue>
+			<Name>Open</Name>
+			<Label>@ConDemo:Open</Label>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Closed</Name>
+			<Label>@ConDemo:Closed</Label>
+		</AxEnumValue>
+	</EnumValues>
+	<IsExtensible>true</IsExtensible>
+</AxEnum>

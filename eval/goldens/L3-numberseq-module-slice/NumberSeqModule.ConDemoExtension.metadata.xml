@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L3-numberseq-module-slice (2 of 6): enum-extension adding NumberSeqModule::DemoSlice. Shape matches the shipped NEW-value extensions (FleetManagement/CostAccounting/AssetLeasing): Name + Label, NO <Value> — the platform assigns an extensible enum value. Captured 2026-08-31, SHA 278eee3. -->
+<AxEnumExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>NumberSeqModule.ConDemoExtension</Name>
+	<EnumValues>
+		<AxEnumValue>
+			<Name>DemoSlice</Name>
+			<Label>@SYS334317</Label>
+		</AxEnumValue>
+	</EnumValues>
+	<PropertyModifications />
+	<ValueModifications />
+</AxEnumExtension>

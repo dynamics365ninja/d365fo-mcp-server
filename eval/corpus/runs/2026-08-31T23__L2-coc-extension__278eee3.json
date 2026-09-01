@@ -1,0 +1,62 @@
+{
+  "run_id": "2026-08-31T23__L2-coc-extension__278eee3",
+  "case_id": "L2-coc-extension",
+  "tier": 2,
+  "timestamp": "2026-08-31T23:06:06.450Z",
+  "server_git_sha": "278eee3",
+  "generated_artifacts": [
+    "FMVehicleDataContractConDemo_Extension.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [],
+    "changed": [
+      {
+        "path": "AxClass/Name",
+        "expected": "FMVehicleDataContractCon_Extension",
+        "actual": "FMVehicleDataContractConDemo_Extension"
+      },
+      {
+        "path": "AxClass/SourceCode/Declaration",
+        "expected": "[ExtensionOf(classStr(FMVehicleDataContract))]\nfinal class FMVehicleDataContractCon_Extension\n{\n}",
+        "actual": "/// <xmldoc/>\n[ExtensionOf(classStr(FMVehicleDataContract))]\nfinal class FMVehicleDataContractConDemo_Extension\n{\n}"
+      }
+    ]
+  },
+  "systest": {
+    "ran": true,
+    "passed": true,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 0,
+    "systest": 1,
+    "tier_weight": 2
+  },
+  "classification": "VALIDATOR_GAP",
+  "static_gate": {
+    "passed": true,
+    "violations": []
+  },
+  "root_cause_hypothesis": "The IMPLEMENTATION is correct and runtime-verified: full xppc build 0 errors / 0 warnings, xppbp on the artifact 0 warnings, and the committed runtime oracle EvalL2CocCarFactsTest passed 2/2 (testCarFactsSummaryAppendsVerifiedSuffix, testWrapperPreservesBaseValueForDifferentInput) - i.e. `next CarFactsSummary(...)` really is invoked and ' [verified]' is observably appended at the call site. golden_match=0 is entirely an ORACLE/GOLDEN artifact, from two independent causes.\n\n(1) VALIDATOR_GAP - canonicalizePrefix() cannot canonicalise an EXTENSION-CLASS INFIX prefix. Its regex is (^|[^A-Za-z0-9])<token>(?=[A-Z]): it requires the prefix at an IDENTIFIER-START boundary AND followed by an uppercase letter. The MS extension-class convention is {Base}{Prefix}_Extension, where the prefix is MID-identifier (preceded by an alphanumeric) and followed by an underscore. So NEITHER side is canonicalised, and the golden (name normalised to prefix Con) false-mismatches the actual (produced under this session's prefix ConDemo) on AxClass/Name and on the class-name line inside Declaration. MEASURED: with lookahead [A-Z] no substitution happens on either side; with lookahead [A-Z_] STILL no substitution on either side; only dropping the leading identifier-start boundary yields FMVehicleDataContractPFX_Extension on BOTH sides. That means the fix proposed in the earlier corpus record for this very case (2026-07-07T04__L2-coc-extension__cb1b73d: 'change (?=[A-Z]) to (?=[A-Z_])') is INSUFFICIENT and would not have closed the gap - the leading boundary is the blocker, not the lookahead. Every _Extension-suffixed CoC golden in the corpus is affected across any two prefix sessions.\n\n(2) STALE GOLDEN - the committed golden Declaration carries NO class-level /// doc comment, but the current grounded write path always injects one (src/utils/xppDocGen.ts: 'Extension of the <c>FMVehicleDataContract</c> class.'), and generate_object(mode=pattern, pattern=class-extension) also emits one. normalize.ts deliberately COLLAPSES a doc-comment run to a placeholder but keeps its PRESENCE load-bearing (tied to BPXmlDocNoDocumentationComments / bp_clean), so a golden with no class doc comment can never be reproduced through the current tool path. History: the golden was originally captured as FMVehicleDataContractAsl_Extension in 828bcea and then MECHANICALLY renamed Asl -> Con in 39c747c ('eval: replace internal fixture prefixes with generic Con/Demo'), so its Con infix is a repo-normalisation artifact, not a real capture under prefix Con.\n\n(3) TOOL_DEFECT (independent; found while deploying the runtime oracle) - d365fo_file(action=create, objectType=class, xmlContent=<verbatim AxClass XML>) produced a SELF-INCONSISTENT artifact and reported success. Passing objectName=EvalL2CocCarFactsTest together with the full XML, the tool applied the model prefix to the FILENAME (ConDemoEvalL2CocCarFactsTest.xml) and to the X++ CDATA declaration (class ConDemoEvalL2CocCarFactsTest extends SysTestCase) but LEFT the <Name> element at EvalL2CocCarFactsTest - three identities in one file. It answered 'Created class ConDemoEvalL2CocCarFactsTest' and 'Verified: on disk (2683 bytes)', and the next build failed fatally: 'Class dynamics://Class/EvalL2CocCarFactsTest: The element must be named ConDemoEvalL2CocCarFactsTest instead of EvalL2CocCarFactsTest to be consistent with its file name.' Either xmlContent is honoured verbatim (as the tool schema states: 'Complete XML written verbatim') or prefixing is applied consistently to <Name>, filename AND declaration - doing two of the three always yields a broken object. Workaround used: delete + direct verbatim file write + update_symbol_index (harness plumbing only; the case artifact itself went through the grounded path).\n\n(4) minor TOOL_DEFECT - the structured build diagnostic for that naming-consistency fatal error attached an irrelevant remediation hint: 'UpdateConflict (OCC - Optimistic Concurrency Control): Wrap the tts block in a retry loop with a maximum retry count (e.g. 5)'. The error-diagnosis heuristic misfires on a metadata naming error and points the agent at transaction retry logic.",
+  "suggested_fix_area": "src/eval/oracle/prefix.ts - canonicalizePrefix(): add an infix branch for the {Base}{Prefix}_Extension extension-class convention (match the token when it is immediately followed by _Extension, WITHOUT requiring the leading non-alphanumeric boundary). Measured here: widening only the lookahead to [A-Z_] does NOT work. Add a regression test pinning FMVehicleDataContractCon_Extension == FMVehicleDataContractConDemo_Extension.\n\neval/goldens/L2-coc-extension/FMVehicleDataContractCon_Extension.metadata.xml - RE-CAPTURE (or promote this run's artifact to golden): the committed Declaration predates/bypasses the writer's auto-XmlDoc injection, so no faithful grounded rerun can ever match it.\n\nd365fo_file create, xmlContent path - make prefixing all-or-nothing across <Name>, filename and the X++ declaration, or reject/warn when objectName prefixing would contradict the <Name> carried by a caller-supplied xmlContent.\n\nbuild_d365fo_project structured diagnostics - suppress the OCC/UpdateConflict remediation hint for metadata naming-consistency errors.",
+  "evidence_refs": [
+    "eval/corpus/runs/2026-08-31T23__L2-coc-extension__278eee3.json",
+    "eval/corpus/runs/2026-07-07T04__L2-coc-extension__cb1b73d.json (same prefix-infix gap reported 8 weeks ago; its proposed fix is insufficient - measured here)",
+    "src/eval/oracle/prefix.ts (canonicalizePrefix regex: leading boundary + uppercase lookahead)",
+    "src/utils/xppDocGen.ts:177 (auto class-level XmlDoc for extension classes)",
+    "src/eval/oracle/normalize.ts (canonicalizeXppDocComments - doc-comment PRESENCE deliberately load-bearing)",
+    "git 828bcea (original capture as FMVehicleDataContractAsl_Extension) / git 39c747c (mechanical Asl -> Con rename)",
+    "xppc fatal: Class dynamics://Class/EvalL2CocCarFactsTest: The element must be named ConDemoEvalL2CocCarFactsTest instead of EvalL2CocCarFactsTest to be consistent with its file name.",
+    "SysTestConsole.exe: Rainier Test Suite : 2 Run, 0 Failed (both test-case elements success=true)"
+  ]
+}

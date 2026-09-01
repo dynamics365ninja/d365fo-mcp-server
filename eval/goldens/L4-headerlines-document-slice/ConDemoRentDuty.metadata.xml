@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityDuty xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoRentDuty</Name>
+	<Label>@ConDemo:RentDuty</Label>
+	<Privileges>
+		<AxSecurityPrivilegeReference>
+			<Name>ConDemoRentMaintain</Name>
+		</AxSecurityPrivilegeReference>
+	</Privileges>
+</AxSecurityDuty>

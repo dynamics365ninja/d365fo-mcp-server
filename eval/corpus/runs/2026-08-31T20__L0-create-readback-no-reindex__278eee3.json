@@ -1,0 +1,63 @@
+{
+  "run_id": "2026-08-31T20__L0-create-readback-no-reindex__278eee3",
+  "case_id": "L0-create-readback-no-reindex",
+  "tier": 0,
+  "timestamp": "2026-08-31T20:08:28.460Z",
+  "server_git_sha": "278eee3",
+  "generated_artifacts": [
+    "ConDemoIndexProbeStatus.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {
+        "code": "BPErrorLabelIsText",
+        "object": "ConDemoIndexProbeStatus",
+        "message": "Property 'Label' must have a label ID as its value, and 'ConDemoIndexProbeStatus' is not a label ID.",
+        "fixHint": "The Label was never supplied by the caller - the enum XML generator defaulted it to the object name. Omit <Label> (shipped enums do) or route the default through the same auto-label resolution the value labels went through."
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 0
+  },
+  "classification": "TOOL_DEFECT",
+  "platform_build": "7.0.7996.33",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "THE CASE SUBJECT PASSED: d365fo_file(action=\"create\") reported \"Symbol index updated in place - no update_symbol_index call needed\", and the single get_object_info(objectType=\"enum\") read-back that followed resolved ConDemoIndexProbeStatus immediately, returning both values with the right numbers (Open = 0 - @ConDemo:Open, Closed = 1 - @ConDemo:Closed, Extensible: Yes) from _Source: C# bridge. Zero update_symbol_index calls in the run; exactly one read-back call. #830 does not reproduce. The failing dimension is bp_clean, and its cause is a DIFFERENT tool defect the case surfaced incidentally: generateAxEnumXml does `const label = properties?.label || enumName` and then emits <Label> UNCONDITIONALLY (src/tools/xml/xmlTemplateGenerator.ts:542 and :591), so an enum created without an explicit label gets its own NAME written into Label as raw text - a guaranteed BPErrorLabelIsText on every such enum. The guard that exists cannot catch it: autoResolveRawLabels runs resolveInto(properties, \"Label\") BEFORE generation (src/tools/write/createD365File.ts:522), sees properties.label === undefined, and does nothing; the raw text is invented AFTER it, by the generator, and is never re-inspected. The same call converted both VALUE labels correctly (\"created @ConDemo:Open and wrote that reference\"), so the caller reads two reassuring auto-correct notes about the labels that were fine and no note about the one that was not. The correct shape is already implemented elsewhere in the server: generateSmartReport.ts:385 deliberately omits Label when the caption is not a label ID, citing this exact BP rule and the fact that shipped metadata omits Label freely - AxEnum AccountOrder.xml in ApplicationSuite/Foundation has no <Label> at all. SECONDARY, VALIDATOR_GAP: validate_code(mode=\"both\", codeType=\"xml-any\") was run on the produced XML and returned \"no violations found ... Checked 42 rule groups\", then xppbp flagged it - the offline BP validator carries the label-is-text rule only for X++ literals (validateXpp.ts:1007), not for a metadata <Label> element whose value is not an @Ref, so the gate cannot see a class of defect the write path can produce. Two incidental observations, neither a defect: the generator emits <IsExtensible> AFTER <EnumValues>, which matches shipped enums (AccountOrder.xml) - it is the older L0-enum-basic golden that has the non-canonical order; and prepare(create) infers prefix \"ConDemo\" from the sandbox contents, overriding EXTENSION_PREFIX=Con, so the case instruction name \"DemoIndexProbeStatus\" had to be passed as base name \"IndexProbeStatus\" to land on the corpus-conventional ConDemoIndexProbeStatus (prepare warns about the override clearly, so this is friction, not a fault).",
+  "suggested_fix_area": "src/tools/xml/xmlTemplateGenerator.ts generateAxEnumXml (~line 542/591): stop defaulting <Label> to the object name. Omit the element when properties.label is absent - shipped AxEnum metadata omits it freely - and surface a labelAdvisory the way generateSmartReport.ts:385 already does; alternatively re-run the auto-label resolution over generator-supplied defaults. Audit the same `|| objectName` label default in the other generators in that file. Secondary (VALIDATOR_GAP): add an xml-any/xml-table syntax rule to src/tools/analysis/validateXpp.ts that flags a <Label>/<HelpText> element whose value does not start with @, so the offline gate catches what xppbp catches.",
+  "evidence_refs": [
+    "eval/goldens/L0-create-readback-no-reindex/ConDemoIndexProbeStatus.metadata.xml",
+    "eval/goldens/L0-create-readback-no-reindex/README.md",
+    "src/tools/xml/xmlTemplateGenerator.ts",
+    "src/tools/write/createD365File.ts",
+    "src/tools/smart/generateSmartReport.ts",
+    "src/tools/analysis/validateXpp.ts"
+  ]
+}

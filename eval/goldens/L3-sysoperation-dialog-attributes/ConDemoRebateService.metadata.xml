@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L3-sysoperation-dialog-attributes (artifact 2 of 3: Service - the work, with NO SysEntryPointAttribute)
+  Captured: 2026-08-31, server SHA: 278eee3
+  Platform: xppc 7.0.7996.33
+-->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoRebateService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Does the work of the customer rebate run.
+/// </summary>
+public class ConDemoRebateService extends SysOperationServiceBase
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>process</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Counts the customers the rebate run applies to.
+    /// </summary>
+    /// <param name = "_contract">The parameters of the run.</param>
+    /// <remarks>
+    /// No SysEntryPointAttribute here: xppc answers that it is obsolete and
+    /// deprecated in AX7.
+    /// </remarks>
+    public void process(ConDemoRebateContract _contract)
+    {
+        CustTable   custTable;
+        CustGroupId custGroup;
+
+        custGroup = _contract.parmCustGroup();
+
+        if (_contract.parmIncludeBlocked() == NoYes::Yes)
+        {
+            select count(RecId) from custTable
+                where custTable.CustGroup == custGroup;
+        }
+        else
+        {
+            select count(RecId) from custTable
+                where custTable.CustGroup == custGroup
+                && custTable.Blocked == CustVendorBlocked::No;
+        }
+
+        info(strFmt("@SYS97212", int642Str(custTable.RecId)));
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

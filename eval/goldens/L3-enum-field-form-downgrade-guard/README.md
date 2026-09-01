@@ -1,9 +1,10 @@
-# Golden: L3-enum-field-form-downgrade-guard — PENDING
+# Golden: L3-enum-field-form-downgrade-guard
 
-`golden_pending: true`. Nothing here is captured yet: this folder is a
-placeholder so the case can be reviewed before the VM run. The golden itself is
-captured from a real, human-reviewed build (docs/AGENT_EVAL_LOOP.md §6.4) by the
-**eval-implementer** role — do not hand-author any `*.metadata.xml` here.
+Captured 2026-08-31 on the VM (model `fm-mcp`, prefix `ConDemo`, xppc 7.0.7996.33)
+by the **eval-implementer** role, from a full build that reported 0 errors and an
+xppbp run with 0 BP **errors**, and with the runtime oracle green (3/3).
+The XML was copied byte-for-byte off `PackagesLocalDirectory` by a build-gated
+capture script — nothing here is hand-authored.
 
 ## Where the case comes from
 
@@ -13,16 +14,47 @@ Adding one enum-typed field, exposing it on the matching form and blocking a
 value downgrade in `validateWrite()` cost several failed builds. The sandbox
 equivalent of that task is this case.
 
-## What the run must capture
+## What the run captured
 
 | File | Object | Notes |
 |---|---|---|
 | `ConDemoServiceTier.metadata.xml` | `AxEnum` | None(0) / Silver(1) / Gold(2) / Platinum(3), `Label` = `@SCM:Code` |
 | `ConDemoTaxChangeLog.metadata.xml` | `AxTable` | `ServiceTier` as `AxTableFieldEnum` + `EnumType`, **no** `ExtendedDataType`; in field group `Overview`; `FormRef`; `validateWrite()` |
 | `ConDemoTaxChangeLogDetails.metadata.xml` | `AxForm` | SimpleListDetails scaffold + ComboBox bound to `ServiceTier` in the details group |
+| `ConDemoTaxChangeLogDetails.AxMenuItemDisplay.metadata.xml` | `AxMenuItemDisplay` | required by `FormRef` — see below |
 
-No `AxEdt*` artifact may appear in this folder — an enum table field needs no
-EDT, and producing one is a case failure, not a golden variant.
+No `AxEdt*` artifact appears in this folder, and none may — an enum table field
+needs no EDT, and producing one is a case failure, not a golden variant. The run
+confirmed this: `add-field` with `fieldEnumType` and no `fieldType` wrote
+`<AxTableField i:type="AxTableFieldEnum">` with `<EnumType>` and no
+`<ExtendedDataType>`, and `AxEdt/` stayed empty.
+
+### Why there is a fourth artifact (`AxMenuItemDisplay`)
+
+A table's `FormRef` property does **not** reference a form — it references a
+**display menu item**. The case instruction (step 6) says "set the table's
+FormRef property to the created form", and `modify-property` accepted the form
+name without complaint, but the build then failed with
+
+    Metadata Error: AxTable/ConDemoTaxChangeLog/FormRef:
+    Menu item display 'ConDemoTaxChangeLogDetails' does not exist.
+
+So the metadata chain the case asks for is table → menu item → form, and the
+menu item is part of the case's output. It is named after the form (the D365FO
+convention), which is why its golden file carries the legacy `.Ax<Type>` infix:
+two objects of different types share one name, and `artifactKey` needs the two
+files to stay distinguishable. `scripts/verify-goldens-build.ts` compiles this
+folder in isolation, so a golden holding the `FormRef` without the menu item
+would not build.
+
+### The `<Value>` elements on the enum are load-bearing
+
+`None` has no `<Value>` child (that IS 0); `Silver`/`Gold`/`Platinum` carry
+`<Value>1/2/3`. An `<AxEnumValue>` without a `<Value>` is **zero**, not "the next
+ordinal" — an enum written without them has every member equal to 0, compiles
+with 0 errors, passes xppbp, and looks right in a golden diff, while
+`enum2int()` returns 0 for every tier and the ladder silently collapses. That is
+what the SysTest is for; see the 2026-08-31 corpus record.
 
 ## Why `**/AxEnumValue/Label` is on the case's ignore list
 
@@ -34,16 +66,22 @@ about ID identity, and because the method body is diffed token-exact. The four
 per-VALUE labels are left to the agent's own labels-index lookup (there is no
 standard label for "Platinum" to pin), so their IDs are normalised out of the
 diff. What is still scored for them: they must be label references, never raw
-text (`BPErrorLabelIsText`).
+text (`BPErrorLabelIsText`). This capture used `@SYS80100`, `@SYS118646`,
+`@SYS118647`, `@SYS118653`.
 
-## Capture checklist (implementer)
+## BP state at capture
 
-1. Provision nothing extra — every object in this case is its own OUTPUT; there
-   is no fixture dependency (`npm run eval:fixtures` lists no INPUT for it).
-2. Run the case end to end on the VM through the grounded `d365fo_file` path.
-3. Build with a build that actually recompiles these objects, then run BP with an
-   explicit per-object target (an untargeted `run_bp_check` reports a false clean).
-4. Human-review the metadata, commit it here, flip `golden_pending` to `false`.
-5. Live SysTest (`eval/systests/L3-enum-field-form-downgrade-guard.xml`,
-   class `EvalL3ServiceTierDowngradeTest`) is tracked separately by
-   `systest_pending`.
+0 BP **errors**. 5 BP warnings, none of which the case instruction asks the agent
+to remove, all reproducible from the instruction:
+`BPErrorTablePrimaryKeyEditable` + `BPErrorDeveloperDocumentationNotDefined`
+(table-create defaults), `BPErrorLabelNotDefined` (the `Overview` field group has
+no label), `BPErrorLabelIsText` (the SimpleListDetails scaffold writes
+`Caption=General` as raw text on `TabPageGeneral`) and
+`BPErrorMenuItemNotCoveredByPrivilege` (a standalone menu item).
+
+## Runtime oracle
+
+`eval/systests/L3-enum-field-form-downgrade-guard.xml`, class
+`EvalL3ServiceTierDowngradeTest`, run via `run_systest_class` — 3/3 green
+(`testDowngradeIsRejected`, `testUpgradeIsAccepted`,
+`testInsertAtAnyTierIsAccepted`). `systest_pending` is `false`.

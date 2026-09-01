@@ -4,13 +4,28 @@
  * Locks in each committed SysTest class and its wiring to the case spec, so a
  * malformed test class or a broken systest path is caught in CI without the
  * D365FO platform. Goldens for all three cases below were captured on the VM
- * — see eval/goldens/<case_id>/. Live SysTest runs are still pending
- * (`systest_pending: true`) for all three: SysTestConsole.exe unconditionally
- * waits on a debugger-attach keypress (Console.ReadKey) even in local-AOS mode,
- * which fails in this non-interactive automation session regardless of the
- * run_systest_class binary/args fix (src/tools/sysTestRunner.ts). This only
- * validates the static contract and that parseSysTestResult scores each class's
- * output; the live run needs an interactive console session.
+ * — see eval/goldens/<case_id>/.
+ *
+ * L2-coc-extension's live run has now EXECUTED on the VM
+ * (`systest_pending: false`): SysTestConsole.exe reported
+ * "Rainier Test Suite : 2 Run, 0 Failed", both methods success=true, proving the
+ * CoC wrapper really calls `next` and appends ' [verified]' at the call site
+ * (corpus: eval/corpus/runs/2026-08-31T23__L2-coc-extension__278eee3.json).
+ * L2-event-handler-basic's live run has now EXECUTED on the VM too
+ * (`systest_pending: false`): SysTestConsole.exe reported
+ * "Rainier Test Suite : 2 Run, 0 Failed", both methods success=true, proving the
+ * [DataEventHandler] on Inserting really applies the '(no subject)' default to a
+ * blank Subject and leaves an explicit one untouched
+ * (corpus: eval/corpus/runs/2026-08-31T23__L2-event-handler-basic__278eee3.json).
+ * L3-batch-basic's live run has now EXECUTED on the VM as well
+ * (`systest_pending: false`): SysTestConsole.exe reported
+ * "Rainier Test Suite : 2 Run, 0 Failed", both methods success=true, proving
+ * that calculateEffectiveBatchSize really multiplies (10*3=30 and 7*5=35) —
+ * arithmetic no golden diff can reach
+ * (corpus: eval/corpus/runs/2026-08-31T23__L3-batch-basic__278eee3.json).
+ * These gates still only validate the STATIC contract plus that
+ * parseSysTestResult scores the class's output — the live run itself is a VM
+ * step, not a CI one.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -40,11 +55,12 @@ describe('L2-coc-extension SysTest asset', () => {
     expect(fs.existsSync(path.join(REPO_ROOT, caseSpec.systest))).toBe(true);
   });
 
-  it('has a committed golden and a pending live SysTest run, in the holdout split', () => {
+  it('has a committed golden and an EXECUTED live SysTest run, in the holdout split', () => {
     expect(caseSpec.golden_pending).toBeFalsy();
     const goldenDir = path.join(REPO_ROOT, 'eval', 'goldens', CASE_ID);
     expect(fs.existsSync(goldenDir) && fs.readdirSync(goldenDir).some(f => f.endsWith('.metadata.xml'))).toBe(true);
-    expect(caseSpec.systest_pending).toBe(true);
+    // Flipped true -> false once the runtime oracle actually ran on the VM.
+    expect(caseSpec.systest_pending).toBe(false);
     expect(caseSpec.split).toBe('holdout');
   });
 
@@ -99,12 +115,12 @@ describe('L3-batch-basic SysTest asset', () => {
     expect(fs.existsSync(path.join(REPO_ROOT, caseSpec3.systest))).toBe(true);
   });
 
-  it('has all 4 committed golden artifacts and a pending live SysTest run, in the holdout split', () => {
+  it('has all 4 committed golden artifacts and an EXECUTED live SysTest run, in the holdout split', () => {
     expect(caseSpec3.golden_pending).toBeFalsy();
     const goldenDir = path.join(REPO_ROOT, 'eval', 'goldens', CASE_ID);
     const goldenFiles = fs.existsSync(goldenDir) ? fs.readdirSync(goldenDir).filter(f => f.endsWith('.metadata.xml')) : [];
     expect(goldenFiles.length).toBe(4);
-    expect(caseSpec3.systest_pending).toBe(true);
+    expect(caseSpec3.systest_pending).toBe(false);
     expect(caseSpec3.split).toBe('holdout');
   });
 
@@ -159,11 +175,12 @@ describe('L2-event-handler-basic SysTest asset', () => {
     expect(fs.existsSync(path.join(REPO_ROOT, caseSpec4.systest))).toBe(true);
   });
 
-  it('has a committed golden and a pending live SysTest run, in the holdout split', () => {
+  it('has a committed golden and an EXECUTED live SysTest run, in the holdout split', () => {
     expect(caseSpec4.golden_pending).toBeFalsy();
     const goldenDir = path.join(REPO_ROOT, 'eval', 'goldens', CASE_ID);
     expect(fs.existsSync(goldenDir) && fs.readdirSync(goldenDir).some(f => f.endsWith('.metadata.xml'))).toBe(true);
-    expect(caseSpec4.systest_pending).toBe(true);
+    // Flipped true -> false once the runtime oracle actually ran on the VM.
+    expect(caseSpec4.systest_pending).toBe(false);
     expect(caseSpec4.split).toBe('holdout');
   });
 

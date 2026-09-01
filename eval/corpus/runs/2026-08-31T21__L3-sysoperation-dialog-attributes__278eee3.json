@@ -1,0 +1,59 @@
+{
+  "run_id": "2026-08-31T21__L3-sysoperation-dialog-attributes__278eee3",
+  "case_id": "L3-sysoperation-dialog-attributes",
+  "tier": 3,
+  "timestamp": "2026-08-31T21:25:26.677Z",
+  "server_git_sha": "278eee3",
+  "platform_build": "7.0.7996.33",
+  "generated_artifacts": [
+    "ConDemoRebateContract.metadata.xml",
+    "ConDemoRebateController.metadata.xml",
+    "ConDemoRebateService.metadata.xml"
+  ],
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "PASS",
+  "root_cause_hypothesis": "RE-CAPTURE after 10a8fe2 deleted the 2026-08-30 golden. VERIFIED ON THIS SHA: multi-line attribute blocks now survive d365fo_file(action=\"create\", objectType=\"class\") verbatim in CONTENT - all four attributes on parmCustGroup and on parmIncludeBlocked, both on parmCallerRecId, in order, on the right member, read back off disk. RESIDUAL DEFECT FOUND (does not fail any score dimension, filed as evidence): reindentXppSource in src/utils/xppFormat.ts mis-indents the same construct. terminatesStatement() only treats a SINGLE-LINE attribute as terminating (code.startsWith('[') && code.endsWith(']')); for a multi-line block the opening line does not end in ']' and the closing line does not start with '[' and ']' is not in the /[;{}:]$/ set, so `continues` never clears. Every continuation line AND the method signature line that follows the block get one extra indent level - the signature ends up at 8 spaces while its own '{' sits at 4. Single-line attribute blocks are unaffected (negative control). Cosmetic only: xppc 0/0, xppbp 0 errors, and the golden diff is insensitive because normalize.ts runs both sides through the same reindenter. Same construct family as 10a8fe2: that fix restored the attribute CONTENT, the formatter still does not understand the construct.",
+  "suggested_fix_area": "src/utils/xppFormat.ts - terminatesStatement()/reindentXppSource(): track bracket depth across lines (the same way xmlTemplateGenerator.extractInnerClassMethods was fixed in 10a8fe2) so a multi-line [Attr,\n Attr] block terminates at its ']' and its continuation lines align with the opening '[' instead of gaining a continuation level. VM-free repro: reindentXppSource(\"[A('x'),\n B('y')]\npublic void m()\n{\n}\").",
+  "evidence_refs": [
+    "eval/goldens/L3-sysoperation-dialog-attributes/ConDemoRebateContract.metadata.xml",
+    "eval/goldens/L3-sysoperation-dialog-attributes/ConDemoRebateService.metadata.xml",
+    "eval/goldens/L3-sysoperation-dialog-attributes/ConDemoRebateController.metadata.xml",
+    "eval/corpus/runs/2026-08-30T14__L3-sysoperation-dialog-attributes__f01dfa7.json",
+    "commit 10a8fe2 (deleted the corrupted golden this run replaces)",
+    "src/utils/xppFormat.ts:146-151 terminatesStatement",
+    "src/tools/xml/xmlTemplateGenerator.ts:286-322 (the fixed backward attribute walk)"
+  ]
+}

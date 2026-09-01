@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L3-numberseq-module-slice (3 of 6): NumberSeqApplicationModule subclass: loadModule() registers the datatype via NumberSeqDatatype::construct()+parm*()+this.create(), numberSeqModule() returns the new enum value. Captured 2026-08-31, SHA 278eee3. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNumberSeqModuleSlice</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Number sequence module that registers the data types of the demo slice.
+/// </summary>
+public class ConDemoNumberSeqModuleSlice extends NumberSeqApplicationModule
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>loadModule</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Configures all the data types that are in use by the module.
+    /// </summary>
+    protected void loadModule()
+    {
+        NumberSeqDatatype datatype = NumberSeqDatatype::construct();
+
+        datatype.parmDatatypeId(extendedTypeNum(ConDemoSliceId));
+        datatype.parmReferenceHelp(literalStr("@SYS319207"));
+        datatype.parmWizardIsContinuous(false);
+        datatype.parmWizardIsManual(NoYes::No);
+        datatype.parmWizardIsChangeDownAllowed(NoYes::Yes);
+        datatype.parmWizardIsChangeUpAllowed(NoYes::Yes);
+        datatype.parmSortField(1);
+
+        datatype.addParameterType(NumberSeqParameterType::DataArea, true, false);
+        this.create(datatype);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>numberSeqModule</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Retrieves the ID of the application-specific module for this class.
+    /// </summary>
+    /// <returns>The module-specific ID.</returns>
+    public NumberSeqModule numberSeqModule()
+    {
+        return NumberSeqModule::DemoSlice;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

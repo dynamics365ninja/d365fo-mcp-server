@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoNumberSeqModuleRent</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The <c>ConDemoNumberSeqModuleRent</c> class registers the number sequence data types
+/// that the rental agreement module uses.
+/// </summary>
+public class ConDemoNumberSeqModuleRent extends NumberSeqApplicationModule
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>loadModule</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Configures all the data types that are used by the rental agreement module.
+    /// </summary>
+    protected void loadModule()
+    {
+        NumberSeqDatatype datatype = NumberSeqDatatype::construct();
+
+        datatype.parmDatatypeId(extendedTypeNum(ConDemoRentAgreementId));
+        datatype.parmReferenceHelp(literalstr("@ConDemo:RentAgreementIdRefHelp"));
+        datatype.parmWizardIsContinuous(false);
+        datatype.parmWizardIsManual(NoYes::No);
+        datatype.parmWizardIsChangeDownAllowed(NoYes::No);
+        datatype.parmWizardIsChangeUpAllowed(NoYes::No);
+        datatype.parmSortField(1);
+
+        datatype.addParameterType(NumberSeqParameterType::DataArea, true, false);
+        this.create(datatype);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>numberSeqModule</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Retrieves the ID of the application-specific module for this class.
+    /// </summary>
+    /// <returns>
+    /// The module-specific ID.
+    /// </returns>
+    public NumberSeqModule numberSeqModule()
+    {
+        return NumberSeqModule::DemoRent;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>buildModulesMapSubsciber</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Appends the current class to the map that links modules to number sequence data type generators.
+    /// </summary>
+    /// <param name = "_numberSeqModuleNamesMap">The map of modules to number sequence generators.</param>
+    [SubscribesTo(classstr(NumberSeqGlobal), delegatestr(NumberSeqGlobal, buildModulesMapDelegate))]
+    static void buildModulesMapSubsciber(Map _numberSeqModuleNamesMap)
+    {
+        NumberSeqGlobal::addModuleToMap(classnum(ConDemoNumberSeqModuleRent), _numberSeqModuleNamesMap);
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

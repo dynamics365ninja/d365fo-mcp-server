@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L3-numberseq-module-slice (4 of 6): the registration hook: [SubscribesTo(NumberSeqGlobal, buildModulesMapDelegate)] + NumberSeqGlobal::addModuleToMap(classNum(module)) — the shipped mechanism (see NumberSeqModuleAsset.buildModulesMapSubsciber). Captured 2026-08-31, SHA 278eee3. -->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoSliceNumberSeqHandler</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Registers the demo slice number sequence module with <c>NumberSeqGlobal</c>.
+/// </summary>
+public class ConDemoSliceNumberSeqHandler
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>buildModulesMapSubscriber</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Appends the demo slice module class to the map that links modules to number sequence data type generators.
+    /// </summary>
+    /// <param name = "_numberSeqModuleNamesMap">The map that links modules to their number sequence module classes.</param>
+    [SubscribesTo(classStr(NumberSeqGlobal), delegateStr(NumberSeqGlobal, buildModulesMapDelegate))]
+    public static void buildModulesMapSubscriber(Map _numberSeqModuleNamesMap)
+    {
+        NumberSeqGlobal::addModuleToMap(classNum(ConDemoNumberSeqModuleSlice), _numberSeqModuleNamesMap);
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

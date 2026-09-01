@@ -1,0 +1,91 @@
+{
+  "run_id": "2026-08-31T22__L3-enum-field-form-downgrade-guard__278eee3",
+  "case_id": "L3-enum-field-form-downgrade-guard",
+  "tier": 3,
+  "timestamp": "2026-08-31T22:01:17.538Z",
+  "server_git_sha": "278eee3",
+  "generated_artifacts": [
+    "ConDemoServiceTier.metadata.xml",
+    "ConDemoTaxChangeLog.metadata.xml",
+    "ConDemoTaxChangeLogDetails.AxMenuItemDisplay.metadata.xml",
+    "ConDemoTaxChangeLogDetails.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {
+        "object": "ConDemoTaxChangeLog",
+        "moniker": "BPErrorTablePrimaryKeyEditable",
+        "severity": "Warning",
+        "path": "dynamics://Table/ConDemoTaxChangeLog/TableIndex/ChangeLogIdx/TableIndexField/ChangeLogId"
+      },
+      {
+        "object": "ConDemoTaxChangeLog",
+        "moniker": "BPErrorLabelNotDefined",
+        "severity": "Warning",
+        "path": "dynamics://Table/ConDemoTaxChangeLog/TableFieldGroup/Overview"
+      },
+      {
+        "object": "ConDemoTaxChangeLog",
+        "moniker": "BPErrorDeveloperDocumentationNotDefined",
+        "severity": "Warning",
+        "path": "dynamics://Table/ConDemoTaxChangeLog"
+      },
+      {
+        "object": "ConDemoTaxChangeLogDetails",
+        "moniker": "BPErrorLabelIsText",
+        "severity": "Warning",
+        "path": "dynamics://Form/ConDemoTaxChangeLogDetails/FormDesign/FormDesign/FormTabControl/Tab/FormTabPageControl/TabPageGeneral",
+        "note": "scaffold wrote Caption=General as raw text"
+      },
+      {
+        "object": "ConDemoTaxChangeLogDetails",
+        "moniker": "BPErrorMenuItemNotCoveredByPrivilege",
+        "severity": "Warning",
+        "path": "dynamics://MenuItemDisplay/ConDemoTaxChangeLogDetails"
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": true,
+    "passed": true,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": 1,
+    "tier_weight": 3
+  },
+  "classification": "TOOL_DEFECT",
+  "platform_build": "7.0.7996.33",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "d365fo_file(action=\"create\", objectType=\"enum\") DROPS explicit positional <Value> elements (documented as \"plain 0,1,2 numbering states nothing the order does not, so the numbers are dropped\"). That premise is false for AxEnum XML: an <AxEnumValue> WITHOUT a <Value> child is 0, not \"the next ordinal\". The enum was written with None/Silver/Gold/Platinum ALL equal to 0. It compiled with 0 errors, was xppbp-clean, and the golden shape looked right - only the SysTest caught it (testDowngradeIsRejected: expected False, actual True; probe class read enum2int(cur)=0, enum2int(orig())=0 for a Gold row). Repairing it needed a second, undocumented step: d365fo_file(modify, operation=\"modify-enum-value\", enumValueInt=n), which DOES write <Value> - and which then also dropped <UseEnumValue>No</UseEnumValue> that create had written. Shipped enums (e.g. Foundation/CustVendDisputeStatus) carry BOTH <UseEnumValue>No</UseEnumValue> AND explicit <Value> on every member after the first, and are IsExtensible=true at the same time - contradicting the op-spec claim that xppc requires no <Value> on an extensible enum. SECOND, independent defect: modify-property on a table accepted propertyPath=\"FormRef\" with a FORM name and wrote it verbatim; FormRef resolves to a MENU ITEM DISPLAY, so the next build failed with \"Menu item display ConDemoTaxChangeLogDetails does not exist\". THIRD: get_object_info(objectType=\"form\") did not list the two child controls of the DataGroup-bound Overview group that the scaffold had written (reported Controls: 14, XML had 16) - the case instruction tells the agent to read the group back with exactly that call. FOURTH: the SimpleListDetails scaffold writes <Caption>General</Caption> as raw text on TabPageGeneral, which is BPErrorLabelIsText.",
+  "suggested_fix_area": "tools/fileOperations enum create (stop dropping <Value>; write it for every member after index 0, keep <UseEnumValue> stable across create/modify); table modify-property (validate FormRef against menu-item-display, not form); tools/objectInfo form reader (children of a DataGroup-bound group); generateObject form scaffold (TabPage Caption must be a label id); op-spec text for enum create + add-field-group label.",
+  "evidence_refs": [
+    "eval/goldens/L3-enum-field-form-downgrade-guard/ConDemoServiceTier.metadata.xml",
+    "eval/goldens/L3-enum-field-form-downgrade-guard/ConDemoTaxChangeLog.metadata.xml",
+    "eval/goldens/L3-enum-field-form-downgrade-guard/ConDemoTaxChangeLogDetails.metadata.xml",
+    "eval/goldens/L3-enum-field-form-downgrade-guard/ConDemoTaxChangeLogDetails.AxMenuItemDisplay.metadata.xml",
+    "eval/systests/L3-enum-field-form-downgrade-guard.xml",
+    "K:/AosService/PackagesLocalDirectory/ApplicationSuite/Foundation/AxEnum/CustVendDisputeStatus.xml"
+  ]
+}

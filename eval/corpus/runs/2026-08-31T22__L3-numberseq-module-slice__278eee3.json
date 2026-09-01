@@ -1,0 +1,58 @@
+{
+  "run_id": "2026-08-31T22__L3-numberseq-module-slice__278eee3",
+  "case_id": "L3-numberseq-module-slice",
+  "tier": 3,
+  "timestamp": "2026-08-31T22:20:36.364Z",
+  "server_git_sha": "278eee3",
+  "generated_artifacts": [
+    "ConDemoNumberSeqModuleSlice.metadata.xml",
+    "ConDemoSliceId.metadata.xml",
+    "ConDemoSliceNumberSeqHandler.metadata.xml",
+    "ConDemoSliceParameters.metadata.xml",
+    "ConDemoSliceParametersForm.metadata.xml",
+    "NumberSeqModule.ConDemoExtension.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 3
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "(1) TOOL_DEFECT — d365fo_file(modify, operation=\"modify-field\") drops allowEdit: src/tools/write/modifyD365File.ts:2084-2100 maps only fieldLabel/fieldHelpText/fieldMandatory/fieldType/fieldEnumType/fieldStringSize onto the bridge props, while the C# bridge already supports it (SupportedTableFieldProperties = { label, helpText, mandatory, allowEdit, extendedDataType, stringSize, enumType }, MetadataWriteService.cs:4164-4183). add-field/create(table) have no allowEdit either. Consequence measured here: the singleton parameters table cannot get AllowEdit=No on its Key field through any grounded path, so xppbp raises BPErrorTablePrimaryKeyEditable (shipped AssetParameters.Key carries AllowEdit=No + AllowEditOnCreate=No + Visible=No). | (2) TOOL_DEFECT — the TableOfContents form scaffold writes raw-text tab captions and leaves the TabPage Caption unset: 4 of the 5 BP warnings on this case output (BPErrorLabelIsText x2 for Caption \"General\"/\"Setup\", BPErrorCaptionNotDefined x2 on TabPageGeneral/TabPageSetup). Same generator shape is already frozen in the committed L1-form-tableofcontents golden, so this recurs on every TOC capture. Recurrence of the already-recorded raw-text-caption class, now with xppbp evidence. | (3) VALIDATOR_GAP (oracle) — prefix canonicalisation in the multi-artifact resolver does not handle DOT-NOTATION extension filenames. Measured: golden NumberSeqModule.ConDemoExtension.metadata.xml vs byte-identical actual NumberSeqModule.ConExtension.xml scores 3 missing / golden_match 0 (golden canonicalises to NumberSeqModule.PFXDemoExtension, actual to NumberSeqModule.PFXExtension). Same subsystem makes the COMMITTED L2-numberseq-basic golden filename NumberSeqModuleExt.AxEnumExtension.metadata.xml unresolvable against the real AOT file NumberSeqModule.ConExtension.xml: re-running that case reports a phantom 3-missing mismatch. src/eval/oracle/actualArtifactResolution.ts + artifactKey.ts. | (4) KNOWLEDGE_GAP (low) — get_knowledge(topic=\"number-sequences\") states \"override loadModule() and call super() at the top\". No shipped NumberSeqApplicationModule subclass does (NumberSeqModuleAsset, NumberSeqModuleCustomer, ContactPerson handler), and the base loadModule() body is empty. Harmless at compile time, but it is asserted as a rule. | NOT a defect (probed, negative result): d365fo_file(create, objectType=\"enum-extension\") PRESERVES explicit <Value> elements — probe WHSWorkExecuteMode.ConDemoExtension with value 4100/4200 read back off disk with both <Value> nodes intact. The case own enum extension deliberately carries NO <Value>, which matches shipped NEW-value extensions (FleetManagement/CostAccounting/AssetLeasing); only legacy AX2012-migrated ones (ApplicationSuiteExtension/Retail/Ledger) pin numbers.",
+  "suggested_fix_area": "src/tools/write/modifyD365File.ts (modify-field: forward fieldAllowEdit -> bridge allowEdit; add-field/create-table field spec) ; src/utils/formPatternTemplates.ts (TableOfContents sub-pattern tab captions) ; src/eval/oracle/artifactKey.ts + actualArtifactResolution.ts (dot-notation extension prefix canonicalisation) ; src/tools/knowledge/xppKnowledge.ts (number-sequences: drop the super() rule)",
+  "evidence_refs": [
+    "eval/goldens/L3-numberseq-module-slice/ (6 artifacts, build-gated capture)",
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxTable/ConDemoSliceParameters.xml",
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxForm/ConDemoSliceParametersForm.xml",
+    "K:/AosService/PackagesLocalDirectory/ApplicationSuite/Foundation/AxTable/AssetParameters.xml (AllowEdit=No on Key)",
+    "K:/AosService/PackagesLocalDirectory/ApplicationSuite/Foundation/AxClass/NumberSeqModuleAsset.xml (buildModulesMapSubsciber)",
+    "bridge/D365MetadataBridge/Services/MetadataWriteService.cs:4164-4183 (allowEdit supported by the bridge)",
+    "src/tools/write/modifyD365File.ts:2084-2100 (allowEdit not forwarded)"
+  ],
+  "notes": "xppc: 0 errors, 0 warnings (fullBuild). xppbp: 11 warnings total, 6 of which belong to the ConDemoNoteHeader FIXTURE (pre-existing, not this case output); the 5 counted here are this case own objects. No dbSync run — no SQL tables created."
+}

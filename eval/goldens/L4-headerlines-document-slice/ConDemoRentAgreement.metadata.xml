@@ -1,0 +1,735 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>ConDemoRentAgreement</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+[Form]
+public class ConDemoRentAgreement extends FormRun
+{
+}
+
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources xmlns="" />
+		<DataControls xmlns="" />
+		<Members xmlns="" />
+	</SourceCode>
+	<DataSources>
+		<AxFormDataSource xmlns="">
+			<Name>ConDemoRentHeader</Name>
+			<Table>ConDemoRentHeader</Table>
+			<Fields>
+				<AxFormDataSourceField>
+					<DataField>CustAccount</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>FromDate</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>RentAgreementId</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>Status</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>ToDate</DataField>
+				</AxFormDataSourceField>
+			</Fields>
+			<ReferencedDataSources />
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+		<AxFormDataSource xmlns="">
+			<Name>ConDemoRentLine</Name>
+			<Table>ConDemoRentLine</Table>
+			<Fields>
+				<AxFormDataSourceField>
+					<DataField>ItemName</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>LineAmount</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>LineNum</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>Qty</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>RentAgreementId</DataField>
+				</AxFormDataSourceField>
+			</Fields>
+			<ReferencedDataSources />
+			<JoinSource>ConDemoRentHeader</JoinSource>
+			<LinkType>Delayed</LinkType>
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+	</DataSources>
+	<Design>
+		<Caption xmlns="">@ConDemo:RentAgreement</Caption>
+		<DataSource xmlns="">ConDemoRentHeader</DataSource>
+		<Pattern xmlns="">DetailsTransaction</Pattern>
+		<PatternVersion xmlns="">1.4</PatternVersion>
+		<Style xmlns="">DetailsFormTransaction</Style>
+		<TitleDataSource xmlns="">ConDemoRentHeader</TitleDataSource>
+		<Controls xmlns="">
+			<AxFormControl xmlns=""
+					i:type="AxFormActionPaneControl">
+				<Name>ActionPane</Name>
+				<ElementPosition>134217727</ElementPosition>
+				<FilterExpression>%1</FilterExpression>
+				<Type>ActionPane</Type>
+				<VerticalSpacing>-1</VerticalSpacing>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+							i:type="AxFormButtonGroupControl">
+						<Name>ButtonGroup</Name>
+						<Type>ButtonGroup</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls />
+						<ArrangeMethod>Vertical</ArrangeMethod>
+					</AxFormControl>
+				</Controls>
+				<AlignChild>No</AlignChild>
+				<AlignChildren>No</AlignChildren>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+					i:type="AxFormGroupControl">
+				<Name>NavigationList</Name>
+				<HeightMode>SizeToAvailable</HeightMode>
+				<Type>Group</Type>
+				<Visible>No</Visible>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl>
+						<Name>NavigationListFilter</Name>
+						<WidthMode>SizeToAvailable</WidthMode>
+						<FormControlExtension>
+							<Name>QuickFilterControl</Name>
+							<ExtensionComponents />
+							<ExtensionProperties>
+								<AxFormControlExtensionProperty>
+									<Name>targetControlName</Name>
+									<Type>String</Type>
+									<Value>NavigationListGrid</Value>
+								</AxFormControlExtensionProperty>
+							</ExtensionProperties>
+						</FormControlExtension>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+							i:type="AxFormGridControl">
+						<Name>NavigationListGrid</Name>
+						<AllowEdit>No</AllowEdit>
+						<Type>Grid</Type>
+						<WidthMode>SizeToContent</WidthMode>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+									i:type="AxFormStringControl">
+								<Name>Nav_CustAccount</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>CustAccount</DataField>
+								<DataSource>ConDemoRentHeader</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+									i:type="AxFormDateControl">
+								<Name>Nav_FromDate</Name>
+								<Type>Date</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>FromDate</DataField>
+								<DataSource>ConDemoRentHeader</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+									i:type="AxFormStringControl">
+								<Name>Nav_RentAgreementId</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>RentAgreementId</DataField>
+								<DataSource>ConDemoRentHeader</DataSource>
+							</AxFormControl>
+						</Controls>
+						<DataSource>ConDemoRentHeader</DataSource>
+						<MultiSelect>No</MultiSelect>
+						<ShowRowLabels>No</ShowRowLabels>
+						<Style>List</Style>
+					</AxFormControl>
+				</Controls>
+				<FrameType>None</FrameType>
+				<Style>SidePanel</Style>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+					i:type="AxFormTabControl">
+				<Name>MainTab</Name>
+				<AlignControl>No</AlignControl>
+				<Type>Tab</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+							i:type="AxFormTabPageControl">
+						<Name>TabPageDetails</Name>
+						<AutoDeclaration>Yes</AutoDeclaration>
+						<HeightMode>SizeToAvailable</HeightMode>
+						<Type>TabPage</Type>
+						<WidthMode>SizeToAvailable</WidthMode>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+									i:type="AxFormGroupControl">
+								<Name>HeaderInfo</Name>
+								<Type>Group</Type>
+								<WidthMode>SizeToAvailable</WidthMode>
+								<FormControlExtension
+									i:nil="true" />
+								<Controls>
+									<AxFormControl xmlns=""
+											i:type="AxFormStringControl">
+										<Name>HeaderTitle</Name>
+										<Skip>Yes</Skip>
+										<Type>String</Type>
+										<WidthMode>SizeToAvailable</WidthMode>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>CustAccount</DataField>
+										<DataSource>ConDemoRentHeader</DataSource>
+										<ShowLabel>No</ShowLabel>
+										<Style>TitleField</Style>
+									</AxFormControl>
+								</Controls>
+								<ArrangeMethod>HorizontalLeft</ArrangeMethod>
+								<FrameType>None</FrameType>
+								<Style>DetailTitleContainer</Style>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+									i:type="AxFormTabControl">
+								<Name>DetailsTab</Name>
+								<Type>Tab</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<Controls>
+									<AxFormControl xmlns=""
+											i:type="AxFormTabPageControl">
+										<Name>LineView</Name>
+										<AutoDeclaration>Yes</AutoDeclaration>
+										<HeightMode>SizeToAvailable</HeightMode>
+										<Type>TabPage</Type>
+										<WidthMode>SizeToAvailable</WidthMode>
+										<FormControlExtension
+											i:nil="true" />
+										<Controls>
+											<AxFormControl xmlns=""
+													i:type="AxFormTabControl">
+												<Name>LineViewTab</Name>
+												<AutoDeclaration>Yes</AutoDeclaration>
+												<Type>Tab</Type>
+												<FormControlExtension
+													i:nil="true" />
+												<Controls>
+													<AxFormControl xmlns=""
+															i:type="AxFormTabPageControl">
+														<Name>LineViewHeader</Name>
+														<Pattern>FieldsFieldGroups</Pattern>
+														<PatternVersion>1.1</PatternVersion>
+														<Type>TabPage</Type>
+														<FormControlExtension
+															i:nil="true" />
+														<Controls>
+															<AxFormControl xmlns=""
+																	i:type="AxFormGroupControl">
+																<Name>HeaderGeneralGroup</Name>
+																<Type>Group</Type>
+																<FormControlExtension
+																	i:nil="true" />
+																<Controls>
+									<AxFormControl xmlns=""
+											i:type="AxFormStringControl">
+										<Name>Header_CustAccount</Name>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>CustAccount</DataField>
+										<DataSource>ConDemoRentHeader</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+											i:type="AxFormDateControl">
+										<Name>Header_FromDate</Name>
+										<Type>Date</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>FromDate</DataField>
+										<DataSource>ConDemoRentHeader</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+											i:type="AxFormStringControl">
+										<Name>Header_RentAgreementId</Name>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>RentAgreementId</DataField>
+										<DataSource>ConDemoRentHeader</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+											i:type="AxFormComboBoxControl">
+										<Name>Header_Status</Name>
+										<Type>ComboBox</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>Status</DataField>
+										<DataSource>ConDemoRentHeader</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+											i:type="AxFormDateControl">
+										<Name>Header_ToDate</Name>
+										<Type>Date</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>ToDate</DataField>
+										<DataSource>ConDemoRentHeader</DataSource>
+									</AxFormControl>
+																</Controls>
+															</AxFormControl>
+														</Controls>
+														<ColumnsMode>Fill</ColumnsMode>
+														<Caption>Header</Caption>
+														<FastTabExpanded>No</FastTabExpanded>
+													</AxFormControl>
+													<AxFormControl xmlns=""
+															i:type="AxFormTabPageControl">
+														<Name>LineViewLines</Name>
+														<HeightMode>SizeToAvailable</HeightMode>
+														<Type>TabPage</Type>
+														<FormControlExtension
+															i:nil="true" />
+														<Controls>
+															<AxFormControl xmlns=""
+																	i:type="AxFormActionPaneControl">
+																<Name>LinesActionPaneStrip</Name>
+																<Type>ActionPane</Type>
+																<FormControlExtension
+																	i:nil="true" />
+																<Controls>
+																	<AxFormControl xmlns=""
+																			i:type="AxFormActionPaneTabControl">
+																		<Name>LinesActionTab</Name>
+																		<Type>ActionPaneTab</Type>
+																		<FormControlExtension
+																			i:nil="true" />
+																		<Controls>
+																			<AxFormControl xmlns=""
+																					i:type="AxFormButtonGroupControl">
+																				<Name>LinesStripButtonGroup</Name>
+																				<Type>ButtonGroup</Type>
+																				<FormControlExtension
+																					i:nil="true" />
+																				<Controls />
+																			</AxFormControl>
+																		</Controls>
+																	</AxFormControl>
+																</Controls>
+																<AlignChild>No</AlignChild>
+																<AlignChildren>No</AlignChildren>
+																<ArrangeMethod>Vertical</ArrangeMethod>
+																<DataSource>ConDemoRentLine</DataSource>
+																<Style>Strip</Style>
+															</AxFormControl>
+															<AxFormControl xmlns=""
+																	i:type="AxFormGridControl">
+																<Name>LinesGrid</Name>
+																<Type>Grid</Type>
+																<FormControlExtension
+																	i:nil="true" />
+																<Controls>
+									<AxFormControl xmlns=""
+											i:type="AxFormStringControl">
+										<Name>Line_ItemName</Name>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>ItemName</DataField>
+										<DataSource>ConDemoRentLine</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+											i:type="AxFormRealControl">
+										<Name>Line_LineAmount</Name>
+										<Type>Real</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>LineAmount</DataField>
+										<DataSource>ConDemoRentLine</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+											i:type="AxFormRealControl">
+										<Name>Line_LineNum</Name>
+										<Type>Real</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>LineNum</DataField>
+										<DataSource>ConDemoRentLine</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+											i:type="AxFormRealControl">
+										<Name>Line_Qty</Name>
+										<Type>Real</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>Qty</DataField>
+										<DataSource>ConDemoRentLine</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+											i:type="AxFormStringControl">
+										<Name>Line_RentAgreementId</Name>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>RentAgreementId</DataField>
+										<DataSource>ConDemoRentLine</DataSource>
+									</AxFormControl>
+																</Controls>
+																<DataSource>ConDemoRentLine</DataSource>
+																<Style>Tabular</Style>
+																<VisibleRows>5</VisibleRows>
+																<VisibleRowsMode>Fixed</VisibleRowsMode>
+															</AxFormControl>
+														</Controls>
+														<Caption>Lines</Caption>
+														<FastTabExpanded>Always</FastTabExpanded>
+													</AxFormControl>
+													<AxFormControl xmlns=""
+															i:type="AxFormTabPageControl">
+														<Name>LineViewLineDetails</Name>
+														<HeightMode>SizeToAvailable</HeightMode>
+														<Type>TabPage</Type>
+														<WidthMode>SizeToAvailable</WidthMode>
+														<FormControlExtension
+															i:nil="true" />
+														<Controls>
+															<AxFormControl xmlns=""
+																	i:type="AxFormTabControl">
+																<Name>LineDetailsTab</Name>
+																<AutoDeclaration>Yes</AutoDeclaration>
+																<Type>Tab</Type>
+																<FormControlExtension
+																	i:nil="true" />
+																<Controls>
+																	<AxFormControl xmlns=""
+																			i:type="AxFormTabPageControl">
+																		<Name>TabLineGeneral</Name>
+																		<Pattern>FieldsFieldGroups</Pattern>
+																		<PatternVersion>1.1</PatternVersion>
+																		<Type>TabPage</Type>
+																		<FormControlExtension
+																			i:nil="true" />
+																		<Controls>
+																			<AxFormControl xmlns=""
+																					i:type="AxFormGroupControl">
+																				<Name>LineDetailsGroup</Name>
+																				<Type>Group</Type>
+																				<FormControlExtension
+																					i:nil="true" />
+																				<Controls>
+										<AxFormControl xmlns=""
+												i:type="AxFormStringControl">
+											<Name>LineDtl_ItemName</Name>
+											<Type>String</Type>
+											<FormControlExtension
+												i:nil="true" />
+											<DataField>ItemName</DataField>
+											<DataSource>ConDemoRentLine</DataSource>
+										</AxFormControl>
+										<AxFormControl xmlns=""
+												i:type="AxFormRealControl">
+											<Name>LineDtl_LineAmount</Name>
+											<Type>Real</Type>
+											<FormControlExtension
+												i:nil="true" />
+											<DataField>LineAmount</DataField>
+											<DataSource>ConDemoRentLine</DataSource>
+										</AxFormControl>
+										<AxFormControl xmlns=""
+												i:type="AxFormRealControl">
+											<Name>LineDtl_LineNum</Name>
+											<Type>Real</Type>
+											<FormControlExtension
+												i:nil="true" />
+											<DataField>LineNum</DataField>
+											<DataSource>ConDemoRentLine</DataSource>
+										</AxFormControl>
+										<AxFormControl xmlns=""
+												i:type="AxFormRealControl">
+											<Name>LineDtl_Qty</Name>
+											<Type>Real</Type>
+											<FormControlExtension
+												i:nil="true" />
+											<DataField>Qty</DataField>
+											<DataSource>ConDemoRentLine</DataSource>
+										</AxFormControl>
+										<AxFormControl xmlns=""
+												i:type="AxFormStringControl">
+											<Name>LineDtl_RentAgreementId</Name>
+											<Type>String</Type>
+											<FormControlExtension
+												i:nil="true" />
+											<DataField>RentAgreementId</DataField>
+											<DataSource>ConDemoRentLine</DataSource>
+										</AxFormControl>
+																		</Controls>
+																			</AxFormControl>
+																		</Controls>
+																		<ColumnsMode>Fill</ColumnsMode>
+																		<Caption>General</Caption>
+																	</AxFormControl>
+																</Controls>
+																<AlignChild>No</AlignChild>
+																<Style>Tabs</Style>
+															</AxFormControl>
+														</Controls>
+														<Caption>Line details</Caption>
+														<DataSource>ConDemoRentLine</DataSource>
+														<FastTabExpanded>No</FastTabExpanded>
+													</AxFormControl>
+												</Controls>
+												<AlignChild>No</AlignChild>
+												<Style>FastTabs</Style>
+											</AxFormControl>
+										</Controls>
+										<PanelStyle>DetailsLine</PanelStyle>
+										<Style>DetailsFormDetails</Style>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+											i:type="AxFormTabPageControl">
+										<Name>HeaderView</Name>
+										<HeightMode>SizeToAvailable</HeightMode>
+										<Type>TabPage</Type>
+										<WidthMode>SizeToAvailable</WidthMode>
+										<FormControlExtension
+											i:nil="true" />
+										<Controls>
+											<AxFormControl xmlns=""
+													i:type="AxFormTabControl">
+												<Name>HeaderDetailsTab</Name>
+												<AutoDeclaration>Yes</AutoDeclaration>
+												<Type>Tab</Type>
+												<FormControlExtension
+													i:nil="true" />
+												<Controls>
+													<AxFormControl xmlns=""
+															i:type="AxFormTabPageControl">
+														<Name>TabHeaderGeneral</Name>
+														<Pattern>FieldsFieldGroups</Pattern>
+														<PatternVersion>1.1</PatternVersion>
+														<Type>TabPage</Type>
+														<FormControlExtension
+															i:nil="true" />
+														<Controls>
+															<AxFormControl xmlns=""
+																	i:type="AxFormGroupControl">
+																<Name>HeaderViewGroup</Name>
+																<Type>Group</Type>
+																<FormControlExtension
+																	i:nil="true" />
+																<Controls>
+										<AxFormControl xmlns=""
+												i:type="AxFormStringControl">
+											<Name>HView_CustAccount</Name>
+											<Type>String</Type>
+											<FormControlExtension
+												i:nil="true" />
+											<DataField>CustAccount</DataField>
+											<DataSource>ConDemoRentHeader</DataSource>
+										</AxFormControl>
+										<AxFormControl xmlns=""
+												i:type="AxFormDateControl">
+											<Name>HView_FromDate</Name>
+											<Type>Date</Type>
+											<FormControlExtension
+												i:nil="true" />
+											<DataField>FromDate</DataField>
+											<DataSource>ConDemoRentHeader</DataSource>
+										</AxFormControl>
+										<AxFormControl xmlns=""
+												i:type="AxFormStringControl">
+											<Name>HView_RentAgreementId</Name>
+											<Type>String</Type>
+											<FormControlExtension
+												i:nil="true" />
+											<DataField>RentAgreementId</DataField>
+											<DataSource>ConDemoRentHeader</DataSource>
+										</AxFormControl>
+										<AxFormControl xmlns=""
+												i:type="AxFormComboBoxControl">
+											<Name>HView_Status</Name>
+											<Type>ComboBox</Type>
+											<FormControlExtension
+												i:nil="true" />
+											<DataField>Status</DataField>
+											<DataSource>ConDemoRentHeader</DataSource>
+										</AxFormControl>
+										<AxFormControl xmlns=""
+												i:type="AxFormDateControl">
+											<Name>HView_ToDate</Name>
+											<Type>Date</Type>
+											<FormControlExtension
+												i:nil="true" />
+											<DataField>ToDate</DataField>
+											<DataSource>ConDemoRentHeader</DataSource>
+										</AxFormControl>
+																</Controls>
+															</AxFormControl>
+														</Controls>
+														<ColumnsMode>Fill</ColumnsMode>
+														<Caption>General</Caption>
+													</AxFormControl>
+												</Controls>
+												<AlignChild>No</AlignChild>
+												<Style>FastTabs</Style>
+											</AxFormControl>
+										</Controls>
+										<PanelStyle>DetailsHeader</PanelStyle>
+										<Style>DetailsFormDetails</Style>
+									</AxFormControl>
+								</Controls>
+								<AlignChild>No</AlignChild>
+								<ShowTabs>No</ShowTabs>
+							</AxFormControl>
+						</Controls>
+						<PanelStyle>Details</PanelStyle>
+						<Style>DetailsFormDetails</Style>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+							i:type="AxFormTabPageControl">
+						<Name>TabPageGrid</Name>
+						<Type>TabPage</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+									i:type="AxFormGroupControl">
+								<Name>GridFilterGroup</Name>
+								<Pattern>CustomAndQuickFilters</Pattern>
+								<PatternVersion>1.1</PatternVersion>
+								<Type>Group</Type>
+								<WidthMode>SizeToAvailable</WidthMode>
+								<FormControlExtension
+									i:nil="true" />
+								<Controls>
+									<AxFormControl>
+										<Name>GridQuickFilter</Name>
+										<WidthMode>SizeToAvailable</WidthMode>
+										<FormControlExtension>
+											<Name>QuickFilterControl</Name>
+											<ExtensionComponents />
+											<ExtensionProperties>
+												<AxFormControlExtensionProperty>
+													<Name>targetControlName</Name>
+													<Type>String</Type>
+													<Value>OverviewGrid</Value>
+												</AxFormControlExtensionProperty>
+											</ExtensionProperties>
+										</FormControlExtension>
+									</AxFormControl>
+								</Controls>
+								<ArrangeMethod>HorizontalLeft</ArrangeMethod>
+								<FrameType>None</FrameType>
+								<Style>CustomFilter</Style>
+								<ViewEditMode>Edit</ViewEditMode>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+									i:type="AxFormGridControl">
+								<Name>OverviewGrid</Name>
+								<AllowEdit>Yes</AllowEdit>
+								<Type>Grid</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<Controls>
+								<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+									<Name>GridPanel_CustAccount</Name>
+									<Type>String</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>CustAccount</DataField>
+									<DataSource>ConDemoRentHeader</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+										i:type="AxFormDateControl">
+									<Name>GridPanel_FromDate</Name>
+									<Type>Date</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>FromDate</DataField>
+									<DataSource>ConDemoRentHeader</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+									<Name>GridPanel_RentAgreementId</Name>
+									<Type>String</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>RentAgreementId</DataField>
+									<DataSource>ConDemoRentHeader</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+										i:type="AxFormComboBoxControl">
+									<Name>GridPanel_Status</Name>
+									<Type>ComboBox</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>Status</DataField>
+									<DataSource>ConDemoRentHeader</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+										i:type="AxFormDateControl">
+									<Name>GridPanel_ToDate</Name>
+									<Type>Date</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>ToDate</DataField>
+									<DataSource>ConDemoRentHeader</DataSource>
+								</AxFormControl>
+								</Controls>
+								<DataSource>ConDemoRentHeader</DataSource>
+								<DefaultAction>OverviewGridDefaultAction</DefaultAction>
+								<MultiSelect>No</MultiSelect>
+								<ShowRowLabels>No</ShowRowLabels>
+								<Style>Tabular</Style>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+									i:type="AxFormCommandButtonControl">
+								<Name>OverviewGridDefaultAction</Name>
+								<Type>CommandButton</Type>
+								<Visible>No</Visible>
+								<FormControlExtension
+									i:nil="true" />
+								<Command>DetailsView</Command>
+							</AxFormControl>
+						</Controls>
+						<PanelStyle>Grid</PanelStyle>
+						<Style>DetailsFormGrid</Style>
+					</AxFormControl>
+				</Controls>
+				<AlignChild>No</AlignChild>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+				<ShowTabs>No</ShowTabs>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

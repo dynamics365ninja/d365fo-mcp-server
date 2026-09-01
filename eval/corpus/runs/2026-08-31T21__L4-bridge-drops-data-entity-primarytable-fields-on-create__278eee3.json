@@ -1,0 +1,102 @@
+{
+  "run_id": "2026-08-31T21__L4-bridge-drops-data-entity-primarytable-fields-on-create__278eee3",
+  "case_id": "L4-bridge-drops-data-entity-primarytable-fields-on-create",
+  "tier": 4,
+  "timestamp": "2026-08-31T21:07:12.508Z",
+  "server_git_sha": "278eee3",
+  "generated_artifacts": [
+    "AxDataEntityView/ConDemoNoteHeaderProbeEntity"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {
+        "rule": "DataEntitySecurityPrivilegeCheck",
+        "severity": "Error",
+        "object": "AxDataEntityView/ConDemoNoteHeaderProbeEntity",
+        "message": "The data entity 'ConDemoNoteHeaderProbeEntity' is not assigned to a security privilege.",
+        "fixHint": "EXPECTED, out of case scope: target_artifact_types is [AxDataEntityView] only, so no AxSecurityPrivilege may be written. xppbp raises this Error for EVERY standalone data entity. The entity/privilege/duty/role chain is covered by case L4-entity-security."
+      },
+      {
+        "rule": "BPCheckAlternateKeyAbsent",
+        "severity": "Warning",
+        "object": "AxTable/ConDemoNoteHeader",
+        "message": "Table ConDemoNoteHeader does not have an alternate key",
+        "fixHint": "Pre-existing on the harness FIXTURE table, not on the artifact this case produced; present in the post-rollback baseline build too."
+      },
+      {
+        "rule": "BPErrorTableMissingGroupAutoReport",
+        "severity": "Warning",
+        "object": "AxTable/ConDemoNoteHeader",
+        "fixHint": "Pre-existing fixture warning."
+      },
+      {
+        "rule": "BPErrorLabelNotDefined",
+        "severity": "Warning",
+        "object": "AxTable/ConDemoNoteHeader/TableFieldGroup/Overview",
+        "fixHint": "Pre-existing fixture warning."
+      },
+      {
+        "rule": "BPErrorDeveloperDocumentationNotDefined",
+        "severity": "Warning",
+        "object": "AxTable/ConDemoNoteHeader",
+        "fixHint": "Pre-existing fixture warning."
+      },
+      {
+        "rule": "BPErrorTableNoCaching",
+        "severity": "Warning",
+        "object": "AxTable/ConDemoNoteHeader",
+        "fixHint": "Pre-existing fixture warning."
+      },
+      {
+        "rule": "BPErrorTableMissingFormRef",
+        "severity": "Warning",
+        "object": "AxTable/ConDemoNoteHeader",
+        "fixHint": "Pre-existing fixture warning."
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 4
+  },
+  "classification": "PASS",
+  "platform_build": "7.0.7996.33",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "VERDICT: the mined 2026-06-30 TOOL_DEFECT does NOT reproduce on 278eee3, and neither does the 2026-07-07 follow-up. Classified PASS. Method: ONE d365fo_file(action=create, objectType=data-entity) passing properties.primaryTable=ConDemoNoteHeader and properties.fields=[{NoteId},{Subject}] (plus primaryKeyFields, isPublic, entityCategory=Master, label). The file was then READ BACK OFF DISK from K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxDataEntityView/ConDemoNoteHeaderProbeEntity.xml, because the whole point of the mined defect is that the empty skeleton compiled clean - a green build proves nothing here. Evidence in the produced XML (captured verbatim as the golden): (a) <Fields> carries TWO AxDataEntityViewField / i:type=AxDataEntityViewMappedField entries (NoteId, Subject), each with <DataSource>ConDemoNoteHeader</DataSource> - NOT an empty <Fields /> element; (b) <ViewMetadata><DataSources> carries AxQuerySimpleRootDataSource with Name=ConDemoNoteHeader and Table=ConDemoNoteHeader plus both AxQuerySimpleDataSourceField entries - i.e. the query IS rooted on the passed table, NOT an empty <ViewMetadata /> element; (c) <Keys> carries EntityKey over NoteId, derived from primaryKeyFields - the empty-skeleton branch cannot emit it either. Runtime corroboration beyond metadata: SyncEngine built and installed the SQL view CONDEMONOTEHEADERPROBEENTITY over CONDEMONOTEHEADER. An earlier identical run under the first name logged the literal DDL: CREATE VIEW [DBO].[CONDEMONOTEHEADERENTITY] AS SELECT T1.NOTEID AS NOTEID, T1.SUBJECT AS SUBJECT, T1.RECVERSION, T1.PARTITION, T1.RECID FROM CONDEMONOTEHEADER T1. An entity with no data source cannot produce that SQL. The 2026-07-07 follow-up defect is also fixed: create no longer emits DataManagementEnabled=Yes plus DataManagementStagingTable=(EntityName)Staging for a staging table it never creates. Both elements are ABSENT from the output and dataManagementEnabled is now an explicit opt-in. NEGATIVE CONTROL run in the same session so the PASS is discriminating rather than merely unobserved: the same create with primaryTable and fields OMITTED is REFUSED - \"Data entity ConDemoNegControlEntity: missing primaryTable and fields - nothing was written\" - and no file appears on disk (assertDataEntityIsFunctional). The silent-empty-entity failure mode is now unreachable. Where the fix lives: src/tools/xml/dataEntityXml.ts (buildAxDataEntityXml plus assertDataEntityIsFunctional). The data-entity path is no longer inline in xmlTemplateGenerator.ts (it delegates), and data-entity is deliberately absent from BRIDGE_CREATE_TYPES in src/bridge/bridgeAdapter.ts, so create goes through this TS builder, not the C# bridge. CROSS-CHECK: the captured XML is byte-identical to the independently captured 2026-07-23 golden of case L4-entity-security (eval/goldens/L4-entity-security/ConDemoNoteHeaderEntity.metadata.xml) except for the object name and the two public-name values, which that case passed explicitly - two captures a month apart, on different platform builds, agreeing on the shape. bp_clean=0 is EXPECTED and NOT a defect: xppbp raises DataEntitySecurityPrivilegeCheck at severity Error for ANY data entity not covered by an AxSecurityPrivilege, and this case may write exactly one artifact file. The other 6 BP warnings are all on the harness FIXTURE table and are present in the post-rollback baseline build too. Backing-table choice (deliberate): the committed sandbox fixture ConDemoNoteHeader rather than a standard table, because (i) it lives in the SAME model as the entity so no Descriptor package reference can confound the build, (ii) it is repo-committed and byte-stable (eval/fixtures/ConDemoNoteHeader.metadata.xml, verified unmutated before and after the run) so the golden is reproducible, and (iii) it is fixture-excluded from rollback, keeping this case output to exactly the one AxDataEntityView file it declares. HARNESS FINDING (not a server defect; the guardrail worked): the first capture used the obvious name ConDemoNoteHeaderEntity, which case L4-entity-security already owns as artifact 1 of 5. tests/eval/goldenNameCollision.test.ts caught it, and the artifact was renamed to ConDemoNoteHeaderProbeEntity and re-created, rebuilt and re-captured through the same path. prepare(mode=create) had reported no collision for the clashing name - correctly, since it consults the LIVE sandbox index, which the previous rollback had emptied. That blind spot is exactly what the collision test exists to cover; no change requested. RESIDUAL, low severity, recorded as an observation and not a defect claim: prepare(mode=create, objectType=data-entity) prints the properties contract but omits (i) the label property entirely - a real supported property whose default is the ENTITY NAME as raw text, which trips BPErrorLabelIsText unless the caller passes an at-Ref (this run passed @TaxTransactionInquiry:HeaderNote and stayed clean), and (ii) any warning that a standalone entity always trips DataEntitySecurityPrivilegeCheck. Fact (ii) IS in get_knowledge for data entities, but only inside the data-entity-EXTENSION bullet list, so neither prepare nor the op-spec surfaces it for a plain create.",
+  "suggested_fix_area": "NOTHING TO FIX for the mined defect - recommend the improver close it as CONFIRMED FIXED and cite this record plus the negative control. Optional, low priority (single observation, do not act on one data point): add the label property and a DataEntitySecurityPrivilegeCheck heads-up to the data-entity create contract emitted by the op-spec lookup and by prepare(mode=create) - the op-spec entry for objectType=data-entity and the prepare create-mode write-contract renderer. The underlying rule already exists in src/tools/knowledge/xppKnowledge.ts under data-entities.",
+  "evidence_refs": [
+    "eval/goldens/L4-bridge-drops-data-entity-primarytable-fields-on-create/ConDemoNoteHeaderProbeEntity.metadata.xml (byte-identical capture of the produced file)",
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxDataEntityView/ConDemoNoteHeaderProbeEntity.xml (rolled back after capture)",
+    "eval/fixtures/ConDemoNoteHeader.metadata.xml (backing table; harness fixture, kept through rollback, verified unmutated)",
+    "src/tools/xml/dataEntityXml.ts (buildAxDataEntityXml + assertDataEntityIsFunctional - where both defects were fixed)",
+    "src/bridge/bridgeAdapter.ts BRIDGE_CREATE_TYPES (data-entity absent, so create uses the TS builder, not the C# bridge)",
+    "eval/goldens/L4-entity-security/ConDemoNoteHeaderEntity.metadata.xml (independent 2026-07-23 capture; same shape)",
+    "eval/corpus/runs/2026-07-07T12__L4-bridge-drops-data-entity-primarytable-fields-on-create__cb1b73d.json (prior run)"
+  ]
+}

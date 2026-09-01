@@ -7,7 +7,6 @@
     "AxDataEntityView"
   ],
   "golden_path": "eval/goldens/L4-bridge-drops-data-entity-primarytable-fields-on-create/",
-  "golden_pending": true,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"
