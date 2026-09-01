@@ -32,6 +32,34 @@ _Nothing released yet._
 
 ---
 
+## [1.16.2] — 2026-09-01
+
+### Fixed
+- **The installed server would not start: `ERR_MODULE_NOT_FOUND` on
+  `dist/eval/oracle/systest.js`.** `run_systest_class` reads per-method results
+  out of the XML document SysTestConsole writes, and since the TDD-loop work it
+  imported that parser from the eval oracle — `src/eval/oracle/systest.ts`.
+  But `src/eval/**` is a dev-only tree that package.json keeps out of the
+  published tarball (`"!dist/eval/**"`), so every `npm i -g d365fo-mcp` got a
+  `sysTestRunner.js` importing a file that is not there, and the MCP server died
+  on load with the whole tool surface gone.
+
+  Nothing in the repo could see it: typecheck, lint and the test suite all
+  resolve against `src/`, where the excluded tree is present. It only exists in
+  the tarball.
+
+  The parser moved to `src/tools/sdlc/sysTestXml.ts` — beside the runner that
+  loads it, inside a published tree — and the eval oracle re-exports it, so the
+  dependency now runs eval → tools and never back. The published `files` list is
+  unchanged; the eval tree stays out.
+
+  `tests/packaging/publishedFiles.test.ts` now walks the import closure of every
+  packed `dist/**/*.js` and fails on any specifier that resolves to a file the
+  tarball excludes, so the next tree cut out of the package is covered too, not
+  just this pair.
+
+---
+
 ## [1.16.1] — 2026-09-01
 
 ### Fixed
