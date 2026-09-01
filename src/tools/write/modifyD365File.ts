@@ -38,6 +38,12 @@ import {
   bridgeRefreshProvider,
 } from '../../bridge/index.js';
 import * as debouncedRefresh from '../../bridge/debouncedRefresh.js';
+import {
+  claimedMarkerFor,
+  preserveDroppedProperties,
+  renderClaimCheck,
+  renderPreservationNote,
+} from './preserveMetadataElements.js';
 import { ProjectFileFinder, registerFileInActiveProject } from '../../workspace/projectFile.js';
 import { heuristicEdtBaseType, resolveEdtBaseType, isEnumName, resolveEdtEnumType, bridgeEdtBaseType } from '../smart/generateSmartTable.js';
 import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
@@ -735,6 +741,10 @@ export const ModifyD365FileArgsSchema = z.object({
   ),
   deleteActionType: z.enum(DELETE_ACTION_TYPES).optional().describe(
     'None | Restricted (default) | Cascade | CascadeRestricted.'
+  ),
+  deleteActionRelation: z.string().optional().describe(
+    'Relation on this table the delete action follows. Without it xppbp reports ' +
+    'BPUpgradeMetadataDeleteAction ("has no explicit relation set").'
   ),
 
   // For add-field-group / remove-field-group / add-field-to-field-group (table, table-extension)
@@ -1741,6 +1751,14 @@ export async function modifyD365FileTool(
     let bridgeResult: { success: boolean; message: string; viaXmlFallback?: boolean } | null = null;
     /** File content captured before a replace-code, to diff the reply against. */
     let replaceCodeBefore: string | null = null;
+    /**
+     * The whole file as it stood before this operation, for the preservation
+     * guard below. Read once, and only for the XML shapes it can reason about —
+     * see preserveMetadataElements.ts for why a write that drops a property
+     * nobody asked about has to be caught here rather than at the next build.
+     */
+    const preImage: string | null = await timer.time('pre-write image',
+      async () => readForMatching(actualFilePath).catch(() => null));
     let _bridgeRetried = false;
     // Retry loop: on the first null result with all required params present,
     // refresh the bridge provider (picks up objects created this session) and
@@ -2335,6 +2353,7 @@ export async function modifyD365FileTool(
             daName,
             (args as any).deleteActionTable,
             (args as any).deleteActionType,
+            (args as any).deleteActionRelation,
           ));
         }
         break;
@@ -3005,6 +3024,43 @@ export async function modifyD365FileTool(
       }
     }
 
+    // Did this write drop a property it was never asked about? Both halves of the
+    // 2026-08-31 L4-headerlines-document-slice defect looked exactly like a
+    // successful write from here — the note is what turns that silence into an
+    // answer, and the restore is what keeps the value.
+    let preservationNote = '';
+    if (preImage) {
+      try {
+        let postImage = await readForMatching(actualFilePath);
+        if (postImage) {
+          const preserved = preserveDroppedProperties(
+            preImage,
+            postImage,
+            operation,
+            (args as any).propertyPath,
+          );
+          if (preserved.restored.length > 0) {
+            await writeFileAtomic(actualFilePath, normalizeD365Xml(preserved.xml));
+            console.error(
+              `[modify_d365fo_file] 🔧 restored after '${operation}': ${preserved.restored.join(', ')}`,
+            );
+            preservationNote = renderPreservationNote(preserved.restored);
+            postImage = preserved.xml;
+          }
+          // …and did the thing the caller actually asked for survive? Same file
+          // read, the other half of the question.
+          preservationNote += renderClaimCheck(
+            claimedMarkerFor(operation, args as unknown as Record<string, unknown>),
+            postImage,
+          );
+        }
+      } catch (e) {
+        // Advisory. A guard that turns a good write into a reported failure is a
+        // worse defect than the one it guards against.
+        console.error(`[modify_d365fo_file] preservation guard skipped: ${e}`);
+      }
+    }
+
     // Advisory X++ select-statement lint on the source just written (add-method /
     // replace-code etc.). Non-blocking: surfaces a likely "WHERE after join" mistake
     // up front instead of letting it become a build error the agent hunts by hand.
@@ -3148,7 +3204,7 @@ export async function modifyD365FileTool(
               ? "this server's XML writer (no bridge path for this operation)"
               : 'IMetadataProvider.Update()'}${crossModelNotice}${autoCorrectNote}\n\n` +
             `**File:** ${actualFilePath}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}\n` +
-            `🔧 API: ${bridgeResult.message}${changedLinesNote}${xppLintNote}${xppRuleNote}${addFieldBpNote}${fieldGroupRenderNote}${backupNote}${verifyNote}${indexNote}${bpNote}${timer.render()}` +
+            `🔧 API: ${bridgeResult.message}${preservationNote}${changedLinesNote}${xppLintNote}${xppRuleNote}${addFieldBpNote}${fieldGroupRenderNote}${backupNote}${verifyNote}${indexNote}${bpNote}${timer.render()}` +
             // "Review changes in Visual Studio" is not something the caller can act
             // on, and it rode along on every write.
             (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') +

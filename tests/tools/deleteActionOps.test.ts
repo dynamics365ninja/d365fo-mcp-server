@@ -154,7 +154,12 @@ describe('table DeleteActions via the modify surface (#36)', () => {
     mockWriteFile.mockClear();
   });
 
-  it('adds a cascading delete action in canonical shape', async () => {
+  it('adds a cascading delete action in canonical SERIALISED order', async () => {
+    // Name → DeleteAction → Relation → Table, which is what all 126 shipped
+    // <AxTableDeleteAction> entries use. This test used to assert Name → Table →
+    // DeleteAction, copied from a C# object initialiser: out of declaration order,
+    // so the deserializer dropped <DeleteAction> without a word and the next
+    // bridge-backed Update() wrote the entry back without it. See the writer.
     const result = await modifyD365FileTool(
       req({ operation: 'add-delete-action', deleteActionName: 'ConDemoLine', deleteActionType: 'Cascade' }),
       ctx,
@@ -164,9 +169,43 @@ describe('table DeleteActions via the modify surface (#36)', () => {
     const xml = captured();
     expect(xml).toBeTruthy();
     expect(xml).toMatch(
-      /<DeleteActions>\s*<AxTableDeleteAction>\s*<Name>ConDemoLine<\/Name>\s*<Table>ConDemoLine<\/Table>\s*<DeleteAction>Cascade<\/DeleteAction>\s*<\/AxTableDeleteAction>\s*<\/DeleteActions>/,
+      /<DeleteActions>\s*<AxTableDeleteAction>\s*<Name>ConDemoLine<\/Name>\s*<DeleteAction>Cascade<\/DeleteAction>\s*<Table>ConDemoLine<\/Table>\s*<\/AxTableDeleteAction>\s*<\/DeleteActions>/,
     );
     expect(xml).not.toContain('<DeleteActions />');
+  });
+
+  it('emits <Relation> between DeleteAction and Table when one is named', async () => {
+    await modifyD365FileTool(
+      req({
+        operation: 'add-delete-action',
+        deleteActionName: 'ConDemoLine',
+        deleteActionType: 'Cascade',
+        deleteActionRelation: 'ConDemoLineRel',
+      }),
+      ctx,
+    );
+    expect(captured()).toMatch(
+      /<Name>ConDemoLine<\/Name>\s*<DeleteAction>Cascade<\/DeleteAction>\s*<Relation>ConDemoLineRel<\/Relation>\s*<Table>ConDemoLine<\/Table>/,
+    );
+  });
+
+  it('rewrites an entry whose type differs instead of reporting it skipped', async () => {
+    // The forward-only repair path. Idempotency keyed on the NAME alone, so the
+    // run that wrote Cascade wrongly could not correct it without the
+    // delete-and-recreate the eval loop forbids.
+    currentXml.value = TABLE_WITH_ACTION_XML;
+    const result = await modifyD365FileTool(
+      req({ operation: 'add-delete-action', deleteActionName: 'ConDemoLine', deleteActionType: 'Restricted' }),
+      ctx,
+    );
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text as string).toMatch(/Cascade → Restricted/);
+    const xml = captured();
+    expect(xml).toContain('<DeleteAction>Restricted</DeleteAction>');
+    expect(xml).not.toContain('<DeleteAction>Cascade</DeleteAction>');
+    // Still exactly one entry — a rewrite, not a second copy.
+    expect((xml!.match(/<AxTableDeleteAction>/g) ?? []).length).toBe(1);
   });
 
   it('never steers the agent into create overwrite=true', async () => {

@@ -1,0 +1,70 @@
+{
+  "run_id": "2026-09-01T06__L2-event-handler-basic__0fba518",
+  "case_id": "L2-event-handler-basic",
+  "tier": 2,
+  "timestamp": "2026-09-01T06:29:53.336Z",
+  "server_git_sha": "0fba518",
+  "generated_artifacts": [
+    "ConDemoNoteHeaderEH.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {
+        "moniker": "BPParameterNotUsed",
+        "path": "dynamics://Class/ConDemoNoteHeaderEH/Method/onInserting",
+        "message": "The parameter '_e' is not used.",
+        "note": "Inherent to the mandatory DataEventHandler signature (Common _sender, DataEventArgs _e); the committed golden carries the identical signature and would produce the identical warning. The other 6 BP warnings in the build belong to the shared fixture table ConDemoNoteHeader, not to this case artifact."
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": true,
+    "passed": true,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": 1,
+    "tier_weight": 2
+  },
+  "classification": "PASS",
+  "platform_build": "X++ Compiler 7.0.7996.33",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": [
+        "DataEventArgs (kernel class - informational warning, not an error)"
+      ]
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "FIX-VERIFICATION RUN. Both findings of the previous run (2026-08-31T23__L2-event-handler-basic__278eee3, classified TOOL_DEFECT) are CONFIRMED CLOSED at server_git_sha 0fba518; no new defect found.\n\n(1) Identity defect CLOSED. d365fo_file(action=\"create\", objectType=\"class\", objectName=\"EvalL2EventHandlerDefaultSubjectTest\", xmlContent=<verbatim AxClass XML whose <Name> and X++ declaration both say EvalL2EventHandlerDefaultSubjectTest>) now produces ONE identity everywhere: file ConEvalL2EventHandlerDefaultSubjectTest.xml, root <Name>ConEvalL2EventHandlerDefaultSubjectTest</Name>, and \"class ConEvalL2EventHandlerDefaultSubjectTest extends SysTestCase\". The create was not refused - it canonicalised the supplied verbatim XML to the final prefixed name in all three places, which is the stronger of the two acceptable outcomes named in the fix brief. The build that previously died with \"must be named X instead of Y to be consistent with its file name\" is now 0 errors / 0 warnings, and no delete+direct-write workaround was needed. The case artifact itself (created via sourceCode, not xmlContent) is likewise consistent: ConDemoNoteHeaderEH.xml / <Name>ConDemoNoteHeaderEH</Name> / class ConDemoNoteHeaderEH.\n\n(2) Golden staleness CLOSED by the directional doc-comment rule, not by re-capture. golden_match is 1 against the unchanged 2026-07-01 golden. The write path still injects a class-level and a method-level /// block (ensureXppDocComment) that the golden does not carry, but the oracle now treats a doc comment present only on the ACTUAL side as equal, so the previously sole diff no longer scores. There is no residual structural delta of any kind - not doc comments, not indentation, not content. This retires the previous run suggestion to re-capture the 17 pre-0a95198 AxClass goldens: they are matchable as committed.\n\nbp_clean=0 is the only non-1 dimension and is NOT a defect: the single artifact warning is BPParameterNotUsed on _e, which the mandatory DataEventHandler signature forces and which the committed golden would emit identically. Runtime oracle passed 2/2 (blank Subject defaulted to \"(no subject)\"; explicit Subject preserved).",
+  "suggested_fix_area": "None. Both previously filed fix areas are verified closed at 0fba518: (a) d365fo_file create prefix canonicalisation across filename/<Name>/X++ declaration for verbatim xmlContent; (b) the oracle doc-comment rule in src/eval/oracle/normalize.ts. The open follow-up recorded by the previous run - \"re-capture the 17 pre-0a95198 AxClass goldens\" - should be CANCELLED for this case and re-evaluated for the other 7, since the directional rule makes the re-capture unnecessary here.",
+  "evidence_refs": [
+    "d365fo_file(create, objectName=\"EvalL2EventHandlerDefaultSubjectTest\", xmlContent=verbatim) response: \"Created class ConEvalL2EventHandlerDefaultSubjectTest (prefixed from \\\"EvalL2EventHandlerDefaultSubjectTest\\\")\" + \"Verified: on disk (2177 bytes)\"",
+    "On-disk identity check of K:AosServicePackagesLocalDirectory\fm-mcp\fm-mcpAxClassConEvalL2EventHandlerDefaultSubjectTest.xml: filename ConEvalL2EventHandlerDefaultSubjectTest.xml; line 3 <Name>ConEvalL2EventHandlerDefaultSubjectTest</Name>; line 19 \"class ConEvalL2EventHandlerDefaultSubjectTest extends SysTestCase\" - all three agree (previous run: two prefixed, one not)",
+    "d365fo_file(create, objectName=\"DemoNoteHeaderEH\", sourceCode) response: \"Created class 'ConDemoNoteHeaderEH' via IMetadataProvider.Create()\" + \"Named ConDemoNoteHeaderEH, not DemoNoteHeaderEH as passed ... The declaration inside the file matches\"",
+    "build_d365fo_project(fullBuild=true) after the SysTest deploy: Errors: 0, Warnings: 0 - the \"must be named X instead of Y to be consistent with its file name\" error of the previous run did not recur",
+    "npm run eval:score -- L2-event-handler-basic <actual> --bp-warnings 1 --systest <raw>: \"golden match - no structural deltas\", golden_match=1 against eval/goldens/L2-event-handler-basic/ConDemoNoteHeaderEH.metadata.xml unchanged since 2026-07-01",
+    "Actual artifact carries doc comments the golden lacks (\"/// Provides con demo note header eh functionality.\" on the class; \"/// Handles the inserting event.\" + two <param> lines on onInserting) and the oracle still reports zero deltas - directional rule exercised",
+    "run_systest_class(ConEvalL2EventHandlerDefaultSubjectTest): 2/2 passed, \"Rainier Test Suite : 2 Run, 0 Failed\", Isolation AutoRollback; testInsertingWithBlankSubjectGetsDefaulted and testInsertingWithExplicitSubjectIsPreserved both success=true",
+    "extension_info(mode=\"events\", target=\"ConDemoNoteHeader\", objectType=\"table\"): \"No event handlers found\" - confirms no existing handler class to reuse, so a new class is correct per the case instruction",
+    "validate_code(mode=\"both\"): syntax 0 violations across 35 rule groups; references 0 errors, 1 informational warning (DataEventArgs kernel class)",
+    "Fixture ConDemoNoteHeader was present and byte-identical to eval/fixtures/ConDemoNoteHeader.metadata.xml apart from that file's header comment block; no re-provision needed",
+    "dbSync NOT needed: no table/view change in this case; the fixture table was already synced"
+  ]
+}

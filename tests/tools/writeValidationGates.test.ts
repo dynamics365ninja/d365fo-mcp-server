@@ -77,47 +77,60 @@ describe('explicit enum values are honoured, not dropped (audit 9)', () => {
     expect(xml).toContain('<Value>20</Value>');
   });
 
-  it('leaves an unnumbered enum exactly as before (UseEnumValue=No, no <Value>)', () => {
+  it('numbers an unnumbered enum by position and writes those numbers', () => {
+    // This used to assert `not.toContain('<Value>')`, which is the all-zero shape:
+    // a member with no <Value> is 0, so A and B were both 0. UseEnumValue stays No —
+    // the mode describes the metadata, it does not decide whether a member keeps
+    // its number.
     const xml = XmlTemplateGenerator.generateAxEnumXml('ConDemoStatus', {
       enumValues: [{ name: 'A' }, { name: 'B' }],
     });
     expect(xml).toContain('<UseEnumValue>No</UseEnumValue>');
-    expect(xml).not.toContain('<Value>');
+    expect(xml).toContain('<Value>1</Value>');
+    expect(xml).not.toContain('<Value>0</Value>');
   });
 
-  it('treats redundant positional numbering (0,1,2) as no numbering at all', () => {
-    // Otherwise a harmless payload — and every extensible enum spelled that way —
-    // would start failing.
+  it('redundant positional numbering (0,1,2) does not flip the mode — but is still written', () => {
     const xml = XmlTemplateGenerator.generateAxEnumXml('ConDemoStatus', {
       isExtensible: true,
       enumValues: [{ name: 'A', value: 0 }, { name: 'B', value: 1 }],
     });
     expect(xml).toContain('<UseEnumValue>No</UseEnumValue>');
-    expect(xml).not.toContain('<Value>');
     expect(xml).toContain('<IsExtensible>true</IsExtensible>');
+    expect(xml).toContain('<Value>1</Value>');
   });
 
-  it('refuses isExtensible + real numbering (xppc rejects that combination)', () => {
-    expect(() => XmlTemplateGenerator.generateAxEnumXml('ConDemoStatus', {
-      isExtensible: true,
-      enumValues: values,
-    })).toThrow(/isExtensible=true cannot be combined with explicit enum values/);
-  });
-
-  it('refuses useEnumValue=false + real numbering (a contradiction in one payload)', () => {
-    expect(() => XmlTemplateGenerator.generateAxEnumXml('ConDemoStatus', {
-      useEnumValue: false,
-      enumValues: values,
-    })).toThrow(/useEnumValue=false contradicts/);
-  });
-
-  it('the extensible-enum rule the project depends on still holds', () => {
+  it('writes isExtensible + real numbering instead of refusing it', () => {
+    // The old refusal cited xppc. xppc disagrees: probed on the VM 2026-09-01,
+    // IsExtensible=true + UseEnumValue=No + values 2,1 compiled clean, and 645 of
+    // the 688 shipped extensible enums ship exactly that.
     const xml = XmlTemplateGenerator.generateAxEnumXml('ConDemoStatus', {
       isExtensible: true,
-      enumValues: [{ name: 'A' }, { name: 'B' }],
+      enumValues: values,
     });
     expect(xml).toContain('<UseEnumValue>No</UseEnumValue>');
-    expect(xml).not.toContain('<Value>');
+    expect(xml).toContain('<Value>10</Value>');
+    expect(xml).toContain('<Value>20</Value>');
+  });
+
+  it('writes useEnumValue=false + numbering rather than refusing the payload', () => {
+    // UseEnumValue=No alongside explicit values is the shape 785 shipped enums
+    // use, 154 of them with numbers positions would not give. Nothing is dropped,
+    // so there is nothing to refuse.
+    const xml = XmlTemplateGenerator.generateAxEnumXml('ConDemoStatus', {
+      useEnumValue: false,
+      enumValues: values,
+    });
+    expect(xml).toContain('<UseEnumValue>No</UseEnumValue>');
+    expect(xml).toContain('<Value>10</Value>');
+  });
+
+  it('still refuses the one pairing xppc rejects: isExtensible + useEnumValue:true', () => {
+    expect(() => XmlTemplateGenerator.generateAxEnumXml('ConDemoStatus', {
+      isExtensible: true,
+      useEnumValue: true,
+      enumValues: values,
+    })).toThrow(/UseEnumValue property must be set to 'No'/);
   });
 });
 

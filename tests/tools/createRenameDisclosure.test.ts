@@ -28,6 +28,15 @@ vi.mock('fs/promises', () => ({
   }),
   writeFile: vi.fn(async (p: string, content: string) => { files.set(p, content); }),
   copyFile: vi.fn(async () => {}),
+  // writeFileAtomic writes a temp sibling and renames it over the target, so the
+  // rename has to MOVE the entry — a no-op leaves the bytes under the temp path.
+  rename: vi.fn(async (from: string, to: string) => {
+    const content = files.get(from);
+    if (content === undefined) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    files.set(to, content);
+    files.delete(from);
+  }),
+  rm: vi.fn(async (p: string) => { files.delete(p); }),
   mkdir: vi.fn(async () => {}),
   access: vi.fn(async (p: string) => {
     if (/^[A-Za-z]:[\\/]?$/.test(p) || p === '/') return;
@@ -166,5 +175,60 @@ describe('create discloses the name it actually wrote', () => {
     expect(result.isError).toBeFalsy();
     expect(text).not.toMatch(/as passed/);
     expect(text).not.toContain('🔖');
+  });
+});
+
+/**
+ * The same rename, seen from inside the file it writes.
+ *
+ * An AOT object states its name three times — the file, the root <Name>, the X++
+ * declaration — and the prefix rewrite only ever touched two of them. The
+ * 2026-08-31 L2-event-handler-basic run got `ConDemoEvalL2…Test.xml` holding
+ * `class ConDemoEvalL2…Test` and `<Name>EvalL2…Test</Name>`, reported "Created"
+ * plus "Verified: on disk", and the next build died with the naming-consistency
+ * error.
+ */
+describe('create keeps one identity across file name, <Name> and the declaration', () => {
+  const AX_CLASS = (name: string) => `<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+\t<Name>${name}</Name>
+\t<SourceCode>
+\t\t<Declaration><![CDATA[
+class ${name} extends SysTestCase
+{
+}
+]]></Declaration>
+\t\t<Methods />
+\t</SourceCode>
+</AxClass>
+`;
+
+  it('prefixes the metadata <Name> as well as the X++ declaration', async () => {
+    const result = await handleCreateD365File(
+      req('class', 'EvalNoteTest', { xmlContent: AX_CLASS('EvalNoteTest') }),
+      buildContext(),
+    );
+
+    expect(result.isError).toBeFalsy();
+    const [path, written] = [...files.entries()].find(([p]) => p.endsWith('.xml')) ?? [];
+    expect(path).toMatch(/CtsoEvalNoteTest\.xml$/);
+    expect(written).toContain('<Name>CtsoEvalNoteTest</Name>');
+    expect(written).toContain('class CtsoEvalNoteTest extends SysTestCase');
+    expect(written).not.toContain('<Name>EvalNoteTest</Name>');
+  });
+
+  it('refuses xmlContent that names a different object instead of writing it', async () => {
+    const result = await handleCreateD365File(
+      req('class', 'CtsoNoteService', { xmlContent: AX_CLASS('SomethingElse') }),
+      buildContext(),
+    );
+
+    expect(result.isError).toBe(true);
+    const text = result.content[0].text as string;
+    expect(text).toMatch(/two different identities/);
+    expect(text).toContain('SomethingElse');
+    expect(text).toContain('CtsoNoteService');
+    // Nothing was written — a file that cannot build is worse than no file.
+    expect([...files.keys()].filter(k => k.endsWith('.xml'))).toEqual([]);
   });
 });

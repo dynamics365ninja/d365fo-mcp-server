@@ -60,6 +60,17 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
     type: 'string (None | Restricted | Cascade | CascadeRestricted)',
     description: 'Delete action to take on the related table. Defaults to Restricted.',
   },
+  deleteActionRelation: {
+    type: 'string',
+    description:
+      'The RELATION linking the two tables, by name. Do not assume which side declares it: in ' +
+      'shipped metadata it is usually the relation on the RELATED table pointing back at this one ' +
+      '(DMFDataSource\u2019s delete action on DMFPublishedEntity names the relation declared on ' +
+      'DMFPublishedEntity), but the reverse ships too (AxKPITable names a relation on itself). ' +
+      'Read the related table with get_object_info(options:{relations:true}) and use the name you ' +
+      'find. Optional \u2014 without it xppbp reports BPUpgradeMetadataDeleteAction ("has no ' +
+      'explicit relation set").',
+  },
   // table fields
   fieldName: { type: 'string', description: 'Field name.' },
   fieldNewName: {
@@ -568,8 +579,11 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   'remove-relation': { required: ['relationName'], optional: [] },
   'add-delete-action': {
     required: ['deleteActionName'],
-    optional: ['deleteActionTable', 'deleteActionType'],
-    note: 'objectType="table" only. deleteActionTable defaults to deleteActionName; deleteActionType defaults to Restricted.',
+    optional: ['deleteActionTable', 'deleteActionType', 'deleteActionRelation'],
+    note:
+      'objectType="table" only. deleteActionTable defaults to deleteActionName; deleteActionType ' +
+      'defaults to Restricted. Re-sending the same deleteActionName with a DIFFERENT deleteActionType ' +
+      'rewrites the entry in place — it is a repair path, not a no-op.',
   },
   'remove-delete-action': { required: ['deleteActionName'], optional: [] },
   'add-field-group': {
@@ -766,10 +780,12 @@ export const D365FO_FILE_CREATE_PROPERTY_SPECS: Record<string, string> = {
     'indexes?[{name,fields[],allowDuplicates?,alternateKey?,validTimeStateKey?,validTimeStateMode?("Gap"|"NoGap")}]',
   enum:
     'label, useEnumValue, configurationKey, isExtensible, enumValues[{name,value?,label?,helpText?}] — ' +
-    'an explicit value: sets UseEnumValue=Yes for you; an OFF-POSITIONAL one (a number differing from the ' +
-    "entry's index) is refused when combined with isExtensible rather than dropped, since xppc requires " +
-    'UseEnumValue=No and no <Value> on an extensible enum. Plain 0,1,2 numbering states nothing the order ' +
-    'does not, so it is accepted and the numbers are dropped. ' +
+    'every member keeps its number: the value you pass (or its position when you pass none) is written as ' +
+    'an explicit <Value>, except 0, which the serialiser omits. A member WITHOUT <Value> is 0, not the ' +
+    'next ordinal, so an enum written without them has every member equal to 0 — it builds clean and ' +
+    'enum2int() returns 0 for all of them. isExtensible forces UseEnumValue=No and is refused only in ' +
+    'combination with useEnumValue:true (xppc: "UseEnumValue property must be set to \'No\' when the ' +
+    'IsExtensible property is \'True\'"); the numbers are kept either way. ' +
     'CHOOSE isExtensible DELIBERATELY: it also bars `<`/`>`/`<=`/`>=` on the enum ("Cannot use extensible ' +
     'enumerated type in non-equality comparison"), so any enum whose values get RANKED in X++ — a tier, a ' +
     'severity, a no-downgrade check — must be isExtensible:false',

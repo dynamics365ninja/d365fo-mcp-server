@@ -294,9 +294,12 @@ describe('generate_d365fo_xml', () => {
     expect(result.content[0].text).toMatch(/<AxEnum|MyStatus/i);
   });
 
-  it('extensible enum gets UseEnumValue=No and no <Value> elements (xppc requirement)', async () => {
-    // Regression for eval/corpus L0-enum-basic: IsExtensible=true + explicit values caused
-    // "UseEnumValue property must be set to 'No'" build failure.
+  it('extensible enum gets UseEnumValue=No, and keeps its numbers', async () => {
+    // Regression for eval/corpus L0-enum-basic: IsExtensible=true + UseEnumValue=Yes
+    // caused the "UseEnumValue property must be set to 'No'" build failure. The
+    // <Value> elements were never part of that — an xppc probe on this VM
+    // (2026-09-01) compiled IsExtensible=true + UseEnumValue=No + non-positional
+    // values clean, and dropping them is what makes every member 0.
     const xml = XmlTemplateGenerator.generateAxEnumXml('MyStatus', {
       isExtensible: true,
       enumValues: [
@@ -307,8 +310,9 @@ describe('generate_d365fo_xml', () => {
     });
     expect(xml).toContain('<UseEnumValue>No</UseEnumValue>');
     expect(xml).toContain('<IsExtensible>true</IsExtensible>');
-    expect(xml).not.toContain('<Value>1</Value>');
-    expect(xml).not.toContain('<Value>2</Value>');
+    expect(xml).toContain('<Value>1</Value>');
+    expect(xml).toContain('<Value>2</Value>');
+    expect(xml).not.toContain('<Value>0</Value>');
   });
 
   it('returns error on missing objectType', async () => {

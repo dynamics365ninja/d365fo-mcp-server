@@ -1,6 +1,6 @@
 {
   "name": "d365fo-mcp",
-  "version": "1.15.0",
+  "version": "1.16.0",
   "description": "MCP Server for X++ Code Completion in D365 Finance & Operations",
   "type": "module",
   "main": "dist/index.js",
@@ -39,7 +39,7 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "build": "tsc && npm run build:scripts",
-    "build:scripts": "esbuild scripts/extract-metadata.ts scripts/build-database.ts scripts/build-fts.ts --bundle --platform=node --format=esm --target=node24 --packages=external --outdir=dist/scripts && esbuild src/metadata/symbolCountsWorker.ts --bundle --platform=node --format=esm --target=node24 --packages=external --outdir=dist/scripts",
+    "build:scripts": "esbuild scripts/extract-metadata.ts scripts/build-database.ts scripts/build-fts.ts --bundle --platform=node --format=esm --target=node24 --packages=external --outdir=dist/scripts && esbuild src/metadata/symbolCountsWorker.ts src/metadata/buildIndexWorker.ts src/metadata/indexWarmupWorker.ts --bundle --platform=node --format=esm --target=node24 --packages=external --outdir=dist/scripts",
     "bridge:build": "node scripts/bridgeBuild.mjs",
     "bridge:attest": "node scripts/bridgeAttest.mjs check",
     "prepublishOnly": "npm run build",

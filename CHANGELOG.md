@@ -28,6 +28,12 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+_Nothing released yet._
+
+---
+
+## [1.16.0] — 2026-09-01
+
 ### Added
 - **TDD for a TABLE method — the loop's most-asked task had no red-first path.**
   Across 1,593 real MCP calls the single most-requested X++ topic was the table
@@ -57,12 +63,28 @@ those are called out explicitly below.
   session scratchpads: the measurements behind the compiler-verified wave could
   not be re-run. `--dry` runs the sweep against `tests/fixtures/oracles` so CI can
   hold the zero-error bar with no D365FO install.
+- **The runtime oracle runs, and it discriminates.** X++ test code had never once
+  executed in this project: `SysTestConsole.exe` stopped at `Login failed for user
+  'AOSUser'`, diagnosed twice as a rotated credential and twice wrong — the shipped
+  `SysTestConsole.exe.config` had simply never been configured for the machine. With
+  the four `DataAccess.*` values copied from the AOS's own `web.config`, the runner
+  opens a real AOS session. A passing run only proves the instrument is on, so a
+  negative control was built and run in one pass: a deliberate assertion failure and
+  a deliberate throw come back **failed** beside a passing method, and
+  `parseSysTestXml` reports all three. That real failing document is committed as
+  `tests/fixtures/systest/negative-control.xml` — every earlier parser test used
+  synthetic XML, which only proves the parser handles what its author imagined.
+  All twelve remaining goldens and every runtime-tagged case have since run:
+  **0 of 120 cases are `golden_pending`, 0 are `systest_pending`**, both for the
+  first time.
 
 ### Fixed
-- **Nine defects the golden-capture runs found, and a green 5,650-test suite could
-  not.** Each eval case was implemented on the VM through the grounded tool path,
-  which is the only thing that compares INTENT against OUTPUT. All eight cases run
-  so far passed; the defects are what the runs produced on the way:
+- **Thirty-one defects the golden-capture runs found, and a green 5,700-test suite
+  could not.** Each eval case was implemented on the VM through the grounded tool
+  path, which is the only thing in this repo that compares INTENT against OUTPUT;
+  the test suite compares code against expectations someone already held. Twenty-one
+  runs across the wave, and the passes are the least interesting part — these are
+  the defects the runs produced on the way:
   - `create(class)` **silently dropped every multi-line method attribute block**.
     Attributes are syntactically optional, so xppc and xppbp stayed green — a data
     contract with no data members, a SysOperation dialog with no fields, and no
@@ -113,6 +135,150 @@ those are called out explicitly below.
 - The shared X++ lexer had **no tests**, which is how its documented "delimiters
   survive" contract could be false for `*/` without anyone noticing — the reason
   the `ATTR001` fix initially matched nothing. 16 tests now pin the behaviour.
+- **The scoring oracle could diff a form against the menu item that opens it.**
+  `resolveActualFile` matched on a lossy logical key with `find()` — first match
+  wins — and `artifactKey` strips the `.Ax<Type>` infix, so a golden folder holding
+  a form and its display menu item reduced both to one key. Swept over all 119
+  committed golden folders: 10 artifacts mispair under canonical capture naming and
+  18 under the other assignment of the undecorated filename, 8 of them outright
+  cross-pairings — two unrelated objects compared against each other, or one
+  artifact silently vanishing from the run. Pairing now resolves in three ranked
+  stages (the golden's own filename, type-CHECKED · the identity each document
+  DECLARES plus its root element · the legacy key with ties broken by type), and an
+  undecidable pairing is **reported and scored missing, never guessed**. In the same
+  pass: `canonicalizePrefix` could not see a prefix used as an INFIX, which is
+  Microsoft's own `{Base}{Prefix}_Extension` convention — a differential sweep over
+  326 golden files x 5 prefix specs shows that silently cost 7 golden folders, and a
+  collision sweep over 7,095 identifiers adds no new collision. The fix proposed for
+  this eight weeks ago in a corpus record was measured here and does **not** work.
+- **Capture runs recorded `generated_artifacts: []` for eight weeks.** The CLI's
+  golden-pending branch kept a private "what counts as an artifact" filter
+  (`*.metadata.xml`) while the resolver accepted both shapes, and a capture points
+  `--actual-dir` at an AOT folder, which holds bare `<Name>.xml`. One shared filter
+  now, and the list is printed.
+- **A golden captured before the writer documented classes can never match.** The
+  create path started injecting a class-level `///` block in August; goldens
+  captured in July could not be reproduced by any faithful re-run — 34 of the 159
+  goldens carrying a class or interface `<Declaration>` have no doc comment, 32 of
+  which the writer would inject into. The presence signal is **directional** now: a
+  doc comment on the ACTUAL side only compares equal
+  (`BPXmlDocNoDocumentationComments` fires on ABSENCE, and the content was already
+  canonicalised to a placeholder), while one present in the GOLDEN and missing from
+  the actual still fails — that is a real regression. Replayed over the whole
+  corpus, this and a symmetric blank-line rule resolve 14 real false-mismatches
+  across 69 stored `changed` entries and suppress nothing else. Deliberately not a
+  batch re-capture: each case refreshes its own golden the next time it runs.
+- **Report goldens were unreproducible by construction.** An AxReport carries its
+  RDL inside CDATA and the RDL carries `rd:DataSourceID` / `rd:DataSetID` /
+  `rd:ReportID`, minted afresh on every generation — text inside a payload, which a
+  case's `ignore` globs cannot reach. Six committed goldens carry them. Masked at
+  comparison time only; the stored artifact is never rewritten and a real design
+  change still fails.
+- **The report scaffold made a temp table's first column unique.**
+  `buildPrimaryKeyIndex` always emits a unique index and the report path handed it
+  `tableFields[0]` — which under `designStyle="GroupedWithTotals"` is by
+  construction the GROUP key, so the second row in a group failed on a duplicate key
+  at RUN time, from metadata that builds clean. A report temp table has no natural
+  key; it is `RecId` now, confirmed on live scaffold output.
+- **A corpus record had been silently dropped since July.** A writer put Windows
+  paths into JSON without escaping the backslashes, so a strict parser rejected the
+  whole document — and `loadJsonRecords` skips an unparseable file without a word.
+  A record classified `TOOL_DEFECT` was therefore invisible to every cluster, report
+  and held-out check for eight weeks: the improver had been ranking failures over a
+  corpus it did not know was short. Repaired by **escaping only** — the separators
+  the original writer dropped are not reconstructed, because guessing them would
+  turn damaged data into something that reads as evidence.
+  `tests/eval/corpusRecordsParse.test.ts` now fails on any unparseable record, and
+  asserts the corpus is of real size so a broken path cannot make it pass forever.
+- **A root element could be read out of an XML comment** (CodeQL,
+  `js/incomplete-multi-character-sanitization`, 2 high). `aotRootElement` found the
+  root by `replace()`-ing the prologue away, and a single-pass strip leaves an
+  unterminated `<!--` in place — so the type deciding which golden pairs with which
+  file could come out of a comment. Replaced with an ordered token scan; ordered
+  alternation alone was not enough, which the new test caught before it was pushed.
+  `tests/eval/oracleScoringIntegrity.test.ts` carried its own copy of both readers
+  (the second alert) and imports the shipped ones now, so it cannot drift from the
+  code under test.
+- **Two `js/regex-injection` findings in the oracle CLIs** (high, CodeQL):
+  `census.ts --grep` compiled its argument as a regex and is a literal substring
+  match now; `xppcProbe.ts` interpolated a probe's class name into a regex, and the
+  name is validated as an identifier before use. Testing that guard is what made it
+  worth doing — the first version captured `Bad` out of `class Bad.Name`, a valid
+  identifier producing an artifact whose `<Name>` disagrees with its own source,
+  which is exactly the silence the harness exists to prevent.
+
+- **An enum whose members were all 0 — and nothing said so.** `create(enum)`
+  suppressed every explicit `<Value>` whenever the resolved mode was
+  UseEnumValue=No, on the premise that "plain 0,1,2 numbering states nothing the
+  order does not". The premise is false: an `<AxEnumValue>` with no `<Value>` is
+  **0**, not the next ordinal. A four-tier ladder came out with None = Silver =
+  Gold = Platinum = 0, compiled with 0 errors, passed xppbp and matched its golden,
+  while `enum2int()` returned 0 for every tier — the runtime oracle is the only
+  thing that could see it (2026-08-31, `L3-enum-field-form-downgrade-guard`,
+  "expected False, actual True"). Every member now carries its number, the 0
+  excepted, which is the shape the serialiser and all 3,913 shipped AxEnum files
+  use. Two claims went with it, both checked rather than reasoned about: a census
+  of shipped metadata (of 3,818 multi-member enums, exactly six omit `<Value>`
+  everywhere, and all six are extensible) and an xppc probe on the VM —
+  `IsExtensible=true` + `UseEnumValue=No` + non-positional values **compiles
+  clean**, while the same enum with `UseEnumValue=Yes` fails with the documented
+  message. So the knowledge entry's "an explicit `<Value>` forces UseEnumValue=Yes
+  at compile time" was wrong, the refusal built on it is gone, and the one pairing
+  xppc really rejects is the only one still refused.
+- **A delete action that read as Cascade on disk and as nothing to the platform.**
+  The XML writer emitted `<AxTableDeleteAction>` as Name → Table → DeleteAction,
+  a shape copied from a C# object initialiser. All 126 entries Microsoft ships are
+  Name → **DeleteAction** → Relation → Table, and the metadata deserializer drops
+  a misordered element in silence — so the provider read the entry with
+  DeleteAction at its default and the next bridge-backed `Update()` serialised it
+  back without the element. The 2026-08-31 run recorded this as "the bridge
+  destroyed the delete action"; the bridge only wrote back what it had been able
+  to read. Canonical order now, `<Relation>` supported (`deleteActionRelation` —
+  without it xppbp reports BPUpgradeMetadataDeleteAction), and re-sending the same
+  action with a different type **rewrites it in place** instead of answering
+  "already present — skipped", which is what left the run with no forward-only
+  repair path at all.
+- **A create scheduled its provider refresh before its own last write.** The table
+  property reconcile patches the file on disk after the bridge create, but the
+  refresh was requested *first*, so the provider rebuilt from the pre-patch bytes
+  and the next modify's `flush()` saw a refresh newer than its own request and did
+  nothing. The first bridge-backed `Update()` then wrote the cached copy over the
+  patch — reproduction 1 of the same run (`CacheLookup=None`, gone). The refresh
+  now happens after the last byte the call writes.
+- **One object, three different names.** `create(class, xmlContent=…)` applied the
+  model prefix to the file name and to the X++ declaration but not to the metadata
+  `<Name>`, reported "Created" plus "Verified: on disk", and the next build died
+  with "must be named X instead of Y to be consistent with its file name". The
+  prefix rewrite now covers `<Name>` too, and a last gate before the write refuses
+  any document whose file name, `<Name>` and declaration disagree — a build cycle
+  earlier, and with all three spelled out. (The declaration is read through the
+  shared X++ lexer: the first version matched the word "class" inside a `///`
+  comment and refused correct creates, which the full suite caught the same hour.)
+- **`CacheLookup=None` was an element the platform never writes** — and the entry
+  that said otherwise cost two defects pointing opposite ways. The omitted-default
+  table named `NotInTTS` as the value the AxTable serialiser leaves out. It is
+  `None`: reflection over `Microsoft.Dynamics.AX.Metadata.Core.dll` gives
+  `RecordCacheLevel.None = 0`, the .NET type default, and the census agrees — of
+  the 1,444 `<CacheLookup>` elements in 6,995 shipped tables **not one says None**
+  (Found 758 · NotInTTS 301 · FoundAndEmpty 209 · EntireTable 176), while 95 of the
+  231 shipped Transaction tables carry no element at all, which IS None. So a
+  create asking for `None` had an element patched in that every later metadata
+  round trip normalised away again — the behaviour the 2026-08-31 run recorded as
+  "a bridge modify destroys properties this server wrote" — and a create asking for
+  `NotInTTS`, a real non-default value, was told it had been honoured and got None.
+  Found by the verification run below: the new preservation guard fired on it, and
+  a guard firing on a non-event is how the wrong default came to light. The guard
+  now ignores any value whose absence means the same thing, so it cannot cry wolf.
+  The other seven entries in that table were checked against the same census and
+  are correct.
+- **Two guards, because the class of defect matters more than the three
+  instances.** Every bridge-backed write now compares the file before and after:
+  a top-level property that vanished without being asked about is put back, in the
+  position it held, and said so in the response. And "✅ Verified: on disk" is no
+  longer the only claim a write makes — where the operation names an unambiguous
+  result (a modify-property value, a delete action's type, an enum member's
+  number), the value is looked for in the file that was actually written, and its
+  absence is reported as a failure instead of a byte count.
 
 ### Changed
 - Five new validator rules: `XML008` (an `AxTableExtension` carrying `<Methods>`,
@@ -122,10 +288,49 @@ those are called out explicitly below.
   a **warning**, because Microsoft ships it too), `SET001`
   (`update_recordset`/`delete_from` with no `where`) and `OP001` (`&&` mixed with
   `||` unparenthesised — they have equal precedence in X++, unlike C#).
-- Coverage falls to **core 90.8% / total 91.7%**. Nine leaves were added for
-  constructs the artifact-indexed taxonomy had no way to count, each with an
-  authored case that is `golden_pending` until captured on a VM. The number was
-  never 100% for these; there was nothing to count.
+- Coverage fell to **core 90.8% / total 91.7%** mid-wave and finished at **core
+  100% (65/65) / total 109/109**. Nine leaves were added for constructs the
+  artifact-indexed taxonomy had no way to count, each starting `golden_pending`,
+  and the number climbed one captured golden at a time. It was never 100% for those
+  constructs before; there was nothing to count.
+- Two standing claims in the docs were false and were quietly steering work: that
+  the runtime oracle had never executed because `SysTestConsole.exe` gates on an
+  interactive console (it does not — that was configuration drift), and the eval
+  README's standing "capture the pending goldens" queue. Both closed. One survivor
+  is left alone as out of scope: `src/server/serverMode.ts` still repeats the
+  interactive-console claim in a tool-tiering rationale, where the tiering decision
+  is unaffected but the sentence is wrong.
+- `docs/XPP_LANGUAGE_COVERAGE_PLAN.md` is **deleted**, under the lifecycle rule it
+  carried itself: the capture it was waiting on is done. The durable record is
+  `eval/COVERAGE.md`, `eval/README.md`, the goldens' READMEs and this entry; its
+  non-goals and still-open decisions moved to `docs/BACKLOG.md` rather than
+  disappearing with it.
+
+### Known issues
+- `L3-warehouse-work-slice` has a captured golden and `build: 1`, but its corpus
+  record still carries `bp_clean: null` — BP never ran for it. A small, real gap,
+  named rather than papered over.
+- Four defects the verification runs found or re-confirmed are **open, with
+  issues**, all in the form/scaffold path and none of them touched by this
+  release: the scaffold writes explicit child controls under a `<DataGroup>`-bound
+  group, which its own `add-control` op-spec refuses (#977); `generateControls`
+  changes nothing and the reported control count is not the number written (#978);
+  `get_object_info(form)` hides the children of such a group, reporting 14 controls
+  where the XML holds 16 (#979); and every scaffolded form starts BP-dirty because
+  the tab captions are raw text (#980).
+
+### Verified on the VM
+All three write-path defects were re-run end to end through the grounded tool
+path on the sandbox model, against a server running this build:
+
+| Case | Score | What it proves |
+|---|---|---|
+| `L3-enum-field-form-downgrade-guard` | build 1 · golden 1 · **systest 3/3** | One `create(enum)` call — no `useEnumValue`, no `modify-enum-value` repair — wrote `<Value>1/2/3</Value>` and the runtime downgrade guard passes. The runtime oracle was the only thing that could ever see this defect. |
+| `L2-event-handler-basic` | build 1 · golden 1 · **systest 2/2** | `create(class, xmlContent=…)` canonicalised all three identities instead of writing three different ones; the build that used to die with the naming-consistency error is 0 errors. `golden_match` is 1 against the untouched 2026-07-01 golden, which retires the plan to re-capture the seven other pre-doc-comment class goldens. |
+| `L4-headerlines-document-slice` | build 1 · golden 1 | `<DeleteAction>Cascade</DeleteAction>` read back intact after the write, after **two** further bridge-backed `Update()` calls on the same table, and after a full rebuild — no guard needed, the ordering fix is a root fix. `BPUpgradeMetadataDeleteAction` is gone. The golden was re-captured from that build, so the two lines the fix PR had hand-repaired are now real captured bytes. |
+
+Each run rolled the sandbox back and left a corpus record
+(`eval/corpus/runs/2026-09-01T06__*__0fba518.json`).
 
 ---
 

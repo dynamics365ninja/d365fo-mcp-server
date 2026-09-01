@@ -558,7 +558,7 @@ ${methodsXml}\t</SourceCode>
       );
     }
 
-    const { useEnumValue, suppressExplicitValues } = resolveEnumValueMode(enumName, properties, enumValueSpecs);
+    const { useEnumValue } = resolveEnumValueMode(enumName, properties, enumValueSpecs);
 
     let enumValuesXml: string;
     if (enumValueSpecs.length === 0) {
@@ -573,8 +573,12 @@ ${methodsXml}\t</SourceCode>
         enumValuesXml += `\t\t\t<Name>${v.name}</Name>\n`;
         if (v.label) enumValuesXml += `\t\t\t<Label>${escapeXml(v.label)}</Label>\n`;
         if (v.helpText) enumValuesXml += `\t\t\t<HelpText>${escapeXml(v.helpText)}</HelpText>\n`;
-        // Omit <Value> when UseEnumValue=No (position-based ordering) or for implicit 0
-        if (intValue !== 0 && !suppressExplicitValues) enumValuesXml += `\t\t\t<Value>${intValue}</Value>\n`;
+        // Every non-zero member carries its number. Omitting it does NOT make the
+        // member take its ordinal — it makes it 0, and an enum whose members are
+        // all 0 compiles clean and is wrong only at run time. The 0 itself is
+        // omitted because that is the serialiser's type default and the shape
+        // every shipped enum uses. See resolveEnumValueMode for the two oracles.
+        if (intValue !== 0) enumValuesXml += `\t\t\t<Value>${intValue}</Value>\n`;
         enumValuesXml += `\t\t</AxEnumValue>\n`;
       }
       enumValuesXml += '\t</EnumValues>\n';

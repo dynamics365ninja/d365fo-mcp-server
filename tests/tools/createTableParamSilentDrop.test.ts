@@ -317,6 +317,32 @@ describe('reconcileTableCreateProperties', () => {
     expect(r.unhonoured).toEqual([]);
   });
 
+  it('treats cacheLookup:"None" as honoured by absence, and WRITES NotInTTS', () => {
+    // The omitted-default table named the wrong member here, and it cost two
+    // defects pointing opposite ways. RecordCacheLevel.None = 0 (reflection over
+    // Microsoft.Dynamics.AX.Metadata.Core.dll), so the serializer omits it: of the
+    // 1,444 <CacheLookup> elements in 6,995 shipped tables, ZERO say None, while
+    // NotInTTS appears 301 times and 95 shipped Transaction tables carry no
+    // element at all.
+    //
+    // Before the fix: "None" was patched in as an element the platform never
+    // writes — every later metadata round trip normalised it away again, which the
+    // 2026-08-31 capture run read as "a bridge modify destroys properties this
+    // server wrote" — while "NotInTTS", a real non-default value, was reported as
+    // honoured and never written at all.
+    // The real shape: the bridge wrote no <CacheLookup> at all, because the value
+    // it set (None, for a Transaction table) is the one the serializer omits.
+    const noElement = base.replace(/\t<CacheLookup>Found<\/CacheLookup>\n/, '');
+
+    const none = reconcileTableCreateProperties(noElement, { cacheLookup: 'None' });
+    expect(none.patched).toEqual([]);
+    expect(none.unhonoured).toEqual([]);
+    expect(none.xml).toBe(noElement);
+
+    const notInTts = reconcileTableCreateProperties(noElement, { cacheLookup: 'NotInTTS' });
+    expect(notInTts.xml).toContain('<CacheLookup>NotInTTS</CacheLookup>');
+  });
+
   it('writes a NON-default NoYes property with the XML spelling, not true/false', () => {
     const r = reconcileTableCreateProperties(base, { saveDataPerCompany: false });
     expect(r.xml).toContain('<SaveDataPerCompany>No</SaveDataPerCompany>');

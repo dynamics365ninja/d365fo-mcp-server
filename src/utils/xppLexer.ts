@@ -26,7 +26,9 @@
  * rule still see that a call had a string argument at all.
  *
  * This is deliberately not a tokenizer and not a parser: rules stay regex-based
- * (see docs/XPP_LANGUAGE_COVERAGE_PLAN.md §4 "no AST").
+ * over this lexer's masked source. "No AST, one shared lexer" is a standing
+ * decision — a rule that genuinely needs scope is rejected rather than
+ * approximated (see docs/BACKLOG.md, "DECL001 / CONV001").
  */
 
 export type XppSpanKind = 'string' | 'line-comment' | 'block-comment';
