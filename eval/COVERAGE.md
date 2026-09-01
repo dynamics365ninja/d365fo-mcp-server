@@ -9,7 +9,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
 | core | 65 | 65 | **100%** |
-| total | 108 | 109 | 99.1% |
+| total | 109 | 109 | 100% |
 
 ## Data model (12/12)
 
@@ -19,8 +19,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Table extension | core | ✅ | ✅ | ✅ | L2-table-extension |
 | Extended data type | core | ✅ | ✅ | ✅ | L0-edt-basic |
 | EDT extension | total | ✅ | ✅ | ✅ | L2-edt-extension-basic |
-| Base enum | core | ✅ | ✅ | ✅ | L0-enum-basic |
-| Enum extension | core | ✅ | ✅ | ✅ | L2-enum-extension-empty-values |
+| Base enum | core | ✅ | ✅ | ✅ | L0-enum-basic, L3-enum-field-form-downgrade-guard |
+| Enum extension | core | ✅ | ✅ | ✅ | L2-enum-extension-empty-values, L2-enum-modify-values |
 | View | core | ✅ | ✅ | ✅ | L1-query-view-basic, L2-form-over-view |
 | AOT query | core | ✅ | ✅ | ✅ | L1-query-view-basic |
 | Map | total | ✅ | ✅ | ✅ | L1-map-basic |
@@ -46,8 +46,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Error handling & infolog | core | ✅ | ✅ | ✅ | L2-error-handling-infolog |
 | SysExtension plug-in pattern | total | ✅ | ✅ | ✅ | L2-sysextension-plugin |
 | Performance patterns | core | ✅ | ✅ | ✅ | L2-performance-set-based |
-| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +61 |
-| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +60 |
+| Best-practice (BP) compliance | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +63 |
+| Deprecated APIs & migration | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +62 |
 | Optimistic concurrency & UnitOfWork | core | ✅ | ✅ | ✅ | L2-occ-retry-basic |
 | Caching (CacheLookup, SysGlobalObjectCache, RecordViewCache) | total | ✅ | ✅ | ✅ | L2-table-caching-basic |
 | X++ collections & containers (List/Map/Set/Struct) | total | ✅ | ✅ | ✅ | L2-collections-map-list-container |
@@ -100,14 +100,14 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Report design & RDL expressions | core | ✅ | ✅ | ✅ | L4-ssrs-report-design-rdl |
 | Report print destinations (file, e-mail, archive, batch) | core | ✅ | ✅ | ✅ | L4-ssrs-report-print-destinations |
 
-## Frameworks (20/21)
+## Frameworks (21/21)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | SysOperation / batch | core | ✅ | ✅ | ✅ | L3-batch-basic |
 | Parallel batch processing | total | ✅ | ✅ | ✅ | L3-parallel-batch-tasks |
 | Async & retryable batch (BatchRetryable/runAsync) | total | ✅ | ✅ | ✅ | L3-batch-retryable-basic |
-| Number sequences | core | ✅ | ✅ | ✅ | L2-numberseq-basic |
+| Number sequences | core | ✅ | ✅ | ✅ | L2-numberseq-basic, L3-numberseq-module-slice |
 | Financial dimensions | core | ✅ | ✅ | ✅ | L2-dimension-basic |
 | Posting engine (LedgerVoucher) | total | ✅ | ✅ | ✅ | L4-posting-ledgervoucher-slice |
 | Workflow | core | ✅ | ✅ | ✅ | L3-workflow-document-submit |
@@ -122,7 +122,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Warehouse app / barcode scanning | total | ✅ | ✅ | ✅ | L3-warehouse-scan-resolve-slice |
 | Warehouse-app screens (ProcessGuide / legacy) | total | ✅ | ✅ | ✅ | L2-processguide-page-control, L3-legacy-workexecutedisplay-extend, L3-processguide-flow-slice |
 | Trade agreements & pricing | total | ✅ | ✅ | ✅ | L3-trade-agreement-price-lookup |
-| SysOperation dialog from contract attributes | total | ✅ | — | ✅ | missing E |
+| SysOperation dialog from contract attributes | total | ✅ | ✅ | ✅ | L3-sysoperation-dialog-attributes |
 | SysOperation query parameter (batch with a filter) | core | ✅ | ✅ | ✅ | L3-sysoperation-query-parameter-batch |
 | RunBase lifecycle & packed state | total | ✅ | ✅ | ✅ | L3-runbase-coc-pack-unpack |
 
@@ -130,7 +130,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
-| Data entity (OData) | core | ✅ | ✅ | ✅ | L4-entity-security |
+| Data entity (OData) | core | ✅ | ✅ | ✅ | L4-bridge-drops-data-entity-primarytable-fields-on-create, L4-entity-security |
 | Data entity extension | total | ✅ | ✅ | ✅ | L3-data-entity-extension-field |
 | Custom services / OData actions | core | ✅ | ✅ | ✅ | L3-custom-service-basic |
 | Data management framework (DMF/DIXF) | total | ✅ | ✅ | ✅ | L3-dmf-entity-import-slice |
@@ -157,18 +157,16 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
 | SysTest unit testing | core | ✅ | ✅ | ✅ | L2-coc-extension, L2-event-handler-basic, L2-systest-authoring-basic +1 |
-| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +60 |
+| Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +62 |
 | TDD loop (red-first SysTest authoring) | core | ✅ | ✅ | ✅ | L2-systest-authoring-basic |
 
 ## Closure queue (uncovered, by frequency weight)
 
-| Weight | Leaf | Missing |
-| ---: | --- | --- |
-| 3 | SysOperation dialog from contract attributes | missing E |
+Nothing uncovered.
 
 ## Orphans
 
 - Knowledge entries no leaf claims (**unproven knowledge**): none
 - Eval cases no leaf claims (**unmapped proof**): L0-create-readback-no-reindex, L2-batched-object-reads, L2-entity-query-range-roundtrip, L2-form-control-removal-lifecycle, L2-object-delete-and-entry-point-cleanup, L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice
 
-_Generated 2026-08-31._
+_Generated 2026-09-01._

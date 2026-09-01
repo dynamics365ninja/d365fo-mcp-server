@@ -23,12 +23,12 @@ the design.
 
 ---
 
-## Live SysTest runs — UNBLOCKED 2026-08-31
+## Live SysTest runs — UNBLOCKED and CLOSED 2026-08-31
 
-**Status:** **resolved 2026-08-31.** The owner applied the config copy on the VM and
-the runner now reaches the database. Kept here (rather than deleted) because the
-diagnosis was wrong twice before it was right, and because the four cases below
-still have to RUN before their flags flip.
+**Status:** **resolved and closed 2026-08-31.** The owner applied the config copy on
+the VM, the runner reached the database, and all four cases have since RUN their
+tests. Kept here (rather than deleted) because the diagnosis was wrong twice before
+it was right.
 
 **What changed.** `compareSysTestDataAccess` reports all four `DataAccess.*`
 settings in agreement with `WebRoot\web.config`, and `SysTestConsole.exe
@@ -42,11 +42,16 @@ UNKNOWN this entry carried: the 828-character encrypted password blob **is**
 decryptable by the account the runner executes as, so no second blocker was hiding
 behind the first.
 
-**What is still owed.** The four cases keep `systest_pending: true` until each one
-actually runs: their SysTest classes were rolled back after their goldens were
-captured, so re-running them means an `eval-run` per case. And `L2-tdd-red-green-cycle`
-— the case that proves the loop rather than the authoring — can now be authored
-honestly, which it could not be while no test had ever executed.
+**What was owed, and is now done.** The four cases have each been re-run.
+`L2-coc-extension`, `L2-event-handler-basic` and `L3-batch-basic` passed **2/2**
+apiece under `SysTestConsole.exe` ("Rainier Test Suite : 2 Run, 0 Failed"), and
+`L3-enum-field-form-downgrade-guard` ran green too; the corpus records
+(`eval/corpus/runs/2026-08-31T2*__*__278eee3.json`) carry
+`systest: {"ran": true, "passed": true}` and `score.systest: 1`. **No case carries
+`systest_pending` any more**, and 0 of the 120 cases are `golden_pending`.
+`L2-tdd-red-green-cycle` — the case that proves the loop rather than the authoring
+— can now be authored honestly, which it could not be while no test had ever
+executed. That is the only item this entry still points at.
 
 <details>
 <summary>The original entry, kept for the diagnosis history</summary>
@@ -59,6 +64,7 @@ this repo can close it.
 Their goldens are captured and they build clean; what has never run is the live
 SysTest, which is the runtime-correctness half of the oracle (§6.3). Until it does,
 those cases prove that the code COMPILES and nothing more.
+*[2026-08-31] All four have now run and passed; none carries `systest_pending`.*
 
 **Why it is stuck — and why the recorded reason was wrong.** `SysTestConsole.exe`
 now starts (two earlier assembly faults were fixed by config edits, each with a
@@ -85,6 +91,8 @@ tool's — and an assistant's sandbox classifier blocks it outright, correctly.
 retype), re-run `run_systest_class`. If it then connects, flip the four cases'
 `systest_pending` to false as each one actually runs, and record the runs in the
 corpus.
+*[2026-08-31] Applied, and the trigger fired: all four ran, all four flags are
+false, and the corpus records are committed.*
 
 **What was done instead.** `run_systest_class` performs the comparison itself and
 names the settings that differ, never printing the password — only "the shipped

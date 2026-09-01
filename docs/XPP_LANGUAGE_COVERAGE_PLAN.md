@@ -14,11 +14,14 @@ held. The runs found **31 defects**, including five errors in knowledge written
 the same day and one write-path bug that had silently corrupted a committed
 golden. §9 lists them.
 
-**What is left** — evidence, not code: eight older `golden_pending` cases from
-earlier waves, four `systest_pending` runs (the first is in flight), one
-re-capture (`L3-sysoperation-dialog-attributes`, whose golden was removed after
-the attribute-drop bug was found in it), and a `bp_clean` top-up for
-`L3-warehouse-work-slice`.
+**What is left** — as of 2026-08-31 the capture wave is DONE: **0 of the 120 cases
+are `golden_pending` and none carries `systest_pending`.** The eight older
+`golden_pending` cases were captured, all four SysTest runs executed (three of
+them 2/2 under `SysTestConsole.exe`), and `L3-sysoperation-dialog-attributes` was
+re-captured after the attribute-drop bug found in its golden. The one item still
+outstanding is the `bp_clean` top-up for `L3-warehouse-work-slice`, whose only
+corpus record (2026-08-03) still scores `bp_clean: null`. That also means this
+file's own delete-condition below is met — the owner's call, not an automatic one.
 
 **Lifecycle.** v1 (A–F) and v2.1 (G0–G5, G-VM) were executed and their content
 removed; the durable record is `eval/COVERAGE.md`, `eval/README.md`, the goldens'
