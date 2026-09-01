@@ -18,6 +18,7 @@ import { extractModelFromProject, findProjectInSolution } from '../../utils/proj
 import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
 import { validateFormPatternXml } from '../../validation/formPatternValidator.js';
 import {
+  countFormControls,
   findControlElementOrderViolations,
   formatElementOrderViolations,
 } from '../../validation/formControlElementOrder.js';
@@ -30,7 +31,6 @@ import { getFieldControlMap, getTableTitleField, type FieldControlMap } from '..
 import { lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import { scaffoldWriteRefusalResult } from '../write/writeAnchorGuard.js';
 import { upsertWrittenFileIntoIndex } from '../write/inlineIndexUpsert.js';
-import { createXmlTokenScanner } from '../../utils/xmlScan.js';
 
 /**
  * Symbol types a form datasource may bind to. Views are indexed as 'view'
@@ -152,22 +152,6 @@ export const generateSmartFormTool: Tool = {
  * BPErrorCaptionNotDefined on unlabeled ActionPane/ButtonGroups). Reusing
  * the bound table's Label when available is both more correct and BP-clean.
  */
-/**
- * How many `<AxFormControl>` elements a form document actually contains.
- *
- * Uses the shared token scanner, so a control written inside an XML COMMENT (the
- * Workspace template ships two such examples) is not counted as a real one.
- */
-export function countFormControls(xml: string): number {
-  const scanner = createXmlTokenScanner();
-  let count = 0;
-  let token: RegExpExecArray | null;
-  while ((token = scanner.exec(xml)) !== null) {
-    if (token[2] === 'AxFormControl') count++;
-  }
-  return count;
-}
-
 export function resolveFormCaption(
   explicitCaption: string | undefined,
   explicitLabel: string | undefined,
