@@ -2,7 +2,15 @@
  * Structural diff for the eval golden oracle. Compares two normalized
  * `path → value` maps (see normalize.ts) and classifies each delta as
  * missing / extra / changed, mirroring eval/corpus/schema.json `golden_diff`.
+ *
+ * Value equality is NOT `===`: it goes through `valuesEquivalent`, which makes
+ * the collapsed XmlDoc placeholder DIRECTIONAL (an actual may carry a doc
+ * comment its golden lacks; the reverse still fails). The rationale, and the
+ * deliberate decision not to batch-re-capture the goldens, live on that
+ * function in normalize.ts — read them before changing this.
  */
+
+import { valuesEquivalent } from './normalize.js';
 
 export interface GoldenDiff {
   matched: boolean;
@@ -31,7 +39,7 @@ export function diffNormalized(
       missing.push(path);
     } else {
       const actVal = actual.get(path)!;
-      if (actVal !== expVal) changed.push({ path, expected: expVal, actual: actVal });
+      if (!valuesEquivalent(expVal, actVal)) changed.push({ path, expected: expVal, actual: actVal });
     }
   }
   for (const path of actual.keys()) {

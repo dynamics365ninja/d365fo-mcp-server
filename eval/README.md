@@ -327,8 +327,9 @@ core 44/44. The three newest families are the ones that matter — `remove-contr
 audit PR to close real defects, and the catalog had nothing to say about any of
 them. Four cases now cover the first three families end-to-end
 (`L2-form-control-removal-lifecycle`, `L2-object-delete-and-entry-point-cleanup`,
-`L2-bp-suppression-lifecycle`, `L2-entity-query-range-roundtrip`, all
-`golden_pending` and tagged `write-op-coverage`). They land in COVERAGE.md's
+`L2-bp-suppression-lifecycle`, `L2-entity-query-range-roundtrip`, tagged
+`write-op-coverage`; all four goldens are captured as of the 2026-08-31 wave).
+They land in COVERAGE.md's
 **Orphans** list, because no leaf claims them — which is the honest reading:
 until the taxonomy grows a write-operation axis, a missing op cannot make the
 percentage fall. Still uncovered by any case: `replace-all-fields`,
@@ -384,21 +385,23 @@ them, the next day.
 
 Standing queues:
 
-- **Capture the pending goldens (VM).** Cases with `golden_pending: true` have
-  been authored but never run; coverage counts them as uncovered because they
-  prove nothing until captured. `eval-run` captures each on the VM — flip the
-  flag as each lands.
+- ~~**Capture the pending goldens (VM).**~~ **CLOSED 2026-08-31.** Cases with
+  `golden_pending: true` had been authored but never run, and coverage counted
+  them as uncovered because they prove nothing until captured. **0 of the 120
+  cases are `golden_pending` today** — the queue is empty.
 
-  Nine of them arrived together on 2026-08-30 with the compiler-verified language
-  work, and they are why core coverage reads 86.4% rather than 100%:
+  The last nine arrived together on 2026-08-30 with the compiler-verified
+  language work, and they were why core coverage read 86.4% rather than 100%:
   `L2-runtime-functions-arity`, `L2-implicit-conversions`,
   `L2-select-find-options-joins`, `L2-args-record-caller`,
   `L2-display-edit-methods`, `L3-form-event-handler-class`,
   `L3-sysoperation-dialog-attributes`, `L2-systest-authoring-basic`,
-  `L3-report-dataset-extension`. Each has a knowledge entry written from a
-  compiler probe and a tool path that can produce it; what none of them has yet is
-  a build that proves the two agree. The number is supposed to fall when the
-  taxonomy grows honestly — it climbs back one captured golden at a time.
+  `L3-report-dataset-extension`. Each had a knowledge entry written from a
+  compiler probe and a tool path that could produce it; what none of them had was
+  a build proving the two agree. They now do. The number is supposed to fall when
+  the taxonomy grows honestly — it climbed back one captured golden at a time.
+  Re-open this queue the moment `eval-author` drafts the next case, which starts
+  life `golden_pending: true` by design.
 - **Coverage closure loop** (~2–4 leaves/week): `eval-author` drafts a case for
   each leaf missing **E** → `eval-run` captures the golden → MODEL_ERROR
   clusters flow through `knowledgeFeedback` into proposed knowledge entries
@@ -480,16 +483,19 @@ Blocked / declined (not planned):
   and returned the same 3 outcomes with both messages — so the repo's own reader
   agrees with the runner, which is the half a passing run cannot show.
 
-  **The runtime oracle is therefore trustworthy, not merely alive.** What remains
-  is ordinary work: the four `systest_pending` cases still have to RUN their own
-  tests, because the control proves the instrument, not those cases. The sandbox
-  was restored and a full build is green.
-  The four cases (`L2-coc-extension`, `L3-batch-basic`, `L2-event-handler-basic`,
-  `L3-enum-field-form-downgrade-guard`) keep `systest_pending: true` until each one
-  actually RUNS: their test classes were rolled back after their goldens were
-  captured, so re-running them means an `eval-run` per case. `L2-tdd-red-green-cycle`
-  — the case that proves the loop rather than the authoring — can now be authored
-  honestly, which it could not be while no test had ever executed.
+  **The runtime oracle is therefore trustworthy, not merely alive** — and the
+  four cases that owed a run have now all made it. `L2-coc-extension`,
+  `L2-event-handler-basic` and `L3-batch-basic` each ran under
+  `SysTestConsole.exe` on 2026-08-31 and passed **2/2** ("Rainier Test Suite :
+  2 Run, 0 Failed"), and `L3-enum-field-form-downgrade-guard` ran green as well;
+  all four corpus records carry `systest: {"ran": true, "passed": true}` and
+  `score.systest: 1`. **No case carries `systest_pending` any more**, and 0 of the
+  120 cases are `golden_pending`. The sandbox was restored and a full build is
+  green. `L2-tdd-red-green-cycle` — the case that proves the loop rather than the
+  authoring — can now be authored honestly, which it could not be while no test
+  had ever executed. The one runtime-tagged case still scoring `systest: null` is
+  `L2-systest-authoring-basic`, whose most recent run (2026-08-30) predates the
+  config fix.
   `vstest.console.exe` + `RunnableDropSysTest.TestAdapter.dll` discovers zero
   tests: still a dead end, and no longer needed as a fallback.
 - CI-workflow half of the autonomous improver. The VM-free fix-brief generator

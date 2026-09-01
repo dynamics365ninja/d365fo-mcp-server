@@ -12,7 +12,6 @@
     "AxForm"
   ],
   "golden_path": "eval/goldens/L3-numberseq-module-slice/",
-  "golden_pending": true,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"

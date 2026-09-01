@@ -1,0 +1,112 @@
+{
+  "run_id": "2026-08-31T23__L3-batch-basic__278eee3",
+  "case_id": "L3-batch-basic",
+  "tier": 3,
+  "timestamp": "2026-08-31T23:42:37.131Z",
+  "server_git_sha": "278eee3",
+  "generated_artifacts": [
+    "ConDemoBatchContract.metadata.xml",
+    "ConDemoBatchController.metadata.xml",
+    "ConDemoBatchService.metadata.xml",
+    "ConDemoProcessBatch.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {
+        "code": "BPErrorMenuItemNotCoveredByPrivilege",
+        "message": "AxMenuItemAction ConDemoProcessBatch is not covered by privilege.",
+        "object": "dynamics://MenuItemAction/ConDemoProcessBatch",
+        "fixHint": "The four target_artifact_types of this case contain no AxSecurityPrivilege, so an action menu item produced exactly to spec can never be xppbp-clean. Either the case spec grows a fifth artifact (a privilege naming the menu item as an entry point) or this moniker becomes a documented, accepted warning for the case."
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": false,
+    "missing": [],
+    "extra": [],
+    "changed": [
+      {
+        "path": "DemoBatchContract.metadata.xml::AxClass/SourceCode/Declaration",
+        "expected": "[DataContractAttribute]\nclass PFXDemoBatchContract\n{\n    int batchSize;\n    int priorityFactor;\n}",
+        "actual": "/// <xmldoc/>\n[DataContractAttribute]\nclass PFXDemoBatchContract\n{\n    int batchSize;\n    int priorityFactor;\n\n}"
+      },
+      {
+        "path": "DemoBatchContract.metadata.xml::AxClass/SourceCode/Methods/Method[parmBatchSize]/Source",
+        "expected": "[DataMemberAttribute,\n    SysOperationLabelAttribute(literalStr(\"@PFXRent:DemoBatchSize\")),\n    SysOperationDisplayOrderAttribute('1')]\n    public int parmBatchSize(int _batchSize = batchSize)\n{\n    batchSize = _batchSize;\n    return batchSize;\n}",
+        "actual": "[DataMemberAttribute,\n    SysOperationLabelAttribute(literalStr(\"@SYS93619\")),\n    SysOperationDisplayOrderAttribute('1')]\n    public int parmBatchSize(int _batchSize = batchSize)\n{\n    batchSize = _batchSize;\n    return batchSize;\n}"
+      },
+      {
+        "path": "DemoBatchContract.metadata.xml::AxClass/SourceCode/Methods/Method[parmPriorityFactor]/Source",
+        "expected": "[DataMemberAttribute,\n    SysOperationLabelAttribute(literalStr(\"@PFXRent:DemoPriorityFactor\")),\n    SysOperationDisplayOrderAttribute('2')]\n    public int parmPriorityFactor(int _priorityFactor = priorityFactor)\n{\n    priorityFactor = _priorityFactor;\n    return priorityFactor;\n}",
+        "actual": "[DataMemberAttribute,\n    SysOperationLabelAttribute(literalStr(\"@SYS130699\")),\n    SysOperationDisplayOrderAttribute('2')]\n    public int parmPriorityFactor(int _priorityFactor = priorityFactor)\n{\n    priorityFactor = _priorityFactor;\n    return priorityFactor;\n}"
+      },
+      {
+        "path": "DemoBatchController.metadata.xml::AxClass/SourceCode/Declaration",
+        "expected": "class PFXDemoBatchController extends SysOperationServiceController\n{\n}",
+        "actual": "/// <xmldoc/>\nclass PFXDemoBatchController extends SysOperationServiceController\n{\n}"
+      },
+      {
+        "path": "DemoBatchController.metadata.xml::AxClass/SourceCode/Methods/Method[main]/Source",
+        "expected": "/// <xmldoc/>\npublic static void main(Args _args)\n{\n    PFXDemoBatchController controller = PFXDemoBatchController::construct();\n    controller.parmDialogCaption(literalStr(\"@PFXRent:DemoProcessBatch\"));\n    controller.startOperation();\n}",
+        "actual": "/// <xmldoc/>\npublic static void main(Args _args)\n{\n    PFXDemoBatchController controller = PFXDemoBatchController::construct();\n    controller.parmDialogCaption(literalStr(\"@SYS2312\"));\n    controller.startOperation();\n}"
+      },
+      {
+        "path": "DemoBatchService.metadata.xml::AxClass/SourceCode/Declaration",
+        "expected": "class PFXDemoBatchService\n{\n}",
+        "actual": "/// <xmldoc/>\nclass PFXDemoBatchService\n{\n}"
+      },
+      {
+        "path": "DemoBatchService.metadata.xml::AxClass/SourceCode/Methods/Method[process]/Source",
+        "expected": "/// <xmldoc/>\npublic void process(PFXDemoBatchContract _contract)\n{\n    info(strFmt(\"Effective batch size: %1\", this.calculateEffectiveBatchSize(_contract)));\n}",
+        "actual": "/// <xmldoc/>\npublic void process(PFXDemoBatchContract _contract)\n{\n    info(strFmt(\"@SYS97212\", this.calculateEffectiveBatchSize(_contract)));\n}"
+      },
+      {
+        "path": "DemoProcessBatch.metadata.xml::AxMenuItemAction/Label",
+        "expected": "@PFXRent:DemoProcessBatch",
+        "actual": "@SYS2312"
+      }
+    ]
+  },
+  "systest": {
+    "ran": true,
+    "passed": true,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 0,
+    "systest": 1,
+    "tier_weight": 3
+  },
+  "classification": "VALIDATOR_GAP",
+  "platform_build": "xppc 7.0.7996.33",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "The IMPLEMENTATION is correct and RUNTIME-VERIFIED. Full xppc build of fm-mcp: 0 errors / 0 warnings (fullBuild, so not an incremental illusion). The committed runtime oracle EvalL3BatchCalcTest ran under SysTestConsole.exe and passed 2/2 - testEffectiveBatchSizeMultipliesByPriorityFactor (10*3=30) and testEffectiveBatchSizeWithDifferentInputs (7*5=35), both test-case elements success=\"true\", \"Rainier Test Suite : 2 Run, 0 Failed\". The batch-size arithmetic is therefore PROVEN at runtime, which is the one thing a golden diff cannot establish.\n\ngolden_match=0 (8 changed, 0 missing, 0 extra) is ENTIRELY an oracle/golden artifact, from THREE independent causes. Positive control: the Source of ConDemoBatchController::construct is NOT in the diff - it reproduced the 2026-06-30 golden body byte-for-byte after prefix canonicalisation, so the write path itself is faithful.\n\n(1) STALE GOLDEN - unconditional XmlDoc injection (3 of the 8 changed paths; expected and pre-root-caused). ensureXppDocComment (src/utils/xppDocGen.ts) injects a class-level /// <summary> unconditionally, and commit 0a95198 (2026-08-09) deliberately extended that to the bridge create path. This golden was captured 2026-06-30 (server SHA 7f836a6) and its three class Declarations carry NO doc comment, so no faithful grounded rerun can reproduce them. normalize.ts COLLAPSES a doc run to \"/// <xmldoc/>\" but deliberately keeps its PRESENCE load-bearing (tied to BPXmlDocNoDocumentationComments and therefore to bp_clean), so presence-vs-absence still diffs. Affected paths: DemoBatchService.metadata.xml::AxClass/SourceCode/Declaration and DemoBatchController.metadata.xml::AxClass/SourceCode/Declaration are byte-identical to the golden apart from the single injected \"/// <xmldoc/>\" line; DemoBatchContract.metadata.xml::AxClass/SourceCode/Declaration is the same PLUS cause (3) below.\n\n(2) STALE GOLDEN - a SECOND, previously unreported staleness axis: the golden references a label file that DOES NOT EXIST in this sandbox generation (5 of the 8 changed paths). It uses @ConRent:DemoBatchSize, @ConRent:DemoPriorityFactor and @ConRent:DemoProcessBatch, and it hard-codes the raw text \"Effective batch size: %1\" inside info(strFmt(...)). There is no ConRent label file anywhere in PackagesLocalDirectory (labels action=info misses it; no ConRent* file on disk), and the fm-mcp Descriptor references no package that could supply one. Reproducing the golden literally would therefore trade golden_match for xppbp BPErrorUnknownLabel three times over, plus the BPErrorLabelIsText that the golden header comment already admits to - i.e. THE COMMITTED GOLDEN CANNOT BE REPRODUCED BP-CLEAN ON THIS VM AT ALL. This run instead used shipped, resolvable ApplicationPlatform label ids, the house style that the sibling capture L3-sysoperation-dialog-attributes (SHA 278eee3, same day) explicitly adopted and documented: @SYS93619 \"Maximum batch size\", @SYS130699 \"Priority\", @SYS2312 \"Batch processing\", @SYS97212 \"Number of records: %1\". Changed paths: Method[parmBatchSize]/Source and Method[parmPriorityFactor]/Source on the contract, Method[main]/Source on the controller, Method[process]/Source on the service, and AxMenuItemAction/Label. In every one of those the ONLY delta is the label id or format string - each remaining character of the body is identical.\n\n(3) NORMALISER GAP - a blank line the writer emits and normalize.ts does not canonicalise. In DemoBatchContract.metadata.xml::AxClass/SourceCode/Declaration the actual carries an extra empty line between the last member variable (int priorityFactor;) and the closing brace, which the golden does not. reindentXppSource re-derives INDENTATION but preserves blank lines, so it survives canonicalisation. It is a pure writer artefact (the submitted sourceCode had no such blank line), it is invisible to xppc and to xppbp, and it means that even if causes (1) and (2) were both resolved the Contract Declaration would STILL false-mismatch. A THIRD, independent reason a re-capture alone will not make this case reproducible run-to-run.\n\n(4) TOOL_DEFECT REPRODUCED A THIRD TIME (independent of the case; hit while deploying the oracle). d365fo_file(action=\"create\", objectType=\"class\", objectName=\"EvalL3BatchCalcTest\", xmlContent=<verbatim AxClass XML>) wrote THREE identities into one file and reported success: filename K:\\AosService\\PackagesLocalDirectory\\fm-mcp\\fm-mcp\\AxClass\\ConDemoEvalL3BatchCalcTest.xml (prefixed), X++ CDATA declaration \"class ConDemoEvalL3BatchCalcTest extends SysTestCase\" (prefixed), but <Name>EvalL3BatchCalcTest</Name> (NOT prefixed). It answered \"Created class ConDemoEvalL3BatchCalcTest (prefixed from EvalL3BatchCalcTest)\" and \"Verified: on disk (2350 bytes)\". Identical to the reports in the L2-coc-extension and L2-event-handler-basic runs earlier today; the on-disk verification confirms bytes exist but never that the three identity sites agree. Caught here BEFORE building, by reading the file back, so the fatal \"The element must be named X instead of Y to be consistent with its file name\" did not occur this time. Workaround: delete + direct verbatim file write to AxClass\\EvalL3BatchCalcTest.xml + update_symbol_index. HARNESS PLUMBING ONLY - all four CASE artifacts went through the full grounded path (prepare -> validate_code(both) -> d365fo_file create with groundingToken and sourceCode); no hand-edited XML.\n\n(5) CASE-SPEC / KNOWLEDGE observation behind bp_clean=0. The only xppbp warning attributable to this case is BPErrorMenuItemNotCoveredByPrivilege on ConDemoProcessBatch. The target_artifact_types of the case are exactly [AxClass, AxClass, AxClass, AxMenuItemAction] - no privilege - so an implementation that follows the spec EXACTLY is structurally incapable of being BP-clean. The other 6 warnings in the model all belong to the pre-existing committed fixture table ConDemoNoteHeader and are not attributable to this run, so bp-warnings was reported as 1, not 7. The two prior L3-batch-basic corpus records (2026-07-07, SHA cb1b73d) also scored bp_clean=0, so this is a stable property of the case rather than a regression.",
+  "suggested_fix_area": "eval/goldens/L3-batch-basic/ - RE-CAPTURE all four artifacts (or promote the artifacts from this run). The 2026-06-30 capture is stale on TWO axes at once: it predates the unconditional XmlDoc injection AND it references a @ConRent label file that exists on no VM today, which makes it unreproducible bp-clean. A normalize.ts-only change cannot fix the label axis. Note the wave-owner decision (re-capture vs a directional change in normalize.ts) is broader than this case: 17 other AxClass goldens committed 2026-07-07 / 2026-07-23 sit in the same XmlDoc-affected set.\n\nsrc/eval/oracle/normalize.ts - canonicalizeXppSourceText re-derives indentation but preserves blank lines. Collapsing runs of blank lines, or at minimum dropping a blank line immediately before a closing brace, would remove the writer-artefact false-mismatch in cause (3). Regression test: a Declaration with and without a trailing blank line before the closing brace must normalise equal.\n\nd365fo_file(action=\"create\") xmlContent path - make prefixing ALL-OR-NOTHING across <Name>, filename and the X++ declaration, or reject the call when objectName prefixing would contradict the <Name> carried by caller-supplied xmlContent. Third independent reproduction today. Cheap interim fix: extend the existing post-write on-disk verification to also assert filename == <Name> == the declared class name, and fail loudly instead of reporting success.\n\neval/cases/L3-batch-basic.json - either add a fifth artifact (an AxSecurityPrivilege whose entry point is ConDemoProcessBatch) so the case is achievable BP-clean, or record BPErrorMenuItemNotCoveredByPrivilege as an accepted, documented warning for this case so that bp_clean stops reading as a defect signal.",
+  "evidence_refs": [
+    "eval/corpus/runs/2026-08-31T23__L3-batch-basic__278eee3.json",
+    "eval/corpus/runs/2026-08-31T23__L2-coc-extension__278eee3.json (same three-identity create defect, first report today)",
+    "eval/corpus/runs/2026-08-31T23__L2-event-handler-basic__278eee3.json (second report today)",
+    "eval/corpus/runs/2026-07-07T11__L3-batch-basic__cb1b73d__{contract,service,controller,menuitem}.json (prior runs of this case; also bp_clean=0, golden_match=0, systest null)",
+    "eval/goldens/L3-batch-basic/*.metadata.xml (captured 2026-06-30, server SHA 7f836a6, xppc 7.0.7858.27)",
+    "eval/goldens/L3-sysoperation-dialog-attributes/README.md (2026-08-31 sibling SysOperation capture: shipped @SYS label ids, no SysEntryPointAttribute)",
+    "src/utils/xppDocGen.ts (ensureXppDocComment, unconditional injection) and git 0a95198 (2026-08-09, extended to the bridge path)",
+    "src/eval/oracle/normalize.ts (canonicalizeXppDocComments keeps doc PRESENCE load-bearing; reindentXppSource preserves blank lines)",
+    "SysTestConsole.exe raw output: Rainier Test Suite : 2 Run, 0 Failed; both test-case elements success=true (406 ms and 141 ms)",
+    "xppbp fm-mcp: 7 warnings total, 1 attributable (BPErrorMenuItemNotCoveredByPrivilege on ConDemoProcessBatch), 6 on the pre-existing fixture table ConDemoNoteHeader",
+    "K:AosServicePackagesLocalDirectory\fm-mcp\fm-mcpAxClassConDemoEvalL3BatchCalcTest.xml (the three-identity artifact, before the workaround)"
+  ]
+}

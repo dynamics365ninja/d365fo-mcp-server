@@ -6,12 +6,13 @@
   "target_artifact_types": [
     "AxEnum",
     "AxTable",
-    "AxForm"
+    "AxForm",
+    "AxMenuItemDisplay"
   ],
   "golden_path": "eval/goldens/L3-enum-field-form-downgrade-guard/",
-  "golden_pending": true,
+  "golden_pending": false,
   "systest": "eval/systests/L3-enum-field-form-downgrade-guard.xml",
-  "systest_pending": true,
+  "systest_pending": false,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo",

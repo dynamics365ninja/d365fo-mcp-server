@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Golden for L3-numberseq-module-slice (1 of 6): the EDT used as the number sequence datatype (String, extends Num). Captured 2026-08-31, SHA 278eee3. -->
+<AxEdt xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns=""
+	i:type="AxEdtString">
+	<Name>ConDemoSliceId</Name>
+	<Extends>Num</Extends>
+	<Label>@SYS22304</Label>
+	<ArrayElements />
+	<Relations />
+	<TableReferences />
+</AxEdt>

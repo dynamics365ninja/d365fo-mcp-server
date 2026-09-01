@@ -7,7 +7,7 @@
     "AxEnum"
   ],
   "golden_path": "eval/goldens/L0-create-readback-no-reindex/",
-  "golden_pending": true,
+  "golden_pending": false,
   "ignore": [
     "AxEnum/@Id",
     "AxEnum/EnumValues/AxEnumValue/@Id",

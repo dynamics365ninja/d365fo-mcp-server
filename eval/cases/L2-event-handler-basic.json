@@ -8,7 +8,7 @@
   ],
   "golden_path": "eval/goldens/L2-event-handler-basic/",
   "systest": "eval/systests/L2-event-handler-basic.xml",
-  "systest_pending": true,
+  "systest_pending": false,
   "ignore": [
     "AxClass/@Id",
     "**/ModelSaveInfo"

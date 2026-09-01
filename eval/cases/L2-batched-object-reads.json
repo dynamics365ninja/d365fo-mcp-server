@@ -4,10 +4,12 @@
   "tier": 2,
   "instruction": "In the sandbox model, add the SAME new field to three standard Microsoft tables via table extensions: VendGroup, PaymTerm and InventItemGroup. The field is EvalNoteText, backed by the existing standard Notes EDT (do NOT invent a new EDT), and must be added to a field group so it surfaces on forms. Do NOT modify any base-table field. TOOL-PATH REQUIREMENT (this is what the case scores, on top of the artifacts): resolve all three base tables in a SINGLE get_object_info call using the plural form -- get_object_info(objects=[{objectType:\"table\",objectName:\"VendGroup\"},{objectType:\"table\",objectName:\"PaymTerm\"},{objectType:\"table\",objectName:\"InventItemGroup\"}]) -- NOT three sequential single-object get_object_info calls. The run record must show exactly ONE get_object_info call covering all three tables; N sequential calls is the failure this case exists to catch (issue #831: get_object_info was called 13 times in one audited session, one object per call, and the batched path was never chosen). All three extensions must build clean.",
   "target_artifact_types": [
+    "AxTableExtension",
+    "AxTableExtension",
     "AxTableExtension"
   ],
   "golden_path": "eval/goldens/L2-batched-object-reads/",
-  "golden_pending": true,
+  "golden_pending": false,
   "ignore": [
     "AxTableExtension/@Id",
     "**/AxTableField/@Id",

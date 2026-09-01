@@ -7,7 +7,7 @@
     "AxEnum"
   ],
   "golden_path": "eval/goldens/L2-enum-modify-values/",
-  "golden_pending": true,
+  "golden_pending": false,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"

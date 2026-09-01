@@ -8,8 +8,8 @@
   "total": {
     "tier": "all",
     "total": 109,
-    "covered": 108,
-    "percent": 99.1
+    "covered": 109,
+    "percent": 100
   },
   "leaves": [
     {
@@ -80,7 +80,8 @@
       "t": true,
       "covered": true,
       "cases": [
-        "L0-enum-basic"
+        "L0-enum-basic",
+        "L3-enum-field-form-downgrade-guard"
       ]
     },
     {
@@ -94,7 +95,8 @@
       "t": true,
       "covered": true,
       "cases": [
-        "L2-enum-extension-empty-values"
+        "L2-enum-extension-empty-values",
+        "L2-enum-modify-values"
       ]
     },
     {
@@ -429,6 +431,7 @@
         "L2-display-edit-methods",
         "L2-dotnet-interop-clrerror",
         "L2-edt-extension-basic",
+        "L2-enum-modify-values",
         "L2-feature-management-flight",
         "L2-global-statics-access-checks",
         "L2-implicit-conversions",
@@ -458,6 +461,7 @@
         "L3-form-event-handler-class",
         "L3-report-dataset-extension",
         "L3-runbase-coc-pack-unpack",
+        "L3-sysoperation-dialog-attributes",
         "L3-sysoperation-query-parameter-batch",
         "L4-ssrs-report-design-rdl",
         "L4-ssrs-report-print-destinations"
@@ -505,6 +509,7 @@
         "L2-display-edit-methods",
         "L2-dotnet-interop-clrerror",
         "L2-edt-extension-basic",
+        "L2-enum-modify-values",
         "L2-feature-management-flight",
         "L2-global-statics-access-checks",
         "L2-implicit-conversions",
@@ -534,6 +539,7 @@
         "L3-form-event-handler-class",
         "L3-report-dataset-extension",
         "L3-runbase-coc-pack-unpack",
+        "L3-sysoperation-dialog-attributes",
         "L3-sysoperation-query-parameter-batch",
         "L4-ssrs-report-design-rdl",
         "L4-ssrs-report-print-destinations"
@@ -999,7 +1005,8 @@
       "t": true,
       "covered": true,
       "cases": [
-        "L2-numberseq-basic"
+        "L2-numberseq-basic",
+        "L3-numberseq-module-slice"
       ]
     },
     {
@@ -1211,6 +1218,7 @@
       "t": true,
       "covered": true,
       "cases": [
+        "L4-bridge-drops-data-entity-primarytable-fields-on-create",
         "L4-entity-security"
       ]
     },
@@ -1472,6 +1480,7 @@
         "L2-display-edit-methods",
         "L2-dotnet-interop-clrerror",
         "L2-edt-extension-basic",
+        "L2-enum-modify-values",
         "L2-feature-management-flight",
         "L2-global-statics-access-checks",
         "L2-implicit-conversions",
@@ -1501,6 +1510,7 @@
         "L3-form-event-handler-class",
         "L3-report-dataset-extension",
         "L3-runbase-coc-pack-unpack",
+        "L3-sysoperation-dialog-attributes",
         "L3-sysoperation-query-parameter-batch",
         "L4-ssrs-report-design-rdl",
         "L4-ssrs-report-print-destinations"
@@ -1597,10 +1607,12 @@
       "tier": "total",
       "weight": 3,
       "k": true,
-      "e": false,
+      "e": true,
       "t": true,
-      "covered": false,
-      "cases": []
+      "covered": true,
+      "cases": [
+        "L3-sysoperation-dialog-attributes"
+      ]
     },
     {
       "id": "report-extension",

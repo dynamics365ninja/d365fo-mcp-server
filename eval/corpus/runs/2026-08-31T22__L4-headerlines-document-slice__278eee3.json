@@ -1,0 +1,163 @@
+{
+  "run_id": "2026-08-31T22__L4-headerlines-document-slice__278eee3",
+  "case_id": "L4-headerlines-document-slice",
+  "tier": 4,
+  "timestamp": "2026-08-31T22:51:11.650Z",
+  "server_git_sha": "278eee3",
+  "generated_artifacts": [
+    "AxEnum/ConDemoRentStatus.xml",
+    "AxEdt/ConDemoRentAgreementId.xml",
+    "AxTable/ConDemoRentHeader.xml",
+    "AxTable/ConDemoRentLine.xml",
+    "AxEnumExtension/NumberSeqModule.ConDemoRent.xml",
+    "AxClass/ConDemoNumberSeqModuleRent.xml",
+    "AxForm/ConDemoRentAgreement.xml",
+    "AxMenuItemDisplay/ConDemoRentAgreementMI.xml",
+    "AxSecurityPrivilege/ConDemoRentMaintain.xml",
+    "AxSecurityDuty/ConDemoRentDuty.xml",
+    "AxSecurityRole/ConDemoRentClerk.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {
+        "code": "BPErrorLabelIsText",
+        "object": "AxForm/ConDemoRentAgreement/LineViewHeader",
+        "message": "Property Caption must have a label ID as its value, and Header is not a label ID.",
+        "fixHint": "DetailsTransaction scaffold writes raw-text tab captions."
+      },
+      {
+        "code": "BPErrorLabelIsText",
+        "object": "AxForm/ConDemoRentAgreement/LineViewLines",
+        "message": "Caption Lines is not a label ID."
+      },
+      {
+        "code": "BPErrorLabelIsText",
+        "object": "AxForm/ConDemoRentAgreement/LineViewLineDetails",
+        "message": "Caption Line details is not a label ID."
+      },
+      {
+        "code": "BPErrorLabelIsText",
+        "object": "AxForm/ConDemoRentAgreement/TabLineGeneral",
+        "message": "Caption General is not a label ID."
+      },
+      {
+        "code": "BPErrorLabelIsText",
+        "object": "AxForm/ConDemoRentAgreement/TabHeaderGeneral",
+        "message": "Caption General is not a label ID."
+      },
+      {
+        "code": "BPCheckPassiveJoinUse",
+        "object": "AxForm/ConDemoRentAgreement/LineViewLineDetails",
+        "message": "Use passive join on the datasource ConDemoRentLine which is bound to a tab page control.",
+        "fixHint": "Scaffold emits LinkType=Delayed; a tab page bound to its own datasource needs a passive join."
+      },
+      {
+        "code": "BPUpgradeMetadataDeleteAction",
+        "object": "AxTable/ConDemoRentHeader",
+        "message": "DeleteAction ConDemoRentLine has no explicit relation set.",
+        "fixHint": "Same delete-action element the bridge round-trip corrupted - see root_cause_hypothesis reproduction 2."
+      },
+      {
+        "code": "BPErrorTablePrimaryKeyEditable",
+        "object": "AxTable/ConDemoRentHeader/RentAgreementIdx/RentAgreementId",
+        "message": "The primary key must not be editable.",
+        "fixHint": "table create sets PrimaryIndex/ReplacementKey/AlternateKey but never AllowEdit=No on the key fields."
+      },
+      {
+        "code": "BPErrorTablePrimaryKeyEditable",
+        "object": "AxTable/ConDemoRentLine/RentLineIdx/RentAgreementId",
+        "message": "The primary key must not be editable."
+      },
+      {
+        "code": "BPErrorTablePrimaryKeyEditable",
+        "object": "AxTable/ConDemoRentLine/RentLineIdx/LineNum",
+        "message": "The primary key must not be editable."
+      },
+      {
+        "code": "BPErrorDeveloperDocumentationNotDefined",
+        "object": "AxTable/ConDemoRentHeader",
+        "message": "The mandatory property DeveloperDocumentation is not specified.",
+        "fixHint": "developerDocumentation is not in the d365fo_file create table contract at all."
+      },
+      {
+        "code": "BPErrorDeveloperDocumentationNotDefined",
+        "object": "AxTable/ConDemoRentLine",
+        "message": "The mandatory property DeveloperDocumentation is not specified."
+      },
+      {
+        "code": "BPErrorEDTNotMigrated",
+        "object": "AxTable/ConDemoRentHeader/CustAccount",
+        "message": "The relation under the EDT CustAccount must be migrated to a table relation.",
+        "fixHint": "Inherent to the case-mandated standard CustAccount EDT; an explicit CustTable table relation IS present."
+      },
+      {
+        "code": "BPUpgradeMetadataEDTRelation",
+        "object": "AxTable/ConDemoRentHeader",
+        "message": "EDT relation found in field CustAccount; should be migrated to a regular table relation."
+      }
+    ],
+    "note": "xppc: 0 errors, 0 warnings on a FULL build (fullBuild:true) after a clean incremental build. The 2026-07-07 run of this same case FAILED to build; that form-scaffold defect is fixed.",
+    "bp_warnings_note": "xppbp reported 20 warnings for the whole model; 6 belong to the repo FIXTURE table ConDemoNoteHeader (BPCheckAlternateKeyAbsent, BPErrorTableMissingGroupAutoReport, BPErrorLabelNotDefined, BPErrorDeveloperDocumentationNotDefined, BPErrorTableNoCaching, BPErrorTableMissingFormRef) and are NOT attributable to this case. The 14 recorded here belong to this case."
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 4
+  },
+  "classification": "TOOL_DEFECT",
+  "platform_build": "10.0.40",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": [],
+      "note": "validate_code(mode=references) on ConDemoNumberSeqModuleRent verified 21/21 references, including the brand-new enum-extension value NumberSeqModule::DemoRent and the kernel enum NoYes. The NoYes false positive recorded in the 2026-07-07 run of this case and in L3-numberseq-module-slice did NOT reproduce - the kernel-enum fix has landed. Both AxTable XMLs were written by d365fo_file, whose create path runs reference resolution internally under GROUNDING_ENFORCE."
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    },
+    "form_pattern_validate": {
+      "passed": true,
+      "violations": [],
+      "note": "object_patterns(domain=form, action=validate, formName=ConDemoRentAgreement): 0 errors, 3 FP002 warnings (sub-pattern FieldsFieldGroups v1.1 older than current v1.2) - the generator emits the version its own validator flags. It did NOT flag the five raw-text tab Captions that xppbp then rejected with BPErrorLabelIsText."
+    }
+  },
+  "root_cause_hypothesis": "HEADLINE TOOL_DEFECT (new, reproduced TWICE in this run): any table property or collection element that d365fo_file writes through the server's OWN XML-writer fallback is SILENTLY DESTROYED by the next bridge-backed modify (IMetadataProvider.Update()) on the same object. Both writes report \"applied\" and \"Verified: on disk\", because that verification only checks file existence/size, never that the value survived. REPRODUCTION 1 - CacheLookup: d365fo_file(create, table ConDemoRentLine, cacheLookup:\"None\") reported \"Written after the create (the metadata writer dropped it): <CacheLookup>None</CacheLookup> - the C# bridge SetAxTableProperty() does not know CacheLookup\", i.e. the TS layer patched the XML directly. The very next call, modify(add-relation) via IMetaTableProvider.Update, round-tripped the file and CacheLookup was gone. grep confirms ConDemoRentLine.xml has no CacheLookup element, while ConDemoRentHeader.xml (whose Found value came from the bridge own BP-defaults path) still has it. Effect: a Transaction table silently falls back to default caching instead of the requested None. REPRODUCTION 2 - DeleteAction, and this one breaks a MANDATED requirement of the case: modify(add-delete-action, deleteActionType:\"Cascade\") on ConDemoRentHeader ran through the XML writer (\"applied via this server XML writer (no bridge path for this operation)\") and correctly produced <AxTableDeleteAction><Name>ConDemoRentLine</Name><Table>ConDemoRentLine</Table><DeleteAction>Cascade</DeleteAction>. This is PROVEN by the backup ConDemoRentHeader.xml.backup-2026-08-31T22-38-50-394, which the NEXT operation took immediately before writing. That next operation was modify(modify-property, FormRef) via IMetadataProvider.Update, after which the on-disk element is <Name> + <Table> with NO <DeleteAction> - the cascade degraded to the metamodel default. xppbp independently corroborates with BPUpgradeMetadataDeleteAction \"DeleteAction ConDemoRentLine has no explicit relation set\". The model still builds with 0 errors, so ONLY a golden/metadata oracle catches this: exactly the \"compiles clean but wrong shape\" class the oracle exists for. SECOND-ORDER DEFECT that blocks the forward-only repair: src/tools/write/directXmlWriters.ts:1194 keys its idempotency guard on the delete action NAME alone (blockRe matches <AxTableDeleteAction><Name>X</Name>) and returns \"already present - skipped (idempotent)\" without comparing the requested DeleteAction TYPE to the one on disk. Re-running add-delete-action(Cascade) would therefore NOT restore Cascade; restoring it needs remove-delete-action + add-delete-action, i.e. the delete-and-recreate this case explicitly forbids. The run left both corrupted writes in place. THIS IS THE TERMINAL FINDING: the composite shape this case specifies cannot be produced correctly through the grounded tool path today, even though it builds clean. CONSEQUENCE FOR THE GOLDEN: the captured ConDemoRentHeader.metadata.xml carries the CORRUPTED delete action. golden_pending was deliberately LEFT TRUE - approving this golden would enshrine the bug as the contract and would make a future FIXED server score golden_match=0. Re-capture that one artifact after the fix, then flip the flag. ORDERING WORKAROUND for anyone re-running before the fix: perform every XML-writer-backed operation (add-delete-action, explicit CacheLookup) LAST, after all bridge-backed modifies on that object. KNOWLEDGE_GAP (documentation defect, directly caused the 2026-07-07 failure of this same case): get_knowledge(kind=\"op-spec\", topic=\"scaffold:form\") omits linesTable and linesDataSource from its optional list (src/tools/specs/generateObjectOpSpecs.ts:259-267), although src/tools/smart/generateSmartForm.ts:41-42,76-88 implements them and they are the ONLY way to get a correct DetailsTransaction lines datasource. An agent following the documented contract passes dataSource alone and gets the 2026-07-07 outcome: a fabricated ConDemoRentHeaderLine datasource pointing at a nonexistent table, and a build failure. Passing the undocumented linesTable produced a correct two-datasource form (ConDemoRentLine, JoinSource=ConDemoRentHeader, LinkType=Delayed, lines grid bound to the real table) that builds clean - so the GENERATOR bug is fixed but is unreachable from the documented surface. TOOL_DEFECT (naming, forced a non-conventional object name): applyObjectPrefix (src/utils/modelClassifier.ts:304-308) unconditionally rewrites ANY dot-notation extension suffix ending in \"extension\" to {Infix}Extension, so a second, differently-named extension of the same base enum in one model is impossible: \"NumberSeqModule.ConDemoRentExtension\" would silently become \"NumberSeqModule.ConDemoExtension\", which is already the golden artifact of L3-numberseq-module-slice and would fail tests/eval/goldenNameCollision.test.ts. Worked around by passing the model-name-style suffix \"NumberSeqModule.ConDemoRent\" (no \"Extension\" word), which lines 310-311 preserve verbatim. Legal AOT, builds clean, but non-conventional. ORACLE DEFECT (minor, hit while writing THIS record): in the goldenUnavailable + --actual-dir branch of src/eval/oracle/cli.ts, generated_artifacts is filled by filtering the actual dir for *.metadata.xml only, while an actual-dir idiomatically holds bare AOT *.xml (resolveActualFile / aotToMetadataName support both everywhere else). Every golden_pending CAPTURE run therefore records generated_artifacts: [] - a silent zero. The list in this record was filled in afterwards. VALIDATOR_GAP: object_patterns(action=\"validate\") passed the form with 0 errors while xppbp then raised 5 BPErrorLabelIsText on tab Captions the scaffold itself wrote as raw text, plus BPCheckPassiveJoinUse on the datasource the scaffold itself bound. The form validator could catch both pre-build; it instead emitted 3 FP002 warnings that the generator own PatternVersion 1.1 is older than the catalog 1.2 - the server flagging itself. KNOWLEDGE_GAP (BP defaults): d365fo_file(create, table) advertises \"BP defaults\" and sets CacheLookup/TitleField/PrimaryIndex/ClusteredIndex, yet leaves three BP warnings per table that it is positioned to prevent: BPErrorTablePrimaryKeyEditable (x3 - it sets ReplacementKey/AlternateKey but never AllowEdit=No on the key fields) and BPErrorDeveloperDocumentationNotDefined (x2 - developerDocumentation is not even in the create contract). FIXED SINCE THE 2026-07-07 RUN, each verified by disk read-back this run: (a) the DetailsTransaction lines-datasource fabrication (via linesTable); (b) security-duty emitting AxSecurityRolePermissionSet - it now emits AxSecurityPrivilegeReference, and the role emits AxSecurityDutyReference; (c) add-delete-action now exists as an operation; (d) the NoYes reference false positive; (e) the enum explicit-value drop, mitigated by useEnumValue:\"Yes\" (values 1/2/3 present on disk, 0 correctly implicit).",
+  "suggested_fix_area": "1. HIGHEST VALUE - src/tools/write/modifyD365File.ts plus the C# bridge Update path: make a bridge-backed modify PRESERVE table properties/elements the bridge metamodel writer does not itself round-trip (CacheLookup, AxTableDeleteAction/DeleteAction). Either re-apply the TS XML patches after every bridge Update, or read the pre-modify file, diff the post-modify file, and restore any element the operation did not intend to touch. Add regression tests: create(cacheLookup:\"None\") then add-relation, assert CacheLookup survives; add-delete-action(Cascade) then modify-property, assert DeleteAction survives. 2. Make the write-verification honest: \"Verified: on disk\" currently proves only existence/size. It should re-read the file and assert the value the operation claimed to set is actually present. That alone would have turned both of this run silent corruptions into loud failures. 3. src/tools/write/directXmlWriters.ts:1194 - the add-delete-action idempotency guard must compare the DeleteAction TYPE (and Table), not just the Name, and UPDATE a differing entry in place instead of reporting \"already present - skipped\". Without this there is no forward-only repair path at all. 4. src/tools/specs/generateObjectOpSpecs.ts:259-267 - add linesTable and linesDataSource to the scaffold:form optional list, and mention them in the DetailsTransaction pattern/knowledge spec. A one-line fix that closes the exact gap that failed this case on 2026-07-07. 5. src/eval/oracle/cli.ts goldenUnavailable branch - accept bare *.xml when listing generated_artifacts, consistent with aotToMetadataName elsewhere, so capture runs stop recording an empty artifact list. 6. src/tools/smart/generateSmartForm.ts - emit label refs (or leave Caption unset) instead of raw-text tab captions; bump the FieldsFieldGroups sub-pattern to PatternVersion 1.2 so the generator stops failing its own validator; set a passive join on a lines datasource bound to a tab page control. 7. object_patterns(action=\"validate\") - flag raw-text Caption/Label values and non-passive joins on tab-page-bound datasources, so these are caught before a multi-minute build. 8. d365fo_file(create, table) - add developerDocumentation to the contract and set AllowEdit=No on ReplacementKey/AlternateKey index fields, as part of the \"BP defaults\" it already advertises. 9. src/utils/modelClassifier.ts:304-308 - let an explicitly supplied dot-notation extension suffix survive instead of being rewritten to {Infix}Extension, so one model can carry two differently-named extensions of one base object.",
+  "evidence_refs": [
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxTable/ConDemoRentHeader.xml (delete action WITHOUT a DeleteAction element) [SANDBOX FILE - DELETED BY THE MANDATED POST-RUN ROLLBACK; its exact content is transcribed verbatim in root_cause_hypothesis and in eval/goldens/L4-headerlines-document-slice/]",
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxTable/ConDemoRentHeader.xml.backup-2026-08-31T22-38-50-394 (the SAME element WITH DeleteAction Cascade, taken immediately before the modify-property that dropped it) [SANDBOX FILE - DELETED BY THE MANDATED POST-RUN ROLLBACK; its exact content is transcribed verbatim in root_cause_hypothesis and in eval/goldens/L4-headerlines-document-slice/]",
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxTable/ConDemoRentLine.xml (no CacheLookup element) [SANDBOX FILE - DELETED BY THE MANDATED POST-RUN ROLLBACK; its exact content is transcribed verbatim in root_cause_hypothesis and in eval/goldens/L4-headerlines-document-slice/]",
+    "K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxForm/ConDemoRentAgreement.xml (correct 2-datasource DetailsTransaction; raw-text captions) [SANDBOX FILE - DELETED BY THE MANDATED POST-RUN ROLLBACK; its exact content is transcribed verbatim in root_cause_hypothesis and in eval/goldens/L4-headerlines-document-slice/]",
+    "eval/goldens/L4-headerlines-document-slice/ (11 artifacts, build-gated capture)",
+    "src/tools/specs/generateObjectOpSpecs.ts:259-267 (scaffold:form op-spec missing linesTable/linesDataSource)",
+    "src/tools/smart/generateSmartForm.ts:41-42,76-88 (linesTable/linesDataSource implemented)",
+    "src/tools/write/directXmlWriters.ts:1194 (name-only delete-action idempotency guard)",
+    "src/utils/modelClassifier.ts:304-308 (extension suffix unconditionally rewritten)",
+    "eval/corpus/runs/2026-07-07T14__L4-headerlines-document-slice__cb1b73d.json (prior run: build FAILED on the fabricated lines datasource)",
+    "REPRODUCTION RECIPE for the headline defect, no sandbox state needed: (1) d365fo_file(create, table, cacheLookup:\"None\") then d365fo_file(modify, add-relation) -> CacheLookup element is gone; (2) d365fo_file(modify, add-delete-action, deleteActionType:\"Cascade\") then d365fo_file(modify, modify-property) -> the DeleteAction element is gone while Name and Table survive. Both report success and \"Verified: on disk\"."
+  ],
+  "forward_only": "YES. No overwrite:true, no hand-edited XML, no delete-and-recreate, no rollback-and-retry of any written object. The two corrupted writes (CacheLookup=None on ConDemoRentLine, DeleteAction=Cascade on ConDemoRentHeader) were deliberately LEFT CORRUPTED rather than repaired, and the case fails on that dimension. The one documented workaround used, useEnumValue Yes on the enum, was passed on the ORIGINAL create, not as a repair.",
+  "capture_run": true,
+  "capture_notes": [
+    "GOLDEN CAPTURE RUN: this is the run that AUTHORED eval/goldens/L4-headerlines-document-slice/ (11 artifacts, build-gated copy of the exact bytes the full build consumed). golden_match:1 is therefore TAUTOLOGICAL - the actual and the golden are the same bytes by construction - and is NOT an independent correctness signal for this run. It becomes a real signal from the next run of this case onward.",
+    "The golden deliberately records what the tools ACTUALLY produce today, including the corrupted delete action on ConDemoRentHeader (no <DeleteAction>Cascade</DeleteAction>). Per docs/AGENT_EVAL_LOOP.md section 6.4 the fix PR that repairs the bridge round-trip MUST update ConDemoRentHeader.metadata.xml in the same PR, where the diff line +<DeleteAction>Cascade</DeleteAction> is the reviewable evidence the defect is gone. Do NOT treat that golden update as a regression.",
+    "CATALOG SIDE EFFECT: this was the LAST golden_pending case (0 of 120 remain). tests/eval/oracleCli.test.ts picks whichever case is still golden_pending to exercise the scorer degrade-gracefully path, and now fails by design with its own message: \"no case is golden_pending any more - rewrite this suite against a synthetic case spec\". That suite needs a synthetic fixture case; it was NOT touched by this run."
+  ]
+}

@@ -11,7 +11,7 @@
   ],
   "golden_path": "eval/goldens/L3-batch-basic/",
   "systest": "eval/systests/L3-batch-basic.xml",
-  "systest_pending": true,
+  "systest_pending": false,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"

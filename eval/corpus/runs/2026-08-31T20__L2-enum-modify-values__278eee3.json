@@ -1,0 +1,55 @@
+{
+  "run_id": "2026-08-31T20__L2-enum-modify-values__278eee3",
+  "case_id": "L2-enum-modify-values",
+  "tier": 2,
+  "timestamp": "2026-08-31T20:23:11.356Z",
+  "server_git_sha": "278eee3",
+  "generated_artifacts": [
+    "ConDemoModStatus.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "PASS",
+  "platform_build": "7.0.7996.33",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "THE CASE SUBJECT PASSED. One d365fo_file(action=\"create\") laid the enum down, then every later change went through d365fo_file(action=\"modify\"): add-enum-value Archived=3; modify-enum-value Closed -> Completed (enumValueInt 2 kept); a 2-op batch add-enum-value Temp=4 + remove-enum-value Temp; remove-enum-value Draft. No create overwrite=true anywhere, no hand-edited XML. The final file was READ (not trusted from the success message) and holds exactly Active=1, Completed=2, Archived=3 - no Draft, no Closed, no Temp - and the model full-built with xppc: 0 errors, 0 warnings.\n\nWHAT MADE IT WORK, AND HOW CLOSE IT CAME TO SILENTLY BUILDING THE WRONG ENUM. The final numbering is only correct because the created XML carries EXPLICIT <Value> elements (<Value>1</Value>, <Value>2</Value>; value 0 is omitted by AOT convention). remove-enum-value Draft deletes the positional-zero member, so had the values been positional the survivors would have renumbered to Active=0, Completed=1, Archived=2 - a build-clean enum with the wrong members, exactly the \"compiles is not correct\" failure. The enum op-spec warns that plain positional 0,1,2 numbering is accepted and the numbers are DROPPED, so this run passed useEnumValue:\"Yes\" together with the values at create time. That kept the <Value> elements. A run that trusts the default here would produce a wrong enum that passes build.\n\nOBSERVATION 1 (cosmetic, not scored): the create path emits <UseEnumValue>Yes</UseEnumValue>; the first bridge-backed modify (IMetaEnumProvider.Update) strips it. The bridge is right - Yes is the metamodel default: 0 of 488 shipped ApplicationPlatform AxEnum files serialize Yes, 78 serialize No. Consequence: a create-then-modify enum changes bytes even when the modify op is unrelated to that property, so a golden captured BEFORE any modify would churn on the next run. This golden was captured after the modify chain, so it records the canonical shape.\n\nOBSERVATION 2 - THE NEGATIVE RESULT THE BRIEF ASKED FOR. The known create-path defect (xmlTemplateGenerator.ts:542, `const label = properties?.label || enumName`, which writes the object NAME into <Label> as raw text and earns BPErrorLabelIsText) has NO analogue on the modify path. Probed on a throwaway enum ConDemoProbeLblEnum (created, probed, deleted in this run): add-enum-value with NO enumValueLabel wrote <AxEnumValue><Name>NoLabelValue</Name><Value>1</Value></AxEnumValue> - element omitted, nothing invented; add-enum-value with raw text \"Raw text label\" auto-resolved it to @ConDemo:RawTextLabel and disclosed the correction in the response. add-enum-value / modify-enum-value are clean on this axis. (The case itself never exercised the defect either, because it passes explicit @SYS refs for the enum and every value, as the instruction demands.)\n\nOBSERVATION 3 (friction, already recorded once in the L0-create-readback-no-reindex record): prepare(mode=\"create\", objectName=\"DemoModStatus\") previewed the final name ConDemoDemoModStatus, and create confirmed it - normalizeObjectName concatenates prefix + base and does not collapse the overlapping \"Demo\". The catalog convention is ConDemo<X> (ConDemoNoteStatus, ConDemoModLifecycle), so the object had to be created from base name \"ModStatus\". This run created ConDemoDemoModStatus first, deleted it via d365fo_file(action=\"delete\"), and re-created from the shorter base; both calls behaved correctly, so this is agent-facing friction rather than a tool fault - but it is now the second capture to pay for it.\n\nBP PROVENANCE: xppbp ran (build_d365fo_project bpCheck:true) and reported 6 warnings, ALL SIX against the shared INPUT fixture table ConDemoNoteHeader (missing AutoReport group, no field-group label, no DeveloperDocumentation, no caching, no form ref, no alternate key) and ZERO against ConDemoModStatus. bp_clean:1 is scored for the case artifact; the fixture warnings belong to eval/fixtures/ConDemoNoteHeader.metadata.xml, not to this case.\n\nLABELS: all six labels are standard @SYS refs found through labels(action=\"search\", labelFileId=\"SYS\") - @SYS36398 Status (enum), @SYS95227 Active, @SYS111310 Completed, @SYS89555 Archived, plus @SYS75939 Draft and @SYS14403 Closed on the members the chain later removes. The case therefore needs no model label file at all; the ConDemo label file that appeared during the run was created solely by the observation-2 probe and was removed at rollback.",
+  "suggested_fix_area": "Optional/cosmetic only - nothing in the enum modify-op surface needs a fix. (a) src/tools/xml/xmlTemplateGenerator.ts generateAxEnumXml: stop emitting <UseEnumValue>Yes</UseEnumValue>; it is the metamodel default (0/488 shipped ApplicationPlatform enums serialize it), the C# bridge strips it on the first modify, and its presence makes create-then-modify mutate the file for free. (b) Consider making the enum op-spec note about positional values LOUDER at the create call site: dropping explicit values silently converts a later remove-enum-value into a renumbering, which builds clean and is wrong.",
+  "evidence_refs": [
+    "eval/goldens/L2-enum-modify-values/ConDemoModStatus.metadata.xml",
+    "eval/goldens/L2-enum-modify-values/README.md",
+    "eval/corpus/runs/2026-08-31T20__L2-enum-modify-values__278eee3.json",
+    "src/tools/xml/xmlTemplateGenerator.ts",
+    "src/utils/objectNaming.ts"
+  ]
+}

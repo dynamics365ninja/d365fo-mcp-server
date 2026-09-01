@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Golden metadata for eval case: L3-sysoperation-dialog-attributes (artifact 3 of 3: Controller - binds the service method)
+  Captured: 2026-08-31, server SHA: 278eee3
+  Platform: xppc 7.0.7996.33
+-->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoRebateController</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Starts the customer rebate run, from a menu item or from code.
+/// </summary>
+public class ConDemoRebateController extends SysOperationServiceController
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>construct</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Builds a controller bound to the service method it runs.
+    /// </summary>
+    /// <returns>The controller.</returns>
+    public static ConDemoRebateController construct()
+    {
+        return new ConDemoRebateController(
+            classStr(ConDemoRebateService),
+            methodStr(ConDemoRebateService, process),
+            SysOperationExecutionMode::Synchronous);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Entry point for the menu item.
+    /// </summary>
+    /// <param name = "_args">The arguments the menu item was started with.</param>
+    public static void main(Args _args)
+    {
+        ConDemoRebateController controller = ConDemoRebateController::construct();
+
+        controller.parmArgs(_args);
+        controller.startOperation();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>defaultCaption</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// The caption of the generated dialog.
+    /// </summary>
+    /// <returns>The caption.</returns>
+    protected ClassDescription defaultCaption()
+    {
+        return "@SYS345067";
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

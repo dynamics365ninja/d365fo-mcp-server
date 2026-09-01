@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoRentStatus</Name>
+	<Label>@SYS36398</Label>
+	<UseEnumValue>Yes</UseEnumValue>
+	<EnumValues>
+		<AxEnumValue>
+			<Name>Open</Name>
+			<Label>@SYS16011</Label>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Confirmed</Name>
+			<Label>@SYS8985</Label>
+			<Value>1</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Returned</Name>
+			<Label>@SYS109905</Label>
+			<Value>2</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Cancelled</Name>
+			<Label>@SYS:CancelledState</Label>
+			<Value>3</Value>
+		</AxEnumValue>
+	</EnumValues>
+</AxEnum>

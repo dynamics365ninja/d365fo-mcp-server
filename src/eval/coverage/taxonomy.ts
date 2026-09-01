@@ -90,7 +90,9 @@ export const TAXONOMY: CoverageLeaf[] = [
     // creation and the ordinal comparison, not the label/symbol split that
     // motivated the knowledge entry. It is the right case for this leaf and it is
     // not proof of that part; a case that renders an enum into a message would be.
-    // It is golden_pending in any event, so it claims the case without flipping E.
+    // Its golden was captured on 2026-08-31, so it now flips E for this leaf —
+    // read that E as "creation + ordinal comparison proven", not as proof of the
+    // label/symbol split.
     id: 'enum', label: 'Base enum', domain: 'Data model', source: 'aot', tier: 'core', weight: 5,
     aotTypes: ['enum'], knowledgeIds: ['xpp-class-rules', 'enum-conversions'],
     caseIds: ['L0-enum-basic', 'L3-enum-field-form-downgrade-guard'],
@@ -585,15 +587,20 @@ export const TAXONOMY: CoverageLeaf[] = [
   {
     id: 'unit-testing', label: 'SysTest unit testing', domain: 'Quality', source: 'topic', tier: 'core', weight: 4,
     aotTypes: ['class'], knowledgeIds: ['unit-testing', 'testing'], caseTags: ['runtime'],
-    // Read this ✅ narrowly. E comes from three cases that SHIP a SysTest class and
-    // whose goldens are captured — L2-coc-extension, L2-event-handler-basic and
-    // L3-batch-basic — not from a passing test run: all three are systest_pending,
-    // and the systest oracle has never executed once, because SysTestConsole.exe
-    // gates on an interactive console (eval/README.md, "Blocked / declined"). So the
-    // leaf proves the framework is authored correctly, not that a test went green.
-    // The knowledge behind it is now read from the shipped SysTestCase/SysTestAssert
-    // rather than from memory (there is no assertExpectedException).
-    note: 'Authoring is proven by three captured goldens. No SysTest has RUN yet — but as of 2026-08-31 the runner CONNECTS to the AOS database for the first time (the config drift was fixed on the VM), so the four cases whose runtime score is still null now wait on an eval-run rather than on a blocker.',
+    // This ✅ is now backed by EXECUTION, not only by authoring. The three cases
+    // that ship a SysTest class — L2-coc-extension, L2-event-handler-basic and
+    // L3-batch-basic — all ran under SysTestConsole.exe on 2026-08-31 and passed
+    // 2/2 each ("Rainier Test Suite : 2 Run, 0 Failed"), and no case carries
+    // `systest_pending` any more. The earlier claim here — that the oracle had
+    // never executed once because SysTestConsole.exe gates on an interactive
+    // console — was DISPROVED that day: the blocker was configuration drift (the
+    // runner could not reach the AOS database), not an interactive-console gate.
+    // The negative control committed alongside the wave proves the oracle
+    // discriminates (tests/eval/systestNegativeControl.test.ts), so a green
+    // runtime score here means a test really went green.
+    // The knowledge behind the leaf is read from the shipped SysTestCase/
+    // SysTestAssert rather than from memory (there is no assertExpectedException).
+    note: 'Authoring AND execution are both proven: L2-coc-extension, L2-event-handler-basic and L3-batch-basic each ran under SysTestConsole.exe on 2026-08-31 and passed 2/2 (corpus records …__278eee3.json), and L3-enum-field-form-downgrade-guard ran green too. The 2026-08-31 config fix on the VM removed the last blocker; the only runtime-tagged case still scoring null is L2-systest-authoring-basic, whose last run predates the fix.',
   },
   {
     id: 'labels', label: 'Labels & localisation', domain: 'Quality', source: 'topic', tier: 'core', weight: 5,
@@ -604,9 +611,12 @@ export const TAXONOMY: CoverageLeaf[] = [
   //
   // These nine leaves exist because the compiler answered questions this server
   // used to answer from memory (see docs/XPP_LANGUAGE_COVERAGE_PLAN.md §1). Each
-  // has a knowledge entry written from a probe and an eval case that is authored
-  // but NOT captured: golden_pending means E stays false, so the published number
-  // falls until a VM run proves them. That is the intended direction.
+  // has a knowledge entry written from a probe and an eval case. Those cases were
+  // authored but NOT captured when these leaves were written, so `golden_pending`
+  // held E false and the published number fell — the intended direction. As of
+  // 2026-08-31 the capture wave is complete: 0 of the 120 cases are
+  // `golden_pending`, so E here is now decided by the goldens, not by their
+  // absence.
   {
     id: 'runtime-functions', label: 'Run-time (predefined) functions', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
     aotTypes: ['class'], knowledgeIds: ['runtime-functions'],

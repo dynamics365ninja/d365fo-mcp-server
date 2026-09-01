@@ -22,7 +22,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
-import { buildActualArtifactsMap } from '../../src/eval/oracle/actualArtifactResolution';
+import { buildActualArtifactsMap, listActualArtifactFiles } from '../../src/eval/oracle/actualArtifactResolution';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '..', '..');
@@ -122,48 +122,137 @@ describe('buildActualArtifactsMap', () => {
  *   "src/eval/oracle/cli.ts:66 listGoldenArtifacts").
  * Class: TOOL_DEFECT (harness/oracle). The scorer must degrade gracefully — score `build`
  * and `bp_clean` normally and report golden_match: null (not 0, not a crash).
+ *
+ * SYNTHETIC BY CONSTRUCTION. These tests used to run against whichever case in
+ * eval/cases/ still carried `golden_pending: true`. That pinned the live catalog's
+ * CONTENTS, not the CLI's behaviour, and the premise expired the moment the last
+ * golden was captured (2026-08-31: 0 of 120 cases pending) — the suite then failed
+ * by design. The behaviour it protects has NOT expired: every newly authored case
+ * is golden_pending until its golden is captured on the VM (§6.4). So the case
+ * spec, the missing golden and the actual dir are all built here, in a temp dir,
+ * and handed to the CLI via `--case-spec`. The suite is now independent of the
+ * catalog in BOTH directions — zero pending cases and fifty pending cases behave
+ * identically — and it writes nothing into eval/.
  */
 describe('oracle CLI degrades gracefully when the golden is unavailable (golden_pending)', () => {
-  // Pick whichever case is still golden_pending rather than pinning one by name: goldens get
-  // captured on the VM one at a time (§6.4), so a hardcoded id turns every capture into a
-  // spurious test failure. The premise is "some case is pending", not "this case is pending".
-  const casesDir = path.join(REPO_ROOT, 'eval', 'cases');
-  const PENDING_CASE = fs
-    .readdirSync(casesDir)
-    .filter((f) => f.endsWith('.json') && f !== 'schema.json')
-    .sort()
-    .find((f) => JSON.parse(fs.readFileSync(path.join(casesDir, f), 'utf8')).golden_pending === true)
-    ?.replace(/\.json$/, '');
+  /** Deliberately un-catalogued: no eval/cases/ spec and no eval/goldens/ dir may exist for it. */
+  const SYNTHETIC_CASE_ID = 'L2-synthetic-oracle-cli-probe';
 
-  let emptyDir: string;
+  let tmp: string;
+  let actualDir: string;
+
+  /** Write a synthetic case spec (schema-shaped) to the temp dir and return its path. */
+  function writeCaseSpec(overrides: Record<string, unknown> = {}): string {
+    const spec = {
+      id: SYNTHETIC_CASE_ID,
+      title: 'Synthetic case spec for the oracle CLI golden-unavailable path',
+      tier: 2,
+      instruction: 'Not executed — this spec only drives the VM-free scorer.',
+      target_artifact_types: ['AxClass'],
+      golden_path: `eval/goldens/${SYNTHETIC_CASE_ID}`,
+      golden_pending: true,
+      ...overrides,
+    };
+    const file = path.join(tmp, 'case.json');
+    fs.writeFileSync(file, JSON.stringify(spec, null, 2), 'utf8');
+    return file;
+  }
 
   beforeEach(() => {
-    // Once every golden is captured this path can no longer be exercised against the real
-    // catalog. Fail loudly rather than silently passing on a premise that no longer holds.
-    expect(
-      PENDING_CASE,
-      'no case is golden_pending any more — rewrite this suite against a synthetic case spec',
-    ).toBeDefined();
-    emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-pending-'));
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-pending-'));
+    actualDir = path.join(tmp, 'actual');
+    fs.mkdirSync(actualDir);
+    // The synthetic id must stay un-catalogued, or these tests would silently start
+    // scoring a real golden instead of the golden-unavailable path.
+    expect(fs.existsSync(path.join(REPO_ROOT, 'eval', 'goldens', SYNTHETIC_CASE_ID))).toBe(false);
+    expect(fs.existsSync(path.join(REPO_ROOT, 'eval', 'cases', `${SYNTHETIC_CASE_ID}.json`))).toBe(false);
   });
 
   afterEach(() => {
-    fs.rmSync(emptyDir, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
   });
 
   it('reports golden_match: null and exits 0 (clean build) instead of throwing ENOENT scandir', () => {
-    const { status, out } = runOracleCli([PENDING_CASE, '--actual-dir', emptyDir]);
+    const { status, out } = runOracleCli([
+      SYNTHETIC_CASE_ID, '--case-spec', writeCaseSpec(), '--actual-dir', actualDir,
+    ]);
     expect(out).not.toMatch(/ENOENT/);
     expect(out).not.toMatch(/scandir/);
     expect(out).toMatch(/"golden_match":null/);
+    expect(out).toMatch(/golden_pending/);
     expect(status).toBe(0);
   }, 60_000);
 
   it('still scores build/bp_clean (golden_match: null) and exits 1 when the build failed', () => {
-    const { status, out } = runOracleCli([PENDING_CASE, '--actual-dir', emptyDir, '--build-failed']);
+    const { status, out } = runOracleCli([
+      SYNTHETIC_CASE_ID, '--case-spec', writeCaseSpec(), '--actual-dir', actualDir, '--build-failed',
+    ]);
     expect(out).not.toMatch(/ENOENT/);
     expect(out).toMatch(/"build":0/);
     expect(out).toMatch(/"golden_match":null/);
     expect(status).toBe(1);
   }, 60_000);
+
+  it('degrades the same way for a NON-pending case whose golden dir is simply absent', () => {
+    // The second half of the `goldenUnavailable` condition: the flag is not the only
+    // way to reach this branch, and a missing golden dir must not crash the scorer either.
+    const { status, out } = runOracleCli([
+      SYNTHETIC_CASE_ID, '--case-spec', writeCaseSpec({ golden_pending: false }),
+      '--actual-dir', actualDir,
+    ]);
+    expect(out).not.toMatch(/ENOENT/);
+    expect(out).toMatch(/"golden_match":null/);
+    expect(out).toMatch(/no \*\.metadata\.xml golden/);
+    expect(status).toBe(0);
+  }, 60_000);
+
+  /**
+   * ORACLE DEFECT (corpus: eval/corpus/runs/2026-08-31T22__L4-headerlines-document-slice__278eee3.json,
+   * root_cause_hypothesis -> "ORACLE DEFECT"): the golden-unavailable + `--actual-dir`
+   * branch listed `generated_artifacts` with its own `*.metadata.xml`-only filter,
+   * while an actual dir idiomatically holds the bare `<Name>.xml` files a VM session
+   * wrote (that is what `--actual-dir <Model>/<Model>/AxClass` points at, and what
+   * every other consumer of an actual dir already accepts). Every golden-CAPTURE run —
+   * i.e. exactly the runs that take this branch — therefore recorded an empty artifact
+   * list, and the operator had to reconstruct it by hand.
+   */
+  it('lists the bare AOT *.xml files a VM session writes as generated_artifacts, not just *.metadata.xml', () => {
+    fs.writeFileSync(path.join(actualDir, 'ConDemoProbe.xml'), '<AxClass><Name>ConDemoProbe</Name></AxClass>', 'utf8');
+    fs.writeFileSync(path.join(actualDir, 'ConDemoOther.metadata.xml'), '<AxClass><Name>ConDemoOther</Name></AxClass>', 'utf8');
+    fs.writeFileSync(path.join(actualDir, 'README.md'), 'not an artifact', 'utf8');
+
+    const { status, out } = runOracleCli([
+      SYNTHETIC_CASE_ID, '--case-spec', writeCaseSpec(), '--actual-dir', actualDir,
+    ]);
+    const line = out.split(/\r?\n/).find(l => l.startsWith('generated_artifacts'));
+    expect(line, `no generated_artifacts line in:\n${out}`).toBeDefined();
+    expect(line).toContain('ConDemoProbe.xml');       // the bare AOT name — the defect
+    expect(line).toContain('ConDemoOther.metadata.xml');
+    expect(line).not.toContain('README.md');
+    expect(line).toMatch(/\(2\)/);
+    expect(status).toBe(0);
+  }, 60_000);
+});
+
+/**
+ * The one filter both consumers of an actual dir share. It used to be duplicated —
+ * the resolver accepted `*.xml`, the CLI's capture path accepted only
+ * `*.metadata.xml` — which is how the empty-`generated_artifacts` defect above
+ * survived: two copies of "what counts as an artifact" that could drift apart.
+ */
+describe('listActualArtifactFiles', () => {
+  let dir: string;
+  beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-list-')); });
+  afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
+
+  it('accepts both the bare AOT and the committed-golden shape, sorted, and nothing else', () => {
+    for (const f of ['b.xml', 'a.metadata.xml', 'c.XML', 'notes.md', 'ConDemo.en-US.label.txt']) {
+      fs.writeFileSync(path.join(dir, f), 'x', 'utf8');
+    }
+    expect(listActualArtifactFiles(dir)).toEqual(['a.metadata.xml', 'b.xml', 'c.XML']);
+  });
+
+  it('returns [] for a directory that does not exist (never throws ENOENT)', () => {
+    expect(listActualArtifactFiles(path.join(dir, 'nope'))).toEqual([]);
+  });
 });

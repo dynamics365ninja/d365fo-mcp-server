@@ -1,0 +1,58 @@
+{
+  "run_id": "2026-08-31T20__L2-batched-object-reads__278eee3",
+  "case_id": "L2-batched-object-reads",
+  "tier": 2,
+  "timestamp": "2026-08-31T20:36:44.097Z",
+  "server_git_sha": "278eee3",
+  "generated_artifacts": [
+    "InventItemGroup.ConDemoExtension.metadata.xml",
+    "PaymTerm.ConDemoExtension.metadata.xml",
+    "VendGroup.ConDemoExtension.metadata.xml"
+  ],
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": []
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": false,
+    "passed": null,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 1,
+    "golden_match": 1,
+    "systest": null,
+    "tier_weight": 2
+  },
+  "classification": "VALIDATOR_GAP",
+  "platform_build": "7.0.7996.33",
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "root_cause_hypothesis": "THE CASE SUBJECT PASSED, MEASURED HONESTLY. Exactly ONE get_object_info call was made in the whole run, and it used the plural objects[] form: get_object_info(objects=[{table,VendGroup},{table,PaymTerm},{table,InventItemGroup},{edt,Notes}]). The response header proves the batch executed as a batch and not as a loop: \"Fetched: 4 object(s) in parallel | Success: 4/4 | Time: 692ms\". Four objects, one round trip, 692 ms total - the Notes EDT was folded into the same call rather than costing a second one. Issue #831 (13 sequential single-object reads in one audited session) does not reproduce on this path: the batched form is discoverable from the tool description, accepts a MIXED objectType array, and returns per-object sections. get_object_info call count for the run: 1.\n\nARTIFACTS. Three AxTableExtension files, produced by the server write path only (d365fo_file action=create with properties.fields[] plus operations[] on the same call, and one d365fo_file action=modify for a shape correction), zero hand-edited XML, zero overwrite=true. Each carries the SAME field EvalNoteText as AxTableFieldString with <ExtendedDataType>Notes</ExtendedDataType> - the existing standard ApplicationPlatform EDT (base String, StringSize -1 memo), not an invented one - and each adds that field to the base-table group Overview through <FieldGroupExtensions>. <FieldModifications /> is empty in all three, so no base-table field was touched. xppc full build of fm-mcp: 0 errors, 0 warnings, 15 s.\n\nTHE INVERTED-KEY CONTRACT DID NOT BITE. The historical table-extension defect (normalizeFieldSpecsForBridge emitted fieldType/extendedDataType while the bridge reads type/edt, so the field, and later its EDT, vanished silently under a green build - see eval/goldens/L2-table-extension, whose case still has to ignore AxTableExtension/Fields/AxTableField/ExtendedDataType for exactly that reason) is fixed on this SHA. properties.fields[{name:\"EvalNoteText\", edt:\"Notes\"}] round-tripped intact. Verified by READING all three files back off disk rather than trusting the success message, and then again by a negative control: deleting the <ExtendedDataType> line from a copy makes the oracle report missing VendGroup.metadata.xml::AxTableExtension/Fields/AxTableField[EvalNoteText]/ExtendedDataType, and renaming one <DataField> makes it report the field-group delta. The golden therefore FAILS on the exact defect it exists to catch; it is not a vacuous snapshot.\n\nVALIDATOR_GAP - THE FINDING, deterministic and VM-free to reproduce. validate_code(mode=\"references\", codeType=\"xml-table\") resolves only the EDT inside an AxTableExtension and reports \"all 1 reference(s) verified\"; it never checks the base table named by the <Name> stem, nor the base field group being extended in <FieldGroupExtensions>. Probe run in this session: the same XML with <Name>VendGroupZZZNotATable.ConDemoExtension</Name> and <AxTableFieldGroupExtension><Name>ZZZNoSuchBaseGroup</Name> came back \"all 1 reference(s) verified against the index. No hallucinated symbols detected.\" Both of those are hard xppc errors - extending a table that does not exist, and extending a field group the base table does not declare - so the gate is a false negative on precisely the two references that are unique to the extension shape. It is also the reference an agent is most likely to get wrong when it has NOT read the base table, i.e. the very shortcut this case is about. Repro needs no VM: feed those two XML strings to the references validator with an index that has Notes but not VendGroupZZZNotATable.\n\nKNOWLEDGE / UX OBSERVATION, NOT A DEFECT - the field-group advisory was the most valuable tool output in the run. The first write created a NEW field group ConDemoNotes inside the extension (the shape the sibling case L2-table-extension approved golden uses). The tool answered: \"No form checked on VendGroup renders field group ConDemoNotes - a group no container names in <DataGroup> generates no controls, so a field in it is on no form. Rendered instead: Overview (form VendGroup, control Grid).\" That is correct, and it contradicted the instruction requirement that the field surface on forms. The run followed the advisory: remove-field-group, then add-field-to-field-group(fieldGroupName:\"Overview\", extendBaseFieldGroup:true, autoCorrect:false), after which the tool confirmed \"Form VendGroup renders field group Overview via <DataGroup> on control Grid - the compiler generates Overview_EvalNoteText for this field, so it is already on the form\". Same confirmation for PaymTerm. Consequence for the catalog: the sibling golden eval/goldens/L2-table-extension/CustGroup.ConExtension.metadata.xml encodes a new group ConNoteInfo that by this same advisory renders on NO form - it builds clean and does not satisfy its own instruction - and it carries two raw-text labels (\"Note info\", \"Note priority\"), which is BPErrorLabelIsText. Worth review when that case is next run; not touched here.\n\nTHIRD-TABLE ASYMMETRY, RECORDED DELIBERATELY. InventItemGroup DOES own a base field group Overview - add-field-to-field-group with extendBaseFieldGroup=true and autoCorrect=false succeeded in strict mode, so it was not silently converted into a new group - but the advisory reports that no form renders it: \"Rendered instead: Forecast, PurchaseTax, SalesTax, Payment, RetailSAFT (form InventItemGroup)\". The run kept Overview on all three tables anyway: uniform artifacts, the semantically right group for a note field, and the instruction reads as a general best-practice statement rather than a per-form audit. Flagged because a future reviewer of this golden will ask, and because the advisory that surfaced it is a load-bearing signal that a plain builds-clean verdict would have hidden.\n\nBP PROVENANCE. xppbp ran via build_d365fo_project(bpCheck:true) and reported 6 warnings, ALL SIX against the shared INPUT fixture table ConDemoNoteHeader (no AutoReport group, no field-group label, no DeveloperDocumentation, no caching, no form ref, no alternate key) and ZERO against any of the three extensions this case produced. bp_clean:1 is scored for the case artifacts; the fixture warnings belong to eval/fixtures/ConDemoNoteHeader.metadata.xml. No labels were authored at all - the field inherits its label from the Notes EDT (@SYS13887) and the extended group is the base table own group - so the sandbox needed no model label file and none was created.\n\nGOLDEN PROVENANCE. Captured with the build-gated capture script: it refuses unless data/.last-build.json shows the model last build succeeded AND was a full build, and refuses any source whose mtime is newer than that build. Sources 20:32, build 20:34 - gate satisfied, three files copied verbatim, byte for byte, no hand authoring. golden_pending was flipped to false and target_artifact_types expanded to one entry per file in the same change.",
+  "suggested_fix_area": "src/tools/validation - validate_code(mode=\"references\", codeType=\"xml-table\") AxTableExtension branch: it resolves <ExtendedDataType> but not (a) the base table in the <Name> stem Base.PrefixExtension and (b) the <Name> of each <AxTableFieldGroupExtension> / <AxTableRelationExtension> / <AxTableIndexExtension> against that base table own collections. Both are compile errors when wrong and both are unique to the extension shape. Secondary, catalog rather than code: eval/goldens/L2-table-extension/CustGroup.ConExtension.metadata.xml pins a never-rendered new field group plus two raw-text labels, which this run advisory shows is the wrong answer to the same instruction wording.",
+  "evidence_refs": [
+    "eval/goldens/L2-batched-object-reads/VendGroup.ConDemoExtension.metadata.xml",
+    "eval/goldens/L2-batched-object-reads/PaymTerm.ConDemoExtension.metadata.xml",
+    "eval/goldens/L2-batched-object-reads/InventItemGroup.ConDemoExtension.metadata.xml",
+    "eval/goldens/L2-batched-object-reads/README.md",
+    "eval/corpus/runs/2026-08-31T20__L2-batched-object-reads__278eee3.json",
+    "eval/goldens/L2-table-extension/CustGroup.ConExtension.metadata.xml"
+  ]
+}

@@ -7,7 +7,7 @@
     "AxClass"
   ],
   "golden_path": "eval/goldens/L2-coc-extension/",
-  "systest_pending": true,
+  "systest_pending": false,
   "systest": "eval/systests/L2-coc-extension.xml",
   "ignore": [
     "AxClass/@Id",

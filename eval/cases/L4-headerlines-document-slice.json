@@ -17,7 +17,7 @@
     "AxSecurityRole"
   ],
   "golden_path": "eval/goldens/L4-headerlines-document-slice/",
-  "golden_pending": true,
+  "golden_pending": false,
   "ignore": [
     "**/@Id",
     "**/ModelSaveInfo"
