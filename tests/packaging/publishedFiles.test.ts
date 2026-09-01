@@ -74,9 +74,11 @@ describe.skipIf(!isBuilt)('published package contents', () => {
     // without them `d365fo-mcp index` has nothing to run outside a checkout.
     expect(packed).toContain('dist/scripts/extract-metadata.js');
     expect(packed).toContain('dist/scripts/build-database.js');
-    // Loaded by `new Worker(new URL('./symbolCountsWorker.js', import.meta.url))`
-    // from inside the build-database bundle, so it must sit beside it.
+    // Loaded by `new Worker(new URL('./<name>.js', import.meta.url))` from
+    // inside the build-database bundle, so they must sit beside it rather than
+    // in dist/metadata/ where tsc puts them. See tests/packaging/workerBundles.
     expect(packed).toContain('dist/scripts/symbolCountsWorker.js');
+    expect(packed).toContain('dist/scripts/buildIndexWorker.js');
   });
 
   it('ships the C# bridge sources, so the wizard can build the write path', () => {
