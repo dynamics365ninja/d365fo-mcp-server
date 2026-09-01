@@ -61,6 +61,7 @@
  */
 
 import { z } from 'zod';
+import { findControlElementOrderViolations } from '../../validation/formControlElementOrder.js';
 import {
   AX_TABLE_ELEMENT_ORDER,
   AX_TABLE_NON_EXISTENT_PROPERTIES,
@@ -83,8 +84,9 @@ export const validateXppArgsSchema = z.object({
   code: z.string().describe(
     'X++ source code or XML metadata to validate. Paste the full generated text.'
   ),
-  codeType: z.enum(['xpp', 'xml-table', 'xml-any', 'xml-report']).optional().default('xpp').describe(
-    '"xpp" for X++ source (default), "xml-table" for AxTable XML, "xml-report" for AxReport XML, "xml-any" for other XML.'
+  codeType: z.enum(['xpp', 'xml-table', 'xml-form', 'xml-any', 'xml-report']).optional().default('xpp').describe(
+    '"xpp" for X++ source (default), "xml-table" for AxTable XML, "xml-form" for AxForm/AxFormExtension XML, ' +
+    '"xml-report" for AxReport XML, "xml-any" for other XML.'
   ),
   context: z.string().optional().describe(
     'Optional: owning class/table name, used in diagnostic messages.'
@@ -2499,11 +2501,56 @@ function checkDataGroupDeclared(code: string): ValidationViolation[] {
   return violations;
 }
 
+/**
+ * XML010 — a form control element written out of the order shipped metadata uses.
+ *
+ * Same failure as XML006 one level down, and with the same silence: the
+ * deserializer skips the misplaced element and carries on. When the element is a
+ * container's `<Controls>`, every control under it is in the file and invisible
+ * to the platform — verified against the live metadata provider in #979, where a
+ * scaffolded form held 16 controls of which the compiler could reach 14.
+ *
+ * The canonical order is not written here. It is mined per control `i:type` from
+ * 309,668 shipped controls by scripts/capture-form-element-order.ts; over that
+ * whole corpus this rule fires three times, each on a file where Microsoft
+ * itself put an element where the deserializer drops it.
+ *
+ * Only the `order` kind is reported. The checker's weaker `unknown` kind ("no
+ * shipped control of this type carries this element") is useful in the scaffold
+ * self-test but too soft for a caller-facing validator.
+ */
+function checkFormControlElementOrder(code: string): ValidationViolation[] {
+  if (!/<(?:AxFormControl|FormControl)[\s>]/.test(code)) return [];
+  return findControlElementOrderViolations(code)
+    .filter(v => v.kind === 'order')
+    .map(v => ({
+      rule: 'XML010',
+      severity: 'error' as const,
+      line: v.line,
+      excerpt: `${v.controlType} "${v.controlName}": <${v.element}> appears before <${v.beforeElement}>`,
+      fix:
+        `AxForm XML is order-sensitive and a misordered element is dropped SILENTLY — ` +
+        `anything under a dropped <Controls> is in the file and invisible to the compiler. ` +
+        `Move <${v.element}> after <${v.beforeElement}>. The canonical sequence per control ` +
+        `type is in src/validation/formControlElementOrder.generated.ts (e.g. on a group ` +
+        `control, <DataGroup> and <DataSource> come AFTER </Controls>).`,
+    }));
+}
+
 const XML_RULES = [
   checkMissingAlternateKey,
   checkTableElementOrder,
   checkNonExistentTableProperties,
   checkTableExtensionMethods,
+  checkDataGroupDeclared,
+];
+
+/**
+ * Rules for a form document. The table rules do not apply, and the X++ keyword
+ * rules would only produce noise over metadata XML.
+ */
+const FORM_XML_RULES = [
+  checkFormControlElementOrder,
   checkDataGroupDeclared,
 ];
 
@@ -2514,7 +2561,7 @@ const XML_PROPERTY_RULES = [
 
 export function runRules(
   code: string,
-  codeType: 'xpp' | 'xml-table' | 'xml-any' | 'xml-report',
+  codeType: 'xpp' | 'xml-table' | 'xml-form' | 'xml-any' | 'xml-report',
   stats?: PropertyStatsProvider,
 ): ValidationViolation[] {
   const violations: ValidationViolation[] = [];
@@ -2526,6 +2573,12 @@ export function runRules(
     // AxReport XML embeds RDL in CDATA — running the X++ keyword rules over it
     // would only produce noise, so the report document gets its own rule set.
     for (const rule of REPORT_XML_RULES) {
+      violations.push(...rule(code));
+    }
+  } else if (codeType === 'xml-form') {
+    // The route an agent needs to check a form BEFORE handing it to
+    // d365fo_file(action="create"), which now refuses this shape (#989).
+    for (const rule of FORM_XML_RULES) {
       violations.push(...rule(code));
     }
   } else if (codeType === 'xml-table') {

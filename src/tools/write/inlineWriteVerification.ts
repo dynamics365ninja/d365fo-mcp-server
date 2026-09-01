@@ -19,6 +19,10 @@ import {
   resolveMembership, renderMembership, axFolderForObjectType, type Membership,
 } from '../../workspace/projectMembership.js';
 import { getConfigManager } from '../../utils/configManager.js';
+import {
+  findControlElementOrderViolations,
+  formatElementOrderViolations,
+} from '../../validation/formControlElementOrder.js';
 
 /**
  * The model's other .rnrproj, or none — never a throw.
@@ -175,4 +179,43 @@ export function renderWriteVerification(v: WriteVerification): string {
     ? renderMembership(v.membership, v.axFolder ?? '', v.objectName ?? '')
     : '';
   return note ? verified + note : `${verified}.`;
+}
+
+/**
+ * Post-write element-order check for a form document (#989).
+ *
+ * `create` can only pass through a defect the caller supplied, and it is gated
+ * BEFORE the write. `modify` is different in kind: the direct XML writers insert
+ * elements into an existing document, and an insertion at the wrong offset IS
+ * this defect — the same class as the nesting-scope trap behind #927/#928. So
+ * the interesting failure here is one this server just introduced, and it can
+ * only be seen after the operation has applied (through IMetadataProvider.Update()
+ * or the XML fallback, neither of which can be dry-run).
+ *
+ * Hence a report rather than a gate. The write has happened; the caller needs to
+ * know the file on disk now contains something the compiler will not see, and
+ * which tool undoes it.
+ *
+ * Advisory like everything else in this module: a check that throws must not
+ * turn a successful write into a reported failure.
+ */
+export async function verifyFormElementOrder(
+  filePath: string | undefined,
+  objectType: string,
+): Promise<string> {
+  if (!filePath || (objectType !== 'form' && objectType !== 'form-extension')) return '';
+  try {
+    const xml = await fs.readFile(filePath, 'utf-8');
+    const dropped = findControlElementOrderViolations(xml).filter(v => v.kind === 'order');
+    if (dropped.length === 0) return '';
+    return (
+      `\n\n⛔ **The file on disk now has ${dropped.length} element(s) the metadata deserializer ` +
+      `will DROP silently** — they are in the file and the compiler will not see them:\n` +
+      `${formatElementOrderViolations(dropped)}\n` +
+      `This is a defect in the write, not in your request. Undo it with ` +
+      `\`undo_last_modification\`, and please report the operation that produced it.`
+    );
+  } catch {
+    return '';
+  }
 }

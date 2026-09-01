@@ -206,6 +206,7 @@ function renderTopLevel(spec: FormPatternSpec, db: any): string {
   lines.push('## Workflow');
   lines.push(`1. \`generate_object(mode="scaffold", objectType="form", name=..., cloneFrom="${spec.referenceForms[0]}", tableMapping={...}, includeMethodStubs=true)\``);
   lines.push('2. `object_patterns(domain="form", action="validate", xml=...)` — fix any FP errors');
+  lines.push('2b. `validate_code(mode="syntax", codeType="xml-form", code=...)` — XML010: elements the deserializer would DROP silently');
   lines.push('3. `d365fo_file(action="create", objectType="form", ...)` — structural errors block while FORM_PATTERN_ENFORCE=true');
   return lines.join('\n');
 }

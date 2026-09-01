@@ -61,7 +61,7 @@ import {
 } from '../analysis/validateFormPattern.js';
 import { validateEdtExtensionChange } from '../../utils/edtExtensionValidator.js';
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
-import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, renderBatchEditHint } from './inlineWriteVerification.js';
+import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, renderBatchEditHint, verifyFormElementOrder } from './inlineWriteVerification.js';
 import { lintXppSelect } from '../../utils/xppSelectLint.js';
 import { validateWrittenXpp } from './inlineXppValidation.js';
 import { createPhaseTimer } from '../../utils/phaseTimer.js';
@@ -3194,6 +3194,11 @@ export async function modifyD365FileTool(
     );
     const bpNote = await timer.time('inline BP check',
       () => runInlineBpCheck((args as any).bpCheck, objectType, objectName, context));
+    // A modify can INTRODUCE an out-of-order element — an insertion at the wrong
+    // offset is exactly the #979 defect — and the deserializer drops those in
+    // silence. Only checkable after the operation has applied (#989).
+    const formOrderNote = await timer.time('form element order',
+      () => verifyFormElementOrder(actualFilePath, objectType));
 
     return {
       content: [
@@ -3204,7 +3209,7 @@ export async function modifyD365FileTool(
               ? "this server's XML writer (no bridge path for this operation)"
               : 'IMetadataProvider.Update()'}${crossModelNotice}${autoCorrectNote}\n\n` +
             `**File:** ${actualFilePath}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}\n` +
-            `🔧 API: ${bridgeResult.message}${preservationNote}${changedLinesNote}${xppLintNote}${xppRuleNote}${addFieldBpNote}${fieldGroupRenderNote}${backupNote}${verifyNote}${indexNote}${bpNote}${timer.render()}` +
+            `🔧 API: ${bridgeResult.message}${preservationNote}${changedLinesNote}${xppLintNote}${xppRuleNote}${addFieldBpNote}${fieldGroupRenderNote}${backupNote}${verifyNote}${indexNote}${bpNote}${formOrderNote}${timer.render()}` +
             // "Review changes in Visual Studio" is not something the caller can act
             // on, and it rode along on every write.
             (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') +
