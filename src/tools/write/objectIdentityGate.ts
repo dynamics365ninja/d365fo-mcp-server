@@ -28,22 +28,21 @@
  * name — comparing those two would refuse every correct extension.
  */
 
+import { firstLeafText } from '../../utils/xmlScan.js';
 import { maskXpp } from '../../utils/xppLexer.js';
 
 /**
  * The root element's own `<Name>`, or null.
  *
- * Every AOT shape puts `<Name>` first, before any collection, so the first
- * occurrence in the document is the object's own — a nested `<Name>` (a field, a
- * control, a method) can only appear after a collection element has opened.
- * Anything inside an XML comment or a CDATA block is skipped, because a
- * commented-out example is not an identity.
+ * A CHILD OF THE ROOT, specifically — not "the first `<Name>` in the file". A
+ * field, a control or a method carries a `<Name>` too, and a commented-out
+ * example carries one that is not an identity at all. scanXmlLeaves answers the
+ * structural question directly instead of deleting the parts of the document
+ * that would otherwise confuse a regex; see xmlScan.ts for why the deleting
+ * version is a bug and not just a lint finding.
  */
 export function readRootObjectName(xml: string): string | null {
-  const stripped = xml
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, '');
-  return /<Name>([^<]*)<\/Name>/.exec(stripped)?.[1]?.trim() || null;
+  return firstLeafText(xml, 'Name')?.trim() || null;
 }
 
 /**
@@ -121,6 +120,16 @@ export function renderIdentityRefusal(
       ? `  • <Name> says "${p.found}"`
       : `  • the X++ declaration says "class ${p.found}"`,
   );
+  // The name out of the document is UNTRUSTED text — it is whatever the caller's
+  // xmlContent said. Only a legal AOT identifier is echoed back as a ready-to-run
+  // objectName= argument; anything else is described, never quoted into a call
+  // the reader might paste (CodeQL js/incomplete-html-attribute-sanitization).
+  const found = problems[0]?.found ?? '';
+  const suggestion = /^[A-Za-z_][A-Za-z0-9_.]*$/.test(found)
+    ? `, or pass objectName="${found}" and let the tool apply the model prefix itself ` +
+      `(never hand-build the prefix)`
+    : ` (the name the document carries is not a legal AOT identifier, so there is nothing ` +
+      `to pass as objectName)`;
   return (
     `❌ create ${objectType} "${expectedName}": the object would state two different identities and ` +
     `nothing was written.\n` +
@@ -128,7 +137,6 @@ export function renderIdentityRefusal(
     lines.join('\n') + '\n\n' +
     `xppc refuses that at build time ("must be named ... to be consistent with its file name"), so the ` +
     `write is refused here instead — a build cycle earlier.\n` +
-    `Fix the xmlContent to use "${expectedName}" throughout, or pass objectName="${problems[0]?.found}" ` +
-    `and let the tool apply the model prefix itself (never hand-build the prefix).`
+    `Fix the xmlContent to use "${expectedName}" throughout${suggestion}.`
   );
 }

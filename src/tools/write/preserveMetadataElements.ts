@@ -32,16 +32,21 @@
  *     vanished outright.
  */
 
-/** Top-level leaf elements of the root, in document order: name → raw text. */
+import { scanXmlLeaves } from '../../utils/xmlScan.js';
+
+/**
+ * Top-level leaf elements of the root, in document order: name → raw text.
+ *
+ * Structure, not indentation, and certainly not "the document with the comments
+ * deleted" — that strip is the bug xmlScan.ts exists to stop, and it was flagged
+ * here as js/incomplete-multi-character-sanitization on this module's first CI
+ * run. A property inside a comment is not a property, and a property nested in a
+ * collection is not top-level; scanXmlLeaves distinguishes both.
+ */
 export function readTopLevelLeaves(xml: string): Map<string, string> {
   const leaves = new Map<string, string>();
-  // Skip the prologue and the root start tag, then read only elements at the
-  // root's own indent level that carry text and no child element.
-  const body = xml.replace(/<!--[\s\S]*?-->/g, '');
-  const re = /^\t<([A-Za-z]\w*)>([^<]*)<\/\1>\s*$/gm;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(body)) !== null) {
-    if (!leaves.has(m[1])) leaves.set(m[1], m[2]);
+  for (const leaf of scanXmlLeaves(xml)) {
+    if (leaf.depth === 1 && !leaves.has(leaf.name)) leaves.set(leaf.name, leaf.text);
   }
   return leaves;
 }
