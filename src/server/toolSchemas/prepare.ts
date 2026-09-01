@@ -31,7 +31,7 @@ export const prepareTool = {
         },
         objectName: {
           type: 'string',
-          description: '[change] Name of the object to extend/modify (e.g. "CustTable"). [create] Proposed BASE name WITHOUT model prefix (same value you would pass to d365fo_file create).',
+          description: '[change] Name of the object to extend/modify (e.g. "CustTable"). [create] Proposed BASE name WITHOUT model prefix.',
         },
         objectType: {
           type: 'string',
@@ -41,8 +41,15 @@ export const prepareTool = {
             'menu-item-output', 'menu', 'security-privilege', 'security-duty', 'security-role',
             'business-event', 'tile', 'kpi', 'service', 'service-group',
             'macro', 'configuration-key', 'security-policy', 'aggregate-measurement', 'license-code',
+            // Extension artefacts, published here as well as in prepareCreate's zod
+            // schema. #983 added them to the zod schema only — the handler accepted
+            // them and the tool list did not offer them, so an agent still could not
+            // pick one. That is the very disagreement #983 was filed about, one level
+            // up. tests/server/toolSchemaAgreement.test.ts now pins the two together.
+            'table-extension', 'class-extension', 'form-extension', 'enum-extension', 'edt-extension',
           ],
-          description: '[change] D365FO object type — auto-detected when omitted. [create] REQUIRED — type of the new object.',
+          description:
+            '[change] type — auto-detected when omitted. [create] REQUIRED; an extension is Base.Suffix.',
         },
         methodName: {
           type: 'string',
@@ -53,7 +60,7 @@ export const prepareTool = {
           // Comma-separated rather than a second array parameter: a table change
           // is normally add-field AND add-index AND add-field-to-field-group, and
           // one clause here is far cheaper per session than another schema block.
-          description: '[change] The modify operation(s) you intend to run — comma-separated for several ("add-field,add-index"). Their full parameter contracts come back in THIS response, so no separate op-spec call. Defaults to add-method when methodName is given.',
+          description: '[change] The modify operation(s) you intend to run — comma-separated for several ("add-field,add-index"). Their full parameter contracts come back in THIS response. Defaults to add-method when methodName is given.',
         },
         proposedName: {
           type: 'string',

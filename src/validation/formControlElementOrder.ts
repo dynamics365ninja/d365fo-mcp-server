@@ -42,8 +42,14 @@ export interface ElementOrderViolation {
   /** The element that appears too early. */
   element: string;
   /**
-   * The element it wrongly precedes, or `null` for an `unknown` violation —
-   * one this control type carries nowhere in the census.
+   * The element `element` must come BEFORE but was written AFTER, or `null` for
+   * an `unknown` violation — one this control type carries nowhere in the census.
+   *
+   * The name reads as "the element this one belongs before". Getting the
+   * DIRECTION right in the message matters more than it looks: the first version
+   * said `<element> must come AFTER <beforeElement>`, which is the exact opposite
+   * of the fix, and it shipped — the tests pinned the wrong string, so only
+   * reading the live tool output caught it.
    */
   beforeElement: string | null;
   /**
@@ -215,7 +221,7 @@ export function formatElementOrderViolations(violations: ElementOrderViolation[]
     .map((v) =>
       v.kind === 'order'
         ? `🔴 [ORDER] ${v.controlType} "${v.controlName}" line ${v.line}: ` +
-          `<${v.element}> must come AFTER <${v.beforeElement}> — ` +
+          `<${v.element}> is written after <${v.beforeElement}>, but must come BEFORE it — ` +
           `the metadata deserializer drops out-of-order elements silently.`
         : `🟠 [UNKNOWN] ${v.controlType} "${v.controlName}" line ${v.line}: ` +
           `<${v.element}> appears on no ${v.controlType} in shipped metadata — ` +
