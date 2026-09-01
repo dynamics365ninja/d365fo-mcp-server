@@ -25,6 +25,7 @@ public class ConDemoRentHeader extends common
 		<AxTableDeleteAction>
 			<Name>ConDemoRentLine</Name>
 			<DeleteAction>Cascade</DeleteAction>
+			<Relation>ConDemoRentHeader</Relation>
 			<Table>ConDemoRentLine</Table>
 		</AxTableDeleteAction>
 	</DeleteActions>

@@ -91,7 +91,7 @@ public class ConDemoRentLine extends common
 \t</SourceCode>
 \t<Label>@Contoso:Line</Label>
 \t<TableGroup>Transaction</TableGroup>
-\t<CacheLookup>None</CacheLookup>
+\t<CacheLookup>Found</CacheLookup>
 \t<Fields />
 </AxTable>
 `;
@@ -100,22 +100,22 @@ describe('a bridge round trip may not silently drop a property', () => {
   it('reads only the root\'s own leaf properties', () => {
     const leaves = readTopLevelLeaves(TABLE_BEFORE);
     expect([...leaves.keys()]).toEqual(['Name', 'Label', 'TableGroup', 'CacheLookup']);
-    expect(leaves.get('CacheLookup')).toBe('None');
+    expect(leaves.get('CacheLookup')).toBe('Found');
   });
 
   it('restores a property the operation never touched, in its canonical slot', () => {
     // Exactly reproduction 1: create(table, cacheLookup:"None") patched the file,
     // then add-relation round-tripped it through a provider that had not re-read
     // the patch, and CacheLookup was gone.
-    const after = TABLE_BEFORE.replace('\t<CacheLookup>None</CacheLookup>\n', '');
+    const after = TABLE_BEFORE.replace('\t<CacheLookup>Found</CacheLookup>\n', '');
     const { xml, restored } = preserveDroppedProperties(TABLE_BEFORE, after, 'add-relation');
 
-    expect(restored).toEqual(['CacheLookup=None']);
-    expect(xml).toMatch(/<TableGroup>Transaction<\/TableGroup>\n\t<CacheLookup>None<\/CacheLookup>/);
+    expect(restored).toEqual(['CacheLookup=Found']);
+    expect(xml).toMatch(/<TableGroup>Transaction<\/TableGroup>\n\t<CacheLookup>Found<\/CacheLookup>/);
   });
 
   it('leaves an asked-for removal alone', () => {
-    const after = TABLE_BEFORE.replace('\t<CacheLookup>None</CacheLookup>\n', '');
+    const after = TABLE_BEFORE.replace('\t<CacheLookup>Found</CacheLookup>\n', '');
     expect(preserveDroppedProperties(TABLE_BEFORE, after, 'remove-relation').restored).toEqual([]);
     // …and the property a modify-property call is ABOUT is the caller's to clear.
     expect(
@@ -128,6 +128,20 @@ describe('a bridge round trip may not silently drop a property', () => {
     expect(preserveDroppedProperties(TABLE_BEFORE, after, 'modify-property', 'Label').restored).toEqual([]);
   });
 
+  it('does not "restore" a value whose absence means the same thing', () => {
+    // The guard's first live run fired on <CacheLookup>None</CacheLookup> and
+    // reported a defect that had not happened. RecordCacheLevel.None is 0 — the
+    // .NET type default the serializer omits — so the round trip normalised the
+    // element away rather than losing it. Of 1,444 <CacheLookup> elements in
+    // shipped metadata, none says None.
+    const withDefault = TABLE_BEFORE.replace(
+      '<CacheLookup>Found</CacheLookup>',
+      '<CacheLookup>None</CacheLookup>',
+    );
+    const after = withDefault.replace('\t<CacheLookup>None</CacheLookup>\n', '');
+    expect(preserveDroppedProperties(withDefault, after, 'add-relation').restored).toEqual([]);
+  });
+
   it('never papers over a lost <Name> — that is a broken document, not a property', () => {
     const after = TABLE_BEFORE.replace('\t<Name>ConDemoRentLine</Name>\n', '');
     expect(preserveDroppedProperties(TABLE_BEFORE, after, 'add-field').restored).toEqual([]);
@@ -136,10 +150,10 @@ describe('a bridge round trip may not silently drop a property', () => {
 
 describe('"Verified: on disk" is not a verification of the value', () => {
   it('reports a modify-property whose value is not in the file', () => {
-    const marker = claimedMarkerFor('modify-property', { propertyPath: 'CacheLookup', propertyValue: 'None' });
+    const marker = claimedMarkerFor('modify-property', { propertyPath: 'CacheLookup', propertyValue: 'Found' });
     expect(renderClaimCheck(marker, TABLE_BEFORE)).toBe('');
-    expect(renderClaimCheck(marker, TABLE_BEFORE.replace('<CacheLookup>None</CacheLookup>', '')))
-      .toMatch(/❌ Verification: "CacheLookup=None" is NOT in the file/);
+    expect(renderClaimCheck(marker, TABLE_BEFORE.replace('<CacheLookup>Found</CacheLookup>', '')))
+      .toMatch(/❌ Verification: "CacheLookup=Found" is NOT in the file/);
   });
 
   it('checks a delete action by its TYPE, which is the half that went missing', () => {

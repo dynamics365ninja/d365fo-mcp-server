@@ -82,10 +82,31 @@ const NO_YES_PROPERTIES = new Set(['SaveDataPerCompany', 'SupportInheritance', '
  * Values the AxTable serializer omits because they ARE the default. Requesting one
  * of these and getting no element back is not a dropped parameter — writing it would
  * add an element no shipped table has.
+ *
+ * Every entry is measured against the 6,995 AxTable files in
+ * PackagesLocalDirectory: the omitted default is the member that NEVER appears
+ * while its siblings do. Seven of the eight checked out. `CacheLookup` did not,
+ * and it cost two defects in opposite directions — a redundant element written on
+ * every "None" and a silently ignored "NotInTTS":
+ *
+ *   • reflection over Microsoft.Dynamics.AX.Metadata.Core.dll:
+ *     RecordCacheLevel.None = 0 — the .NET type default, which the serializer omits;
+ *   • the census agrees: of 1,444 shipped `<CacheLookup>` elements, ZERO say None
+ *     (Found 758 · NotInTTS 301 · FoundAndEmpty 209 · EntireTable 176), and 95 of
+ *     the 231 shipped Transaction tables carry no element at all — which IS None.
+ *
+ * So `<CacheLookup>None</CacheLookup>` was an element the platform never writes:
+ * the create patched it in, every later metadata round trip normalised it away
+ * again, and the 2026-08-31 capture run read that as "a bridge modify destroys
+ * properties this server wrote". Meanwhile a caller asking for NotInTTS — a real,
+ * non-default value — was told it had been honoured and got None.
+ *
+ * `TableType: Regular` appears twice in 6,995 files, which is hand-authored noise
+ * rather than a counter-example; the alias `RegularTable` never appears.
  */
 const AX_TABLE_OMITTED_DEFAULTS: Record<string, readonly string[]> = {
   TableGroup: ['Miscellaneous'],
-  CacheLookup: ['NotInTTS'],
+  CacheLookup: ['None'],
   TableType: ['Regular', 'RegularTable'],
   ValidTimeStateFieldType: ['None'],
   SaveDataPerCompany: ['Yes'],
@@ -93,6 +114,9 @@ const AX_TABLE_OMITTED_DEFAULTS: Record<string, readonly string[]> = {
   SystemTable: ['No'],
   Visible: ['Yes'],
 };
+
+/** The omitted-default table, for guards that must not "restore" an absent default. */
+export const AX_TABLE_SERIALIZER_DEFAULTS: Record<string, readonly string[]> = AX_TABLE_OMITTED_DEFAULTS;
 
 /**
  * Structural collections that travel as their own bridge parameter, and the AxTable

@@ -16,7 +16,6 @@ public class ConDemoRentLine extends common
 	<TableGroup>Transaction</TableGroup>
 	<TitleField1>RentAgreementId</TitleField1>
 	<TitleField2>ItemName</TitleField2>
-	<CacheLookup>None</CacheLookup>
 	<ClusteredIndex>RentLineIdx</ClusteredIndex>
 	<PrimaryIndex>RentLineIdx</PrimaryIndex>
 	<ReplacementKey>RentLineIdx</ReplacementKey>

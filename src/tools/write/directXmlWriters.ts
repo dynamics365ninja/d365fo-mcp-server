@@ -1192,7 +1192,11 @@ export const DELETE_ACTION_TYPES = ['None', 'Restricted', 'Cascade', 'CascadeRes
  * the deserializer had been able to read.
  *
  * <Relation> is emitted when the caller names one: a delete action without an
- * explicit relation is legal but draws BPUpgradeMetadataDeleteAction.
+ * explicit relation is legal but draws BPUpgradeMetadataDeleteAction. Which side
+ * DECLARES that relation is not fixed — of the resolvable delete actions in the
+ * four big packages, 5 name a relation declared on the related table and 4 name
+ * one declared on the table that owns the delete action — so the op-spec tells
+ * the caller to read it rather than derive it.
  */
 export const directXmlDeleteAction = serializedOnFile(async (
   filePath: string,

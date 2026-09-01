@@ -254,6 +254,23 @@ _Nothing released yet._
   earlier, and with all three spelled out. (The declaration is read through the
   shared X++ lexer: the first version matched the word "class" inside a `///`
   comment and refused correct creates, which the full suite caught the same hour.)
+- **`CacheLookup=None` was an element the platform never writes** — and the entry
+  that said otherwise cost two defects pointing opposite ways. The omitted-default
+  table named `NotInTTS` as the value the AxTable serialiser leaves out. It is
+  `None`: reflection over `Microsoft.Dynamics.AX.Metadata.Core.dll` gives
+  `RecordCacheLevel.None = 0`, the .NET type default, and the census agrees — of
+  the 1,444 `<CacheLookup>` elements in 6,995 shipped tables **not one says None**
+  (Found 758 · NotInTTS 301 · FoundAndEmpty 209 · EntireTable 176), while 95 of the
+  231 shipped Transaction tables carry no element at all, which IS None. So a
+  create asking for `None` had an element patched in that every later metadata
+  round trip normalised away again — the behaviour the 2026-08-31 run recorded as
+  "a bridge modify destroys properties this server wrote" — and a create asking for
+  `NotInTTS`, a real non-default value, was told it had been honoured and got None.
+  Found by the verification run below: the new preservation guard fired on it, and
+  a guard firing on a non-event is how the wrong default came to light. The guard
+  now ignores any value whose absence means the same thing, so it cannot cry wolf.
+  The other seven entries in that table were checked against the same census and
+  are correct.
 - **Two guards, because the class of defect matters more than the three
   instances.** Every bridge-backed write now compares the file before and after:
   a top-level property that vanished without being asked about is put back, in the
@@ -293,12 +310,27 @@ _Nothing released yet._
 - `L3-warehouse-work-slice` has a captured golden and `build: 1`, but its corpus
   record still carries `bp_clean: null` — BP never ran for it. A small, real gap,
   named rather than papered over.
-- The three write-path defects this section carried are **fixed** (see Fixed,
-  below). They have not yet been re-run through the live tool path on the VM: the
-  eval MCP server loads `dist/index.js` at connect time, so proving them fixed
-  end-to-end needs a server reconnect and a re-run of
-  `L3-enum-field-form-downgrade-guard`, `L4-headerlines-document-slice` and
-  `L2-event-handler-basic`.
+- Four defects the verification runs found or re-confirmed are **open, with
+  issues**, all in the form/scaffold path and none of them touched by this
+  release: the scaffold writes explicit child controls under a `<DataGroup>`-bound
+  group, which its own `add-control` op-spec refuses (#977); `generateControls`
+  changes nothing and the reported control count is not the number written (#978);
+  `get_object_info(form)` hides the children of such a group, reporting 14 controls
+  where the XML holds 16 (#979); and every scaffolded form starts BP-dirty because
+  the tab captions are raw text (#980).
+
+### Verified on the VM
+All three write-path defects were re-run end to end through the grounded tool
+path on the sandbox model, against a server running this build:
+
+| Case | Score | What it proves |
+|---|---|---|
+| `L3-enum-field-form-downgrade-guard` | build 1 · golden 1 · **systest 3/3** | One `create(enum)` call — no `useEnumValue`, no `modify-enum-value` repair — wrote `<Value>1/2/3</Value>` and the runtime downgrade guard passes. The runtime oracle was the only thing that could ever see this defect. |
+| `L2-event-handler-basic` | build 1 · golden 1 · **systest 2/2** | `create(class, xmlContent=…)` canonicalised all three identities instead of writing three different ones; the build that used to die with the naming-consistency error is 0 errors. `golden_match` is 1 against the untouched 2026-07-01 golden, which retires the plan to re-capture the seven other pre-doc-comment class goldens. |
+| `L4-headerlines-document-slice` | build 1 · golden 1 | `<DeleteAction>Cascade</DeleteAction>` read back intact after the write, after **two** further bridge-backed `Update()` calls on the same table, and after a full rebuild — no guard needed, the ordering fix is a root fix. `BPUpgradeMetadataDeleteAction` is gone. The golden was re-captured from that build, so the two lines the fix PR had hand-repaired are now real captured bytes. |
+
+Each run rolled the sandbox back and left a corpus record
+(`eval/corpus/runs/2026-09-01T06__*__0fba518.json`).
 
 ---
 

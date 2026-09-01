@@ -1,0 +1,89 @@
+{
+  "run_id": "2026-09-01T06__L3-enum-field-form-downgrade-guard__0fba518",
+  "case_id": "L3-enum-field-form-downgrade-guard",
+  "tier": 3,
+  "timestamp": "2026-09-01T06:23:02.758Z",
+  "server_git_sha": "0fba518",
+  "platform_build": "7.0.7996.33",
+  "generated_artifacts": [
+    "ConDemoServiceTier.metadata.xml",
+    "ConDemoTaxChangeLog.metadata.xml",
+    "ConDemoTaxChangeLogDetails.AxMenuItemDisplay.metadata.xml",
+    "ConDemoTaxChangeLogDetails.metadata.xml"
+  ],
+  "static_gate": {
+    "references": {
+      "passed": true,
+      "unresolved": []
+    },
+    "syntax": {
+      "passed": true,
+      "violations": []
+    }
+  },
+  "build": {
+    "succeeded": true,
+    "errors": [],
+    "bp_checked": true,
+    "bpWarnings": [
+      {
+        "object": "ConDemoTaxChangeLog",
+        "moniker": "BPErrorTablePrimaryKeyEditable",
+        "severity": "Warning",
+        "path": "dynamics://Table/ConDemoTaxChangeLog/TableIndex/ChangeLogIdx/TableIndexField/ChangeLogId"
+      },
+      {
+        "object": "ConDemoTaxChangeLog",
+        "moniker": "BPErrorLabelNotDefined",
+        "severity": "Warning",
+        "path": "dynamics://Table/ConDemoTaxChangeLog/TableFieldGroup/Overview"
+      },
+      {
+        "object": "ConDemoTaxChangeLog",
+        "moniker": "BPErrorDeveloperDocumentationNotDefined",
+        "severity": "Warning",
+        "path": "dynamics://Table/ConDemoTaxChangeLog"
+      },
+      {
+        "object": "ConDemoTaxChangeLogDetails",
+        "moniker": "BPErrorLabelIsText",
+        "severity": "Warning",
+        "path": "dynamics://Form/ConDemoTaxChangeLogDetails/FormDesign/FormDesign/FormTabControl/Tab/FormTabPageControl/TabPageGeneral",
+        "note": "SimpleListDetails scaffold still writes Caption=General as raw text - unchanged from the 278eee3 run"
+      },
+      {
+        "object": "ConDemoTaxChangeLogDetails",
+        "moniker": "BPErrorMenuItemNotCoveredByPrivilege",
+        "severity": "Warning",
+        "path": "dynamics://MenuItemDisplay/ConDemoTaxChangeLogDetails"
+      }
+    ]
+  },
+  "golden_diff": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "changed": []
+  },
+  "systest": {
+    "ran": true,
+    "passed": true,
+    "failures": []
+  },
+  "score": {
+    "build": 1,
+    "bp_clean": 0,
+    "golden_match": 1,
+    "systest": 1,
+    "tier_weight": 3
+  },
+  "classification": "TOOL_DEFECT",
+  "root_cause_hypothesis": "FIX VERIFIED - the primary defect of run 2026-08-31T22 (278eee3) is CLOSED. ONE d365fo_file(action=\"create\", objectType=\"enum\") call with enumValues in ladder order, no useEnumValue and no isExtensible, now writes <Value>1</Value>/<Value>2</Value>/<Value>3</Value> (0 omitted) alongside <UseEnumValue>No</UseEnumValue>, byte-identical to the golden. No modify-enum-value repair step was needed. The runtime oracle confirms it: EvalL3ServiceTierDowngradeTest 3/3 PASS, including testDowngradeIsRejected, which is exactly the assertion that failed while every member was 0. get_knowledge(kind=\"op-spec\", topic=\"enum\") now states the correct rule (\"every member keeps its number ... A member WITHOUT <Value> is 0, not the next ordinal\") plus the isExtensible/non-equality-comparison consequence, so the knowledge and the writer agree. DEFECT 2 of the old record (modify-property FormRef written verbatim without resolving to a menu item display) was not re-triggered: the display menu item was created first and the property took it - the validation gap itself was not negative-tested this run, so treat it as unverified rather than fixed. THREE defects remain open, all in the form path. (A) generate_object(mode=\"scaffold\", objectType=\"form\", formPattern=\"SimpleListDetails\") writes EXPLICIT child controls (Overview_ChangeLogId, Overview_ServiceTier) inside a group whose binding is <DataGroup>Overview</DataGroup>. The server's own add-control op-spec declares that shape illegal (\"A BASE-FORM parent bound to a table field group via <DataGroup> is REFUSED: the compiler generates that group's members, so an explicit control collides\") - the scaffold does the very thing add-control refuses. The golden has <Controls /> for that group. (B) The same scaffold auto-generates ComboBox controls for the enum field in BOTH the grid (Grid_ServiceTier) and the details tab (Tab_ServiceTier), so the case requirement \"expose the enum field EXCLUSIVELY via add-control\" is unreachable: four remove-control calls were needed before the ComboBox could be added and the golden shape reached. Related: params.generateControls has NO observable effect - scaffolding with generateControls:true and with it omitted produced byte-identical XML (16 controls both times), while the response line reported \"Controls: 1\" and \"Controls: 0\" respectively, neither of which is the number written. (C) get_object_info(objectType=\"form\") still hides the children of a DataGroup-bound group: it listed Overview with no children and \"Controls: 14\" while the XML on disk held 16 - the exact defect recorded at 278eee3, unchanged, and the case instruction routes the agent through that call to read the details group name. (D) Unchanged: the scaffold writes <Caption>General</Caption> as raw text on TabPageGeneral (BPErrorLabelIsText). bp_clean stays 0 with the identical 5-warning set as the previous run; 0 BP ERRORS, so the case's own BP bar (zero errors, explicit per-object targets) is met.",
+  "suggested_fix_area": "generateObject form scaffold (SimpleListDetails): (1) never emit explicit child controls under a group carrying <DataGroup> - the field group generates them; (2) do not auto-bind every table field into grid + details tab, or make that opt-in via generateControls, which currently does nothing; (3) TabPage Caption must be a label id, not raw text; (4) the \"Controls: N\" line in the scaffold response does not count what was written. tools/objectInfo form reader: list children of a DataGroup-bound group (Controls total is short by the hidden children). tools/fileOperations modify-property on table: still no menu-item-display resolution behind FormRef (unverified this run - needs a negative test).",
+  "evidence_refs": [
+    "eval/goldens/L3-enum-field-form-downgrade-guard/ConDemoServiceTier.metadata.xml",
+    "eval/goldens/L3-enum-field-form-downgrade-guard/ConDemoTaxChangeLogDetails.metadata.xml",
+    "eval/systests/L3-enum-field-form-downgrade-guard.xml",
+    "eval/corpus/runs/2026-08-31T22__L3-enum-field-form-downgrade-guard__278eee3.json"
+  ]
+}

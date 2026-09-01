@@ -32,7 +32,17 @@
  *     vanished outright.
  */
 
+import { AX_TABLE_SERIALIZER_DEFAULTS } from '../xml/createTablePropertyHonesty.js';
 import { scanXmlLeaves } from '../../utils/xmlScan.js';
+
+/**
+ * True when an element's value is the one the serializer omits, so its absence
+ * carries the same meaning as its presence.
+ */
+function isSerializerDefault(name: string, value: string): boolean {
+  const defaults = AX_TABLE_SERIALIZER_DEFAULTS[name];
+  return Boolean(defaults?.some(d => d.toLowerCase() === value.trim().toLowerCase()));
+}
 
 /**
  * Top-level leaf elements of the root, in document order: name → raw text.
@@ -95,7 +105,13 @@ export function preserveDroppedProperties(
     name.toLowerCase() !== target &&
     // Identity is not a "property": a document that lost its <Name> is broken in
     // a way this module must not paper over.
-    name !== 'Name',
+    name !== 'Name' &&
+    // An element whose value IS the serializer's omitted default was not lost —
+    // its absence says exactly the same thing, and putting it back starts a
+    // tug-of-war this guard would win on every write while reporting a defect
+    // that did not happen. The first live run of this guard fired on
+    // <CacheLookup>None</CacheLookup> for precisely that reason.
+    !isSerializerDefault(name, value),
   );
   if (missing.length === 0) return { xml: after, restored: [] };
 

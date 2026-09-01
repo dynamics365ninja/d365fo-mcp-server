@@ -63,8 +63,13 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
   deleteActionRelation: {
     type: 'string',
     description:
-      'Relation on THIS table that the delete action follows. Optional, but without it xppbp ' +
-      'reports BPUpgradeMetadataDeleteAction ("has no explicit relation set").',
+      'The RELATION linking the two tables, by name. Do not assume which side declares it: in ' +
+      'shipped metadata it is usually the relation on the RELATED table pointing back at this one ' +
+      '(DMFDataSource\u2019s delete action on DMFPublishedEntity names the relation declared on ' +
+      'DMFPublishedEntity), but the reverse ships too (AxKPITable names a relation on itself). ' +
+      'Read the related table with get_object_info(options:{relations:true}) and use the name you ' +
+      'find. Optional \u2014 without it xppbp reports BPUpgradeMetadataDeleteAction ("has no ' +
+      'explicit relation set").',
   },
   // table fields
   fieldName: { type: 'string', description: 'Field name.' },
