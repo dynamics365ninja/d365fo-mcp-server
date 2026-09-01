@@ -32,6 +32,47 @@ _Nothing released yet._
 
 ---
 
+## [1.16.1] — 2026-09-01
+
+### Fixed
+- **`d365fo-mcp setup` died on a database lock it took out on itself.** Opening an
+  existing large index hands the deferred `file_path` index builds to worker
+  threads, and each worker opens its own *write* connection to the same file.
+  `build-database` then sets `locking_mode = EXCLUSIVE` on the writer, which
+  cannot coexist with a second writer — whoever lost the race failed with
+  SQLITE_BUSY, on a machine where the build had already run for minutes. The
+  script did call `closeReadPool()` first, exactly as that method's doc comment
+  instructs, but the pool is not the only other connection the class opens: it
+  drains readers and knows nothing about the workers.
+
+  Three separate things were wrong and all three are fixed:
+  - `XppSymbolIndex` takes `{ backgroundIndexBuilds: false }`, and both
+    `build-database` and `build-fts` pass it. The worker exists to keep the
+    server's event loop answering; a one-shot CLI has no event loop to protect,
+    so it builds inline on the connection that already holds the lock.
+  - The worker dispatch no longer *assumes* WAL — it checks `journal_mode` and
+    refuses to spawn off it. Build scripts switch to `journal_mode = MEMORY` two
+    steps later, where a second connection cannot work by construction, so the
+    race is now closed even if a future caller forgets the flag.
+  - `closeReadPool()` documents what it does not cover and warns on stderr when
+    it is called with index builds still running; `close()` tears them down.
+
+  Deliberately not fixed by raising `busy_timeout` (masks the race) or by
+  retrying `createFTSTriggers` (one of many places that hit the same lock).
+
+### Changed
+- Build scripts defer the `file_path` indexes past their bulk load
+  (`{ deferFilePathIndexes: true }`) and build them once at the end. Every row of
+  the load previously maintained two extra B-trees, and a full rebuild threw the
+  result away in `clear()` anyway.
+- `XppSymbolIndex` accepts a `largeDbThresholdBytes` override. The existing tests
+  could not have caught this bug: they run on databases far below the 200 MB
+  threshold, where the worker never starts. With the threshold injectable, the
+  worker path is reachable in a unit test — and the new tests fail against the
+  old code.
+
+---
+
 ## [1.16.0] — 2026-09-01
 
 ### Added

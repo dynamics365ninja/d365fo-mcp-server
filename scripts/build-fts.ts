@@ -59,7 +59,14 @@ async function buildFts(): Promise<void> {
     process.exit(1);
   }
 
-  const symbolIndex = new XppSymbolIndex(OUTPUT_DB, OUTPUT_LABELS_DB);
+  // Same two opt-outs as build-database.ts: this script takes locking_mode =
+  // EXCLUSIVE below, which an index worker's second write connection cannot
+  // coexist with, and the label load should not maintain the indexes it will
+  // build once at the end. See XppSymbolIndexOptions.
+  const symbolIndex = new XppSymbolIndex(OUTPUT_DB, OUTPUT_LABELS_DB, {
+    backgroundIndexBuilds: false,
+    deferFilePathIndexes: true,
+  });
 
   // Close read-pool connections before setting EXCLUSIVE locking mode.
   // SQLite cannot grant locking_mode = EXCLUSIVE while any other connection
@@ -146,6 +153,12 @@ async function buildFts(): Promise<void> {
   } else {
     console.log('\n⏭️  Skipping label indexing (INCLUDE_LABELS=false)');
   }
+
+  // ── file_path indexes: deferred past the load, built inline on the writer ──
+  console.log('\n🔑 Building file_path indexes...');
+  const filePathIdxStart = Date.now();
+  symbolIndex.ensureFilePathIndexes();
+  console.log(`   ✅ Done in ${((Date.now() - filePathIdxStart) / 1000).toFixed(2)}s`);
 
   // ── Finalize: convert to WAL mode for production ───────────────────────────
   console.log('\n🔄 Converting databases to WAL mode for production...');
