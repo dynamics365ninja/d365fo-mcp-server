@@ -33,6 +33,7 @@ import {
 } from './objectIdentityGate.js';
 import { enforceGrounding } from '../../utils/provenanceStore.js';
 import { gateOnFormPatternErrors, isFormPatternEnforceEnabled } from '../analysis/validateFormPattern.js';
+import { gateOnControlElementOrder } from '../../validation/formControlElementOrder.js';
 import { validateFormExtensionControlShape, buildFormExtensionShapeError } from '../../utils/formExtensionShapeValidator.js';
 import { gateOnReferenceErrors } from './resolveReferences.js';
 import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
@@ -1896,6 +1897,32 @@ export async function handleCreateD365File(
       }
       if (gate.warningsText) {
         formPatternWarnings = `\n${gate.warningsText}\n`;
+      }
+    }
+
+    // Element-order gate (#989). The pattern validator above cannot see this: it
+    // parses with `explicitArray: false`, and no XML object model in this repo
+    // keeps sibling order — which is the one property being checked.
+    //
+    // An out-of-order element is DROPPED by the metadata deserializer without a
+    // word, so the write succeeds and produces a file the compiler reads
+    // differently from the one the caller sent. #979 is what that costs: two
+    // controls in the file and invisible to the platform, found only because a
+    // reader's count disagreed with the document. The scaffold cannot write that
+    // shape any more, but nothing stopped a caller from handing it straight to
+    // create. Form EXTENSIONS are gated too — they spell the control element
+    // `<FormControl i:type>`, and it is just as droppable.
+    if (args.objectType === 'form' || args.objectType === 'form-extension') {
+      const orderGate = gateOnControlElementOrder(
+        xmlContent,
+        `d365fo_file(action="create", ${args.objectType} ${finalObjectName})`,
+        isFormPatternEnforceEnabled(),
+      );
+      if (orderGate.blocked) {
+        return orderGate.blocked;
+      }
+      if (orderGate.warningsText) {
+        formPatternWarnings += `\n${orderGate.warningsText}\n`;
       }
     }
 

@@ -984,6 +984,7 @@ MyRentEquipmentId newId = numSeq.num();
       'CLONING an existing reference form (CustGroup for SimpleList, CustTable for DetailsMaster, SalesTable for DetailsTransaction, PaymTerm for SimpleListDetails, CustParameters for TableOfContents) is the PREFERRED strategy — patterns and sub-patterns are preserved',
       'Container sub-patterns (Pattern element on Group/TabPage): FieldsFieldGroups (fields + max 1 level of groups, NO static text/images), CustomAndQuickFilters (QuickFilter required), ToolbarAndList, SidePanel — validate with object_patterns(domain="form", action="validate")',
       'Structural pattern violations BLOCK d365fo_file(action="create") while FORM_PATTERN_ENFORCE=true (default): wrong control order, missing required container, disallowed child type, unknown pattern/version',
+      'ELEMENT ORDER inside a control is enforced by the same flag: AOT XML is order-sensitive and the deserializer DROPS a misplaced element silently (a <Controls> written after <DataGroup> takes every control under it with it). Check first with validate_code(codeType="xml-form"); the canonical order per control i:type is mined from shipped metadata',
       'ALWAYS use form extensions — never modify standard forms (overlayering is blocked)',
       'Form extension file: AxFormExtension XML — holds new controls, data sources, property overrides',
       'Form extension class: [ExtensionOf(formStr(Target))] — holds CoC logic for form methods',

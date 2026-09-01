@@ -206,3 +206,87 @@ describe('form pattern gate in create_d365fo_file', () => {
     expect(result.content[0].text ?? '').not.toContain('FP0');
   });
 });
+
+/**
+ * Element-order enforcement in the same write path (issue #989).
+ *
+ * The pattern gate above cannot see this: `validateFormPatternXml` parses with
+ * `explicitArray: false`, and no XML object model in this repo keeps sibling
+ * order — which is the one property at stake. A form can be perfectly
+ * pattern-compliant and still carry an element the metadata deserializer drops
+ * on read, which is #979: two controls in the file and invisible to the
+ * compiler, and a write that reported success.
+ */
+describe('element-order gate in create_d365fo_file', () => {
+  /**
+   * Pattern-VALID XML whose group control writes <DataGroup>/<DataSource> above
+   * <Controls> — the exact shape #979 found on disk. It must reach the order
+   * gate, which means it must first survive the pattern gate.
+   */
+  const misorderedXml = () => {
+    const xml = FormPatternTemplates.buildSimpleListDetails({
+      formName: 'GateOrderForm',
+      dsName: 'CustGroup',
+      dsTable: 'CustGroup',
+      caption: '@SYS1',
+      gridFields: ['CustGroup', 'Name'],
+    });
+    // Move the two lines back above <Controls> on the Overview group.
+    const at = xml.indexOf('<Name>Overview</Name>');
+    const head = xml.slice(0, at);
+    const tail = xml.slice(at);
+    const dataGroup = /\n(\t*)<DataGroup>Overview<\/DataGroup>\n\t*<DataSource>CustGroup<\/DataSource>/.exec(tail);
+    if (!dataGroup) throw new Error('fixture no longer matches the template');
+    const moved = tail.replace(dataGroup[0], '');
+    const insertAt = moved.indexOf('<Controls>');
+    return head + moved.slice(0, insertAt) + dataGroup[0].trimStart() + '\n' + dataGroup[1] + moved.slice(insertAt);
+  };
+
+  it('blocks XML whose controls would be silently dropped, before any write', async () => {
+    process.env.FORM_PATTERN_ENFORCE = 'true';
+    const result = await handleCreateD365File(createReq({
+      objectType: 'form',
+      objectName: 'GateOrderForm',
+      xmlContent: misorderedXml(),
+      modelName: 'ContosoExt',
+      addToProject: false,
+    }));
+    expect(result.isError, JSON.stringify(result.content)).toBe(true);
+    expect(result.content[0].text).toContain('DROPS those silently');
+    expect(result.content[0].text).toContain('<Controls>');
+    expect(vi.mocked(fsMock.writeFile)).not.toHaveBeenCalled();
+  });
+
+  it('writes the same form once the order is right', async () => {
+    process.env.FORM_PATTERN_ENFORCE = 'true';
+    const result = await handleCreateD365File(createReq({
+      objectType: 'form',
+      objectName: 'GateOrderForm',
+      xmlContent: FormPatternTemplates.buildSimpleListDetails({
+        formName: 'GateOrderForm',
+        dsName: 'CustGroup',
+        dsTable: 'CustGroup',
+        caption: '@SYS1',
+        gridFields: ['CustGroup', 'Name'],
+      }),
+      modelName: 'ContosoExt',
+      addToProject: false,
+    }));
+    expect(result.isError, JSON.stringify(result.content)).not.toBe(true);
+    expect(vi.mocked(fsMock.writeFile)).toHaveBeenCalled();
+  });
+
+  it('downgrades to a warning under FORM_PATTERN_ENFORCE=false, and still writes', async () => {
+    process.env.FORM_PATTERN_ENFORCE = 'false';
+    const result = await handleCreateD365File(createReq({
+      objectType: 'form',
+      objectName: 'GateOrderForm',
+      xmlContent: misorderedXml(),
+      modelName: 'ContosoExt',
+      addToProject: false,
+    }));
+    expect(result.isError).not.toBe(true);
+    expect(result.content[0].text).toContain('will be DROPPED');
+    expect(vi.mocked(fsMock.writeFile)).toHaveBeenCalled();
+  });
+});

@@ -9,14 +9,18 @@
  * Verified live on the VM: moving those two lines below `</Controls>` made all
  * 16 appear, with no other change to the file.
  *
- * The canonical order is not written here — it is mined from 25k shipped control
- * elements by scripts/capture-form-element-order.ts. These tests keep every
- * pattern template inside it.
+ * The canonical order is not written here — it is mined from 309,668 shipped
+ * control elements by scripts/capture-form-element-order.ts. These tests keep
+ * every pattern template inside it, and #989 added the write gate that refuses
+ * the shape outright.
  */
+import * as fs from 'fs';
+import * as path from 'path';
 import { describe, it, expect } from 'vitest';
 import {
   findControlElementOrderViolations,
   formatElementOrderViolations,
+  gateOnControlElementOrder,
 } from '../../src/validation/formControlElementOrder';
 import {
   FORM_CONTROL_ELEMENT_ORDER,
@@ -166,4 +170,117 @@ describe('shipped metadata is itself clean under this check', () => {
       `</AxFormControl>\n</Controls></Design></AxForm>`;
     expect(findControlElementOrderViolations(shipped)).toEqual([]);
   });
+});
+
+// ─── The write gate (issue #989) ─────────────────────────────────────────────
+
+describe('gateOnControlElementOrder', () => {
+  const brokenGroup =
+    `<AxForm><Design><Controls>\n<AxFormControl i:type="AxFormGroupControl">\n` +
+    `<Name>Overview</Name>\n<Type>Group</Type>\n<DataGroup>Overview</DataGroup>\n` +
+    `<DataSource>T</DataSource>\n<Controls>\n` +
+    `<AxFormControl i:type="AxFormStringControl"><Name>Overview_Foo</Name><Type>String</Type></AxFormControl>\n` +
+    `</Controls>\n</AxFormControl>\n</Controls></Design></AxForm>`;
+
+  const goodGroup =
+    `<AxForm><Design><Controls>\n<AxFormControl i:type="AxFormGroupControl">\n` +
+    `<Name>Overview</Name>\n<Type>Group</Type>\n<Controls>\n` +
+    `<AxFormControl i:type="AxFormStringControl"><Name>Overview_Foo</Name><Type>String</Type></AxFormControl>\n` +
+    `</Controls>\n<DataGroup>Overview</DataGroup>\n<DataSource>T</DataSource>\n</AxFormControl>\n` +
+    `</Controls></Design></AxForm>`;
+
+  it('blocks a write that would produce a file the compiler reads differently', () => {
+    const gate = gateOnControlElementOrder(brokenGroup, 'create form X', true);
+    expect(gate.blocked).not.toBeNull();
+    expect(gate.blocked!.isError).toBe(true);
+    const text = gate.blocked!.content[0].text;
+    expect(text).toMatch(/blocked/);
+    expect(text).toMatch(/DROPS those silently/);
+    expect(text).toMatch(/<Controls> must come AFTER <DataSource>/);
+    // It must say how to bypass, like the pattern gate does.
+    expect(text).toMatch(/FORM_PATTERN_ENFORCE=false/);
+  });
+
+  it('lets a well-ordered document through', () => {
+    const gate = gateOnControlElementOrder(goodGroup, 'create form X', true);
+    expect(gate.blocked).toBeNull();
+    expect(gate.warningsText).toBeNull();
+  });
+
+  it('downgrades to a warning when enforcement is off — never silently', () => {
+    const gate = gateOnControlElementOrder(brokenGroup, 'create form X', false);
+    expect(gate.blocked).toBeNull();
+    expect(gate.warningsText).toMatch(/FORM_PATTERN_ENFORCE is disabled/);
+    expect(gate.warningsText).toMatch(/will be DROPPED/);
+  });
+
+  it('never blocks on the weaker `unknown` kind', () => {
+    // AxFormTabPageControl declares no FrameType at all — worth saying, not worth refusing.
+    const xml =
+      `<AxForm><Design><Controls><AxFormControl i:type="AxFormTabPageControl">` +
+      `<Name>P</Name><Type>TabPage</Type><FrameType>None</FrameType>` +
+      `</AxFormControl></Controls></Design></AxForm>`;
+    const gate = gateOnControlElementOrder(xml, 'create form X', true);
+    expect(gate.blocked).toBeNull();
+    expect(gate.warningsText).toMatch(/no shipped control of that type carries/);
+  });
+
+  it('sees a FORM EXTENSION control, which spells the element differently', () => {
+    // <FormControl i:type=…> inside <AxFormExtensionControl>, not <AxFormControl>.
+    // A checker that knew only the AxForm spelling was inert on every extension.
+    const ext =
+      `<AxFormExtension><Controls><AxFormExtensionControl>\n<Name>W</Name>\n` +
+      `<FormControl i:type="AxFormGroupControl">\n<Name>G</Name>\n<Type>Group</Type>\n` +
+      `<DataSource>T</DataSource>\n<Controls />\n</FormControl>\n<Parent>P</Parent>\n` +
+      `</AxFormExtensionControl></Controls></AxFormExtension>`;
+    const v = findControlElementOrderViolations(ext).filter(x => x.kind === 'order');
+    expect(v).toHaveLength(1);
+    expect(v[0].controlName).toBe('G');
+  });
+});
+
+// ─── The false-positive rate, measured (issue #989) ──────────────────────────
+
+/**
+ * A rule that BLOCKS a write has to be right about the corpus it claims to
+ * describe. Over the whole shipped AOT — 10,676 AxForm/AxFormExtension files,
+ * 309,668 controls — this rule fires exactly three times, and each of those
+ * three is a file where Microsoft itself put an element where the deserializer
+ * drops it (SystemParameters.xml, SysSecRoleAssignOM.xml,
+ * RetailPricingSimulatorV2.GlobalUnifiedPricing.xml — the minority side of the
+ * three contradictory pairs the capture script resolves by weight, at 261:1,
+ * 453:1 and 35:1).
+ *
+ * This test re-measures a bounded slice of that, so a future capture that
+ * widened the rule beyond the evidence fails here rather than in a user's write.
+ * VM-only: skipped where PackagesLocalDirectory is not mounted.
+ */
+describe('shipped metadata under the blocking rule', () => {
+  const PACKAGES = process.env.PACKAGES_ROOT ?? 'K:/AosService/PackagesLocalDirectory';
+  const DIRS = [
+    path.join(PACKAGES, 'ApplicationSuite', 'Foundation', 'AxForm'),
+    path.join(PACKAGES, 'ApplicationSuite', 'Foundation', 'AxFormExtension'),
+  ].filter(d => fs.existsSync(d));
+
+  it.skipIf(DIRS.length === 0)('fires on at most a handful of files in a 1,000-file slice', () => {
+    let files = 0;
+    let order = 0;
+    let unknown = 0;
+    for (const dir of DIRS) {
+      for (const f of fs.readdirSync(dir).filter(n => n.endsWith('.xml')).sort().slice(0, 700)) {
+        const xml = fs.readFileSync(path.join(dir, f), 'utf-8');
+        files++;
+        for (const v of findControlElementOrderViolations(xml)) {
+          if (v.kind === 'order') order++;
+          else unknown++;
+        }
+      }
+    }
+    expect(files).toBeGreaterThan(500);
+    // The blocking kind must be vanishingly rare on metadata the platform wrote.
+    expect(order, `${order} order violations over ${files} shipped files`).toBeLessThanOrEqual(3);
+    // The warning kind used to fire 41 times here, before the census was widened
+    // from 949 forms to every package and every form extension.
+    expect(unknown, `${unknown} unknown-element findings over ${files} shipped files`).toBe(0);
+  }, 60_000);
 });

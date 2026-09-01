@@ -750,3 +750,46 @@ describe('FN001 — extended fixed-arity set', () => {
     expect(getText(result)).not.toContain('FN001');
   });
 });
+
+// ─── codeType="xml-form" — XML010 element order (issue #989) ─────────────────
+
+/**
+ * Before #989 there was no form codeType at all, so the only way for an agent to
+ * find out that its form XML would be silently gutted was to attempt the write.
+ * The create path refuses that shape now; this is the check-first route.
+ */
+describe('validate_code(codeType="xml-form")', () => {
+  const group = (inner: string) =>
+    `<?xml version="1.0" encoding="utf-8"?>\n<AxForm><Design><Controls>\n` +
+    `<AxFormControl i:type="AxFormGroupControl">\n${inner}\n</AxFormControl>\n` +
+    `</Controls></Design></AxForm>`;
+
+  const CHILD =
+    `<AxFormControl i:type="AxFormStringControl"><Name>Overview_Foo</Name><Type>String</Type></AxFormControl>`;
+
+  it('reports XML010 for a control whose <Controls> would be dropped', async () => {
+    const xml = group(
+      `<Name>Overview</Name>\n<Type>Group</Type>\n<DataGroup>Overview</DataGroup>\n` +
+      `<DataSource>MyTable</DataSource>\n<Controls>\n${CHILD}\n</Controls>`,
+    );
+    const text = getText(await validateXppTool(req({ code: xml, codeType: 'xml-form' })));
+    expect(text).toContain('XML010');
+    expect(text).toContain('dropped SILENTLY');
+  });
+
+  it('is clean once the order is right', async () => {
+    const xml = group(
+      `<Name>Overview</Name>\n<Type>Group</Type>\n<Controls>\n${CHILD}\n</Controls>\n` +
+      `<DataGroup>Overview</DataGroup>\n<DataSource>MyTable</DataSource>`,
+    );
+    expect(getText(await validateXppTool(req({ code: xml, codeType: 'xml-form' })))).not.toContain('XML010');
+  });
+
+  it('does not run the table rules over a form', async () => {
+    // xml-table would add AxTable-shaped findings that mean nothing here.
+    const xml = group(`<Name>Overview</Name>\n<Type>Group</Type>\n<Controls />`);
+    const text = getText(await validateXppTool(req({ code: xml, codeType: 'xml-form' })));
+    expect(text).not.toContain('XML006');
+    expect(text).not.toContain('XML007');
+  });
+});
