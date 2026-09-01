@@ -2527,11 +2527,12 @@ function checkFormControlElementOrder(code: string): ValidationViolation[] {
       rule: 'XML010',
       severity: 'error' as const,
       line: v.line,
-      excerpt: `${v.controlType} "${v.controlName}": <${v.element}> appears before <${v.beforeElement}>`,
+      excerpt: `${v.controlType} "${v.controlName}": <${v.element}> is written after <${v.beforeElement}>`,
       fix:
         `AxForm XML is order-sensitive and a misordered element is dropped SILENTLY — ` +
         `anything under a dropped <Controls> is in the file and invisible to the compiler. ` +
-        `Move <${v.element}> after <${v.beforeElement}>. The canonical sequence per control ` +
+        `Move <${v.element}> BEFORE <${v.beforeElement}> (equivalently: move <${v.beforeElement}> ` +
+        `down past it). The canonical sequence per control ` +
         `type is in src/validation/formControlElementOrder.generated.ts (e.g. on a group ` +
         `control, <DataGroup> and <DataSource> come AFTER </Controls>).`,
     }));

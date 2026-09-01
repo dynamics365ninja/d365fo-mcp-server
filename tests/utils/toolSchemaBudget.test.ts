@@ -169,6 +169,14 @@ const CHARS_PER_TOKEN = 4;
 // op-spec pointer that the tool description already carries. 73 chars of new
 // enum, 138 chars of restatement removed. Measured payload after: 44_936 —
 // below where it stood before the patterns were added.
+//
+// Then `prepare` published the five extension objectTypes (#983 — the handler
+// accepted them while the tool list did not offer them), paid for the same way
+// inside prepare's own schema: `operation` said the parameter contracts come
+// back in this response AND "so no separate op-spec call", and `objectName`
+// carried a cross-reference to d365fo_file that an agent at that point in the
+// flow does not need. ~100 chars of new enum, ~150 of restatement and prose
+// removed. Measured payload after: 44_951.
 const TOTAL_BUDGET = 45_000;
 const LARGEST_TOOL_BUDGET = 5_700;
 

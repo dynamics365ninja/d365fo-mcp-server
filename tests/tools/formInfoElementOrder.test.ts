@@ -98,7 +98,7 @@ describe('XML path — the reader holds the evidence', () => {
     const text = res.content[0].text as string;
 
     expect(text).toMatch(/written out of order/);
-    expect(text).toMatch(/<Controls> must come AFTER <DataSource>/);
+    expect(text).toMatch(/<Controls> is written after <DataSource>, but must come BEFORE it/);
     expect(text).toMatch(/Overview/);
     // It must point at the fix, not just at the problem.
     expect(text).toMatch(/formControlElementOrder\.generated/);
@@ -142,7 +142,7 @@ describe('bridge path — cross-checked against the file', () => {
     const text = res.content[0].text as string;
     expect(text).toMatch(/holds 3 controls; the metadata provider reports 1/);
     expect(text).toMatch(/invisible to the platform/);
-    expect(text).toMatch(/<Controls> must come AFTER <DataSource>/);
+    expect(text).toMatch(/<Controls> is written after <DataSource>, but must come BEFORE it/);
   });
 
   it('stays quiet when the two agree', async () => {

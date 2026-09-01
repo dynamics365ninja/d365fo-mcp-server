@@ -39,7 +39,7 @@ describe('verifyFormElementOrder', () => {
     vi.mocked(readFile).mockResolvedValue(BROKEN as never);
     const note = await verifyFormElementOrder('K:/pkg/AxForm/F.xml', 'form');
     expect(note).toMatch(/will DROP silently/);
-    expect(note).toMatch(/<Controls> must come AFTER <DataSource>/);
+    expect(note).toMatch(/<Controls> is written after <DataSource>, but must come BEFORE it/);
     // It must name the remedy and own the fault — the caller did not do this.
     expect(note).toMatch(/undo_last_modification/);
     expect(note).toMatch(/defect in the write, not in your request/);

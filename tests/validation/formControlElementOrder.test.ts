@@ -84,7 +84,11 @@ describe('findControlElementOrderViolations', () => {
     expect(controlsFinding).toBeDefined();
     expect(controlsFinding!.controlName).toBe('Overview');
     expect(controlsFinding!.controlType).toBe('AxFormGroupControl');
-    expect(formatElementOrderViolations(v)).toContain('must come AFTER');
+    // The DIRECTION is the whole point of the message: the misplaced element must
+    // come BEFORE the one it was written after. The first version said the
+    // opposite and shipped, because this assertion pinned the wrong string.
+    expect(formatElementOrderViolations(v)).toContain('must come BEFORE it');
+    expect(formatElementOrderViolations(v)).not.toContain('must come AFTER');
   });
 
   it('accepts the same control once the two lines move below </Controls>', () => {
@@ -196,7 +200,7 @@ describe('gateOnControlElementOrder', () => {
     const text = gate.blocked!.content[0].text;
     expect(text).toMatch(/blocked/);
     expect(text).toMatch(/DROPS those silently/);
-    expect(text).toMatch(/<Controls> must come AFTER <DataSource>/);
+    expect(text).toMatch(/<Controls> is written after <DataSource>, but must come BEFORE it/);
     // It must say how to bypass, like the pattern gate does.
     expect(text).toMatch(/FORM_PATTERN_ENFORCE=false/);
   });

@@ -27,7 +27,7 @@ export const validateCodeTool = {
           type: 'string',
           enum: ['xpp', 'xml-table', 'xml-form', 'xml-any', 'xml-report'],
           default: 'xpp',
-          description: '[syntax] "xpp" X++ source (default), "xml-table" AxTable, "xml-form" AxForm/AxFormExtension, "xml-report" AxReport, "xml-any" other XML.',
+          description: '[syntax] "xpp" X++ (default), "xml-table" AxTable, "xml-form" AxForm(+Extension), "xml-report" AxReport, "xml-any" other.',
         },
         context: {
           type: 'string',
