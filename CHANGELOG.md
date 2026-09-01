@@ -207,6 +207,62 @@ _Nothing released yet._
   identifier producing an artifact whose `<Name>` disagrees with its own source,
   which is exactly the silence the harness exists to prevent.
 
+- **An enum whose members were all 0 — and nothing said so.** `create(enum)`
+  suppressed every explicit `<Value>` whenever the resolved mode was
+  UseEnumValue=No, on the premise that "plain 0,1,2 numbering states nothing the
+  order does not". The premise is false: an `<AxEnumValue>` with no `<Value>` is
+  **0**, not the next ordinal. A four-tier ladder came out with None = Silver =
+  Gold = Platinum = 0, compiled with 0 errors, passed xppbp and matched its golden,
+  while `enum2int()` returned 0 for every tier — the runtime oracle is the only
+  thing that could see it (2026-08-31, `L3-enum-field-form-downgrade-guard`,
+  "expected False, actual True"). Every member now carries its number, the 0
+  excepted, which is the shape the serialiser and all 3,913 shipped AxEnum files
+  use. Two claims went with it, both checked rather than reasoned about: a census
+  of shipped metadata (of 3,818 multi-member enums, exactly six omit `<Value>`
+  everywhere, and all six are extensible) and an xppc probe on the VM —
+  `IsExtensible=true` + `UseEnumValue=No` + non-positional values **compiles
+  clean**, while the same enum with `UseEnumValue=Yes` fails with the documented
+  message. So the knowledge entry's "an explicit `<Value>` forces UseEnumValue=Yes
+  at compile time" was wrong, the refusal built on it is gone, and the one pairing
+  xppc really rejects is the only one still refused.
+- **A delete action that read as Cascade on disk and as nothing to the platform.**
+  The XML writer emitted `<AxTableDeleteAction>` as Name → Table → DeleteAction,
+  a shape copied from a C# object initialiser. All 126 entries Microsoft ships are
+  Name → **DeleteAction** → Relation → Table, and the metadata deserializer drops
+  a misordered element in silence — so the provider read the entry with
+  DeleteAction at its default and the next bridge-backed `Update()` serialised it
+  back without the element. The 2026-08-31 run recorded this as "the bridge
+  destroyed the delete action"; the bridge only wrote back what it had been able
+  to read. Canonical order now, `<Relation>` supported (`deleteActionRelation` —
+  without it xppbp reports BPUpgradeMetadataDeleteAction), and re-sending the same
+  action with a different type **rewrites it in place** instead of answering
+  "already present — skipped", which is what left the run with no forward-only
+  repair path at all.
+- **A create scheduled its provider refresh before its own last write.** The table
+  property reconcile patches the file on disk after the bridge create, but the
+  refresh was requested *first*, so the provider rebuilt from the pre-patch bytes
+  and the next modify's `flush()` saw a refresh newer than its own request and did
+  nothing. The first bridge-backed `Update()` then wrote the cached copy over the
+  patch — reproduction 1 of the same run (`CacheLookup=None`, gone). The refresh
+  now happens after the last byte the call writes.
+- **One object, three different names.** `create(class, xmlContent=…)` applied the
+  model prefix to the file name and to the X++ declaration but not to the metadata
+  `<Name>`, reported "Created" plus "Verified: on disk", and the next build died
+  with "must be named X instead of Y to be consistent with its file name". The
+  prefix rewrite now covers `<Name>` too, and a last gate before the write refuses
+  any document whose file name, `<Name>` and declaration disagree — a build cycle
+  earlier, and with all three spelled out. (The declaration is read through the
+  shared X++ lexer: the first version matched the word "class" inside a `///`
+  comment and refused correct creates, which the full suite caught the same hour.)
+- **Two guards, because the class of defect matters more than the three
+  instances.** Every bridge-backed write now compares the file before and after:
+  a top-level property that vanished without being asked about is put back, in the
+  position it held, and said so in the response. And "✅ Verified: on disk" is no
+  longer the only claim a write makes — where the operation names an unambiguous
+  result (a modify-property value, a delete action's type, an enum member's
+  number), the value is looked for in the file that was actually written, and its
+  absence is reported as a failure instead of a byte count.
+
 ### Changed
 - Five new validator rules: `XML008` (an `AxTableExtension` carrying `<Methods>`,
   which the deserializer drops silently), `XML009` (a control bound to a field
@@ -234,31 +290,15 @@ _Nothing released yet._
   disappearing with it.
 
 ### Known issues
-- **Three write-path defects the last capture wave found are still open**, each
-  recorded in the corpus with a reproduction. All three build with 0 errors, are
-  xppbp-clean and read back as plausible metadata, which is why the test suite and
-  a golden diff both pass them:
-  - `create(enum)` drops explicit `<Value>` elements when the numbering is plain
-    sequential, on purpose — but the premise is false: an `<AxEnumValue>` with no
-    `<Value>` is 0, not the next ordinal, so a four-tier ladder collapses to
-    all-zero and `enum2int()` returns 0 for every member.
-  - Any table property written by the XML-writer fallback is destroyed by the next
-    bridge-backed modify on the same object (reproduced twice — `CacheLookup`, then
-    `DeleteAction`). "Verified: on disk" only checks that the file exists, never
-    that the value survived.
-  - `create(class, xmlContent=…)` writes three identities into one file: the prefix
-    reaches the filename and the X++ declaration but not `<Name>`. It reports
-    success and the next build dies with a naming-consistency fatal error.
-  `L4-headerlines-document-slice` therefore FAILS, and its golden deliberately
-  enshrines the corrupted output — the fix must update that golden in the same
-  change, where `+<DeleteAction>Cascade</DeleteAction>` is the evidence the defect
-  is gone. Two older defects did **not** reproduce, each checked with a negative
-  control rather than an assertion: the data-entity create no longer drops
-  `primaryTable`/fields, and multi-line attribute blocks survive `create(class)`
-  verbatim (12 sent, 12 on disk).
 - `L3-warehouse-work-slice` has a captured golden and `build: 1`, but its corpus
   record still carries `bp_clean: null` — BP never ran for it. A small, real gap,
   named rather than papered over.
+- The three write-path defects this section carried are **fixed** (see Fixed,
+  below). They have not yet been re-run through the live tool path on the VM: the
+  eval MCP server loads `dist/index.js` at connect time, so proving them fixed
+  end-to-end needs a server reconnect and a re-run of
+  `L3-enum-field-form-downgrade-guard`, `L4-headerlines-document-slice` and
+  `L2-event-handler-basic`.
 
 ---
 

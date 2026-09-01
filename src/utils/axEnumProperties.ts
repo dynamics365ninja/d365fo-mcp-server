@@ -49,70 +49,69 @@ export const SECURITY_ENTRY_POINT_TYPES = [
 ] as const;
 
 /**
- * Decide `<UseEnumValue>` and whether explicit `<Value>` elements may be emitted.
+ * Decide `<UseEnumValue>` for an AxEnum. Explicit `<Value>` elements are ALWAYS
+ * written for a member whose number is not 0.
  *
- * The rule that used to be here read `properties.useEnumValue` alone, so an
- * enumValues[] carrying explicit `value:` numbers with no `useEnumValue` flag
- * produced UseEnumValue=No and every <Value> suppressed — the numbering the
- * caller asked for was gone, the file built clean, and X++ comparing the enum
- * against a stored int was quietly wrong.
+ * The rule this replaces suppressed every `<Value>` whenever the resolved mode
+ * was UseEnumValue=No, on the premise that "plain 0,1,2 numbering states nothing
+ * the order does not". THE PREMISE IS FALSE. An `<AxEnumValue>` with no `<Value>`
+ * child is **0** — not "the next ordinal" — so a four-member ladder written that
+ * way has every member equal to 0. It compiles with 0 errors, passes xppbp, and
+ * looks right in a golden diff, while `enum2int()` returns 0 for every member.
+ * Only the runtime oracle caught it (the 2026-08-31 capture run of
+ * L3-enum-field-form-downgrade-guard: expected False, actual True, with
+ * enum2int(cur) = enum2int(orig()) = 0 on a Gold row).
  *
- * An explicit value is now honoured (useEnumValue is auto-set to Yes) rather
- * than dropped: it is an unambiguous statement of intent, and the alternative —
- * refusing — costs a round trip to say something the payload already said.
+ * Two oracles, because a claim about the compiler needs the compiler:
  *
- * Two cases are genuine contradictions and DO throw, because both readings write
- * something the caller did not ask for:
- *   • isExtensible + explicit values — xppc hard-rejects this
- *     ("UseEnumValue property must be set to 'No' when IsExtensible is True");
- *     an extensible enum is positional by construction.
- *   • useEnumValue:false + explicit values — the caller asked for both halves of
- *     a contradiction in one payload.
+ *   • A census of the 3,913 AxEnum files in PackagesLocalDirectory: of the 3,818
+ *     with two or more members, exactly SIX omit `<Value>` everywhere, and all
+ *     six are extensible. Zero non-extensible multi-member enums ship the
+ *     all-zero shape. The shipped convention is the .NET one — omit the 0,
+ *     spell out every other number — and 154 files pin numbers that positions
+ *     would not give (AtlIntercompanyOrderType: PurchaseOrder=2, SalesOrder=1),
+ *     which is only meaningful if `<Value>` is what decides.
+ *   • xppc on this VM (fm-mcp, 2026-09-01), two probes in one build:
+ *       - IsExtensible=true + UseEnumValue=No + explicit non-positional values
+ *         → compiles clean. So `<Value>` is NOT forbidden on an extensible enum,
+ *         and it does NOT "force UseEnumValue=Yes at compile time" as the
+ *         knowledge entry claimed.
+ *       - IsExtensible=true + UseEnumValue=Yes (the negative control)
+ *         → "UseEnumValue property must be set to 'No' when the IsExtensible
+ *           property is 'True'". The probe discriminates; the rule below is the
+ *         half that is real.
  *
- * "Explicit" here means a value that DIFFERS from the position the entry would
- * get anyway. Numbering an in-order list 0,1,2 states nothing the ordering does
- * not already state, so it is not treated as a conflict — otherwise a redundant
- * but harmless payload would start failing, extensible enums included.
+ * So there is exactly ONE contradiction left to refuse: isExtensible together
+ * with useEnumValue:true, which is the combination xppc names. Explicit values
+ * with either setting are written, not dropped and not refused.
  */
 export function resolveEnumValueMode(
   enumName: string,
   properties: Record<string, any> | undefined,
   values: Array<{ name?: string; value?: number }>,
-): { useEnumValue: 'Yes' | 'No'; suppressExplicitValues: boolean } {
+): { useEnumValue: 'Yes' | 'No' } {
   const isExtensible = Boolean(properties?.isExtensible);
-  const offPositional = values
-    .map((v, i) => ({ v, i }))
-    .filter(({ v, i }) => typeof v.value === 'number' && v.value !== i);
 
-  if (offPositional.length > 0) {
-    const shown = offPositional
-      .slice(0, 3)
-      .map(({ v, i }) => `${v.name ?? `#${i}`}=${v.value}`)
-      .join(', ');
-    if (isExtensible) {
-      throw new Error(
-        `Enum '${enumName}': isExtensible=true cannot be combined with explicit enum values (${shown}) — ` +
-        `nothing was written. An extensible enum must be UseEnumValue=No with NO <Value> elements ` +
-        `(xppc: "UseEnumValue property must be set to 'No' when IsExtensible is True"), so the values ` +
-        `would have been silently dropped. Drop the value: numbers and let position decide, or drop ` +
-        `isExtensible if the numbering is what matters.`,
-      );
-    }
-    if (properties?.useEnumValue === false) {
-      throw new Error(
-        `Enum '${enumName}': useEnumValue=false contradicts the explicit enum values (${shown}) — ` +
-        `nothing was written. UseEnumValue=No means position decides the number, which would have ` +
-        `discarded them. Pass either useEnumValue=true or values without value: numbers.`,
-      );
-    }
-    return { useEnumValue: 'Yes', suppressExplicitValues: false };
+  if (isExtensible && properties?.useEnumValue === true) {
+    throw new Error(
+      `Enum '${enumName}': isExtensible=true cannot be combined with useEnumValue=true — nothing was ` +
+      `written. xppc refuses it outright: "UseEnumValue property must be set to 'No' when the ` +
+      `IsExtensible property is 'True'". Drop useEnumValue — an extensible enum is written with ` +
+      `UseEnumValue=No, and its explicit <Value> numbers are kept either way.`,
+    );
   }
 
-  // No caller-chosen numbering to preserve — the original rule stands.
-  const useEnumValue: 'Yes' | 'No' = (isExtensible || properties?.useEnumValue === false)
-    ? 'No'
-    : (properties?.useEnumValue ? 'Yes' : 'No');
-  return { useEnumValue, suppressExplicitValues: useEnumValue === 'No' };
+  if (isExtensible || properties?.useEnumValue === false) return { useEnumValue: 'No' };
+  if (properties?.useEnumValue) return { useEnumValue: 'Yes' };
+
+  // A number that DIFFERS from the entry's position is an unambiguous statement
+  // that the numbering matters, and UseEnumValue=Yes is how the metadata says so.
+  // Numbering an in-order list 0,1,2 states nothing extra, so it does not flip the
+  // mode — which keeps the mode of a plain payload where it was. (What changed is
+  // that the numbers are now WRITTEN in both modes: the mode chooses how the
+  // metadata describes itself, never whether a member keeps its value.)
+  const offPositional = values.some((v, i) => typeof v.value === 'number' && v.value !== i);
+  return { useEnumValue: offPositional ? 'Yes' : 'No' };
 }
 
 /**

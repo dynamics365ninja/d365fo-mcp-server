@@ -26,6 +26,11 @@ import { xppMethodSourceForXml } from '../../utils/xppFormat.js';
 import { bridgeValidateAfterWrite, canBridgeCreate, bridgeCreateObject, bridgeCreateSmartTable, isBridgeFailure, describeBridgeFailure } from '../../bridge/index.js';
 import type { BridgeFailure } from '../../bridge/index.js';
 import * as debouncedRefresh from '../../bridge/debouncedRefresh.js';
+import {
+  checkObjectIdentity,
+  renderIdentityRefusal,
+  rewriteRootObjectName,
+} from './objectIdentityGate.js';
 import { enforceGrounding } from '../../utils/provenanceStore.js';
 import { gateOnFormPatternErrors, isFormPatternEnforceEnabled } from '../analysis/validateFormPattern.js';
 import { validateFormExtensionControlShape, buildFormExtensionShapeError } from '../../utils/formExtensionShapeValidator.js';
@@ -1222,10 +1227,13 @@ export async function handleCreateD365File(
     // Falls back to TypeScript XML generation if bridge unavailable or unsupported type
     // (report, data-entity, tile, kpi, business-event, security-privilege/duty/role, etc.).
     //
-    // EXCEPTION — extensible enums: the C# bridge does not set UseEnumValue=No and
-    // emits explicit <Value> elements, both of which xppc rejects with
-    // "UseEnumValue property must be set to 'No' when IsExtensible is True".
-    // Use the TypeScript XML generator (which handles this correctly) instead.
+    // EXCEPTION — extensible enums: the C# bridge does not set UseEnumValue=No,
+    // which xppc rejects with "UseEnumValue property must be set to 'No' when the
+    // IsExtensible property is 'True'". Use the TypeScript XML generator instead.
+    // (The <Value> elements were never the problem — an xppc probe on 2026-09-01
+    // compiled IsExtensible=true + UseEnumValue=No + explicit non-positional
+    // values clean, and 645 shipped extensible enums have exactly that shape.
+    // See resolveEnumValueMode.)
     //
     // EXCEPTION — security-privilege/duty/role: excluded from BRIDGE_CREATE_TYPES
     // entirely (see bridgeAdapter.ts) because the bridge silently drops their
@@ -1233,19 +1241,17 @@ export async function handleCreateD365File(
     //
     // EXCEPTION — any enum carrying values at all.
     //
-    // The bridge writes <UseEnumValue> only when the caller passes the scalar, and
-    // it serialises a <Value> per numbered entry except the zeros .NET omits as a
-    // type default. Both shapes are wrong:
-    //   • numbered   → <Value>1/2/3</Value> with the caller's 0 silently gone;
-    //   • unnumbered → no <UseEnumValue> and no <Value>, which xppc reads as
-    //                  UseEnumValue=Yes, making every member 0 ("Duplicate value
-    //                  '0' detected"). Only a FULL build reports it; the
-    //                  incremental build and validate_code pass clean.
+    // The bridge writes <UseEnumValue> only when the caller passes the scalar, so
+    // an unnumbered list reaches the file with no <UseEnumValue> and no <Value> at
+    // all, which xppc reads as UseEnumValue=Yes with every member at 0
+    // ("Duplicate value '0' detected") — and only a FULL build reports it; the
+    // incremental build and validate_code pass clean.
     //
     // Numbering is not what the bridge gets wrong — <UseEnumValue> is, and every
     // values payload depends on it. generateAxEnumXml emits it unconditionally and
-    // honours suppressExplicitValues, so it writes all of them. The bridge keeps
-    // the one shape it cannot get wrong: an enum with no values.
+    // writes an explicit <Value> for every non-zero member, which is the shape
+    // shipped enums use. The bridge keeps the one shape it cannot get wrong: an
+    // enum with no values.
     const enumMustSkipBridge = (): boolean => {
       if (args.objectType !== 'enum') return false;
       const props = args.properties as Record<string, unknown> | undefined;
@@ -1528,14 +1534,6 @@ export async function handleCreateD365File(
                 }
               }
 
-              // Schedule (do not await) the provider rebuild that makes the new object
-              // resolvable to subsequent bridge calls. Awaiting it serialized a full
-              // DiskProvider rebuild into every create's response — once per object on a
-              // multi-object scaffold — for a provider generation the create itself never
-              // reads. The flush() gate at the top of this block and in modify_d365fo_file
-              // is what preserves same-session resolvability.
-              void debouncedRefresh.refresh(context.bridge);
-
               const rawLabelWarning = rawLabelBpWarning(args.properties, finalObjectName);
               // #35: CreateSmartTable ignores every property its C# switch does not
               // know (configurationKey, formRef, …) — repair or report, never drop.
@@ -1543,6 +1541,24 @@ export async function handleCreateD365File(
                 smartResult.filePath,
                 args.properties,
               ) + await stampIndexValidTimeState(smartResult.filePath, args.properties);
+
+              // Schedule (do not await) the provider rebuild that makes the new object
+              // resolvable to subsequent bridge calls. Awaiting it serialized a full
+              // DiskProvider rebuild into every create's response — once per object on a
+              // multi-object scaffold — for a provider generation the create itself never
+              // reads. The flush() gate at the top of this block and in modify_d365fo_file
+              // is what preserves same-session resolvability.
+              // ORDER MATTERS, and it was wrong. This used to be scheduled BEFORE
+              // the property reconcile below, which patches the file on disk
+              // behind the provider's back. The provider then rebuilt from the
+              // PRE-patch bytes, the next modify's flush() saw a refresh newer
+              // than its own request and did nothing, and the first bridge-backed
+              // Update() on the object serialised the cached copy back over the
+              // patch — silently, with "Verified: on disk" on both writes. That is
+              // reproduction 1 of the 2026-08-31 L4-headerlines-document-slice run
+              // (CacheLookup=None on ConDemoRentLine). Refresh AFTER the last byte
+              // this call writes, never before it.
+              void debouncedRefresh.refresh(context.bridge);
               const bp = smartResult.bpDefaults;
               const bpSummary = bp
                 ? `\n📋 BP defaults: CacheLookup=${bp.cacheLookup ?? '(n/a)'}, TitleField1=${bp.titleField1 ?? '(none)'}, ` +
@@ -1651,8 +1667,6 @@ export async function handleCreateD365File(
           }
 
           // Scheduled, not awaited — see the smart-table path above.
-          void debouncedRefresh.refresh(context.bridge);
-
           const rawLabelWarning = rawLabelBpWarning(args.properties, finalObjectName);
           // #35: C# CreateTable() runs the same SetAxTableProperty() switch as the
           // smart path and ignores its return value just as thoroughly.
@@ -1660,6 +1674,10 @@ export async function handleCreateD365File(
             ? await reconcileCreatedTableProperties(bridgeResult.filePath, args.properties)
               + await stampIndexValidTimeState(bridgeResult.filePath, args.properties)
             : '';
+
+          // Refresh only after the reconcile — see the smart-table path for what
+          // scheduling it first cost.
+          void debouncedRefresh.refresh(context.bridge);
 
           // Record the freshly-created file for non-git undo (see smart-table path).
           if (!fileExisted) {
@@ -1782,10 +1800,16 @@ export async function handleCreateD365File(
       const classStrPattern = new RegExp(`\\bclassStr\\(\\s*${escapedOrig}\\s*\\)`, 'gi');
       replaced = replaced.replace(classStrPattern, (m) => m.replace(new RegExp(escapedOrig, 'i'), final));
 
+      // 4. the metadata <Name> — the identity this block used to leave behind.
+      //    Rewriting the declaration alone produced a file whose name, whose X++
+      //    and whose <Name> disagreed, reported ✅, and killed the next build
+      //    ("must be named X instead of Y to be consistent with its file name").
+      replaced = rewriteRootObjectName(replaced, orig, final);
+
       if (replaced !== xmlContent) {
         console.error(
-          `[create_d365fo_file] ✅ Fixed class name inconsistency: ` +
-          `replaced \`${orig}\` with \`${final}\` in XML content (class decl, classnum, classStr)`,
+          `[create_d365fo_file] ✅ Fixed name inconsistency: ` +
+          `replaced \`${orig}\` with \`${final}\` in XML content (<Name>, class decl, classnum, classStr)`,
         );
         xmlContent = replaced;
       }
@@ -1899,6 +1923,26 @@ export async function handleCreateD365File(
     console.error(
       `[create_d365fo_file] XML preview: ${xmlContent.substring(0, 200)}...`
     );
+
+    // Last gate before the bytes land: file name, <Name> and the X++ declaration
+    // must name the same object. See objectIdentityGate.ts — this is refused
+    // rather than written because xppc refuses it anyway, one build later, and
+    // "Verified: on disk" cannot see it.
+    const identityProblems = checkObjectIdentity(xmlContent, finalObjectName);
+    if (identityProblems.length > 0) {
+      return {
+        content: [{
+          type: 'text',
+          text: renderIdentityRefusal(
+            args.objectType,
+            finalObjectName,
+            path.basename(normalizedFullPath),
+            identityProblems,
+          ),
+        }],
+        isError: true,
+      };
+    }
 
     // Write file matching D365FO convention: no BOM, CRLF, no trailing newline
     try {

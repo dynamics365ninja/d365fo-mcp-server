@@ -678,16 +678,17 @@ class MyReportDP extends SrsReportDataProviderBase
     title: 'Enums & Extensible Enums (IsExtensible / UseEnumValue)',
     keywords: ['enum', 'extensible enum', 'isextensible', 'useenumvalue', 'enum value', 'axenum', 'enum extension', 'axenumextension', 'enumvalues', '251'],
     summary:
-      'Base enums and extensible enums have incompatible XML shapes. IsExtensible=true REQUIRES UseEnumValue=No and forbids explicit <Value> elements — xppc rejects any other combination. ' +
+      'IsExtensible=true REQUIRES UseEnumValue=No — that combination is the only one xppc rejects. Explicit <Value> elements are legal either way, and a member WITHOUT one is 0, not the next ordinal. ' +
       'Other models add values through an enum extension, never by editing the base enum.',
     rules: [
-      'IsExtensible=true REQUIRES <UseEnumValue>No</UseEnumValue>. xppc rejects the alternative with: "UseEnumValue property must be set to \'No\' when IsExtensible is True"',
-      'With UseEnumValue=No, do NOT emit <Value> elements on AxEnumValue — an explicit <Value> forces UseEnumValue=Yes at compile time and re-triggers the same error. Ordering is positional: the first element is 0, the next is 1, and so on',
-      'The two rules above are one rule in practice: extensible enum ⇒ UseEnumValue=No ⇒ no <Value> elements. Set properties.isExtensible=true and let the generator apply all three',
+      'IsExtensible=true REQUIRES <UseEnumValue>No</UseEnumValue>. xppc rejects the alternative with: "UseEnumValue property must be set to \'No\' when the IsExtensible property is \'True\'"',
+      'An <AxEnumValue> with NO <Value> child is 0 — not "the next ordinal". An enum written without them has EVERY member equal to 0: it compiles with 0 errors, passes xppbp, and enum2int() returns 0 for all of them. Give every member after the first its number',
+      'UseEnumValue=No does NOT forbid <Value>. Verified twice: an xppc probe compiled IsExtensible=true + UseEnumValue=No + non-positional values clean, and 645 of the 688 shipped extensible enums carry explicit <Value> elements (AtlIntercompanyOrderType pins PurchaseOrder=2, SalesOrder=1). Only the UseEnumValue=Yes + IsExtensible pairing is an error',
+      'Of the 3,818 shipped multi-member AxEnum files, six omit <Value> everywhere and all six are extensible — the all-zero shape is what you get by accident, never by design',
       'AxEnum element order is fixed: Name → ConfigurationKey → Label → UseEnumValue → EnumValues → IsExtensible. IsExtensible comes AFTER EnumValues and its value is lowercase true/false (not Yes/No)',
       'The <AxEnum> root needs xmlns:i="http://www.w3.org/2001/XMLSchema-instance" — a missing namespace makes the element unloadable in Visual Studio',
       'HARD LIMIT: 251 enum elements (values 0–250). Past that, redesign as a class hierarchy or split the enum — the compiler rejects it',
-      'Do NOT pass raw xmlContent for an extensible enum. The C# metadata bridge writes UseEnumValue=Yes with explicit <Value> elements, so d365fo_file(operation="create") deliberately routes extensible enums through the TypeScript XML generator instead',
+      'Do NOT pass raw xmlContent for an extensible enum. The C# metadata bridge does not write UseEnumValue=No, so d365fo_file(operation="create") deliberately routes every enum carrying values through the TypeScript XML generator instead',
       'NEVER add values to another model\'s enum by editing it — create an enum extension named <BaseEnum>.<Suffix> (AxEnumExtension) whose <EnumValues> lists ONLY the new values',
       'An enum can only be extended if the base declares IsExtensible=true. If it does not, you cannot add values — that is a design decision by the owning model, not a tooling limit',
       'Because extension-added values get their integer assigned at deployment time, NEVER persist, serialise, or compare the underlying int of an extensible enum — use the symbolic name (enum2Symbol / symbol2Enum) or the enum literal',
@@ -706,11 +707,14 @@ class MyReportDP extends SrsReportDataProviderBase
 \t\t<AxEnumValue>
 \t\t\t<Name>Compact</Name>
 \t\t\t<Label>@MyModel:Compact</Label>
-\t\t\t<!-- ✅ NO <Value> element — position decides the ordinal (0) -->
+\t\t\t<!-- ✅ no <Value>: this member IS 0, the serialiser's omitted default -->
 \t\t</AxEnumValue>
 \t\t<AxEnumValue>
 \t\t\t<Name>Midsize</Name>
 \t\t\t<Label>@MyModel:Midsize</Label>
+\t\t\t<!-- ✅ every member after the 0 spells its number out. Leaving it off
+\t\t\t     would make Midsize 0 as well — and nothing would report it -->
+\t\t\t<Value>1</Value>
 \t\t</AxEnumValue>
 \t</EnumValues>
 \t<!-- ✅ AFTER EnumValues, lowercase true -->

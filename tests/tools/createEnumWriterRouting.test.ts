@@ -150,10 +150,14 @@ beforeEach(() => {
 });
 
 describe('enum create — which writer runs', () => {
-  it('routes a plain positional payload (useEnumValue unset) to the XML generator', async () => {
+  it('routes a plain positional payload (useEnumValue unset) to the XML generator, numbers intact', async () => {
     // The predicate is broader than "extensible or useEnumValue:false": the resolved
     // mode for [None=0, Silver=1, Gold=2] is UseEnumValue=No, and the bridge would
-    // write <Value>1</Value><Value>2</Value> with the 0 dropped.
+    // emit no <UseEnumValue> at all.
+    //
+    // This used to assert `not.toContain('<Value>')` — it pinned the defect the
+    // runtime oracle found on 2026-08-31. A member with no <Value> is 0, so that
+    // shape gave None=Silver=Gold=0, built clean, and lost the ladder at run time.
     const result = await handleCreateD365File(req({ enumValues: POSITIONAL }), buildContext());
 
     expect(createObject).not.toHaveBeenCalled();
@@ -164,7 +168,11 @@ describe('enum create — which writer runs', () => {
     // <type> file:'; that phrase went when the create response was trimmed.)
     expect(result.content[0].text).not.toContain('via IMetadataProvider');
     expect(xml).toContain('<UseEnumValue>No</UseEnumValue>');
-    expect(xml).not.toContain('<Value>');
+    // The 0 is omitted (the serialiser's default, and how every shipped enum
+    // writes it); every other member spells its number out.
+    expect(xml).not.toContain('<Value>0</Value>');
+    expect(xml).toContain('<Value>1</Value>');
+    expect(xml).toContain('<Value>2</Value>');
     for (const v of POSITIONAL) expect(xml).toContain(`<Name>${v.name}</Name>`);
   });
 
@@ -188,12 +196,15 @@ describe('enum create — which writer runs', () => {
     for (const v of POSITIONAL) expect(xml).toContain(`<Name>${v.name}</Name>`);
   });
 
-  it('routes an UNNUMBERED list to the generator too, and writes UseEnumValue', async () => {
+  it('numbers an UNNUMBERED list by position and writes those numbers', async () => {
     // The shape that used to stay on the bridge, and the one it cannot survive:
     // with no `useEnumValue` scalar the bridge emits no <UseEnumValue> at all,
     // xppc reads the absent element as Yes, and every member without an explicit
     // <Value> is 0 — "Duplicate value '0' detected", on the full build only.
-    // Positions decide here, so the file must carry UseEnumValue=No and no <Value>.
+    //
+    // Passing no numbers means "number them in order", not "leave them all at 0":
+    // the position is what the caller stated, and the file has to say it, because
+    // the XML's own default for a member with no <Value> is 0.
     const result = await handleCreateD365File(
       req({ enumValues: [{ name: 'None' }, { name: 'Silver' }, { name: 'Gold' }] }, 'ConDemoTierPlain'),
       buildContext(),
@@ -207,8 +218,39 @@ describe('enum create — which writer runs', () => {
     // <type> file:'; that phrase went when the create response was trimmed.)
     expect(result.content[0].text).not.toContain('via IMetadataProvider');
     expect(xml).toContain('<UseEnumValue>No</UseEnumValue>');
-    expect(xml).not.toContain('<Value>');
+    expect(xml).toContain('<Value>1</Value>');
+    expect(xml).toContain('<Value>2</Value>');
     for (const n of ['None', 'Silver', 'Gold']) expect(xml).toContain(`<Name>${n}</Name>`);
+  });
+
+  it('keeps the numbers on an EXTENSIBLE enum, with UseEnumValue=No', async () => {
+    // Verified on the VM (fm-mcp, xppc 2026-09-01) rather than argued: an
+    // extensible enum carrying UseEnumValue=No and explicit, non-positional
+    // <Value> elements compiles clean, while the same enum with UseEnumValue=Yes
+    // fails with "UseEnumValue property must be set to 'No' when the IsExtensible
+    // property is 'True'". 645 of the 688 shipped extensible enums have the first
+    // shape. The old rule refused this payload outright.
+    const result = await handleCreateD365File(
+      req({ isExtensible: true, enumValues: [{ name: 'None' }, { name: 'Second', value: 2 }, { name: 'First', value: 1 }] }, 'ConDemoTierExtValues'),
+      buildContext(),
+    );
+
+    expect(result.content[0].text).toMatch(/^✅ Created /);
+    const xml = [...files.values()].join('\n');
+    expect(xml).toContain('<UseEnumValue>No</UseEnumValue>');
+    expect(xml).toContain('<IsExtensible>true</IsExtensible>');
+    expect(xml).toContain('<Value>2</Value>');
+    expect(xml).toContain('<Value>1</Value>');
+  });
+
+  it('refuses the one combination xppc rejects: isExtensible + useEnumValue:true', async () => {
+    const result = await handleCreateD365File(
+      req({ isExtensible: true, useEnumValue: true, enumValues: POSITIONAL }, 'ConDemoTierExtYes'),
+      buildContext(),
+    );
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text as string).toMatch(/UseEnumValue property must be set to 'No'/);
   });
 
   it('writes every value of an unnumbered list spelled `values`', async () => {
