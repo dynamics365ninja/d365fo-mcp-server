@@ -7,6 +7,7 @@ import fs from 'fs/promises';
 import { getConfigManager } from '../../utils/configManager.js';
 import { defaultPackagesRoot } from '../../utils/packagesRoot.js';
 import { withOperationLock } from '../../utils/operationLocks.js';
+import { wasCreatedThisSession } from '../../workspace/createdArtifactLedger.js';
 
 const execFileAsync = util.promisify(execFile);
 
@@ -93,6 +94,40 @@ export async function compareSysTestDataAccess(
 // src/server/toolSchemas/, one file per published tool, aggregated by
 // toolSchemas/index.ts. It is NOT in mcpServer.ts; that file only spreads
 // the aggregated array into the ListTools response.
+
+/**
+ * The red-first commentary — the half of the TDD loop a result line cannot carry.
+ *
+ * "2/2 passed" is ordinary news for a test that has existed for weeks and a RED
+ * FLAG for one written minutes ago: a test that passes the first time it runs has
+ * proven nothing about the assertion inside it. The scaffold emits
+ * `this.fail('… is not implemented yet.')` in every method precisely so the first
+ * run is red, and the failure mode is a developer who deletes those lines while
+ * writing the behaviour and never sees a red phase at all.
+ *
+ * Both signals are derived, not asked for. The session ledger already knows which
+ * objects this process created, and the scaffold's own failure text identifies an
+ * unwritten assertion — so there is no `expectRed` parameter to publish, nothing
+ * for a strict MCP client to drop, and no ListTools bytes spent (headroom at the
+ * time of writing: 49 chars of 45,000).
+ */
+export function renderRedPhaseNote(
+  className: string,
+  outcomes: readonly { name: string; passed: boolean; message?: string }[],
+): string {
+  if (outcomes.length === 0) return '';
+  const unwritten = outcomes.filter(o => !o.passed && /not implemented yet/i.test(o.message ?? ''));
+  if (unwritten.length > 0) {
+    return `\n\n🔴 **Red phase confirmed.** ${unwritten.length} of ${outcomes.length} method(s) still carry the ` +
+      'scaffold\'s `this.fail(...)` — replace each one with the assertion the test exists for, then run again.';
+  }
+  if (outcomes.every(o => o.passed) && wasCreatedThisSession(className)) {
+    return `\n\n⚠️ **Every method passed, and \`${className}\` was created in this session.** A test that passes ` +
+      'the first time it runs has proven nothing about its assertion. Check that each method actually ' +
+      'asserts something, then break the behaviour on purpose once and watch this go red.';
+  }
+  return '';
+}
 
 export const sysTestRunnerTool = async (params: any, _context: any) => {
   const { className, testMethod } = params;
@@ -229,6 +264,8 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
       ? `\n\n⚠️ No test named "${focus}" ran. Check the spelling against the list above.`
       : '';
 
+    const redPhaseNote = renderRedPhaseNote(className, outcomes);
+
     return {
       content: [{
         type: 'text',
@@ -238,6 +275,7 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
           methodNote +
           perMethod +
           focusNote +
+          redPhaseNote +
           `\n\n${output || '(no output)'}`
       }]
     };

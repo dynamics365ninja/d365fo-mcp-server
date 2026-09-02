@@ -57,6 +57,30 @@ export function lookupCreatedArtifact(filePath: string): CreatedArtifact | undef
   return ledger.get(ledgerKey(filePath));
 }
 
+/**
+ * Did THIS session create an object of this name?
+ *
+ * A second consumer beyond undo, and a different question: undo asks about a
+ * FILE it is about to delete, `run_systest_class` asks about a CLASS it is about
+ * to report on. The distinction matters for the red-first loop — "every method
+ * passed" is ordinary news for a test that has existed for weeks and a red flag
+ * for one written minutes ago, because a test that passes the first time it runs
+ * has proven nothing about its assertion.
+ *
+ * Deliberately a session-scoped heuristic and nothing more. It cannot see a test
+ * created before the server started, so it under-reports rather than over-reports
+ * — the safe direction for a warning.
+ */
+export function wasCreatedThisSession(objectName: string): boolean {
+  if (!objectName) return false;
+  const wanted = objectName.trim().toLowerCase();
+  if (!wanted) return false;
+  for (const entry of ledger.values()) {
+    if (entry.objectName?.toLowerCase() === wanted) return true;
+  }
+  return false;
+}
+
 /** Drop a ledger entry once it has been undone (or is no longer relevant). */
 export function forgetCreatedArtifact(filePath: string): void {
   if (!filePath) return;

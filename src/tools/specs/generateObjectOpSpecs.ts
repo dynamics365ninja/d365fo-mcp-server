@@ -69,15 +69,21 @@ export const GENERATE_OBJECT_PARAM_SPECS: Record<string, { type: string; descrip
       'prepare(mode="test", objectName="<target>") list them.',
   },
   testTargetType: {
-    type: '"class" | "table"',
+    type: '"class" | "table" | "coc" | "event-handler" | "service"',
     description:
-      'systest: what `name` denotes (default "class"). Pass "table" to test TABLE methods — ' +
-      'validateWrite/validateField/insert/update, including the ones a [ExtensionOf] CoC class ' +
-      'wraps. It emits the only shape that works there: a buffer with initValue(), ' +
-      'assertFalse(buffer.validateWrite()) for the verdict, assertExpectedInfoLogMessage() for the ' +
-      'reason (table rules report through the infolog, they do not throw), and an ACCEPTING case ' +
-      'beside the rejecting one. prepare(mode="test") reports which kind the target is and emits ' +
-      'this parameter for you.',
+      'systest: what `name` denotes (default "class"). It decides the SHAPE of the test, and the ' +
+      'shapes are not interchangeable — each observes the behaviour somewhere different. ' +
+      '"table": a buffer with initValue(), assertFalse(buffer.validateWrite()) for the verdict and ' +
+      'assertExpectedInfoLogMessage() for the reason (table rules report through the infolog, they ' +
+      'do not throw), plus an ACCEPTING case beside the rejecting one. Use it for validateWrite / ' +
+      'validateField / insert / update, INCLUDING the ones an [ExtensionOf] class wraps. ' +
+      '"coc": a class-method wrapper, tested through the BASE class — naming the _Extension class ' +
+      'proves nothing, because CoC is transparent and a wrapper is only observable through the ' +
+      'method it wraps. "event-handler": performs the write and reads back what the handler ' +
+      'changed, since a handler fires out of band and cannot return a value. "service": calls a ' +
+      'SysOperation service directly with a hand-built contract (name the contract in `baseName`) — ' +
+      'no controller, no dialog, no batch queue. ' +
+      'prepare(mode="test") reports which kind the target is and emits this parameter for you.',
   },
   serviceMethod: {
     type: 'string',
@@ -240,8 +246,8 @@ export const GENERATE_OBJECT_MODE_SPECS: Record<string, GenerateObjectModeSpec> 
   pattern: {
     required: ['name', 'pattern'],
     optional: [
-      'menuItemType', 'baseName', 'targetObject', 'serviceMethod', 'testMethods', 'modelName',
-      'datasetAccessor', 'documentType', 'designName',
+      'menuItemType', 'baseName', 'targetObject', 'serviceMethod', 'testMethods', 'testTargetType',
+      'modelName', 'datasetAccessor', 'documentType', 'designName',
     ],
     note:
       'Text only, no write. Call analyze_code(mode="patterns") first, then generate_object(mode="pattern"), ' +
