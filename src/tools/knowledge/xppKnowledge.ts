@@ -1045,58 +1045,21 @@ MyRentEquipmentId newId = numSeq.num();
   // ── Testing ─────────────────────────────────────────────────────────────
   {
     id: 'testing',
-    title: 'Unit Testing (SysTest Framework)',
-    keywords: ['test', 'unit test', 'systest', 'systestcase', 'assert', 'atl', 'acceptance test library', 'mock'],
+    title: 'Choosing a test kind (SysTestCase vs ATL) — and where the details are',
+    keywords: ['testing', 'test strategy', 'which test', 'integration test', 'test kind', 'acceptance test'],
     summary:
-      'D365FO uses SysTestCase for unit tests and ATL (Acceptance Test Library) for integration tests.',
+      'D365FO ships two test frameworks for two different questions, and picking the wrong one is the ' +
+      'expensive mistake. SysTestCase answers "does this rule hold?" in an always-rolled-back transaction; ' +
+      'ATL answers "does this business process still work?" over real, created data. The full SysTestCase ' +
+      'contract — asserts, attributes, suites, isolation, the red-first loop — lives in the unit-testing topic.',
     rules: [
-      'Test class: extends SysTestCase (ApplicationFoundation, and it extends SysTestAssert — the asserts are inherited, not a separate class) — methods start with "test" or carry [SysTestMethod]',
-      'SysTestMethodAttribute: [SysTestMethod] on each test method',
-      'Assert methods, the full inherited set: assertEquals, assertNotEqual, assertEquivalent, assertNotEquivalent, assertTrue, assertFalse, assertNull, assertNotNull, assertSame, assertNotSame, assertObjectEquals, assertRealEquals, assertUTCDateTimeEquals, fail. There is NO assertExpectedException — declare the expectation first with this.parmExceptionExpected(true) (optionally with the message), then run the code that should throw',
-      'setUp() / tearDown(): run before/after each test method; setUpTestCase() / tearDownTestCase() run once per class',
-      'ATL (Acceptance Test Library): entry point is AtlDataRootNode::construct(); navigate via data.invent()/data.sales()/… and use the Creators/Commands/Queries/Specifications concepts (AtlCommand* family) — there is NO AtlScenario or AtlDataHelper class',
-      'Test data: use the ATL data root (AtlDataRootNode) creators or setUp() to create transient test records',
-      'Run with: run_systest_class (it passes SysTestConsole.exe /unattended, which skips the debugger-attach prompt — the runner is NOT interactive-only) or Visual Studio Test Explorer',
-      'Naming: <TestedClass>Test (e.g. CustTableTest) — the repo systests use this suffix; pick ONE convention per model and keep it consistent',
-      'See the unit-testing topic for the detailed SysTestCase rules (transaction rollback, SysTestSuite, mocking)',
+      'Unit (SysTestCase): one rule, one class, no data setup beyond a buffer and initValue(). This is what the server scaffolds: prepare(mode="test") then generate_object(mode="pattern", pattern="systest")',
+      'Integration (ATL): a business process across several tables, using AtlDataRootNode::construct() to create the data. Slower, needs the ATL packages referenced by the test model, and fails for many more reasons than the rule under test',
+      'Metadata is NOT a SysTest question. Whether a field, a control or an enum value has the right shape is proven by a build plus the eval golden diff — a SysTest that asserts metadata is asserting the compiler did its job',
+      'A test that passes the first time it runs has proven nothing about its assertion. Write it red, run it red, then implement — see unit-testing for the exact loop the tools support',
+      'For everything else about SysTestCase — the 14 asserts, parmExceptionExpected, [SysTestMethod] and the dependency attributes, suite isolation, run_systest_class — read the unit-testing topic. This entry deliberately does not restate them: two topics that both explain SysTestCase is how they came to disagree about the naming convention',
     ],
-    examples: [
-      {
-        label: 'Basic unit test',
-        code: `// SysTestTarget(str _name, utilElementType _type = UtilElementType::Class)
-// — the second argument is the element TYPE, not a method name.
-[SysTestTarget(classStr(MyHelper), UtilElementType::Class)]
-class MyHelperTest extends SysTestCase
-{
-    [SysTestMethod]
-    public void testCalculateDiscount_ZeroQty()
-    {
-        MyHelper helper = new MyHelper();
-        Amount result = helper.calculateDiscount(0, 100);
-        this.assertEquals(0, result, 'Discount should be 0 for zero quantity');
-    }
-
-    [SysTestMethod]
-    public void testCalculateDiscount_RejectsNegativeQty()
-    {
-        MyHelper helper = new MyHelper();
-
-        // No assertExpectedException in X++: declare the expectation, then call.
-        this.parmExceptionExpected(true);
-        helper.calculateDiscount(-1, 100);
-    }
-
-    [SysTestMethod]
-    public void testCalculateDiscount_LargeQty()
-    {
-        MyHelper helper = new MyHelper();
-        Amount result = helper.calculateDiscount(100, 50);
-        this.assertTrue(result > 0, 'Discount should be positive for large qty');
-    }
-}`,
-      },
-    ],
-    related: ['sysoperation'],
+    related: ['unit-testing', 'sysoperation'],
   },
 
   // ── Financial Dimensions ────────────────────────────────────────────────
@@ -1350,12 +1313,16 @@ while select crosscompany : companies
   {
     id: 'unit-testing',
     title: 'X++ Unit Testing (SysTestCase / SysTestSuite)',
-    keywords: ['unit test', 'systestcase', 'systestsuite', 'test', 'assert', 'testmethod', 'mock', 'stub', 'systestcasestub', 'testautomation'],
+    keywords: ['unit test', 'systestcase', 'systestsuite', 'systest', 'test', 'assert', 'testmethod',
+      'mock', 'stub', 'systestcasestub', 'testautomation', 'atl', 'acceptance test library',
+      'systesttarget', 'test data', 'red first', 'tdd'],
     summary:
       'X++ unit tests extend SysTestCase. They run in a fresh database transaction that is always rolled back, ' +
       'ensuring tests are isolated. Run in Visual Studio → Test Explorer or via SysTestSuite.',
     rules: [
-      'Test class: extends SysTestCase, must be in the same model as the code under test (or a test model)',
+      'Test class: extends SysTestCase, which ships in ApplicationFoundation and itself extends SysTestAssert — '
+        + 'the asserts are inherited, not a separate class. The test class must be in the same model as the code '
+        + 'under test, or in a test model that references it',
       'Test methods: public void testXxx() — method name MUST start with "test" (case-insensitive)',
       'Setup/teardown: override setUp() and tearDown() — called before/after EACH test method',
       'Assertions (inherited from SysTestAssert): assertEquals, assertNotEqual, assertEquivalent, assertNotEquivalent, assertTrue, assertFalse, assertNull, assertNotNull, assertSame, assertNotSame, assertObjectEquals, assertRealEquals, assertUTCDateTimeEquals, fail',
@@ -1368,6 +1335,12 @@ while select crosscompany : companies
       'Naming convention: <ClassName>Test (e.g. MyServiceTest) — matches the repo systests and the testing topic; avoid mixing the <ClassName>_Test variant in the same model',
       'Attributes: [SysTestMethod] is optional when the method name starts with "test", and required otherwise',
       'Run tests: Visual Studio → Test → Run All Tests, or SysTestSuite.run() in a batch job',
+      '[SysTestTarget] takes the element TYPE as its second argument, not a method name: '
+        + '[SysTestTarget(classStr(MyHelper), UtilElementType::Class)] — and UtilElementType::Table for a table\'s rules',
+      'ATL (Acceptance Test Library) is the integration-test half, and it is a separate reference: the entry point is '
+        + 'AtlDataRootNode::construct(), navigation is data.invent()/data.sales()/… and the concepts are '
+        + 'Creators/Commands/Queries/Specifications (the AtlCommand* family). There is NO AtlScenario and NO AtlDataHelper class. '
+        + 'The test model must reference the ATL packages before any of it compiles',
       'RED FIRST: write the test before the behaviour and RUN it — a test that passes on its first run has proven nothing about the assertion inside it. The scaffold generate_object(mode="pattern", pattern="systest", name=<TargetClass>) emits exactly that: one [SysTestMethod] per target method, each ending in this.fail(...) until you write the assertion',
       'The loop the server supports: prepare(mode="test", objectName=<TargetClass>) → generate_object(pattern="systest") → d365fo_file(action="create") → build_d365fo_project (must COMPILE — red means a failing assertion, not a broken file) → run_systest_class (expect failures) → implement → build → run again (expect green) → run_bp_check',
       'run_systest_class reports per METHOD: it parses the /xml: document the runner writes (SysTestListenerXML: test-case/@name, @success and a failure/message child), so a green run is not mis-read as failed because a method is called testErrorHandling',

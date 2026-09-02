@@ -29,6 +29,7 @@ import {
 } from './write/inlineWriteVerification.js';
 import { getConfigManager } from '../utils/configManager.js';
 import { resetRecentPrepares } from './prepare/prepare.js';
+import { testCoverageNote } from './prepare/testFirst.js';
 import * as debouncedRefresh from '../bridge/debouncedRefresh.js';
 import { truncateOnBlockBoundary } from '../utils/payloadBudget.js';
 
@@ -85,6 +86,36 @@ function appendToResult(result: any, note: string): any {
   const first = Array.isArray(content) ? content[0] : undefined;
   if (!first || first.type !== 'text' || typeof first.text !== 'string') return result;
   return { ...result, content: [{ ...first, text: first.text + note }, ...content.slice(1)] };
+}
+
+/**
+ * Append the "nothing tests this" line to a write that carried X++.
+ *
+ * The TDD loop was used zero times in 1,603 measured MCP calls, so it has to be
+ * reachable from where people already are — and the moment a rule lands on disk
+ * with no test is the moment the observation is worth making. Silent by default:
+ * only a successful write, only one that carried X++ (not `add-field`), only when
+ * the index can name the target AND says nothing covers it.
+ *
+ * Never allowed to fail the write it is annotating: a note is not worth an error.
+ */
+function withTestCoverageNote(result: any, args: Record<string, unknown>, context: XppServerContext): any {
+  if (result?.isError) return result;
+  try {
+    const note = testCoverageNote(context, {
+      objectType: typeof args.objectType === 'string' ? args.objectType : undefined,
+      objectName: typeof args.objectName === 'string' ? args.objectName : undefined,
+      methodName: typeof args.methodName === 'string' ? args.methodName : undefined,
+      operation: Array.isArray(args.operations)
+        ? (args.operations as Array<{ operation?: unknown }>)
+          .map(o => (typeof o?.operation === 'string' ? o.operation : ''))
+          .filter(Boolean)
+        : (typeof args.operation === 'string' ? args.operation : undefined),
+    });
+    return note ? appendToResult(result, note) : result;
+  } catch {
+    return result;
+  }
 }
 
 /** Concatenated text of a tool result, for folding into the batch report. */
@@ -492,10 +523,10 @@ export async function d365foFileTool(request: CallToolRequest, context: XppServe
     };
   }
   if (action === 'modify') {
-    if (Array.isArray(rest.operations)) {
-      return runModifyBatch(rest, context);
-    }
-    return modifyWithExtensionAutoCreate(rest, context, {});
+    const modified = Array.isArray(rest.operations)
+      ? await runModifyBatch(rest, context)
+      : await modifyWithExtensionAutoCreate(rest, context, {});
+    return withTestCoverageNote(modified, rest, context);
   }
   if (action === 'delete') {
     return handleDeleteD365File(subRequest('delete_d365fo_file', rest), context);

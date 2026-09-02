@@ -355,7 +355,11 @@ describe('knowledge names the testing API the platform actually has', () => {
   });
 
   it('places SysTestCase where the platform ships it', () => {
-    expect(rulesText('testing')).toMatch(/ApplicationFoundation/);
+    // Moved from the `testing` entry when the two testing topics were
+    // consolidated: `unit-testing` is now the authoritative one for the
+    // SysTestCase contract, and which package ships the base class is part of
+    // that contract — it is the reference a model needs before anything compiles.
+    expect(rulesText('unit-testing')).toMatch(/ApplicationFoundation/);
   });
 
   it('carries the run-time function catalog with the compiler-verified ranges', () => {
