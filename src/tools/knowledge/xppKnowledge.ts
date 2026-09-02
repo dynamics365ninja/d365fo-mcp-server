@@ -1944,6 +1944,78 @@ public class MyReportDP extends SrsReportDataProviderBase
     related: ['temp-tables', 'sysoperation', 'print-management', 'ssrs-contracts', 'ssrs-rdp-preprocess', 'ssrs-ui-builder'],
   },
   {
+    id: 'axreport-anatomy',
+    title: 'The AxReport document — datasets, parameters and the design, as metadata',
+    keywords: [
+      'axreport', 'report metadata', 'report parameter', 'axreportparameterbase', 'uservisibility',
+      'allowblank', 'nullable', 'multivalue', 'promptstring', 'datasourcetype', 'defaultparametergroup',
+      'axreportdataset', 'axreportdesign', 'precisiondesign', 'autodesign', 'datamethods', 'hidden parameter',
+    ],
+    summary:
+      'The X++ half of a report ends at the data provider; everything the user sees is an AxReport ' +
+      'document. Its parameter and dataset elements have a closed, small vocabulary that nothing in the ' +
+      'X++ toolchain checks — a wrong value is dropped by the deserializer, the build stays green, and the ' +
+      'dialog is simply wrong. Every figure below is a census of the 1,057 AxReport documents on a ' +
+      'complete install (13,833 parameters, 1,361 datasets).',
+    rules: [
+      'A parameter is an <AxReportParameterBase i:type="AxReportParameter"> element, NOT <AxReportParameter> — ' +
+      'the tag carries attributes and wraps across lines. Searching for the obvious spelling finds zero of ' +
+      '1,057 documents, which is the kind of silent zero that ends a search early',
+      'UserVisibility has exactly TWO values in the whole corpus: Hidden (8,972) and Internal (5). There is ' +
+      'no "Visible" — a parameter the user should SEE simply omits the element. Writing anything else is ' +
+      'dropped by the deserializer, so a parameter meant to be hidden appears in the dialog with a clean ' +
+      'build (validate_code reports it as RPT103)',
+      'AllowBlank, Nullable and MultiValue are PRESENCE flags: across 8,807 / 8,376 / 59 occurrences the ' +
+      'value is always "true" and never "false". To turn one off, omit the element rather than writing false',
+      'Every report carries the same five platform parameters, on all 1,057 documents: AX_CompanyName, ' +
+      'AX_PartitionKey, AX_RenderingCulture, AX_ReportContext, AX_UserContext. A sixth, AX_RdpPreProcessedId, ' +
+      'is on 758 — the pre-processed ones. Do not declare them, do not set them, and do not remove them',
+      'PromptString is the parameter\'s dialog caption and is a LABEL id in 5,498 of its occurrences ' +
+      '(@SYS24050, @SYS14656, …). Raw text there is a translation bug that no BP rule catches, because BP ' +
+      'reads X++ and this is metadata',
+      'DataType is a .NET type name, not an X++ one: System.Boolean (1,710), System.DateTime (1,183), ' +
+      'System.Int32, System.Int64, System.String. The odd one is ' +
+      'Microsoft.Dynamics.AX.Framework.Services.Client.QueryMetadata (860) — that is the QUERY parameter of a ' +
+      'query-based report, and it pairs with an <AOTQuery> element naming the query (also 860)',
+      'DataSourceType on a dataset is ReportDataProvider (1,023) or EnumProvider (51). Those are the two; a ' +
+      'dataset bound to an AOT query still says ReportDataProvider and names the query on the parameter',
+      'The design kind is an XML i:type, not a property: <AxReportDesign i:type="AxReportPrecisionDesign"> ' +
+      '(1,163) or "AxReportAutoDesign" (123). Precision is a real RDL document you edit in Visual Studio; ' +
+      'auto is generated from the dataset. Nothing in this server emits an AutoDesign',
+      '<DataMethods> is effectively dead: 11 of 1,057 reports have any content in it. If you are reaching ' +
+      'for a data method, the answer is almost always a field on the temp table instead — computed in X++, ' +
+      'where it can be tested',
+      'There is no d365fo_file operation for an AxReport. A dataset field, a parameter or a column cannot be ' +
+      'added after the scaffold — that is a deliberate gap (docs/BACKLOG.md), so plan the temp table and the ' +
+      'contract BEFORE generating, and treat the design as owned by the Report Designer afterwards',
+    ],
+    examples: [
+      {
+        label: 'A hidden parameter, and the same parameter made visible',
+        code: `<!-- Hidden: the element is present and says so. -->
+<AxReportParameterBase xmlns="" i:type="AxReportParameter">
+    <Name>AX_CompanyName</Name>
+    <UserVisibility>Hidden</UserVisibility>
+    <DefaultValue />
+    <Values />
+</AxReportParameterBase>
+
+<!-- Visible: UserVisibility is OMITTED. Writing "Visible" is not a value the
+     deserializer knows, and it is dropped without a word. -->
+<AxReportParameterBase xmlns="" i:type="AxReportParameter">
+    <Name>MyDateFrom</Name>
+    <AllowBlank>true</AllowBlank>
+    <Nullable>true</Nullable>
+    <PromptString>@MyModel:FromDate</PromptString>
+    <DataType>System.DateTime</DataType>
+    <DefaultValue />
+    <Values />
+</AxReportParameterBase>`,
+      },
+    ],
+    related: ['ssrs-reports', 'ssrs-contracts', 'rdl-design-expressions', 'ssrs-rdp-preprocess'],
+  },
+  {
     id: 'ssrs-contracts',
     title: 'SSRS Contract Taxonomy (RDP / RDL / print / composite)',
     keywords: ['report contract', 'rdl contract', 'print settings', 'print destination', 'srsprintdestinationsettings',
