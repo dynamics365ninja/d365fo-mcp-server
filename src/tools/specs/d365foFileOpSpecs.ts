@@ -291,6 +291,48 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
       'Name for the range object (<Name>). Defaults to rangeField when omitted. ' +
       'Only ever matched against other ranges of the SAME data source.',
   },
+  reportAction: {
+    type: '"refresh-dataset" | "add-parameter"',
+    description:
+      'report-design: which half to do. "refresh-dataset" copies the temp table fields into the dataset; ' +
+      '"add-parameter" declares a report parameter and binds it to the dataset. There is deliberately no ' +
+      '"add-column" — placing a column edits the RDL, whose failures surface only in the SSRS renderer.',
+  },
+  tableName: {
+    type: 'string',
+    description:
+      'report-design(refresh-dataset): the temp table whose fields the dataset should carry. It is read ' +
+      'off disk, so it must exist; only MISSING fields are added, never rewritten or removed.',
+  },
+  datasetName: {
+    type: 'string',
+    description:
+      'report-design: which dataset to act on. Optional when the report has exactly one; REQUIRED when it ' +
+      'has several, because guessing puts the field on the wrong dataset.',
+  },
+  parameterName: {
+    type: 'string',
+    description: 'report-design(add-parameter): the parameter to declare and bind.',
+  },
+  parameterDataType: {
+    type: 'string',
+    description:
+      'report-design(add-parameter): .NET type name, default System.String. Shipped reports use ' +
+      'System.String / System.Boolean / System.DateTime / System.Int32 / System.Int64.',
+  },
+  parameterHidden: {
+    type: 'boolean',
+    description:
+      'report-design(add-parameter): true writes <UserVisibility>Hidden</UserVisibility>. Leave it off for ' +
+      'a VISIBLE parameter — across 1,057 shipped reports there is no "Visible" value, a visible parameter ' +
+      'omits the element, and an unknown one is dropped silently.',
+  },
+  promptString: {
+    type: 'string',
+    description:
+      'report-design(add-parameter): the dialog caption. Pass a LABEL id ("@MyModel:FromDate") — it is ' +
+      'user-visible text living in metadata, which no BP rule checks.',
+  },
   rangeValue: {
     type: 'string',
     description:
@@ -611,6 +653,26 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
     required: ['dataSourceName', 'dataSourceTable'],
     optional: ['joinSource', 'linkType'],
     note: 'form-extension only.',
+  },
+  'report-design': {
+    required: ['reportAction'],
+    optional: ['tableName', 'datasetName', 'parameterName', 'parameterDataType', 'parameterHidden', 'promptString'],
+    note:
+      'objectType="report" only — the FIRST write path an AxReport has. Two actions, both metadata-only: ' +
+      'reportAction="refresh-dataset" (+ tableName, optional datasetName) copies the temp table\'s fields ' +
+      'into the dataset, adding only what is missing; reportAction="add-parameter" (+ parameterName, ' +
+      'optional parameterDataType [default System.String], parameterHidden, promptString, datasetName) ' +
+      'declares a parameter AND binds it to the dataset, which are two elements in two collections that ' +
+      'must agree. ' +
+      'It NEVER touches the RDL in the <![CDATA[…]]> block and never removes anything: a dataset field the ' +
+      'design does not bind is inert, while removing one it does bind breaks the render — and a malformed ' +
+      'RDL fails in the SSRS renderer at run time, where no build and no test can see it. ' +
+      'For the same reason there is no "add-column": placing a column IS layout, and layout stays with the ' +
+      'Report Designer. Both actions are idempotent. ' +
+      'parameterHidden=true writes <UserVisibility>Hidden</UserVisibility>; leave it off for a VISIBLE ' +
+      'parameter — across 1,057 shipped reports and 13,833 parameters there is no "Visible" value, a ' +
+      'visible parameter simply omits the element, and an unknown one is dropped silently ' +
+      '(get_knowledge(topic="axreport-anatomy")).',
   },
   'add-query-range': {
     required: ['dataSourceName', 'rangeField', 'rangeValue'],
