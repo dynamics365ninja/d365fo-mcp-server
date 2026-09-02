@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoDpTestDP</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[SRSReportParameterAttribute(classStr(ConDemoDpTestContract))]
+public class ConDemoDpTestDP extends SrsReportDataProviderBase
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getDemoDpTestTmp</Name>
+				<Source><![CDATA[
+    [SRSReportDataSetAttribute(tableStr(ConDemoDpTestTmp))]
+    public ConDemoDpTestTmp getDemoDpTestTmp()
+    {
+        ConDemoDpTestTmp result;
+
+        select * from result;
+        return result;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processReport</Name>
+				<Source><![CDATA[
+    public void processReport()
+    {
+        ConDemoNoteHeader source;
+        ConDemoDpTestTmp tmp;
+
+        while select source
+        {
+            tmp.clear();
+            tmp.NoteId  = source.NoteId;
+            tmp.Subject = source.Subject;
+            tmp.insert();
+        }
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

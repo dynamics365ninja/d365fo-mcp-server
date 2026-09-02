@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoRptParamDP</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Data provider for the Report parameter case report.
+/// Extends <c>SrsReportDataProviderBase</c> and populates the <c>ConDemoRptParamTmp</c> temporary table.
+/// </summary>
+[
+    SRSReportParameterAttribute(classStr(ConDemoRptParamContract))
+]
+public class ConDemoRptParamDP extends SrsReportDataProviderBase
+{
+    ConDemoRptParamTmp conDemoRptParamTmp;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getConDemoRptParamTmp</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the temporary table buffer used by the report dataset.
+    /// </summary>
+    /// <returns>The <c>ConDemoRptParamTmp</c> table buffer.</returns>
+    [SRSReportDataSetAttribute(tableStr(ConDemoRptParamTmp))]
+    public ConDemoRptParamTmp getConDemoRptParamTmp()
+    {
+        select conDemoRptParamTmp;
+        return conDemoRptParamTmp;
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>processReport</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Main data processing method. Populates the <c>ConDemoRptParamTmp</c> temporary table
+    /// with report data based on the contract parameters.
+    /// </summary>
+    public void processReport()
+    {
+        // No contract parameters
+
+        // TODO: Replace with actual query / business logic
+        // Example pattern:
+        //   while select sourceTable
+        //       where sourceTable.Field == paramValue
+        //   {
+        //       conDemoRptParamTmp.clear();
+        //       conDemoRptParamTmp.NoteId = ''; // TODO: populate from data source
+        //       conDemoRptParamTmp.Subject = ''; // TODO: populate from data source
+        //       conDemoRptParamTmp.insert();
+        //   }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

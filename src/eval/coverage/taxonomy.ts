@@ -726,10 +726,38 @@ export const TAXONOMY: CoverageLeaf[] = [
     note: 'Two halves of one document, so one leaf: axreport-anatomy is the metadata (parameters, datasets, the i:type design kind) and rdl-design-expressions is the RDL inside it. Both censused over the full install 2026-09-02 — 1,057 documents, 13,833 parameters: precision 1,163 : auto 123, and UserVisibility has only Hidden (8,972) and Internal (5), which is what RPT103 checks. Proven by L4-ssrs-report-design-rdl (captured 2026-08-31). What the case does NOT prove is the RDL expression grammar itself — the golden asserts the document, not what the renderer does with it.',
   },
   {
+    id: 'report-parameters', label: 'Report parameters and dataset upkeep (after the scaffold)',
+    domain: 'Reporting', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['report'], knowledgeIds: ['axreport-anatomy'],
+    caseIds: ['L4-ssrs-report-parameters'],
+    note: 'The half of a report that is NOT layout: a field arrives on the temp table, or a parameter is needed. Both are now writable through d365fo_file(operation="report-design") — metadata-only and additive-only, because a malformed RDL fails in the SSRS renderer where no build can see it. The case exercises the grounded path end to end and its golden was captured from a clean xppc build. What it does NOT prove is that the design USES either one; placing them is Report Designer work.',
+  },
+  {
+    id: 'report-dp-testing', label: 'Testing a report data provider (red-first)',
+    domain: 'Reporting', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['report', 'class'], knowledgeIds: ['unit-testing', 'ssrs-reports'],
+    caseIds: ['L4-tdd-report-dp'],
+    note: 'The report-dp SysTest shape, proven by a RUNTIME oracle rather than a golden alone: L4-tdd-report-dp ran red (2 of 2 failing on the scaffold this.fail) and then green (2 of 2) under SysTestConsole.exe on 2026-09-02, and eval/systests/L4-tdd-report-dp.xml is the passing document. The red run is the part that matters, because it is what proves the assertions can fail at all. The capture also found a live defect in its own first draft: assertNotNull on a table buffer reports "Expected: not null; Actual: null" for an empty buffer, so it asserts the last select found a row and not that the accessor works. What the case does NOT prove is that the RDL binds the staged rows.',
+  },
+  {
     id: 'report-destinations', label: 'Report print destinations (file, e-mail, archive, batch)',
     domain: 'Reporting', source: 'topic', tier: 'core', weight: 4,
     aotTypes: ['report'], knowledgeIds: ['report-print-destinations'], caseIds: ['L4-ssrs-report-print-destinations'],
     note: 'Member names read from SrsPrintDestinationSettings and compile-verified; proven by L4-ssrs-report-print-destinations (captured 2026-08-31). The case proves the code compiles and the settings are set, not that a report reached an inbox.',
+  },
+  {
+    id: 'print-mgmt-format', label: 'Publishing a report as a print-management format',
+    domain: 'Reporting', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['report', 'class'], knowledgeIds: ['print-management'],
+    caseIds: ['L3-print-mgmt-publish-format'],
+    note: 'The supported seam is a delegate, not an overlayer: PrintMgmtDocType declares seven, and getDefaultReportFormatDelegate is the one that answers "which report". Signature and enum values read off the shipped class and enum, and proven by L3-print-mgmt-publish-format, whose golden came from a full xppc build with zero errors and zero warnings (2026-09-02). What the case does NOT prove is that print management PICKS the format at runtime; that needs a posted document.',
+  },
+  {
+    id: 'report-logo-barcode', label: 'Logo and barcode on a report (container + encoded string)',
+    domain: 'Reporting', source: 'topic', tier: 'total', weight: 3,
+    aotTypes: ['report', 'table'], knowledgeIds: ['ssrs-reports'],
+    caseIds: ['L4-ssrs-report-logo-barcode'],
+    note: 'Two staging problems a printed document always has. The logo is a container from CompanyImage::findByRecord(CompanyInfo::find()).Image, typed with the Bitmap EDT; the barcode is ENCODED through Barcode::construct/string(true, v)/encode()/barcodeStr(), where the one-argument string() is a getter and does not compile. Both APIs read off the shipped classes and proven by L4-ssrs-report-logo-barcode (2026-09-02, xppc clean). Authoring it corrected two of its own claims by census: 280 of 332 shipped container fields DO carry a container EDT, and typing the field with Bitmap is what silences BPErrorTableFieldNotDefinedUsingType. What the case does NOT prove is that the design renders either one — the barcode column still needs barcode.defaultFont() in Report Designer.',
   },
   {
     id: 'document-attachments', label: 'Attachments (DocuRef / DocumentManagement)',

@@ -666,7 +666,7 @@ export const ModifyD365FileArgsSchema = z.object({
   fieldNewName: z.string().optional().describe('New name for the field (required for rename-field operation)'),
   fieldType: z.string().optional().describe('EDT name for the field (for add-field: required — pass the EDT name, e.g. "InventQty", "WHSZoneId"). For modify-field: new EDT to set.'),
   fieldBaseType: z.string().optional().describe(
-    'Base type that determines the XML element for add-field: String | Integer | Real | Date | DateTime | Int64 | GUID | Enum. ' +
+    'Base type that determines the XML element for add-field: String | Integer | Real | Date | DateTime | Int64 | GUID | Enum | Container. ' +
     'REQUIRED when fieldType is an EDT — pass the EDT base type so the correct AxTableFieldReal/AxTableFieldDate/… is used. ' +
     'Examples: fieldType="InventQty" fieldBaseType="Real"; fieldType="TransDate" fieldBaseType="Date"; fieldType="ItemId" fieldBaseType="String". ' +
     'Without this, all EDT fields default to AxTableFieldString which is WRONG for numeric/date types.'
@@ -2029,6 +2029,29 @@ export async function modifyD365FileTool(
           }
         }
 
+        // Container field with NO EDT — the minority spelling (52 of 332 shipped
+        // container fields; the other 280 name a container EDT and never reach here,
+        // the ladder below resolves AxEdtContainer on its own). `container` is a
+        // primitive, never an EDT name, so it used to be refused with "extended data
+        // type 'Container' does not exist — create the EDT first". The bridge has
+        // handled it all along; only this side never routed to it. See
+        // tests/tools/addFieldContainer.test.ts for the census and the BP cost.
+        const containerRequested =
+          /^container$/i.test((((args as Record<string, unknown>).fieldBaseType as string | undefined) ?? '').trim())
+          || /^container$/i.test((args.fieldType ?? '').trim());
+        if (args.fieldName && containerRequested && !enumTypeArg) {
+          bridgeResult = await bridgeAddField(
+            context.bridge,
+            objectName,
+            args.fieldName,
+            'Container',
+            undefined,           // a container field takes no EDT
+            args.fieldMandatory,
+            args.fieldLabel,
+          );
+          break;
+        }
+
         if (args.fieldName && !args.fieldType && !enumTypeArg) {
           const mappedOnly = (args as any).dataField || (args as any).dataSource;
           return {
@@ -2040,8 +2063,8 @@ export async function modifyD365FileTool(
                     `objectType="${objectType}" — nothing was written.\n` +
                     `On a table or table-extension a field needs fieldType (its EDT), or ` +
                     `fieldEnumType for an enum field.\n`
-                  : `❌ add-field on objectType="${objectType}" requires fieldType (the EDT), or ` +
-                    `fieldEnumType for an enum field — nothing was written.\n`) +
+                  : `❌ add-field on objectType="${objectType}" requires fieldType (the EDT), ` +
+                    `fieldEnumType for an enum field, or fieldBaseType="Container" for a container field — nothing was written.\n`) +
                 `\n${renderOpSpec('add-field')}`,
             }],
             isError: true,

@@ -24,10 +24,16 @@
  * The guarantee here is a property of the OPERATION instead, and it holds for
  * every document regardless of origin:
  *
- *   1. **Metadata only.** The RDL lives in a `<![CDATA[…]]>` block and is never
- *      read, parsed or written. A malformed RDL fails in the SSRS renderer at run
- *      time, where no build and no test can see it, so this code does not go near
- *      it.
+ *   1. **Metadata only.** The RDL is never read, parsed or written. A malformed
+ *      RDL fails in the SSRS renderer at run time, where no build and no test can
+ *      see it, so this code does not go near it.
+ *
+ *      It is stored TWO ways, and both are covered. This server's scaffold writes
+ *      a `<![CDATA[…]]>` block, which every search here masks first. Shipped
+ *      reports instead put XML-ESCAPED text in `<Text>` — zero of the 1,057 on a
+ *      full install use CDATA — and that form is inert by construction: `&lt;Fields&gt;`
+ *      cannot match a search for `<Fields>`. The masking is what makes OUR
+ *      documents safe; escaping is what makes Microsoft's.
  *   2. **Additive only.** Fields and parameters are added; nothing is removed or
  *      renamed. Adding a dataset field the RDL does not reference is inert — the
  *      design simply does not show it. REMOVING one the RDL does reference breaks

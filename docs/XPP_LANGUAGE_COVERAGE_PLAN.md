@@ -23,8 +23,35 @@ Do not keep an executed plan.
 | H1 remainder — G-13 catalog, G-06 topic, D2 verified | **shipped** | `7ebd55b` |
 | H1 cases §5.5 | deferred into the H2 capture wave (see below) | — |
 | **H3 reports — G-20, G-21, G-24** (D3: reports first) | **shipped** | `a5478e8`, `76b5341`, `9243d48` |
-| H3 remainder — G-19 (partial), G-23, cases §6.7 | not started | — |
+| H3 — G-19 report runtime API, G-23 RDL census | **shipped** | `5618c62` |
+| §6.7 cases — parameters, TDD report-DP, print format, logo+barcode | **shipped** | `c8fe75a`, `27da803`, this branch |
 | H2, H4-H6 | not started | — |
+
+**The §6.7 cases each corrected something they were written to assert.** That is
+now three for three, and the corrections did not come from review — they came from
+running the thing.
+
+* `L4-tdd-report-dp`: the first green run FAILED on `assertNotNull(dp.getTmp())`
+  with "Expected: not null; Actual: null". `assertNotNull` takes `Object`, an empty
+  table buffer boxes to null, so the assertion tests whether the last select found a
+  row and never whether the accessor works. It compiles and reads correctly and means
+  something else.
+* `L4-ssrs-report-logo-barcode`: written on the claim that D365FO ships no container
+  EDT, so a logo field needed a bare `container`. A census of shipped tables refuted
+  it — **280 of 332 container fields DO carry a container EDT** (`Bitmap` 64 across
+  both casings, `Blobdata` 33, `InfologData` 23), and `Bitmap` is what a shipped
+  report temp table uses for a company logo. Typing the field with it also silenced
+  `BPErrorTableFieldNotDefinedUsingType`, measured: 11 warnings → 9.
+* The same case found a real gap on the way in. `add-field` could not write a
+  container field at ALL: `fieldType="Container"` was read as an EDT name and refused
+  with "create the EDT first", and `fieldBaseType="Container"` was refused for having
+  no mutating parameter. The C# bridge had handled `container` since it was written;
+  only the TypeScript side never routed to it. Fixed, with the 52 bare-container
+  shipped fields as the justification for the branch existing.
+
+**One defect is noted and NOT fixed** (out of scope here, worth its own change):
+`remove-field` leaves the field's `AxTableFieldGroupField` entry behind, so a table
+can be left referencing a field that no longer exists.
 
 **H3 so far, and it went differently than written.** G-20's alarming premise was
 REFUTED — the scaffold is fine, and RPT003 is rejected on measurement (31 shipped

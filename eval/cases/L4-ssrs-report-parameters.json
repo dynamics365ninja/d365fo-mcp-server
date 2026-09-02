@@ -1,0 +1,28 @@
+{
+  "id": "L4-ssrs-report-parameters",
+  "title": "Add a report parameter and refresh a dataset after the report exists",
+  "tier": 4,
+  "instruction": "In the sandbox model, scaffold an SSRS report named DemoRptParam over the ConDemoNoteHeader table with generate_object(mode=\"scaffold\", objectType=\"report\", fieldsHint=\"NoteId, Subject\", generateController=false). Then make the two changes a developer needs AFTER a report exists, using d365fo_file(action=\"modify\", objectType=\"report\", operation=\"report-design\") — never by hand-editing the XML: (1) add a field NoteDateTime (EDT TransDateTime) to the temp table with d365fo_file(action=\"modify\", objectType=\"table\", operation=\"add-field\"), then surface it on the report's dataset with reportAction=\"refresh-dataset\" and tableName set to the temp table; (2) declare a visible date parameter named DemoRptFromDate with reportAction=\"add-parameter\", parameterDataType=\"System.DateTime\" and promptString=\"@SYS14656\" — leave parameterHidden OFF, because a visible parameter omits <UserVisibility> entirely and there is no \"Visible\" value in shipped metadata. Do NOT touch the RDL: placing the field or the parameter in the design is Report Designer work and no tool here writes it. Build the model; it must compile.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxClass",
+    "AxClass",
+    "AxReport"
+  ],
+  "golden_path": "eval/goldens/L4-ssrs-report-parameters/",
+  "ignore": [
+    "Report/@Id",
+    "Table/@Id",
+    "Table/Fields/AxTableField/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "ssrs",
+    "report",
+    "report-design",
+    "parameters",
+    "modify",
+    "multi-artifact"
+  ],
+  "split": "holdout"
+}

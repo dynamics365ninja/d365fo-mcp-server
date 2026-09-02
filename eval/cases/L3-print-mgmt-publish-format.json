@@ -1,0 +1,28 @@
+{
+  "id": "L3-print-mgmt-publish-format",
+  "title": "Publish a report as a print-management format via the delegate",
+  "tier": 3,
+  "instruction": "In the sandbox model, publish a report to print management the way the platform expects, WITHOUT editing any shipped object. (1) Scaffold an SSRS report named DemoPrintFmt over ConDemoNoteHeader with generate_object(mode=\"scaffold\", objectType=\"report\", fieldsHint=\"NoteId, Subject\", generateController=false); note the design name the scaffold gives it, because ssrsReportStr is compile-time checked against it. (2) Create ONE event-handler class with d365fo_file(action=\"create\", objectType=\"class\") that subscribes to the delegate on PrintMgmtDocType: [SubscribesTo(classStr(PrintMgmtDocType), delegateStr(PrintMgmtDocType, getDefaultReportFormatDelegate))], with the delegate's own signature (PrintMgmtDocumentType _docType, EventHandlerResult _result). Switch on the document type, answer only for PrintMgmtDocumentType::SalesFreeTextInvoice, and return the format through _result.result(ssrsReportStr(<the report>, <its design>)). A delegate answers by SETTING the result, never by returning a value: the delegate is `void`. Do NOT extend PrintMgmtDocumentType and do NOT modify PrintMgmtDocType itself; both are shipped and the delegate exists precisely so you do not have to. Build the model; it must compile with zero errors and zero warnings.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxClass",
+    "AxClass",
+    "AxClass",
+    "AxReport"
+  ],
+  "golden_path": "eval/goldens/L3-print-mgmt-publish-format/",
+  "ignore": [
+    "Report/@Id",
+    "Table/@Id",
+    "Table/Fields/AxTableField/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "report",
+    "print-management",
+    "delegate",
+    "event-handler",
+    "multi-artifact"
+  ],
+  "split": "holdout"
+}

@@ -83,7 +83,7 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
       'EDT name for the field (e.g. "InventQty", "WHSZoneId", "TransDate"). For modify-field: new EDT to set.',
   },
   fieldBaseType: {
-    type: 'string (String | Integer | Real | Date | DateTime | Int64 | GUID | Enum)',
+    type: 'string (String | Integer | Real | Date | DateTime | Int64 | GUID | Enum | Container)',
     description:
       'Base type selecting the XML element for add-field (e.g. edt "InventQty" + "Real" → AxTableFieldReal). ' +
       'Auto-resolved from the symbol index when omitted — pass explicitly when the EDT is not indexed yet.',
@@ -555,13 +555,13 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   'add-field': {
     required: ['fieldName'],
     optional: ['fieldType', 'fieldBaseType', 'fieldEnumType', 'fieldMandatory', 'fieldLabel', 'dataField', 'dataSource', 'fieldGroupName', 'autoCorrect'],
-    mutationOneOf: ['fieldType', 'fieldEnumType', 'dataField'],
+    mutationOneOf: ['fieldType', 'fieldEnumType', 'dataField', 'fieldBaseType'],
     note:
       'Enum field: pass fieldEnumType="<enum name>" and NO fieldType — an enum-typed table field ' +
       'is an AxTableFieldEnum with an EnumType and needs no EDT. (fieldType is the EDT name here, ' +
       'never an XML element name like "AxTableFieldEnum" — that one is read as fieldEnumType when the ' +
       'enum is unambiguous, unless autoCorrect=false.) ' +
-      'Table/table-extension: otherwise fieldType (EDT) is REQUIRED. data-entity-extension: pass dataField AND ' +
+      'Container field: prefer a container EDT — fieldType="Bitmap" for an image, "Blobdata" for a binary payload; the base type resolves itself. Pass fieldBaseType="Container" and NO fieldType only for a bare container (52 of 332 shipped container fields), which draws BPErrorTableFieldNotDefinedUsingType. "Container" is never an EDT name. Table/table-extension: otherwise fieldType (EDT) is REQUIRED. data-entity-extension: pass dataField AND ' +
       'dataSource instead — BOTH, or nothing is written; a mapped field has no EDT of its own, it points ' +
       'at dataField on the entity data source dataSource. fieldGroupName is optional and only applies to ' +
       'a data-entity-extension: it appends the field to that BASE-entity field group (shipped extensions ' +
