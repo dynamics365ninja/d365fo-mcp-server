@@ -68,6 +68,28 @@ export const GENERATE_OBJECT_PARAM_SPECS: Record<string, { type: string; descrip
       'first run meaningful. Read the method names from get_object_info, or let ' +
       'prepare(mode="test", objectName="<target>") list them.',
   },
+  attributes: {
+    type: 'string[]',
+    description:
+      'systest: extra attributes, written exactly as in source ("SysTestGranularity(SysTestGranularity::Unit)", '
+      + '"SysTestCheckInTest"). Placement is handled for you and is MEASURED, not chosen: across the 488 shipped '
+      + 'test classes SysTestGranularity, SysTestCaseConfigurationKeyConstraint, SysTestCaseUseSingleInstance and '
+      + 'SysTestCaseDataDependency sit on the CLASS, while SysTestCheckInTest sits on the METHODS beside '
+      + 'SysTestMethod (1,616 of 1,621). The class block is emitted stacked inside ONE bracket pair, which is the '
+      + 'shipped shape — separate stacked pairs on a member are a compile error. See '
+      + 'get_knowledge(topic="systest-attributes") for what shipped tests actually carry, and for the list the '
+      + 'catalogue advertises that no shipped test uses.',
+  },
+  arrange: {
+    type: '"buffer" | "atl"',
+    description:
+      'systest: where the fixtures come from. "buffer" (default) declares the buffer and calls initValue(). '
+      + '"atl" opens with AtlDataRootNode::construct() and, when ATL ships a node for the target table, the exact '
+      + 'accessor path read from the AOT — including the .record() that turns the AtlEntity wrapper into a buffer, '
+      + 'which is the step everyone forgets. Requires the ATL packages in the model Descriptor (ATLApplicationSuite, '
+      + 'AtlFoundation, and AtlPersonnel / AtlCostAccounting for hcm / costAccounting); without them the failure is '
+      + 'on data.invent(), not on the class. prepare(mode="test") reports whether the model has them.',
+  },
   testTargetType: {
     type: '"class" | "table" | "coc" | "event-handler" | "service" | "report-dp"',
     description:

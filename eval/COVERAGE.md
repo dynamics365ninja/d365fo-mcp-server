@@ -8,8 +8,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
-| core | 69 | 69 | **100%** |
-| total | 114 | 114 | 100% |
+| core | 70 | 70 | **100%** |
+| total | 116 | 116 | 100% |
 
 ## Data model (12/12)
 
@@ -161,9 +161,16 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
-| SysTest unit testing | core | ✅ | ✅ | ✅ | L2-coc-extension, L2-event-handler-basic, L2-systest-authoring-basic +2 |
+| SysTest unit testing | core | ✅ | ✅ | ✅ | L2-coc-extension, L2-event-handler-basic, L2-systest-attributes-isolation +4 |
 | Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +62 |
 | TDD loop (red-first SysTest authoring) | core | ✅ | ✅ | ✅ | L2-systest-authoring-basic |
+
+## Testing (2/2)
+
+| Leaf | Tier | K | E | T | Evidence / gap |
+| --- | --- | :-: | :-: | :-: | --- |
+| SysTest attributes: filtering, isolation, dependencies | core | ✅ | ✅ | ✅ | L2-systest-attributes-isolation |
+| Test data through ATL | total | ✅ | ✅ | ✅ | L3-test-data-atl |
 
 ## Closure queue (uncovered, by frequency weight)
 

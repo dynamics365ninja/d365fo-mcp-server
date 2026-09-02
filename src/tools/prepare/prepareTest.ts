@@ -13,6 +13,7 @@
  * It deliberately states the RED-first order. A test written after the code, that
  * passes on its first run, has proven nothing about the assertion inside it.
  */
+import { ATL_PACKAGES, ATL_ROOT_MODULES } from '../../knowledge/atlNodes.generated.js';
 import { z } from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -157,22 +158,51 @@ function existingTests(context: XppServerContext, className: string): string[] {
   }
 }
 
-/** Does the model that will hold the test reference TestEssentials? */
-function testEssentialsReferenced(modelName: string | undefined): boolean | null {
+/**
+ * Package references declared in a model's descriptor, or null when the
+ * descriptor cannot be read at all.
+ *
+ * Null and empty are different answers and the caller must keep them apart: an
+ * unreadable descriptor is "unknown", not "references nothing", and reporting
+ * the second for the first sends the caller to add a reference that is there.
+ */
+function referencedPackages(modelName: string | undefined): Set<string> | null {
   if (!modelName) return null;
   try {
     const packages = getConfigManager().getPackagePath();
     if (!packages) return null;
     const descriptorDir = path.join(packages, modelName, 'Descriptor');
     if (!fs.existsSync(descriptorDir)) return null;
+    const found = new Set<string>();
     for (const file of fs.readdirSync(descriptorDir).filter(f => f.endsWith('.xml'))) {
       const xml = fs.readFileSync(path.join(descriptorDir, file), 'utf8');
-      if (/<d2p1:string>TestEssentials<\/d2p1:string>/i.test(xml)) return true;
+      for (const m of xml.matchAll(/<d2p1:string>([^<]+)<\/d2p1:string>/gi)) found.add(m[1]);
     }
-    return false;
+    return found;
   } catch {
     return null;
   }
+}
+
+/** Does the model that will hold the test reference TestEssentials? */
+function testEssentialsReferenced(modelName: string | undefined): boolean | null {
+  const refs = referencedPackages(modelName);
+  if (!refs) return null;
+  return [...refs].some(r => r.toLowerCase() === 'testessentials');
+}
+
+/**
+ * Which ATL packages the model is missing, or null when the descriptor is
+ * unreadable. ATL is the platform's own "arrange", and the failure mode it
+ * produces without a reference is the confusing one: `AtlDataRootNode` resolves
+ * because AtlFoundation is often already there, and `data.invent()` does not,
+ * because every module accessor lives on an extension class in another package.
+ */
+function missingAtlPackages(modelName: string | undefined): string[] | null {
+  const refs = referencedPackages(modelName);
+  if (!refs) return null;
+  const have = new Set([...refs].map(r => r.toLowerCase()));
+  return ATL_PACKAGES.filter(pkgName => !have.has(pkgName.toLowerCase()));
 }
 
 export async function prepareTestTool(request: unknown, context: XppServerContext): Promise<unknown> {
@@ -223,6 +253,7 @@ export async function prepareTestTool(request: unknown, context: XppServerContex
   const tests = existingTests(context, target);
   const model = modelName ?? getConfigManager().getModelName() ?? undefined;
   const hasTestEssentials = testEssentialsReferenced(model);
+  const atlMissing = missingAtlPackages(model);
 
   const token = createProvenanceToken({
     goal: goal ?? `unit tests for ${target}`,
@@ -334,6 +365,25 @@ export async function prepareTestTool(request: unknown, context: XppServerContex
       'Add the reference to the model descriptor BEFORE the first build if you plan to use them.');
   } else if (hasTestEssentials === true) {
     lines.push(`✅ Model \`${model}\` references TestEssentials — the filtering attributes are available.`);
+  }
+
+  // ATL is reported whether or not it is present, because its absence is invisible
+  // until the build: the ROOT class resolves and the module accessor does not.
+  if (atlMissing !== null && atlMissing.length > 0) {
+    // Name what each missing package COSTS. "ATL is incomplete" reads as blocking
+    // when the packages that carry invent/sales/cust are usually already there,
+    // and the ones missing carry two modules nobody asked for.
+    const cost = atlMissing.map(pkgName => {
+      const mods = ATL_ROOT_MODULES.filter(m => m.package === pkgName).map(m => m.accessor);
+      return `\`${pkgName}\`${mods.length > 0 ? ` (${mods.map(m => `data.${m}()`).join(', ')})` : ''}`;
+    }).join(', ');
+    lines.push(`ℹ️ ATL: \`${model}\` is missing ${cost}. Every module accessor lives on an extension class in ` +
+      'its own package, so a missing one fails on the ACCESSOR while `AtlDataRootNode::construct()` still ' +
+      'compiles — the confusing half. Add the package to the descriptor if you need those modules; ' +
+      '`generate_object(pattern="systest", arrange="atl")` works today for every module the model already has.');
+  } else if (atlMissing !== null) {
+    lines.push(`✅ Model \`${model}\` references every ATL package — ` +
+      '`generate_object(pattern="systest", arrange="atl")` will compile.');
   }
   lines.push('');
 

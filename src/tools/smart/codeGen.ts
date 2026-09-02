@@ -3,6 +3,7 @@
  * Generate X++ code templates for common patterns
  */
 
+import { atlNodesForTable, atlArrangeLine } from '../../knowledge/atlNodes.generated.js';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { readMethodCall } from '../../utils/methodBodyHint.js';
@@ -58,6 +59,14 @@ const CodeGenArgsSchema = z.object({
       'One [SysTestMethod] per entry, each failing until its assertion is written. ' +
       'Read them from get_object_info(objectType="class", options:{members:"names"}).'
     ),
+  /**
+   * Extra CLASS-level attributes for a systest, written as they appear in source
+   * (`SysTestGranularity(SysTestGranularity::Unit)`, `SysTestCheckInTest`).
+   * Placement is measured, not chosen — see applySysTestAttributes.
+   */
+  attributes: z.array(z.string()).optional(),
+  /** Where a systest's fixtures come from: a raw buffer (default) or ATL. */
+  arrange: z.enum(['buffer', 'atl']).optional(),
   testTargetType: z.enum(['class', 'table', 'coc', 'event-handler', 'service', 'report-dp']).optional()
     .describe(
       'For the systest pattern: what `name` denotes, which decides the SHAPE of the test. ' +
@@ -533,6 +542,81 @@ final class ${className}
  *  - rollback is the framework default, so there is no attribute to add and no
  *    cleanup to write.
  */
+/**
+ * Merges caller-supplied attributes into the generated class attribute block.
+ *
+ * Placement is not a style choice and it is not guessed. A census of the 488
+ * shipped test classes that mention SysTest (2026-09-02) puts SysTestTarget
+ * (15/15), SysTestGranularity (135/136), SysTestCaseConfigurationKeyConstraint
+ * (75/75), SysTestCaseUseSingleInstance (28/28) and SysTestCaseDataDependency
+ * (7/7) on the CLASS, and SysTestMethod (331/331) plus SysTestCheckInTest
+ * (1,616/1,621) on the METHOD. So `attributes` lands on the class, except
+ * SysTestCheckInTest, which is routed to the methods where it belongs.
+ *
+ * The multi-attribute form is the stacked block shipped code uses — one per line
+ * inside ONE pair of brackets, comma separated. Separate bracket pairs stacked on
+ * a member are a compile error (validator ATTR003), so this never emits them.
+ */
+export function applySysTestAttributes(code: string, attributes: readonly string[]): string {
+  const wanted = attributes.map(a => a.trim()).filter(Boolean);
+  if (wanted.length === 0) return code;
+
+  // SysTestCheckInTest marks which TESTS run at check-in, so it goes on the
+  // methods. Everything else configures the class.
+  const isCheckIn = (a: string) => /^SysTestCheckInTest(Attribute)?$/i.test(a);
+  const classAttrs = wanted.filter(a => !isCheckIn(a));
+  const methodAttrs = wanted.filter(isCheckIn);
+
+  let out = code;
+  if (classAttrs.length > 0) {
+    out = out.replace(/^\[(SysTestTarget\([^\n]*?\))\]$/m, (_m, target: string) =>
+      `[\n${[target, ...classAttrs].join(',\n')}\n]`);
+  }
+  if (methodAttrs.length > 0) {
+    // `[SysTestMethod]` on its own line becomes `[SysTestMethod, SysTestCheckInTest]`.
+    out = out.replace(/^(\s*)\[SysTestMethod\]$/gm, (_m, indent: string) =>
+      `${indent}[${['SysTestMethod', ...methodAttrs].join(', ')}]`);
+  }
+  return out;
+}
+
+/**
+ * Rewrites the generated Arrange sections to build fixtures through ATL.
+ *
+ * ATL is the platform's own answer to "arrange", and the part nobody can guess is
+ * the tree: `AtlDataRootNode` declares ONE accessor of its own and every module
+ * arrives on an extension class in another package, which is why a model without
+ * the reference fails on `data.invent()` rather than on the class. The node index
+ * is generated from the AOT (scripts/oracles/atlNodes.ts), so the emitted line is
+ * read, never composed.
+ */
+export function applyAtlArrange(code: string, targetTable: string | undefined): string {
+  const candidates = targetTable ? atlNodesForTable(targetTable) : [];
+  const line = candidates.length > 0
+    ? `        ${targetTable} atlRecord = ${atlArrangeLine(candidates[0])};`
+    : '';
+  const alternatives = candidates.slice(1, 3)
+    .map(n => `        //   ${atlArrangeLine(n)}`).join('\n');
+
+  const block = [
+    '        // ATL fixture. A validation test does NOT need one — table rules run on an',
+    '        // unsaved buffer — so delete this when the buffer below is enough.',
+    '        AtlDataRootNode data = AtlDataRootNode::construct();',
+    line,
+    alternatives ? '        // Other nodes produce the same buffer and are NOT interchangeable:' : '',
+    alternatives,
+    !targetTable || candidates.length > 0 ? '' :
+      `        // ATL ships no node for ${targetTable}: build the buffer directly with initValue().`,
+  ].filter(Boolean).join('\n');
+
+  // INSERT after the Arrange comment rather than replacing it. Each template's
+  // marker carries the reason that section exists ("an unsaved buffer is enough",
+  // "the BASE class"), and replacing the line deleted all of it. The first draft
+  // matched `// Arrange$` — anchored at the end — so it replaced nothing at all,
+  // which is how the loss was caught before it shipped.
+  return code.replace(/^([ \t]*\/\/ Arrange\b.*)$/gm, (_m, marker: string) => `${marker}\n${block}`);
+}
+
 function sysTestTemplate(targetClass: string, methods: string[]): string {
   const testFor = (method: string): string => {
     // (class targets — the table shape is sysTestTableTemplate below)
@@ -2877,6 +2961,15 @@ export async function codeGenTool(request: CallToolRequest) {
         : kind === 'report-dp'
           ? sysTestReportDpTemplate(targetClass, contractClass, accessor, tmpBuffer, methods)
           : sysTestTemplate(targetClass, methods);
+      // Attributes and the ATL arrange are post-processing on purpose: they apply
+      // identically to all six shapes, and threading two more parameters through
+      // six template signatures would put the placement rule in six places.
+      code = applySysTestAttributes(code, args.attributes ?? []);
+      if (args.arrange === 'atl') {
+        // Only a table-shaped target has a buffer ATL could produce; for the rest
+        // the root construct is still the right opening line.
+        code = applyAtlArrange(code, kind === 'table' || kind === 'event-handler' ? targetClass : undefined);
+      }
       displayName = testClassName;
       // Per-kind headline. The kinds differ in WHAT they observe, and saying it
       // wrong is expensive: a CoC test that names the wrapper class tests the

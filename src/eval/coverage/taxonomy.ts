@@ -733,6 +733,20 @@ export const TAXONOMY: CoverageLeaf[] = [
     note: 'The half of a report that is NOT layout: a field arrives on the temp table, or a parameter is needed. Both are now writable through d365fo_file(operation="report-design") — metadata-only and additive-only, because a malformed RDL fails in the SSRS renderer where no build can see it. The case exercises the grounded path end to end and its golden was captured from a clean xppc build. What it does NOT prove is that the design USES either one; placing them is Report Designer work.',
   },
   {
+    id: 'systest-attributes', label: 'SysTest attributes: filtering, isolation, dependencies',
+    domain: 'Testing', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['class'], knowledgeIds: ['systest-attributes'],
+    caseIds: ['L2-systest-attributes-isolation'],
+    note: 'Written from a USE census, not from the class inventory: of the 488 shipped test classes that mention SysTest (2026-09-02), ten attributes appear and most of the documented catalogue appears in none — SysTestCategory, SysTestRow, SysTestFixture, SysTestKey, SysTestPriority and SysTestOwner have zero shipped occurrences. Placement is measured too (SysTestGranularity 135/136 on the class, SysTestCheckInTest 1,616/1,621 on the method) and the scaffold applies it. The case is a RUNTIME one and its oracle was proven to discriminate: the same two methods run with TestTransactionMode::None fail on the empty-table assertion, and that document is committed beside the green one. What it does NOT cover is the attributes nobody ships — they compile, they simply have no precedent.',
+  },
+  {
+    id: 'test-data-atl', label: 'Test data through ATL',
+    domain: 'Testing', source: 'topic', tier: 'total', weight: 3,
+    aotTypes: ['class'], knowledgeIds: ['test-data-atl'],
+    caseIds: ['L3-test-data-atl'],
+    note: 'The ATL tree is generated from the AOT (scripts/oracles/atlNodes.ts → src/knowledge/atlNodes.generated.ts): 1,105 data classes, 38 root modules across 4 packages, 351 record-producing nodes. Two facts the generator itself had to be corrected on: `default()` usually takes DEFAULTED parameters, so an empty-parens regex silently dropped the biggest nodes; and 107 nodes hand back an AtlEntity WRAPPER whose .record() is the buffer. Proven live 2026-09-02 — a customer and an item both resolved against real data under SysTestConsole.exe. What it does NOT cover is custom tables: ATL knows what Microsoft shipped nodes for, and prepare(test) says which packages are missing rather than guessing.',
+  },
+  {
     id: 'report-dp-testing', label: 'Testing a report data provider (red-first)',
     domain: 'Reporting', source: 'topic', tier: 'core', weight: 4,
     aotTypes: ['report', 'class'], knowledgeIds: ['unit-testing', 'ssrs-reports'],

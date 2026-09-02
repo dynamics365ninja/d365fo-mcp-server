@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoIsolationTest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[
+SysTestTarget(tableStr(ConDemoNoteHeader), UtilElementType::Table),
+SysTestGranularity(SysTestGranularity::Unit)
+]
+class ConDemoIsolationTest extends SysTestCase
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>noteCount</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Rows currently in the fixture table.
+    /// </summary>
+    private int noteCount()
+    {
+        ConDemoNoteHeader note;
+
+        select count(RecId) from note;
+        return note.RecId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>testWritesIntoAnEmptyTableA</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Writes a row after asserting the table is empty. Two of these prove the
+    /// framework rolled the other one back: neither can see the other's row.
+    /// </summary>
+    [SysTestMethod, SysTestCheckInTest]
+    public void testWritesIntoAnEmptyTableA()
+    {
+        ConDemoNoteHeader note;
+
+        this.assertEquals(0, this.noteCount(), 'the table must be empty at the start of every test');
+
+        note.clear();
+        note.NoteId  = 'ISOA';
+        note.Subject = 'isolation probe A';
+        note.insert();
+
+        this.assertEquals(1, this.noteCount(), 'the row this test wrote must be visible to it');
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>testWritesIntoAnEmptyTableB</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Writes a row after asserting the table is empty. Two of these prove the
+    /// framework rolled the other one back: neither can see the other's row.
+    /// </summary>
+    [SysTestMethod, SysTestCheckInTest]
+    public void testWritesIntoAnEmptyTableB()
+    {
+        ConDemoNoteHeader note;
+
+        this.assertEquals(0, this.noteCount(), 'the table must be empty at the start of every test');
+
+        note.clear();
+        note.NoteId  = 'ISOB';
+        note.Subject = 'isolation probe B';
+        note.insert();
+
+        this.assertEquals(1, this.noteCount(), 'the row this test wrote must be visible to it');
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

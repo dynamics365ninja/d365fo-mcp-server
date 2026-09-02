@@ -1316,6 +1316,140 @@ while select crosscompany : companies
 
   // ── Unit Testing ─────────────────────────────────────────────────────────
   {
+    id: 'systest-attributes',
+    title: 'SysTest attributes: filtering, isolation and dependencies',
+    keywords: ['systest attribute', 'systestcheckintest', 'systestgranularity', 'systesttransaction',
+      'test isolation', 'rollback', 'systestcasedatadependency', 'configuration key', 'test filter',
+      'systestcaseusesingleinstance', 'automatic number sequences', 'systestcategory', 'systestrow'],
+    summary:
+      'Attributes decide whether a test RUNS, what it may touch, and whether its writes survive. '
+      + 'The set is large but the used set is small: a census of the 488 shipped test classes that '
+      + 'mention SysTest (2026-09-02) found ten attributes in real use and most of the documented '
+      + 'catalogue in none at all.',
+    rules: [
+      'Write the SHORT name. Every attribute class is named ...Attribute, and X++ lets you drop the '
+        + 'suffix — shipped code overwhelmingly does: SysTestCheckInTest 1,621 uses vs '
+        + 'SysTestCheckInTestAttribute 2; SysTestMethod 331 vs SysTestMethodAttribute 8. Both compile. '
+        + 'The name is also case-insensitive, and shipped code proves it by accident: SysTestCheckInTest, '
+        + 'SysTestCheckinTest and SysTestCheckIntest all appear and all build',
+      'What shipped tests ACTUALLY carry, by use (census of 488 classes): [SysTestCheckInTest] 1,875 '
+        + 'across ~300 classes — the check-in filter, and by far the most common; [SysTestMethod] 339; '
+        + '[SysTestGranularity(SysTestGranularity::Unit)] 165 across 144 classes — nearly every class has '
+        + 'one; [SysTestCaseConfigurationKeyConstraint(<key>)] 75; [SysTestCaseUseSingleInstance] 28; '
+        + '[SysTestCaseAutomaticNumberSequences] 22; [SysTestTarget] 18; [SysTestCaseDataDependency] 7; '
+        + '[SysTestTransaction] 3; [SysTestSecurity] 1',
+      'Placement is not free choice, and the census settles it. CLASS level: SysTestTarget (15 of 15), SysTestGranularity (135 of 136), SysTestCaseConfigurationKeyConstraint (75 of 75), SysTestCaseUseSingleInstance (28 of 28), SysTestCaseAutomaticNumberSequences (21 of 22), SysTestCaseDataDependency (7 of 7). METHOD level: SysTestMethod (331 of 331) and SysTestCheckInTest (1,616 of 1,621 — it marks which TESTS run at check-in, so it belongs beside SysTestMethod). The class block is written STACKED across lines, one attribute per line inside a single pair of brackets separated by commas — that is the shipped shape, and stacking SEPARATE bracket pairs on a method is a compile error (validator ATTR003)',
+      'Attributes the catalogue lists and shipped tests do NOT use: SysTestCategory, SysTestRow '
+        + '(data-driven), SysTestFixture, SysTestKey, SysTestInactiveTest, SysTestPriority, SysTestOwner, '
+        + 'SysTestAreaPath, SysTestCaseDemoDataDependency, SysTestCaseCompanyData, '
+        + 'SysTestCaseCountryRegionDependency, SysTestCaseNumSeqModuleDependency / '
+        + 'SysTestCaseNumSeqTypeDependency, SysTestCaseDependsOnReport / SysTestCaseDependsOnBatch — zero '
+        + 'occurrences each. The classes exist and compile; there is simply no shipped precedent, so treat '
+        + 'them as a last resort rather than the idiom',
+      'Constructor arguments, read from the classes: SysTestGranularity(SysTestGranularity _type) with '
+        + 'Unit | Component | Integration | BusinessCycle; '
+        + 'SysTestCaseConfigurationKeyConstraint(ConfigurationKeyName _requiredConfigurationKey); '
+        + 'SysTestCaseUseSingleInstance(boolean _useSingleInstance = true); '
+        + 'SysTestCaseAutomaticNumberSequences(boolean _useRuntimeDetectionAndAutomaticSetup = true, '
+        + 'boolean _verboseNumberSequenceCreation = false); '
+        + 'SysTestCaseDataDependency(SelectableDataArea _dataArea = defaultDataArea); '
+        + 'SysTestTransaction(TestTransactionMode _mode, boolean _testCaseDataLeakDetection = false). '
+        + 'SysTestCheckInTest takes NO arguments — it extends SysTestFilterAttribute and has no members',
+      'Isolation: TestTransactionMode is None | AutoRollback | LegacyRollback | '
+        + 'LegacyRollbackWithUpdateTracking. AutoRollback is the one to reach for — the test writes, the '
+        + 'framework rolls back, and the next test sees a clean database. TestTransactionMode::None means '
+        + 'your writes SURVIVE the run, so a test that uses it and does not clean up poisons every test '
+        + 'after it',
+      'Do NOT use SysTestSuiteCompanyIsolateClass or SysTestSuiteCompanyIsolateMethod. Both are marked '
+        + '[SysObsolete] in the shipped class — "This suite type is obsolete. Please use SysTestSuite '
+        + 'directly" (dated 2014). Company isolation belongs in the test, via changecompany or a data '
+        + 'dependency, not in a suite type',
+      'A test class needs no attribute at all to run: [SysTestMethod] on the methods and extends '
+        + 'SysTestCase is the whole minimum. Every attribute above narrows or configures, so add one '
+        + 'because a specific thing is true — a configuration key gates the code, a number sequence is '
+        + 'needed — and not as ceremony',
+    ],
+    examples: [
+      {
+        label: 'The shape shipped tests actually use',
+        code: `[
+SysTestTarget(classStr(PriceDisc), UtilElementType::Class),
+SysTestGranularity(SysTestGranularity::Unit),
+SysTestCheckInTest
+]
+class ConPriceDiscTest extends SysTestCase
+{
+    [SysTestMethod, SysTestCheckInTest]
+    public void testDiscountIsCappedAtTheAgreementLimit()
+    {
+        // arrange / act / assert
+    }
+}`,
+      },
+      {
+        label: 'When the code under test is gated by a configuration key',
+        code: `[SysTestCaseConfigurationKeyConstraint(configurationKeyStr(LogisticsBasic))]
+class ConShipmentRuleTest extends SysTestCase
+{
+}`,
+      },
+    ],
+    related: ['unit-testing', 'test-data-atl'],
+  },
+  {
+    id: 'test-data-atl',
+    title: 'Test data with ATL (Acceptance Test Library)',
+    keywords: ['atl', 'acceptance test library', 'test data', 'arrange', 'atldatarootnode',
+      'atlentity', 'atlcreator', 'atlspecification', 'test fixture', 'demo data'],
+    summary:
+      'ATL is the platform answer to "arrange": rather than hand-building a customer, an item and an '
+      + 'order with raw buffers, a test asks a tree of data nodes for one. Read from the AOT on a VM '
+      + '(2026-09-02): 1,105 ATL data classes, 38 root modules across 4 packages, 351 nodes that hand '
+      + 'back a record. 185 of the 784 shipped test classes use it.',
+    rules: [
+      'The entry point is always AtlDataRootNode::construct(), and that is the ONLY static on it. '
+        + 'The class declares exactly one accessor of its own — system(). Every module you would '
+        + 'actually reach for (invent, sales, cust, vend, prod, whs, products, purch, ledger, proj, …) '
+        + 'arrives on an EXTENSION class in another package. That is why a missing package reference '
+        + 'fails on data.invent() and not on AtlDataRootNode: the class resolves and the method does not',
+      'The model must reference the ATL packages before any of this compiles: ATLApplicationSuite '
+        + '(34 of the 38 modules), AtlPersonnel (hcm), AtlCostAccounting (costAccounting), AtlFoundation '
+        + '(the base). Add them to the Descriptor, not to the code',
+      'A node hands back an AtlEntity WRAPPER, not a buffer — 107 of the nodes do. The wrapper carries '
+        + 'the fluent setters (setCustomerAccount, setDeliveryModeId, …) and .record() is what turns it '
+        + 'into the table buffer. So the arrange line is '
+        + 'CustTable customer = data.cust().customers().default().record(); — dropping .record() is a '
+        + 'type error, and it is the first mistake everyone makes',
+      'default() and createDefault() are NOT the same call. default() hands back the demo-data record '
+        + 'and reuses it; createDefault() makes a new one. Master data mostly offers the first, '
+        + 'transactions the second — AtlDataSalesOrders has no default() at all, only createDefault() '
+        + 'and create(CustAccount). Asking for a "default sales order" and getting an existing one is '
+        + 'not something ATL offers',
+      'Several nodes can produce the same buffer and they are not interchangeable: SalesTable comes from '
+        + 'both sales().salesOrders() and sales().returnOrders(). Pick by the business meaning, not by '
+        + 'the type',
+      'ATL is arrange, not assert. The assertion side is ordinary SysTestCase asserts; '
+        + 'AtlSpecifications (75 uses) and AtlInfologValidator (72) are the two helpers shipped tests '
+        + 'reach for when the assertion is about a specification or an expected infolog',
+      'ATL does not cover custom tables. It knows the tables Microsoft shipped nodes for; for a table '
+        + 'in your own model the arrange is an ordinary buffer with initValue(), and that is not a '
+        + 'second-class answer — it is the only one',
+    ],
+    examples: [
+      {
+        label: 'The arrange block',
+        code: `AtlDataRootNode data = AtlDataRootNode::construct();
+CustTable         customer = data.cust().customers().default().record();
+InventTable       item     = data.invent().items().default();
+
+// The wrapper is where the fluent setters live, so keep it when you need one:
+AtlEntityCustomer entity   = data.cust().customers().createDefault();
+entity.setDeliveryModeId('Air');`,
+      },
+    ],
+    related: ['unit-testing', 'systest-attributes'],
+  },
+  {
     id: 'unit-testing',
     title: 'X++ Unit Testing (SysTestCase / SysTestSuite)',
     keywords: ['unit test', 'systestcase', 'systestsuite', 'systest', 'test', 'assert', 'testmethod',

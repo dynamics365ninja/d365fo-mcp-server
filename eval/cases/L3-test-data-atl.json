@@ -1,0 +1,22 @@
+{
+  "id": "L3-test-data-atl",
+  "title": "Arrange test data through ATL instead of by hand",
+  "tier": 3,
+  "instruction": "In the sandbox model, write a SysTest class whose fixtures come from ATL, the platform's own Acceptance Test Library, rather than from hand-built buffers. (1) Ask prepare(mode=\"test\", objectName=\"ConDemoNoteHeader\") first — it reports which ATL packages the model references and names what each missing one would cost, because the failure mode is the confusing one: AtlDataRootNode::construct() compiles while data.invent() does not, since every module accessor lives on an extension class in its own package. (2) Scaffold with generate_object(mode=\"pattern\", pattern=\"systest\", testTargetType=\"table\", arrange=\"atl\"). (3) Write two tests: one takes a customer through data.cust().customers().default().record() and asserts it has an AccountNum, one takes an item through data.invent().items().default() and asserts it has an ItemId. The .record() is the part everyone forgets — 107 of the ATL nodes hand back an AtlEntity WRAPPER, not a buffer, and the wrapper is where the fluent setters live. Note the asymmetry: the customer node needs .record() and the item node does not, because that one already returns a table. (4) Do not use ATL for ConDemoNoteHeader itself — ATL knows the tables Microsoft shipped nodes for, and a table in your own model is arranged with an ordinary buffer and initValue(). (5) Build and run it with run_systest_class; both methods must pass.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L3-test-data-atl/",
+  "systest": "eval/systests/L3-test-data-atl.xml",
+  "ignore": [
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "systest",
+    "atl",
+    "test-data",
+    "arrange",
+    "runtime"
+  ],
+  "split": "holdout"
+}
