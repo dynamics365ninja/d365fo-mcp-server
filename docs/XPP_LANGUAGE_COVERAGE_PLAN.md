@@ -11,6 +11,41 @@ Do not keep an executed plan.
 
 ---
 
+## 0a. Execution log (this plan is being worked, not just written)
+
+| Phase | State | Commit |
+|---|---|---|
+| H0 infra & truth | **shipped** | `045f1fa` |
+| H1a discoverability + G-25 | **shipped** | `f805775` |
+| H1b target kinds + red-phase signal | **shipped** | `168cb9c` |
+| H1c ATTR003 + the language fact behind it | in progress | — |
+| H1 remainder (G-06, G-13, cases) | not started | — |
+| H2-H6 | not started | — |
+
+**What execution has already corrected in this plan** — recorded here because a plan
+that quietly absorbs its own errors teaches nothing:
+
+1. **`XDSServiceBase` does not exist** (H0). §3.L named it; the real class is
+   `SysSecXDSServices`. A name written from memory, caught by the members oracle
+   before it reached a knowledge entry.
+2. **`FormRun` is an AOT class, not kernel** (H0) — 209 methods, readable with
+   `oracle:members`. But `executeQuery` is not on it, because `FormDataSource` IS
+   kernel, so G-14 is two jobs with two oracles and the plan drew the line in the
+   wrong place.
+3. **The sweep already covers the test and ATL packages** (H0). §7.3 claimed it did
+   not; `walkAot` filters by AOT type, never by package. Measured baseline: 4,319
+   files, zero error-severity findings.
+4. **`testTargetType` was invisible** (H1b). It shipped in 1.16.0 as the selector for
+   the table shape and was missing from the `pattern` mode's op-spec `optional`
+   list — and since these parameters are deliberately off the wire schema, the
+   op-spec is the only place they are documented.
+5. **`expectRed` could not ship as designed** (H1b). §5.4 proposed it as an
+   op-spec-level parameter at "zero schema bytes", but `run_systest_class` has no
+   `params` wrapper, so a strict MCP client would drop it — an instruction the
+   caller cannot follow. The runner derives the signal instead, from the session
+   ledger and the scaffold's own failure text.
+6. **A new validator rule the gap list did not contain** (H1c): ATTR003. See §7.3.
+
 ## 0. TL;DR
 
 v3 closed the artifact taxonomy at 100 % (109/109 leaves, 120 cases, 0 pending). That number is honest at
@@ -673,9 +708,32 @@ what the model already knows is deleted in review. G-09 is repo-only and comes w
 
 ### 7.3 Validator additions and the bar
 
-Candidates: RPT003 (§6.1), RPT103 (§6.2), TST001–003 (§5.7). Nothing else — every other language gap is
-either knowledge or already diagnosed exactly by the compiler (the DECL001/CONV001 reasoning). The bar
-is unchanged: `npm run oracle:sweep` over the full install with **zero error-severity findings**.
+Candidates: RPT003 (§6.1), RPT103 (§6.2), TST001–003 (§5.7), and **ATTR003, which shipped in H1c and was
+not on the list**. The bar is unchanged: `npm run oracle:sweep` over the full install with **zero
+error-severity findings**.
+
+**ATTR003 — two attributes stacked on a METHOD.** Found while probing whether the new scaffolds compile,
+and worth recording as a method as much as a rule. The first probe failed as expected but with
+`Invalid token '['`, a PARSE error that names a token rather than an attribute — so it was equally
+consistent with "stacking is illegal" and with "the TestEssentials claim is untrue", and proved neither.
+Three follow-ups settled it:
+
+- a census found **2,163 shipped AxClass files stack attributes**, so "stacking is illegal" could not be
+  the whole story;
+- a matrix probe (`coverage-v4c.ts`) showed both the short and the `…Attribute`-suffixed spellings compile
+  ALONE and fail identically when stacked, ruling out name resolution;
+- a second census, restricted to `<Method><Source>` blocks, found **0 of 760,583 shipped methods** stacking
+  them.
+
+So: legal above a class declaration, a parse error above a method. It earns a rule on the exact criterion
+that rejected DECL001 and CONV001 — there the compiler's message was *"A local variable named 'i' cannot
+be declared in this scope"*, precise and local; here it is a column number and a dead file. And the shape
+is invited by our own knowledge base, which lists `[SysTestMethod]`, `[SysTestCategory]` and
+`[SysTestPriority]` one under another. Both entries now say it is a menu, not a stack.
+
+The same run also **confirmed a claim rather than correcting one**: `[SysTestCategory]` alone, without a
+TestEssentials reference, fails with `Class 'SysTestCategory' was not found. Are you missing a module
+reference?` The scaffold's warning and the `unit-testing` entry were right.
 
 **Correction, measured in H0.** An earlier draft of this section claimed the sweep's type list had to
 grow before TST001–003 could ship, "because the test and ATL packages have never been scanned". That was

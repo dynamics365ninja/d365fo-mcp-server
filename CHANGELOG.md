@@ -28,7 +28,99 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
-_Nothing released yet._
+### Added
+- **The red-first loop, made findable.** It was complete and unused: across 1,603
+  real MCP calls in 47 sessions, `prepare(mode="test")` was called 0 times and
+  `run_systest_class` 0 times, while `prepare(mode="change")` ran 54 and
+  `d365fo_file(modify)` 195 — and roughly thirty-five of about fifty genuine
+  knowledge questions were the table `validateWrite` Chain of Command contract,
+  the exact rule the loop was built to test. A feature nobody finds is
+  indistinguishable from one that does not exist.
+
+  `prepare(mode="change")` now carries a `### Test first?` section and a write
+  that lands X++ on an untested object gets one `> **Untested.**` line. Both cost
+  zero ListTools bytes — they are response text, not schema.
+
+  The trigger is BEHAVIOUR, never structure. A testable object family is
+  necessary and not sufficient: the deciding signal is the operation, so
+  `add-method` and `replace-code` fire and `add-field` on the same table
+  extension does not. Adding a field is metadata, its oracle is the golden diff,
+  and a SysTest asserting it would only check that the compiler did its job.
+
+- **Three more SysTest shapes** (`testTargetType`: `coc`, `event-handler`,
+  `service`, beside `class` and `table`), because they observe the behaviour in
+  three different places and the wrong one produces a test that compiles, runs,
+  passes and proves nothing:
+  - `coc` exercises the BASE class and never names the wrapper — Chain of Command
+    is transparent at the call site, so a test that references the `_Extension`
+    class passes with `next` never reached. Two inputs, because a wrapper that
+    ignores `next` and returns a constant passes a single assertion.
+  - `event-handler` performs the write and reads back what the handler changed; a
+    handler fires out of band and cannot return a value.
+  - `service` calls a SysOperation service directly with a hand-built contract —
+    no controller, no dialog, no batch queue.
+
+  All three are promoted from SysTests that actually EXECUTED on the VM
+  (2026-08-31, 2/2 each) and were then compiled by
+  `scripts/oracles/probes/coverage-v4.ts` — green without a TestEssentials
+  reference, which is what the scaffold's own warning promises.
+
+  `prepare(mode="test")` picks the shape and prints the call that selects it, so
+  the two halves of the loop cannot disagree. It reduces an extension name to its
+  base first, index-verified: the infix between base and `_Extension` is a
+  per-model convention, so stripping the suffix alone leaves a name that is not
+  an object.
+
+- **ATTR003 — two attributes stacked on a method.** X++ takes several attributes
+  on a method only inside one bracket, comma-separated. Two bracketed lines is a
+  parse error, and the compiler answers `Invalid token '['` with a column number
+  and abandons the whole file — it names a token, not a rule. That is the precise
+  opposite of the case that got DECL001 and CONV001 rejected, where the
+  compiler's own message was exact and local.
+
+  The exemption is the hard half and it was measured, not reasoned: a census
+  found 2,163 shipped AxClass files stacking attributes on a CLASS declaration
+  and **0 of 760,583 shipped methods** doing it. Our own knowledge base invites
+  the mistake by listing `[SysTestMethod]`, `[SysTestCategory]` and
+  `[SysTestPriority]` one under another; both entries now say it is a menu, not a
+  stack.
+
+- **The measurement harness the coverage work runs on is in the repo**, after two
+  rounds of losing it to a session scratchpad: `npm run oracle:terms` (1,165
+  language constructs matched against what the server teaches, checks, writes and
+  proves — no D365FO install needed), `npm run oracle:demand` (what callers
+  actually ask for, redacted to values the server itself defines because the logs
+  hold customer object names), `scripts/capture-golden.ts` (the eval step that had
+  no script, with four gates and tests), and `eval/api-members.snapshot.json` over
+  a committed list of the API surface.
+
+### Fixed
+- **`testTargetType` was invisible.** It shipped in 1.16.0 as the selector for the
+  table test shape and was absent from the `pattern` mode's op-spec `optional`
+  list — and since these parameters are deliberately kept off the wire schema, the
+  op-spec is the only place they are documented. The mirror image of the failure
+  this repo has twice paid for, where an error demanded a parameter the caller had
+  no way to send.
+- **`docs/ARCHITECTURE.md` claimed 40 validator rules** and listed their ids, for
+  months after the count was 50 — it had missed two entire coverage waves
+  (COC006, BP005, DOC001, OP001, SET001, RPT101/102, XML008-010). A stale roster
+  is worse than none: it is what a reader consults to decide whether a check
+  already exists, so the answer it gives sends them to write a duplicate.
+  `tests/tools/validatorRuleInventory.test.ts` now derives both sides.
+- **Seven coverage-taxonomy notes claimed a case did not exist** when it had been
+  captured on 2026-08-31, so `eval/COVERAGE.md` rendered a green row beside a
+  sentence saying the proof was missing. The existing gate only knew the word
+  "pending"; these said "No case yet", "no captured case yet", "is the one to
+  author". The gate now matches future-tense phrasings, and was verified against
+  the pre-fix taxonomy.
+- **Two testing topics that both explained SysTestCase** and disagreed about the
+  naming convention. The base is read one topic at a time, so a contradiction
+  between two of them is invisible to the reader. `unit-testing` is now
+  authoritative and absorbed the two facts only `testing` had — that
+  `[SysTestTarget]`'s second argument is the element TYPE, and the ATL entry
+  point; `testing` keeps the one question it uniquely owns, which kind of test to
+  write at all.
+
 
 ---
 

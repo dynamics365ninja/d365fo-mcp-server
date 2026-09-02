@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-09-02T05:13:52.574Z",
+  "capturedAt": "2026-09-02T05:47:27.030Z",
   "indexedAt": "2026-09-01T06:44:28.829Z",
   "ok": [
     "alerts-business-events|attribute|DataContract",
@@ -18,6 +18,8 @@
     "async-retryable-batch|extends|BatchRetryable",
     "async-retryable-batch|extends|SysOperationServiceBase",
     "async-retryable-batch|static-call|SysOperationExecutionMode::ScheduledBatch",
+    "attributes-authoring|attribute|DataMemberAttribute",
+    "attributes-authoring|attribute|ExportAttribute",
     "attributes-authoring|attribute|SysObsolete",
     "attributes-authoring|extends|SysAttribute",
     "bp-rules|attribute|SuppressBPWarning",
