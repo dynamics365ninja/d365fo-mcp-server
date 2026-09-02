@@ -1327,9 +1327,10 @@ while select crosscompany : companies
       'Setup/teardown: override setUp() and tearDown() — called before/after EACH test method',
       'Assertions (inherited from SysTestAssert): assertEquals, assertNotEqual, assertEquivalent, assertNotEquivalent, assertTrue, assertFalse, assertNull, assertNotNull, assertSame, assertNotSame, assertObjectEquals, assertRealEquals, assertUTCDateTimeEquals, fail',
       'Expected exceptions: this.parmExceptionExpected(true [, message [, messageIsRegEx]]) before the call that must throw — assertExpectedException does not exist. clearExceptionExpected() resets it',
-      'SysTestSuite groups SysTestCase classes; override createSuite() on the test case to pick a variant. The ones that exist: SysTestSuite, SysTestSuiteCompanyIsolateClass, SysTestSuiteCompanyIsolateMethod, SysTestSuiteCompIsolateClassWithTts, SysTestSuiteTTS, SysTestSuiteNoCleanup, SysTestSuiteActor, SysTestSuiteProvider',
+      'SysTestSuite groups SysTestCase classes; override createSuite() on the test case to pick a variant. The AOT carries SysTestSuite, SysTestSuiteCompanyIsolateClass, SysTestSuiteCompanyIsolateMethod, SysTestSuiteCompIsolateClassWithTts, SysTestSuiteTTS, SysTestSuiteNoCleanup, SysTestSuiteActor and SysTestSuiteProvider — but the two company-isolating ones are OBSOLETE. Compiler-verified: returning a SysTestSuiteCompanyIsolateClass builds with "\'SysTestSuiteCompanyIsolateClass\' is obsolete: \'This suite type is obsolete. Please use SysTestSuite directly\'". Return a plain SysTestSuite unless you have a reason not to; the per-test transaction rollback already isolates the data',
       'Filtering and selection attributes that exist: [SysTestMethod], [SysTestCheckInTest] / [SysTestNonCheckInTest], [SysTestInactiveTest], [SysTestTarget], [SysTestGranularity], [SysTestRow(...)] and [SysTestRowInactive(...)] for data-driven rows (10.0.25+), [SysTestCaseDataDependency], [SysTestCaseUseSingleInstance], [SysTestFeatureDependency], [SysTestFixture], [SysTestKey], [SysTestSecurity], [SysTestTransaction]. [SysTestCategory], [SysTestOwner], [SysTestPriority] and [SysTestAreaPath] live in TestEssentials, so the test model must reference it. There is NO SysTestCaseAutoRollback attribute — rollback is the framework default',
       'Those attributes go in ONE bracket when a method needs more than one — [SysTestMethod, SysTestCheckInTest] — because two bracketed LINES on a method is a parse error, not a resolution error: xppc answers "Invalid token \'[\'" and abandons the file. The list above is a menu, not a stack (validate_code catches it as ATTR003)',
+      '[SysTestPriority] takes an INT, not a string: [SysTestPriority(1)]. [SysTestPriority(\'1\')] is refused with "Cannot implicitly convert from type \'str\' to type \'int\'" — while [SysTestOwner] and [SysTestAreaPath] beside it do take strings, so the bracket looks uniform and is not',
       'Transaction rollback: all DML in a test is rolled back after each test — no cleanup needed for DB state',
       'For methods that call ttsbegin internally: wrap test in try/catch and expect a clean state',
       'Mock dependencies: use delegation pattern or extract interfaces — X++ has no built-in mocking framework',
@@ -4769,6 +4770,103 @@ int first   = conPeek(c, 1);`,
     ],
     related: ['intrinsic-functions', 'xpp-data-types', 'enum-conversions', 'datetime-timezones', 'xpp-collections'],
   },
+  // ── xRecord buffer API ──────────────────────────────────────────────────
+  {
+    id: 'xrecord-buffer-api',
+    title: 'The table buffer itself — xRecord/Common members every table inherits',
+    keywords: [
+      'xrecord', 'common', 'buffer', 'orig', 'recversion', 'data', 'buf2buf', 'settmp', 'settmpdata',
+      'setconnection', 'wascached', 'isfielddataretrieved', 'fieldstate', 'selectforupdate', 'reread',
+      'renameprimarykey', 'checkrecord', 'dynamic field', 'pre-image', 'temp table', 'tempdb',
+    ],
+    summary:
+      'Every table variable is an xRecord, and the members it inherits are kernel — no AOT metadata, so ' +
+      'get_object_info and the symbol index answer "not found" for all of them. That silence is why they ' +
+      'get guessed, and several have a shape nobody guesses right. Compiler-verified on this platform.',
+    rules: [
+      'orig() returns a BUFFER OF THE SAME TABLE — the pre-image, already in memory from when the row was ' +
+      'fetched. Read old values from it (this.orig().MyField); never re-select by RecId, which costs a round ' +
+      'trip per write and returns the CURRENT stored state, not what this buffer was fetched with. ' +
+      'this.orig().RecId == 0 is the "new record" test',
+      'data() ALSO returns a buffer, not a container. The idiom is copy = buf.data() or copy.data(buf.data()); ' +
+      'the container belief is common and does not compile ("Cannot implicitly convert from type ' +
+      '\'MyTable\' to type \'container\'"). There is NO setData() on a table',
+      'buf2Buf(from, to) is a GLOBAL function, not a member — it copies the fields the two buffers share and ' +
+      'deliberately skips the system fields, which is what makes it the right tool for a copy-record action',
+      'merge(other) folds another buffer of the same table into this one',
+      'RecVersion is a FIELD, not a method: int64 v = buf.RecVersion. It is what optimistic concurrency ' +
+      'compares, so carrying a stale one is how UpdateConflict happens',
+      'setTmp() turns a real buffer into an in-memory one — the standard way to run logic over rows without ' +
+      'touching the database. setTmpData(other) seeds it from another buffer',
+      'setConnection(UserConnection) binds a buffer to a specific connection. This is the one that matters for ' +
+      'reports: a TempDB temp table filled by a data provider must be bound to the report\'s own connection, ' +
+      'or the rows are written where the renderer cannot see them and the report comes out EMPTY with no error',
+      'isFieldDataRetrieved takes a field NAME (a str), not a FieldId: ' +
+      'buf.isFieldDataRetrieved(fieldStr(MyTable, MyField)). Passing fieldNum is refused with "The expected ' +
+      'type is \'str\'". Use it after a field-list select to tell "not fetched" from "empty"',
+      'fieldState(fieldId) — this one DOES take the id. The FieldId/FieldName split between neighbouring ' +
+      'members is not a pattern; check each one',
+      'selectForUpdate(true) before a select promotes it to a pessimistic read; reread() refreshes the buffer ' +
+      'from the database and DISCARDS unsaved changes in it',
+      'wasCached() reports whether this row came from the table cache rather than from SQL — the honest way ' +
+      'to check whether a CacheLookup setting is doing anything',
+      'buf.(fieldId) is dynamic field access and yields anytype: anytype v = buf.(fieldNum(MyTable, MyField)). ' +
+      'It is the escape hatch for generic code, and it gives up every compile-time check that makes ' +
+      'fieldNum worth using — prefer the direct field where the field is known',
+      'checkRecord() and checkRecord(boolean) both exist and control whether mandatory-field validation runs ' +
+      'on the next write',
+      'renamePrimaryKey() cascades a changed key through the relations that point at it — the only correct ' +
+      'way to change a natural primary key',
+      'caption() returns the record\'s caption, built from TitleField1/TitleField2 unless overridden. ' +
+      'canSubmitToWorkflow() takes an optional str',
+      'getSQLStatements() is NOT a buffer member — the name exists in AX 2012 material and does not compile ' +
+      'here ("Table \'MyTable\' does not contain a definition for method \'getSQLStatements\'")',
+    ],
+    examples: [
+      {
+        label: 'The pre-image, and the re-select that must not replace it',
+        code: `[ExtensionOf(tableStr(MyTable))]
+final class MyTableMyPrefix_Extension
+{
+    public boolean validateWrite()
+    {
+        boolean ret = next validateWrite();
+
+        // The pre-image is already here. No database access, and it holds the
+        // values this buffer was FETCHED with.
+        if (this.orig().RecId != 0 && this.orig().MyAmount > this.MyAmount)
+        {
+            ret = checkFailed("@MyModel:AmountMayNotDecrease");
+        }
+
+        return ret;
+    }
+}`,
+      },
+      {
+        label: 'A temp buffer, and the connection a report data provider must bind',
+        code: `public void buildRows(UserConnection _connection)
+{
+    MyTmpTable tmp;
+    MyTable    source;
+
+    // A TempDB temp table writes to a session-scoped table. Without this the
+    // report renderer reads a DIFFERENT session and finds nothing — and the
+    // build is clean, so nothing tells you.
+    tmp.setConnection(_connection);
+
+    while select source
+    {
+        tmp.clear();
+        tmp.MyField = source.MyField;
+        tmp.insert();
+    }
+}`,
+      },
+    ],
+    related: ['coc-authoring', 'occ-unitofwork', 'temp-tables', 'ssrs-reports'],
+  },
+
   {
     id: 'date-effective',
     title: 'Date-Effective Tables (ValidTimeStateFieldType, validTimeState)',

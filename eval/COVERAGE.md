@@ -8,8 +8,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
-| core | 65 | 65 | **100%** |
-| total | 109 | 109 | 100% |
+| core | 66 | 66 | **100%** |
+| total | 110 | 110 | 100% |
 
 ## Data model (12/12)
 
@@ -28,7 +28,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Relations, indexes, field groups | core | ✅ | ✅ | ✅ | L2-table-modify-lifecycle, L3-form-detailstransaction |
 | Table inheritance (SupportInheritance/Extends) | total | ✅ | ✅ | ✅ | L2-table-inheritance-basic |
 
-## Code (36/36)
+## Code (37/37)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -61,6 +61,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Exceptions inside transactions (catchability, retry) | core | ✅ | ✅ | ✅ | L2-exception-tts-retry |
 | Attribute authoring & reflection | total | ✅ | ✅ | ✅ | L2-attribute-authoring-reflection |
 | Compile-time (intrinsic) functions | core | ✅ | ✅ | ✅ | L2-intrinsic-functions |
+| Table buffer API (xRecord/Common members) | core | ✅ | ✅ | ✅ | L2-table-modify-lifecycle |
 | Date-effective tables (validTimeState) | total | ✅ | ✅ | ✅ | L2-date-effective-table |
 | Run-time (predefined) functions | core | ✅ | ✅ | ✅ | L2-runtime-functions-arity |
 | Implicit conversions & explicit converters | core | ✅ | ✅ | ✅ | L2-implicit-conversions |
@@ -169,4 +170,4 @@ Nothing uncovered.
 - Knowledge entries no leaf claims (**unproven knowledge**): none
 - Eval cases no leaf claims (**unmapped proof**): L0-create-readback-no-reindex, L2-batched-object-reads, L2-entity-query-range-roundtrip, L2-form-control-removal-lifecycle, L2-object-delete-and-entry-point-cleanup, L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice
 
-_Generated 2026-09-01._
+_Generated 2026-09-02._

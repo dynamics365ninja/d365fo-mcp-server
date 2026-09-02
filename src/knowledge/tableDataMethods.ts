@@ -27,6 +27,19 @@ export interface TableDataMethod {
   purpose: string;
   /** Non-negotiables a green build will not teach. */
   contract: string[];
+  /**
+   * Can a Chain of Command wrapper actually take effect here?
+   *
+   * `false` is the dangerous case and the reason this field exists: the four
+   * `aosValidate*` methods accept a wrapper, COMPILE, and then never run it —
+   * xppc says so in a WARNING ("Chain of command is not supported on method
+   * 'aosValidateInsert' because it is internal or marked as InternalUseOnly")
+   * and a warning in a build log of thousands of lines is not a message anyone
+   * reads. The developer ships a validation that silently does nothing.
+   *
+   * Defaults to true; only the refusals carry it.
+   */
+  cocEligible?: boolean;
 }
 
 /**
@@ -48,6 +61,24 @@ const PRE_IMAGE: string[] = [
 const NEXT_ONCE =
   '`next <method>()` must be reached exactly once and unconditionally — not inside an `if`, not after a ' +
   '`return`. The compiler rejects the alternative with SYS10028 (rule COC004).';
+
+/**
+ * The refusal text for a method CoC compiles and then ignores.
+ *
+ * Verified 2026-09-02 with real wrappers on CustGroup
+ * (scripts/oracles/probes/coverage-v4d.ts, family B): all four compile, all four
+ * warn, and the warning is the only evidence.
+ */
+const AOS_VALIDATE_REFUSAL: string[] = [
+  '🚨 A CoC wrapper here COMPILES AND NEVER RUNS. xppc answers with a WARNING — "Chain of command is ' +
+  'not supported on method \'aosValidateInsert\' because it is internal or marked as InternalUseOnly" — ' +
+  'and then builds the model. Nothing fails, and the validation silently does nothing.',
+  'These run on the AOS tier as a last line of defence before the physical write, and the platform ' +
+  'reserves them. Put the rule in `validateWrite` instead, which is where the framework expects it and ' +
+  'where a wrapper is honoured.',
+  'If you genuinely need a server-tier check that cannot be bypassed, the supported route is a table ' +
+  'method on your OWN table, not a wrapper on someone else\'s.',
+];
 
 const VALIDATION_RETURN =
   'Report a failure by RETURNING false, not by throwing: `ret = checkFailed("@MyModel:MyLabel");` ' +
@@ -128,6 +159,121 @@ export const TABLE_DATA_METHODS: Record<string, TableDataMethod> = {
       NEXT_ONCE,
     ],
   },
+  modifiedfieldvalue: {
+    name: 'modifiedFieldValue',
+    signature: 'public void modifiedFieldValue(FieldName _fieldName, int _value)',
+    declaredOn: 'xRecord',
+    purpose: 'React to a field changing, addressed by NAME rather than by id — the form-driven twin of modifiedField.',
+    contract: [
+      '⚠️ The signature is NOT the one modifiedField uses, and getting it wrong is a compile error that ' +
+      'names the fix: parameter 1 is a **FieldName (a str)**, parameter 2 is an **int**. Writing ' +
+      '`(FieldId, anytype)` — the obvious guess, by analogy with modifiedField — is refused with ' +
+      '"parameter \'1\' must be of type \'str(FieldName)\' instead of \'int(FieldId)\'".',
+      'Compare against the name: `if (_fieldName == fieldStr(MyTable, MyField))`, not fieldNum.',
+      ...PRE_IMAGE,
+      NEXT_ONCE,
+    ],
+  },
+  postload: {
+    name: 'postLoad',
+    signature: 'public void postLoad()',
+    declaredOn: 'xRecord',
+    purpose: 'Run after a record has been read from the database — the place to derive unstored state.',
+    contract: [
+      'Runs on EVERY row fetched, including inside a `while select` over thousands. Anything expensive ' +
+      'here is paid per row, and it is the classic way a report goes from seconds to minutes.',
+      'The buffer is fully populated when it runs; `this.orig()` is not meaningful, because nothing has ' +
+      'been modified yet.',
+      NEXT_ONCE,
+    ],
+  },
+  defaultrow: {
+    name: 'defaultRow',
+    signature: 'public void defaultRow()',
+    declaredOn: 'xRecord',
+    purpose: 'Seed a new row from the current context — called by the form framework, unlike initValue.',
+    contract: [
+      'initValue() is the one to wrap for defaults that always apply; defaultRow() is the form-driven ' +
+      'companion and does not run for a plain X++ insert.',
+      NEXT_ONCE,
+    ],
+  },
+  defaultfield: {
+    name: 'defaultField',
+    signature: 'public void defaultField(FieldId _fieldId)',
+    declaredOn: 'xRecord',
+    purpose: 'Seed ONE field from context, per field rather than per row.',
+    contract: [
+      'Test which field you were called for: `if (_fieldId == fieldNum(MyTable, MyField))`.',
+      NEXT_ONCE,
+    ],
+  },
+  tooltipfield: {
+    name: 'toolTipField',
+    signature: 'public str toolTipField(fieldId _fieldId)',
+    declaredOn: 'xRecord',
+    purpose: 'The tooltip a form shows for one field of this record.',
+    contract: [
+      'Returns a STRING that is shown to a user, so it must be a resolved label — `strFmt("@MyModel:MyLabel", …)`, ' +
+      'never raw text (BPErrorLabelIsText).',
+      'Called on hover, i.e. often. Keep it free of database access.',
+      NEXT_ONCE,
+    ],
+  },
+  helpfield: {
+    name: 'helpField',
+    signature: 'public str helpField(fieldId _fieldId)',
+    declaredOn: 'xRecord',
+    purpose: 'The status-bar help text for one field of this record.',
+    contract: [
+      'Same rules as toolTipField: a resolved label, and no database access on a per-hover path.',
+      NEXT_ONCE,
+    ],
+  },
+  caption: {
+    name: 'caption',
+    signature: 'public str caption()',
+    declaredOn: 'xRecord',
+    purpose: 'The record\'s own caption — what a form title or a lookup shows for this row.',
+    contract: [
+      'Returns a string shown to a user: label, not raw text.',
+      'The default is built from the table\'s TitleField1/TitleField2 properties. Setting those is usually ' +
+      'the better answer than wrapping this.',
+      NEXT_ONCE,
+    ],
+  },
+  aosvalidateinsert: {
+    name: 'aosValidateInsert',
+    signature: 'public boolean aosValidateInsert()',
+    declaredOn: 'xRecord',
+    purpose: 'Server-tier check immediately before a physical insert — reserved by the platform.',
+    contract: AOS_VALIDATE_REFUSAL,
+    cocEligible: false,
+  },
+  aosvalidateupdate: {
+    name: 'aosValidateUpdate',
+    signature: 'public boolean aosValidateUpdate()',
+    declaredOn: 'xRecord',
+    purpose: 'Server-tier check immediately before a physical update — reserved by the platform.',
+    contract: AOS_VALIDATE_REFUSAL,
+    cocEligible: false,
+  },
+  aosvalidatedelete: {
+    name: 'aosValidateDelete',
+    signature: 'public boolean aosValidateDelete()',
+    declaredOn: 'xRecord',
+    purpose: 'Server-tier check immediately before a physical delete — reserved by the platform.',
+    contract: AOS_VALIDATE_REFUSAL,
+    cocEligible: false,
+  },
+  aosvalidateread: {
+    name: 'aosValidateRead',
+    signature: 'public boolean aosValidateRead()',
+    declaredOn: 'xRecord',
+    purpose: 'Server-tier check on a read — reserved by the platform.',
+    contract: AOS_VALIDATE_REFUSAL,
+    cocEligible: false,
+  },
   modifiedfield: {
     name: 'modifiedField',
     signature: 'public void modifiedField(FieldId _fieldId)',
@@ -168,8 +314,24 @@ export function renderTableDataMethodSignature(method: TableDataMethod, objectNa
   ].join('\n');
 }
 
-/** The `### CoC eligibility` body, plus the contract that is the reason this exists. */
+/**
+ * The `### CoC eligibility` body, plus the contract that is the reason this exists.
+ *
+ * A ✅ and a 🚫 answer opposite questions and must not share a template. The
+ * refusals are the whole point of `cocEligible`: those four methods accept a
+ * wrapper and compile, so an eligibility section that said "✅ CoC-eligible"
+ * would be literally true of the build and completely wrong about the outcome.
+ */
 export function renderTableDataMethodEligibility(method: TableDataMethod, objectName: string): string {
+  if (method.cocEligible === false) {
+    return [
+      `🚫 **NOT CoC-eligible** — a wrapper on \`${method.name}\` compiles and then never runs.`,
+      `_${method.purpose}_`,
+      '',
+      `**Why, and what to do instead:**`,
+      ...method.contract.map(line => `- ${line}`),
+    ].join('\n');
+  }
   return [
     `✅ CoC-eligible — \`[ExtensionOf(tableStr(${objectName}))] final class …\` wrapping ` +
     `\`${method.signature}\`.`,

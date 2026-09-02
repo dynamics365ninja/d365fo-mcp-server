@@ -295,6 +295,13 @@ export const TAXONOMY: CoverageLeaf[] = [
     note: 'Full catalog taught; references mode resolves the common ones. Eval case authored (element/member/num forms, kind-specific menu items, identifierStr banned). Golden captured.',
   },
   {
+    id: 'xrecord-buffer-api', label: 'Table buffer API (xRecord/Common members)',
+    domain: 'Code', source: 'topic', tier: 'core', weight: 5,
+    aotTypes: ['table', 'class'], knowledgeIds: ['xrecord-buffer-api'],
+    caseIds: ['L2-table-modify-lifecycle'],
+    note: 'Kernel members with no AOT metadata, so the index answers "not found" for every one of them — which is why they get guessed. Signatures compiler-verified 2026-09-02 (probes coverage-v4d/v4e): data() returns a BUFFER not a container, isFieldDataRetrieved takes a field NAME, setData and getSQLStatements do not exist. The E flag rests on a case that exercises the buffer, not on one written for this leaf.',
+  },
+  {
     id: 'date-effective', label: 'Date-effective tables (validTimeState)', domain: 'Code', source: 'topic', tier: 'total', weight: 3,
     aotTypes: ['table', 'class'], knowledgeIds: ['date-effective', 'select-statement'],
     caseIds: ['L2-date-effective-table'],

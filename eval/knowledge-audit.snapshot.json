@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-09-02T05:47:27.030Z",
+  "capturedAt": "2026-09-02T07:07:30.065Z",
   "indexedAt": "2026-09-01T06:44:28.829Z",
   "ok": [
     "alerts-business-events|attribute|DataContract",
@@ -423,6 +423,7 @@
     "xpp-collections|static-call|Types::Int64",
     "xpp-collections|static-call|Types::Integer",
     "xpp-collections|static-call|Types::Real",
-    "xpp-collections|static-call|Types::String"
+    "xpp-collections|static-call|Types::String",
+    "xrecord-buffer-api|attribute|ExtensionOf"
   ]
 }

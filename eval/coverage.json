@@ -1,14 +1,14 @@
 {
   "core": {
     "tier": "core",
-    "total": 65,
-    "covered": 65,
+    "total": 66,
+    "covered": 66,
     "percent": 100
   },
   "total": {
     "tier": "all",
-    "total": 109,
-    "covered": 109,
+    "total": 110,
+    "covered": 110,
     "percent": 100
   },
   "leaves": [
@@ -725,6 +725,20 @@
       "covered": true,
       "cases": [
         "L2-intrinsic-functions"
+      ]
+    },
+    {
+      "id": "xrecord-buffer-api",
+      "label": "Table buffer API (xRecord/Common members)",
+      "domain": "Code",
+      "tier": "core",
+      "weight": 5,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L2-table-modify-lifecycle"
       ]
     },
     {
