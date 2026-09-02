@@ -52,7 +52,45 @@ const splitDeclaration = flag('declaration');
 const top = Number(arg('top') ?? 30);
 const jsonOut = arg('json');
 
-const make = () => new RegExp(patternSrc, 'g');
+/**
+ * The pattern, compiled ONCE and checked before the walk starts.
+ *
+ * Three reasons this is not `new RegExp(...)` at the call site, which is what it
+ * was first:
+ *
+ *  - it was being recompiled per file and, with --declaration, per METHOD, so a
+ *    full sweep paid for millions of compilations it did not need;
+ *  - an invalid pattern threw after minutes of scanning instead of in the first
+ *    second, with a stack trace instead of a sentence;
+ *  - a nested quantifier backtracks catastrophically, and this walks 2.5 GB of
+ *    XML. `(\w+)+` is easy to type and hangs the run with no output at all.
+ *
+ * `String.prototype.matchAll` clones the regex it is given, so one shared
+ * instance is safe to reuse across files — lastIndex is not carried over.
+ */
+function compilePattern(source: string): RegExp {
+  if (source.length > 500) {
+    console.error(`--pattern is ${source.length} characters. That is not a census pattern; it is a mistake.`);
+    process.exit(2);
+  }
+  // Nested quantifiers are the exponential-backtracking shape. Refusing them
+  // costs nothing here: no census this oracle exists for needs one.
+  if (/\([^)]*[+*]\)[+*]/.test(source)) {
+    console.error(
+      `--pattern contains a nested quantifier, which backtracks exponentially:\n  ${source}\n` +
+      'Over a 2.5 GB corpus that does not finish. Rewrite it without the inner + or *.',
+    );
+    process.exit(2);
+  }
+  try {
+    return new RegExp(source, 'g');
+  } catch (err) {
+    console.error(`--pattern is not a valid regular expression:\n  ${source}\n  ${String(err)}`);
+    process.exit(2);
+  }
+}
+
+const pattern = compilePattern(patternSrc);
 
 /** hit → [files it appears in, total occurrences, class-level, member-level] */
 const counts = new Map<string, { files: number; uses: number; decl: number; member: number }>();
@@ -73,7 +111,7 @@ for (const file of walkAot({ types })) {
 
   const seen = new Set<string>();
   const collect = (text: string, where: 'decl' | 'member' | 'any') => {
-    for (const m of text.matchAll(make())) {
+    for (const m of text.matchAll(pattern)) {
       const key = (group === 0 ? m[0] : m[group])?.trim();
       if (!key) continue;
       bump(key, where, !seen.has(key));
