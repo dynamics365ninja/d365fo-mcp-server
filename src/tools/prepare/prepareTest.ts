@@ -74,7 +74,7 @@ function testShape(
   target: string,
   kind: 'class' | 'table' | 'unknown',
   askedForExtension: boolean,
-): 'class' | 'table' | 'coc' | 'event-handler' | 'service' {
+): 'class' | 'table' | 'coc' | 'event-handler' | 'service' | 'report-dp' {
   if (kind === 'table') return 'table';
   if (kind !== 'class') return 'class';
 
@@ -86,10 +86,14 @@ function testShape(
       "SELECT signature FROM symbols WHERE type = 'class' AND name = ? LIMIT 1",
     ).get(target) as { signature?: string } | undefined;
     if (row?.signature && /SysOperationServiceBase/i.test(row.signature)) return 'service';
+    // A report data provider is tested through processReport() and its dataset
+    // getter, never through a controller — a different shape from any other class.
+    if (row?.signature && /SRS?ReportDataProvider/i.test(row.signature)) return 'report-dp';
   } catch {
     // Index unavailable — fall through to the name-based signals below.
   }
   if (/Service$/.test(target)) return 'service';
+  if (/DP$/.test(target)) return 'report-dp';
 
   // The caller named an extension: they are testing a WRAPPER, and the base
   // class is what the test must construct.
@@ -249,7 +253,8 @@ export async function prepareTestTool(request: unknown, context: XppServerContex
     lines.push(`generate_object(mode="pattern", pattern="systest", name="${target}",`);
     lines.push(`  params: { testMethods: [${suggested.map(m => `"${m.name}"`).join(', ')}]` +
       `${shape !== 'class' ? `, testTargetType: "${shape}"` : ''}` +
-      `${shape === 'service' ? ', baseName: "<the DataContract class>"' : ''} })`);
+      `${shape === 'service' ? ', baseName: "<the DataContract class>"' : ''}` +
+      `${shape === 'report-dp' ? ', baseName: "<the DataContract class>", datasetAccessor: "<the [SRSReportDataSetAttribute] getter>"' : ''} })`);
     lines.push('```');
   }
 
@@ -275,6 +280,22 @@ export async function prepareTestTool(request: unknown, context: XppServerContex
     lines.push('  • Name the contract class in `baseName`. It is not derived: the scaffold emits ' +
       '`{N}DataContract` while hand-written services commonly use `{N}Contract`, and a guess names a ' +
       'class that does not exist.');
+  }
+
+  if (shape === 'report-dp') {
+    lines.push('');
+    lines.push('**This is a report DATA PROVIDER** — `testTargetType: "report-dp"` above selects the shape:');
+    lines.push('  • The test builds a contract by hand, calls `processReport()` and reads the staged rows ' +
+      'back through the dataset getter. No controller, no dialog, no render request — compiler-verified ' +
+      'that `processReport()` is callable from outside.');
+    lines.push('  • Name the dataset getter in `datasetAccessor`. It is NOT derivable: ' +
+      '`SrsReportDataProviderBase` has eleven members and none of them is a `getTmp*`, so the getter is ' +
+      'yours and carries `[SRSReportDataSetAttribute]`. The platform itself ships a mis-typed one ' +
+      '(`geAssetBarCodeTmp`), which is why guessing loses.');
+    lines.push('  • Write the EMPTY case too. A provider that stages rows unconditionally passes the ' +
+      'positive test on its own.');
+    lines.push('  • What this cannot cover: the design. Whether the RDL binds a field is a Report Designer ' +
+      'question, and no SysTest reaches it.');
   }
 
   if (shape === 'table' || shape === 'event-handler') {

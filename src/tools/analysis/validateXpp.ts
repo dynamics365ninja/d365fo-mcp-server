@@ -1083,6 +1083,50 @@ function checkGenericDocComment(code: string): ValidationViolation[] {
 }
 
 /**
+ * RPT103 — a report parameter's UserVisibility carries a value the platform does
+ * not know.
+ *
+ * A census of all 1,057 AxReport documents on a complete install found exactly
+ * TWO values across 8,977 parameters: `Hidden` (8,972) and `Internal` (5). There
+ * is no `Visible`; a parameter the user should see simply omits the element.
+ *
+ * The reason this is worth a rule rather than a footnote is the failure mode.
+ * An unknown value in a metadata element is DROPPED by the deserializer without
+ * a word — the shape this repo has been bitten by before (see the element-order
+ * rules XML006/XML010). So a parameter written `<UserVisibility>Visible</…>` to
+ * make it visible does become visible; one written `True` or `Yes` to hide it
+ * does NOT get hidden, the build is green, and the dialog shows an internal
+ * parameter to the user. Nothing else in the toolchain looks at this file.
+ *
+ * WARNING, not error, and deliberately: the census proves the two values are the
+ * only ones SHIPPED, which is not the same as proving the platform rejects a
+ * third. A warning is what that evidence supports.
+ */
+function checkReportParameterVisibility(code: string): ValidationViolation[] {
+  const violations: ValidationViolation[] = [];
+  const lines = code.split('\n');
+  const KNOWN = new Set(['hidden', 'internal']);
+
+  for (const m of code.matchAll(/<UserVisibility>\s*([^<]*?)\s*<\/UserVisibility>/g)) {
+    const value = m[1];
+    if (KNOWN.has(value.toLowerCase())) continue;
+    const lineNo = lineNumber(code, m.index ?? 0);
+    violations.push({
+      rule: 'RPT103',
+      severity: 'warning',
+      line: lineNo,
+      excerpt: lines[lineNo - 1]?.trim() ?? m[0],
+      fix:
+        `UserVisibility="${value}" is not a value shipped metadata uses. Across 1,057 AxReport documents ` +
+        'and 8,977 parameters the only values are Hidden (8,972) and Internal (5) — a VISIBLE parameter ' +
+        'omits the element entirely. An unrecognised value is dropped silently by the deserializer, so a ' +
+        'parameter you meant to hide is shown to the user with a perfectly green build.',
+    });
+  }
+  return violations;
+}
+
+/**
  * XML001 — AxTable XML missing an index with <AlternateKey>Yes</AlternateKey>.
  * Warning, not error: xppbp raises BPCheckAlternateKeyAbsent as a warning and the
  * table still builds. As an error it made a legitimately single-index table
@@ -2386,6 +2430,7 @@ const XPP_RULES = [
 const REPORT_XML_RULES = [
   checkReportHasDesign,
   checkReportDatasetShape,
+  checkReportParameterVisibility,
 ];
 
 /**

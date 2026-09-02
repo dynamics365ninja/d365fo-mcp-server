@@ -69,7 +69,7 @@ export const GENERATE_OBJECT_PARAM_SPECS: Record<string, { type: string; descrip
       'prepare(mode="test", objectName="<target>") list them.',
   },
   testTargetType: {
-    type: '"class" | "table" | "coc" | "event-handler" | "service"',
+    type: '"class" | "table" | "coc" | "event-handler" | "service" | "report-dp"',
     description:
       'systest: what `name` denotes (default "class"). It decides the SHAPE of the test, and the ' +
       'shapes are not interchangeable — each observes the behaviour somewhere different. ' +
@@ -82,7 +82,9 @@ export const GENERATE_OBJECT_PARAM_SPECS: Record<string, { type: string; descrip
       'method it wraps. "event-handler": performs the write and reads back what the handler ' +
       'changed, since a handler fires out of band and cannot return a value. "service": calls a ' +
       'SysOperation service directly with a hand-built contract (name the contract in `baseName`) — ' +
-      'no controller, no dialog, no batch queue. ' +
+      'no controller, no dialog, no batch queue. "report-dp": a report data provider, driven through a ' +
+      'contract and processReport() with the staged rows read back via the dataset getter — name the ' +
+      'getter in `datasetAccessor`, it carries [SRSReportDataSetAttribute] and cannot be derived. ' +
       'prepare(mode="test") reports which kind the target is and emits this parameter for you.',
   },
   serviceMethod: {
