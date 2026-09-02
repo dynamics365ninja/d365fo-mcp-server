@@ -69,7 +69,9 @@
     "oracle:census": "tsx scripts/oracles/census.ts",
     "oracle:probe": "tsx scripts/oracles/xppcProbe.ts",
     "oracle:members": "tsx scripts/oracles/aotMembers.ts",
-    "oracle:kernel-enums": "tsx scripts/oracles/kernelEnumAudit.ts"
+    "oracle:kernel-enums": "tsx scripts/oracles/kernelEnumAudit.ts",
+    "oracle:terms": "tsx scripts/oracles/termProbe.ts",
+    "oracle:demand": "tsx scripts/mine-copilot-demand.ts"
   },
   "keywords": [
     "mcp",
