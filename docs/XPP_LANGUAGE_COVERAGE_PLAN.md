@@ -18,8 +18,9 @@ Do not keep an executed plan.
 | H0 infra & truth | **shipped** | `045f1fa` |
 | H1a discoverability + G-25 | **shipped** | `f805775` |
 | H1b target kinds + red-phase signal | **shipped** | `168cb9c` |
-| H1c ATTR003 + the language fact behind it | in progress | — |
-| H1 remainder (G-06, G-13, cases) | not started | — |
+| H1c ATTR003 + the language fact behind it | **shipped** | `19b4a0f`, `98e23a6` |
+| H1 live verification of the loop | **shipped** | `cea4aa5` |
+| H1 remainder (G-06, G-13, cases §5.5) | not started | — |
 | H2-H6 | not started | — |
 
 **What execution has already corrected in this plan** — recorded here because a plan
@@ -45,6 +46,23 @@ that quietly absorbs its own errors teaches nothing:
    caller cannot follow. The runner derives the signal instead, from the session
    ledger and the scaffold's own failure text.
 6. **A new validator rule the gap list did not contain** (H1c): ATTR003. See §7.3.
+7. **The red-phase warning was specified wrong** (live run). §5.4 asked for "all green on a class
+   created this session" to be a warning. Driving the real loop on the VM showed that is exactly what
+   the GREEN half of red→green looks like, so it fired on the developer who had just done the right
+   thing. The runner now remembers which classes it has seen fail. **The unit tests could not find
+   this** — they asserted the behaviour the plan specified, and the plan was wrong.
+
+**The live verification, because H1 is not provable from unit tests.** Driven end to end against the
+real `SysTestConsole` on 2026-09-02, three phases, sandbox restored afterwards:
+
+| phase | outcome | note |
+|---|---|---|
+| scaffold verbatim | FAIL ×2, "is not implemented yet" | 🔴 Red phase confirmed. 2 of 2 |
+| assertion written, behaviour wrong | FAIL, "Expected: 30; Actual: 0" | (silent) |
+| behaviour implemented | PASS | (silent — it follows a red) |
+
+The middle phase is the one that earns its place: a note firing on every red run would be useless, so
+it has to tell "you have not written the assertion" from "the assertion is telling you something".
 
 ## 0. TL;DR
 
