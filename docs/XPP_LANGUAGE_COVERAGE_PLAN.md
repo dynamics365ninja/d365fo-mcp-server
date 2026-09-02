@@ -20,8 +20,20 @@ Do not keep an executed plan.
 | H1b target kinds + red-phase signal | **shipped** | `168cb9c` |
 | H1c ATTR003 + the language fact behind it | **shipped** | `19b4a0f`, `98e23a6` |
 | H1 live verification of the loop | **shipped** | `cea4aa5` |
-| H1 remainder (G-06, G-13, cases §5.5) | not started | — |
+| H1 remainder — G-13 catalog, G-06 topic, D2 verified | **shipped** | `7ebd55b` |
+| H1 cases §5.5 | deferred into the H2 capture wave (see below) | — |
 | H2-H6 | not started | — |
+
+**Why §5.5's cases are deferred rather than dropped.** They are a capture WAVE — serial VM runs sharing
+one sandbox — and the plan already schedules one for H2 (`L2-systest-attributes-isolation`,
+`L3-test-data-atl`, both unblocked by D2). Running two waves back to back spends the same sandbox twice
+and regenerates `eval:coverage` twice, which §8 explicitly says not to do mid-wave. What H1 owed was
+proof the loop works, and the live three-phase run below discharges that.
+
+**D2 is applied and MEASURED** (probe `coverage-v4f.ts`, 2026-09-02): the sandbox descriptor now lists
+`TestEssentials`, `AtlFoundation`, `AtlApplicationSuite` and `ATLTestCaseCommon`; `[SysTestCategory]`
+compiles where it previously failed, and `AtlDataRootNode::construct()` and `data.invent()` both
+resolve. H2's entry point is open, and one level past it.
 
 **What execution has already corrected in this plan** — recorded here because a plan
 that quietly absorbs its own errors teaches nothing:
@@ -46,6 +58,15 @@ that quietly absorbs its own errors teaches nothing:
    caller cannot follow. The runner derives the signal instead, from the session
    ledger and the scaffold's own failure text.
 6. **A new validator rule the gap list did not contain** (H1c): ATTR003. See §7.3.
+8. **Four more knowledge facts the compiler corrected** (H1 completion, probes `coverage-v4d/e/f`):
+   `data()` returns a buffer, not a container; `isFieldDataRetrieved` takes a field NAME while
+   `fieldState` beside it takes an id; `[SysTestPriority]` takes an int while its bracket-mates take
+   strings; and `SysTestSuiteCompanyIsolateClass` is OBSOLETE, though the entry listed it among "the
+   ones that exist" — true, and read as a recommendation.
+9. **`aosValidate*` accepts a CoC wrapper, compiles, and never runs it.** xppc warns and builds the
+   model. This is the worst shape in the catalog and the reason `TableDataMethod` gained a
+   `cocEligible` flag: an eligibility answer of "✅" would be true of the build and wrong about the
+   outcome.
 7. **The red-phase warning was specified wrong** (live run). §5.4 asked for "all green on a class
    created this session" to be a warning. Driving the real loop on the VM showed that is exactly what
    the GREEN half of red→green looks like, so it fired on the developer who had just done the right
