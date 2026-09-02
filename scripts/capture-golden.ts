@@ -35,6 +35,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { aotRootElement } from '../src/eval/oracle/artifactKey.js';
 import { parseArgs } from './oracles/aotSource.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -108,13 +109,23 @@ function indexSandbox(roots: string[]): Map<string, { file: string; folder: stri
   return found;
 }
 
-/** The AOT root element a document declares, e.g. `AxTable`. */
+/**
+ * The AOT root element a document declares, e.g. `AxTable`.
+ *
+ * Delegated to the oracle's reader rather than re-implemented. The first version
+ * here stripped comments with a single `replace()` pass and then matched the
+ * first element - which CodeQL flags as
+ * `js/incomplete-multi-character-sanitization`, and rightly: one strip pass
+ * leaves a stray comment opener behind on nested or unterminated input, so the
+ * very next match can read the root OUT OF A COMMENT.
+ *
+ * That is not hypothetical here. It is the defect this repo already shipped and
+ * fixed once (CHANGELOG 1.16.0), and `aotRootElement` is that fix: it consumes
+ * prologue tokens IN ORDER, so an unterminated comment never reaches the element
+ * branch. Re-deriving it in a second place was the mistake; there is one reader.
+ */
 export function rootElementOf(xml: string): string | undefined {
-  // Skip the BOM, the XML declaration and any comment before the root — a root
-  // read out of a comment is a defect this repo has already shipped once.
-  const withoutComments = xml.replace(/^\uFEFF/, '').replace(/<!--[\s\S]*?-->/g, '');
-  return /<\?xml[^>]*\?>\s*<([A-Za-z][\w.]*)/.exec(withoutComments)?.[1]
-    ?? /<([A-Za-z][\w.]*)[\s>]/.exec(withoutComments)?.[1];
+  return aotRootElement(xml);
 }
 
 /** Names already pinned by ANOTHER case's golden — a collision the catalog test fails on. */

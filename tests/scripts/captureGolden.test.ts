@@ -85,6 +85,32 @@ describe('rootElementOf', () => {
   it('answers undefined for text that is not metadata', () => {
     expect(rootElementOf('class ConDemoThing { }')).toBeUndefined();
   });
+
+  /**
+   * The shape CodeQL flagged as js/incomplete-multi-character-sanitization.
+   *
+   * The first version of this reader stripped comments with one `replace()` pass
+   * and then matched the first element. On nested or unterminated input a single
+   * pass leaves a comment opener behind, so the very next match reads the root
+   * OUT OF A COMMENT — the exact defect this repo already shipped and fixed once
+   * (CHANGELOG 1.16.0). The fix was not a better regex; it was to stop having a
+   * second reader and delegate to `aotRootElement`, which consumes prologue
+   * tokens in order.
+   */
+  it('does not read a root out of a NESTED comment', () => {
+    const xml = [
+      '<?xml version="1.0"?>',
+      '<!-- <!-- <AxForm> --> -->',
+      '<AxTable><Name>X</Name>',
+    ].join('\n');
+    expect(rootElementOf(xml)).not.toBe('AxForm');
+  });
+
+  it('does not invent a root from an UNTERMINATED comment', () => {
+    // Nothing after the opener is a real element, so the honest answer is none.
+    const xml = ['<?xml version="1.0"?>', '<!-- <AxForm> and then the file ends'].join('\n');
+    expect(rootElementOf(xml)).toBeUndefined();
+  });
 });
 
 /**
