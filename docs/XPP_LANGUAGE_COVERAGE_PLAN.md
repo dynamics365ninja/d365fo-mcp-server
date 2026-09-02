@@ -684,13 +684,21 @@ Demand for reports is low in the mined logs (0 report writes in 195), but the us
 development explicitly and the probe shows it is the second-thinnest axis. The order below is
 "cheapest verified truth first".
 
-1. **G-20 TempDB connection** [VM]: `oracle:census --grep "setConnection(" --types AxClass --examples 10`
-   restricted to classes extending `SrsReportDataProviderBase` (not PreProcess). Expected: shipped DPs
-   with a TempDB tmp table call `tmp.setConnection(this.parmUserConnection())` before insert. If the
-   census confirms, write the rule into `ssrs-reports` + G-06, add RPT003 (warning first; error only
-   if the sweep holds), and **audit the scaffold** — `generateSmartReport.ts` emits a TempDB table
-   (`REPORT_TMP_KEY_FIELD` note) — does its DP call `setConnection`? If not, every scaffolded report
-   renders empty at run time and no build catches it. This is exactly the "compiles ≠ correct" shape.
+1. **G-20 TempDB connection — DONE, and the premise was WRONG.** The fear was that the scaffold emits
+   reports that build clean and render empty. It does not. Census over the install:
+
+   | base | shipped classes | call `setConnection` |
+   |---|---:|---:|
+   | `SrsReportDataProviderBase` (the scaffold's default) | 13 | **0** |
+   | the pre-processed staging bases | 331 | 65 |
+
+   Binding is a PRE-PROCESSED concern, not a plain-DP one, and the scaffold's default path already
+   agrees with every shipped example. **No scaffold bug.** RPT003 is REJECTED on measurement — 31
+   shipped Microsoft classes run a set-based write into a temp buffer without binding, which is half
+   the category the rule would judge (`docs/BACKLOG.md`). What shipped is knowledge instead:
+   `ssrs-rdp-preprocess` names `setConnection(this.parmUserConnection())` as the first thing to check
+   when a pre-processed report renders empty, with the numbers and with the admission that no textual
+   rule separates the cases. A diagnosis may be conditional; a validator rule may not.
 2. **G-21 `axreport-anatomy`** [repo + VM census]: the element tree the writer emits, with the
    semantics of each `AxReportParameter` property (`AllowBlank`, `Nullable`, `MultiValue`, `Hidden`,
    `DefaultValue`, `DataType`, `Label`), the six platform parameters, dataset ↔ tmp-table field binding,

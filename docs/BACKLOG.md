@@ -178,6 +178,58 @@ at run time. Refusing foreign designs is what keeps that bounded.
 
 ---
 
+## RPT003 (report temp-table connection binding) — REJECTED on measurement
+
+**Status:** **rejected 2026-09-02** · **Area:** `src/tools/analysis/validateXpp.ts`
+
+**What was proposed.** The v4 plan (§6.1, G-20) suspected the report scaffold of a
+silent run-time defect: it always emits a `TableType=TempDB` temp table and never
+emits `setConnection`, so if shipped data providers bind their staging buffer to
+the report's own connection, every scaffolded report would build clean, run, and
+render EMPTY. RPT003 would have flagged a DP that writes a temp table without
+binding.
+
+**The premise was wrong, and the census says so plainly.** Over this install:
+
+| base | shipped classes | call `setConnection` |
+|---|---:|---:|
+| `SrsReportDataProviderBase` (what the scaffold emits by default) | 13 | **0** |
+| the pre-processed staging bases | 331 | 65 |
+
+So binding is not a plain-DP concern at all, and the scaffold's default path
+already matches every shipped example. **There is no scaffold bug to fix.**
+
+**And the rule cannot be written for the case that IS real.** Among pre-processed
+DPs the association with set-based writes is strong — `insert_recordset` appears
+in 38% of binders against 9% of non-binders (4.4x), `update_recordset` 22% vs 5%,
+`delete_from` 23% vs 5% — but association is not a rule. Counting the exact
+population an RPT003 would fire on:
+
+```
+pre-processed DPs                                    : 369
+  …with a set-based write INTO a Tmp buffer          :  62
+  …and NO setConnection anywhere (RPT003 would fire) :  31
+```
+
+**Thirty-one shipped Microsoft classes**, i.e. half of the very category the rule
+claims to judge. That fails this repo's standing bar — Microsoft's code compiles
+and ships, so an error we raise on it is ours — and even as a warning a check that
+is right about 31 files and wrong about 31 others has no discriminating power. It
+is a coin flip with a confident voice.
+
+**What shipped instead.** The finding is real and belongs in knowledge, where a
+conditional truth is allowed to be conditional: `ssrs-rdp-preprocess` now carries
+the numbers, names `setConnection(this.parmUserConnection())` as the FIRST thing
+to check when a pre-processed report renders empty with no error, states that a
+plain `SrsReportDataProviderBase` does not need it, and says out loud that no
+textual rule separates the cases. A diagnosis is useful without being predictive;
+a validator rule is not.
+
+**What would reopen it.** A discriminator that actually separates the two
+populations — most plausibly something in the metadata (the staging table's own
+properties) rather than in the X++ — measured to fire on few or none of those 31.
+Not a re-reading of the association above: that number is the argument.
+
 ## DECL001 / CONV001 — not built, and the evidence is against them
 
 **Status:** **rejected 2026-08-31** · **Area:** `src/tools/analysis/validateXpp.ts`
