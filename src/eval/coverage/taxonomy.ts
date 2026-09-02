@@ -733,6 +733,13 @@ export const TAXONOMY: CoverageLeaf[] = [
     note: 'The half of a report that is NOT layout: a field arrives on the temp table, or a parameter is needed. Both are now writable through d365fo_file(operation="report-design") — metadata-only and additive-only, because a malformed RDL fails in the SSRS renderer where no build can see it. The case exercises the grounded path end to end and its golden was captured from a clean xppc build. What it does NOT prove is that the design USES either one; placing them is Report Designer work.',
   },
   {
+    id: 'report-dp-testing', label: 'Testing a report data provider (red-first)',
+    domain: 'Reporting', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['report', 'class'], knowledgeIds: ['unit-testing', 'ssrs-reports'],
+    caseIds: ['L4-tdd-report-dp'],
+    note: 'The report-dp SysTest shape, proven by a RUNTIME oracle rather than a golden alone: L4-tdd-report-dp ran red (2 of 2 failing on the scaffold this.fail) and then green (2 of 2) under SysTestConsole.exe on 2026-09-02, and eval/systests/L4-tdd-report-dp.xml is the passing document. The red run is the part that matters, because it is what proves the assertions can fail at all. The capture also found a live defect in its own first draft: assertNotNull on a table buffer reports "Expected: not null; Actual: null" for an empty buffer, so it asserts the last select found a row and not that the accessor works. What the case does NOT prove is that the RDL binds the staged rows.',
+  },
+  {
     id: 'report-destinations', label: 'Report print destinations (file, e-mail, archive, batch)',
     domain: 'Reporting', source: 'topic', tier: 'core', weight: 4,
     aotTypes: ['report'], knowledgeIds: ['report-print-destinations'], caseIds: ['L4-ssrs-report-print-destinations'],

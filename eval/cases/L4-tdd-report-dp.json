@@ -1,0 +1,30 @@
+{
+  "id": "L4-tdd-report-dp",
+  "title": "Red-first SysTest for a report data provider",
+  "tier": 4,
+  "instruction": "In the sandbox model, test a report data provider the way the server supports it. (1) Scaffold an SSRS report named DemoDpTest over ConDemoNoteHeader with generate_object(mode=\"scaffold\", objectType=\"report\", fieldsHint=\"NoteId, Subject\", generateController=false), and give its DP a processReport() that stages one row per ConDemoNoteHeader record. (2) Ask prepare(mode=\"test\", objectName=\"<the DP class>\") which shape the target needs — it resolves a data provider from what it extends and answers \"report-dp\". (3) Scaffold the test with generate_object(mode=\"pattern\", pattern=\"systest\", testTargetType=\"report-dp\", baseName=\"<the Contract class>\", datasetAccessor=\"<the [SRSReportDataSetAttribute] getter>\"). The accessor is a PARAMETER and must be read off the DP — SrsReportDataProviderBase has eleven members and none is a getTmp*, and the platform itself ships a mis-typed one. (4) Write the class, build (it must COMPILE — red means a failing assertion, not a broken file), and run it with run_systest_class: the first run must FAIL, because every scaffolded method ends in this.fail(...). (5) Replace the failing bodies with real assertions on the staged rows, build, and run again — green. Do not test through the controller: a report's X++ half ends at the staged rows, and whether the RDL binds them is Report Designer work.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxClass",
+    "AxClass",
+    "AxClass",
+    "AxReport"
+  ],
+  "golden_path": "eval/goldens/L4-tdd-report-dp/",
+  "systest": "eval/systests/L4-tdd-report-dp.xml",
+  "ignore": [
+    "Report/@Id",
+    "Table/@Id",
+    "Table/Fields/AxTableField/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "ssrs",
+    "report",
+    "systest",
+    "tdd",
+    "runtime",
+    "multi-artifact"
+  ],
+  "split": "holdout"
+}

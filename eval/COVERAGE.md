@@ -8,8 +8,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
-| core | 67 | 67 | **100%** |
-| total | 111 | 111 | 100% |
+| core | 68 | 68 | **100%** |
+| total | 112 | 112 | 100% |
 
 ## Data model (12/12)
 
@@ -86,7 +86,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Form event handlers | core | ✅ | ✅ | ✅ | L3-form-event-handler-class |
 | Lookups (table, reference, multi-select, override) | core | ✅ | ✅ | ✅ | L2-lookup-reference-multiselect |
 
-## Reporting (11/11)
+## Reporting (12/12)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -100,6 +100,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Extending a standard report | core | ✅ | ✅ | ✅ | L3-report-dataset-extension |
 | Report design & RDL expressions | core | ✅ | ✅ | ✅ | L4-ssrs-report-design-rdl |
 | Report parameters and dataset upkeep (after the scaffold) | core | ✅ | ✅ | ✅ | L4-ssrs-report-parameters |
+| Testing a report data provider (red-first) | core | ✅ | ✅ | ✅ | L4-tdd-report-dp |
 | Report print destinations (file, e-mail, archive, batch) | core | ✅ | ✅ | ✅ | L4-ssrs-report-print-destinations |
 
 ## Frameworks (21/21)
@@ -158,7 +159,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
-| SysTest unit testing | core | ✅ | ✅ | ✅ | L2-coc-extension, L2-event-handler-basic, L2-systest-authoring-basic +1 |
+| SysTest unit testing | core | ✅ | ✅ | ✅ | L2-coc-extension, L2-event-handler-basic, L2-systest-authoring-basic +2 |
 | Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +62 |
 | TDD loop (red-first SysTest authoring) | core | ✅ | ✅ | ✅ | L2-systest-authoring-basic |
 

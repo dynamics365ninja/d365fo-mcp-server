@@ -1,14 +1,14 @@
 {
   "core": {
     "tier": "core",
-    "total": 67,
-    "covered": 67,
+    "total": 68,
+    "covered": 68,
     "percent": 100
   },
   "total": {
     "tier": "all",
-    "total": 111,
-    "covered": 111,
+    "total": 112,
+    "covered": 112,
     "percent": 100
   },
   "leaves": [
@@ -1449,7 +1449,8 @@
         "L2-coc-extension",
         "L2-event-handler-basic",
         "L2-systest-authoring-basic",
-        "L3-batch-basic"
+        "L3-batch-basic",
+        "L4-tdd-report-dp"
       ]
     },
     {
@@ -1766,6 +1767,20 @@
       "covered": true,
       "cases": [
         "L4-ssrs-report-parameters"
+      ]
+    },
+    {
+      "id": "report-dp-testing",
+      "label": "Testing a report data provider (red-first)",
+      "domain": "Reporting",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L4-tdd-report-dp"
       ]
     },
     {

@@ -1323,6 +1323,8 @@ while select crosscompany : companies
       'X++ unit tests extend SysTestCase. They run in a fresh database transaction that is always rolled back, ' +
       'ensuring tests are isolated. Run in Visual Studio → Test Explorer or via SysTestSuite.',
     rules: [
+      'assertNotNull on a TABLE BUFFER is not the assertion it reads as. The parameter is Object, an empty buffer boxes to null, and the runtime reports "Assertion failed! (Expected: not null; Actual: null)" — so it tests whether the last select found a row, never whether the accessor returned a buffer. VM-verified 2026-09-02 on a report data provider. Assert the ROWS instead: a count, a RecId, or a field value',
+      'The RED run is the half of the loop that carries the evidence: it proves the assertions can fail at all. A suite that has only ever been seen green may be asserting nothing. The scaffold ends every method in this.fail(...) for exactly this reason, and run_systest_class confirms the red phase once and then goes quiet',
       'Test class: extends SysTestCase, which ships in ApplicationFoundation and itself extends SysTestAssert — '
         + 'the asserts are inherited, not a separate class. The test class must be in the same model as the code '
         + 'under test, or in a test model that references it',

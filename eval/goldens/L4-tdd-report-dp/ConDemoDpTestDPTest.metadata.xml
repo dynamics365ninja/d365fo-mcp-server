@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoDpTestDPTest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[SysTestTarget(classStr(ConDemoDpTestDP), UtilElementType::Class)]
+class ConDemoDpTestDPTest extends SysTestCase
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>testProcessReportStagesRows</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// The provider stages one row per source record.
+    /// </summary>
+    [SysTestMethod]
+    public void testProcessReportStagesRows()
+    {
+        ConDemoDpTestContract contract = new ConDemoDpTestContract();
+        ConDemoDpTestDP dp = new ConDemoDpTestDP();
+        ConDemoNoteHeader source;
+        int expected, staged;
+        ConDemoDpTestTmp tmp;
+
+        select count(RecId) from source;
+        expected = source.RecId;
+
+        dp.parmDataContract(contract);
+        dp.processReport();
+
+        tmp = dp.getDemoDpTestTmp();
+        while select tmp
+        {
+            staged++;
+        }
+
+        this.assertEquals(expected, staged, 'one staged row per source record');
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>testStagedRowsCarryTheSourceValues</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// The staged rows carry the source values, not just the right COUNT.
+    ///
+    /// Deliberately NOT assertNotNull on the buffer: a table buffer boxes to
+    /// Object for that assert and an empty one boxes to NULL, so the assertion
+    /// reports "Expected: not null; Actual: null" and tells you nothing about
+    /// the accessor. Assert the ROWS.
+    /// </summary>
+    [SysTestMethod]
+    public void testStagedRowsCarryTheSourceValues()
+    {
+        ConDemoDpTestDP dp = new ConDemoDpTestDP();
+        ConDemoNoteHeader source;
+        ConDemoDpTestTmp staged;
+
+        dp.parmDataContract(new ConDemoDpTestContract());
+        dp.processReport();
+
+        select firstonly source;
+        select firstonly staged where staged.NoteId == source.NoteId;
+
+        this.assertEquals(source.Subject, staged.Subject, 'the staged row carries the source Subject');
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
