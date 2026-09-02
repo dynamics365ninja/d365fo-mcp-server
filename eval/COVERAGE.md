@@ -8,8 +8,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
-| core | 70 | 70 | **100%** |
-| total | 116 | 116 | 100% |
+| core | 72 | 72 | **100%** |
+| total | 118 | 118 | 100% |
 
 ## Data model (12/12)
 
@@ -131,7 +131,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | SysOperation query parameter (batch with a filter) | core | ✅ | ✅ | ✅ | L3-sysoperation-query-parameter-batch |
 | RunBase lifecycle & packed state | total | ✅ | ✅ | ✅ | L3-runbase-coc-pack-unpack |
 
-## Integration (10/10)
+## Integration (11/11)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -144,6 +144,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Reading Excel / CSV files | total | ✅ | ✅ | ✅ | L3-file-csv-import |
 | Direct SQL execution | total | ✅ | ✅ | ✅ | L2-direct-sql-connection |
 | Aggregate measurements / analytics | total | ✅ | ✅ | ✅ | L3-aggregate-measurement-basic |
+| Data entity lifecycle methods | core | ✅ | ✅ | ✅ | L2-entity-query-range-roundtrip, L3-data-entity-extension-field |
 | Attachments (DocuRef / DocumentManagement) | total | ✅ | ✅ | ✅ | L3-attachment-docuref-pdf |
 
 ## Security (6/6)
@@ -165,6 +166,12 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +62 |
 | TDD loop (red-first SysTest authoring) | core | ✅ | ✅ | ✅ | L2-systest-authoring-basic |
 
+## Forms (1/1)
+
+| Leaf | Tier | K | E | T | Evidence / gap |
+| --- | --- | :-: | :-: | :-: | --- |
+| Form runtime API (element, data source, controls) | core | ✅ | ✅ | ✅ | L2-form-control-removal-lifecycle, L2-form-extension-basic |
+
 ## Testing (2/2)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
@@ -179,6 +186,6 @@ Nothing uncovered.
 ## Orphans
 
 - Knowledge entries no leaf claims (**unproven knowledge**): none
-- Eval cases no leaf claims (**unmapped proof**): L0-create-readback-no-reindex, L2-batched-object-reads, L2-entity-query-range-roundtrip, L2-form-control-removal-lifecycle, L2-object-delete-and-entry-point-cleanup, L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice
+- Eval cases no leaf claims (**unmapped proof**): L0-create-readback-no-reindex, L2-batched-object-reads, L2-object-delete-and-entry-point-cleanup, L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice
 
 _Generated 2026-09-02._

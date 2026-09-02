@@ -75,6 +75,7 @@ export const KNOWLEDGE_BASE: KnowledgeEntry[] = [
       d365fo: 'DataContract + Service class + Controller (or just [SysEntryPointAttribute] service)',
     },
     rules: [
+      'The two interfaces a data contract can implement, both read from ApplicationFoundation and both with exactly ONE method: SysOperationValidatable declares `public boolean validate()` and SysOperationInitializable declares `public void initialize()`. validate() returning false stops the operation before it runs and is where a contract refuses its own bad input; initialize() runs before the dialog is shown and is where defaults belong. Neither is a base class — implement them, do not extend them',
       'New batch jobs: ALWAYS use SysOperation (DataContract + Service + Controller)',
       'RunBase is legacy — only extend existing RunBase classes, never create new ones',
       'DataContract: decorate with [DataContractAttribute], parm methods with [DataMemberAttribute]',
@@ -852,6 +853,7 @@ str symbol = dictEnum.value2Symbol(value);  // AOT name`,
       'Number sequences generate unique, configurable identifiers for master data and transactions. ' +
       'They support scope (shared, company, legal entity) and format segments.',
     rules: [
+      'A number sequence has a SCOPE and NumberSeqScopeFactory is how you build one — nine static creators, read from the class: createDefaultScope(NumberSeqDatatype), createGlobalScope(), createDataAreaScope(selectableDataArea = curext()), createLegalEntityScope(refRecId), createOperatingUnitScope(refRecId), createOperatingUnitTypeScope(OMOperatingUnitType), createDataAreaFiscalCalendarPeriodScope(dataArea, fiscalCalendarPeriod), createLegalEntityFiscalCalendarPeriod(legalEntity, fiscalCalendarPeriod), createScopeForConfiguration(container, ExtendedTypeId). Company-scoped is the default answer (createDataAreaScope defaults to curext()); global means one counter for the whole installation',
       'Module class EXTENDS NumberSeqApplicationModule — exact name. ❌ NOT "NumberSequenceApplicationModule" (that class does not exist).',
       'It is a subclass (extends), so override loadModule() and call super() at the top. ❌ NOT next() — next() is ONLY for [ExtensionOf] CoC classes, never for an extends subclass.',
       'loadModule() registers each reference with NumberSeqDatatype::construct(), then parmDatatypeId(extendedTypeNum(MyEdt)) + parmWizardIsContinuous/parmWizardIsManual/parmWizardIsChangeDownAllowed/… , then this.create(datatype). ❌ Do NOT assign fields on a NumberSeqReference/NumberSequenceReference buffer (DataTypeId, WizardContinuous, AllowManual… are parm*() methods on NumberSeqDatatype, NOT table fields) and there is NO this.addModuleEntry().',
@@ -930,6 +932,8 @@ MyRentEquipmentId newId = numSeq.num();
       'D365FO workflows are built from a Document (condition fields), a Type, Approvals/Tasks, ' +
       'and event handlers. Structure: Document → Type → Approvals/Tasks → EventHandlers.',
     rules: [
+      'The event-handler interfaces, all in ApplicationFoundation and each declaring exactly ONE method — the method name is NOT the interface name, which is the part that costs a build: WorkflowStartedEventHandler.started(WorkflowEventArgs) · WorkflowCompletedEventHandler.completed(WorkflowEventArgs) · WorkflowCanceledEventHandler.canceled(WorkflowEventArgs) · WorkflowElementStartedEventHandler.started(WorkflowElementEventArgs) · WorkflowElementCompletedEventHandler.completed(WorkflowElementEventArgs) · WorkflowElementCanceledEventHandler.canceled(WorkflowElementEventArgs) · WorkflowElementReturnedEventHandler.returned(WorkflowElementEventArgs) · WorkflowElementDeniedEventHandler.denied(WorkflowElementEventArgs) · WorkflowElemChangeRequestedEventHandler.changeRequested(WorkflowElementEventArgs) · WorkflowWorkItemsCreatedEventHandler.created(WorkflowWorkItemsEventArgs). Note the argument type differs: the three workflow-level ones take WorkflowEventArgs, the six element-level ones take WorkflowElementEventArgs',
+      'WorkflowQueueCreatedEventHandler is the odd one out and is NOT an interface — it is a class with 13 methods that already implements created(WorkflowWorkItemsEventArgs). Treating it like the other ten and writing `implements` against it does not compile',
       'Key X++ base classes: WorkflowDocument and WorkflowType — Approvals and Tasks are AOT elements (their code lives in generated event handlers), NOT X++ base classes (there is no WorkflowTask class, and WorkflowApproval is only a field)',
       'WorkflowDocument subclass defines which table fields are available as workflow conditions',
       'SubmitToWorkflowMenuItem action menu item provides the submit button on the form',
@@ -949,6 +953,10 @@ MyRentEquipmentId newId = numSeq.num();
       'All generated X++ and metadata must pass the D365FO Best Practice checker without warnings. ' +
       'These are the BP rules the offline validator (validate_code(mode="syntax")) and xppbp.exe enforce most often.',
     rules: [
+      'The five auto field groups are on EVERY table (18,352-18,366 of the 18,377 shipped ones), so they are not optional decoration and the BP check that asks for them is asking for the norm. What each one drives: AutoReport is the field set a printed/exported record shows, AutoLookup the columns a lookup grid shows, AutoIdentification the natural key a reference renders as, AutoSummary the totals line, AutoBrowse the default browse order. An empty AutoReport is why an exported entity comes back with a RecId and nothing else',
+      'Relation types, by census of the 18,377 shipped tables: Association 15,332 (5,235 tables) is the default and the one to reach for; Aggregation 1,213; Composition 1,111 — Composition means the child CANNOT outlive the parent, so it is a delete-cascade statement, not a naming preference; Link 584; Specialization appears twice in the entire install and is effectively unused',
+      'AllowEdit=No (51,277 fields) and AllowEditOnCreate=No (19,600) are the two most-set field properties in the install and they are NOT the same switch. AllowEdit=No is read-only forever; AllowEditOnCreate=No is settable afterwards but not while the row is being created — which is what you want for a value the system assigns. Mandatory=No is written explicitly only 4 times, because it is the default',
+      'IncludedColumns on an index has ZERO occurrences in the 18,377 shipped tables. The property exists in the metamodel; there is no shipped precedent for it, so an index that needs covering columns is not something the platform itself does. AlternateKey appears on 11,745 tables, PrimaryIndex on 9,668, ReplacementKey on 9,287 and ClusteredIndex on 6,178',
       'BPUpgradeCodeToday: NEVER use today() — use DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone()); applies to default parameters, comparisons, and queries',
       'NEVER call a function inside a WHERE condition — assign to a local variable first, then use the variable',
       'BPErrorLabelIsText: no literal strings in Info()/warning()/error() or labels — use @ModelName:LabelId; check labels(action="search") first, create with labels(action="create")',
@@ -1007,6 +1015,7 @@ MyRentEquipmentId newId = numSeq.num();
       'D365FO uses Role → Duty → Privilege → Entry Point security model. ' +
       'Privileges grant access to specific menu items (entry points).',
     rules: [
+      'The XDS runtime API is two static methods on SysSecXDSServices (ApplicationFoundation) and nothing else: `public static str GetXDSContext()` and `public static void SetXDSContext(str)`. There is no XDSServiceBase — that name resolves to no AOT element of any type, and the members oracle caught it before it reached this entry. Everything else about XDS is METADATA: the policy object, its constrained tables and its query',
       'Hierarchy: Role contains Duties, Duty contains Privileges, Privilege contains Entry Points',
       'Entry Point = menu item (Display, Output, Action) at a specific access level (Read, Update, Create, Delete)',
       'Create separate privilege for each access level: MyFormView (Read), MyFormMaintain (Update)',
@@ -1316,6 +1325,171 @@ while select crosscompany : companies
 
   // ── Unit Testing ─────────────────────────────────────────────────────────
   {
+    id: 'data-entity-methods',
+    title: 'Data entity lifecycle methods and the runtime context',
+    keywords: ['data entity', 'dataentity', 'mapentitytodatasource', 'insertentitydatasource', 'postload',
+      'persistentity', 'dataentityruntimecontext', 'primarycompanycontext', 'odata', 'dmf', 'staging',
+      'entity lifecycle', 'defaultingdependencies', 'virtual field', 'computed column'],
+    summary:
+      'The methods an entity overrides to control how it reads and writes, ranked by a census of all '
+      + '5,805 shipped data entities (2026-09-02), with every signature read from the shipped source. '
+      + 'The set is small and the ordering is not what the documentation suggests.',
+    rules: [
+      'What shipped entities ACTUALLY override, by how many of the 5,805 declare it: '
+        + 'mapEntityToDataSource 1,116 · insertEntityDataSource 841 · updateEntityDataSource 632 · '
+        + 'postLoad 466 · validateWrite 440 · findEntityDataSource 318 · initializeEntityDataSource 294 · '
+        + 'defaultField 234 · getDefaultingDependencies 233 · deleteEntityDataSource 224 · initValue 224 · '
+        + 'defaultCTQuery 207 · persistEntity 195 · insert 192 · update 166 · defaultRow 124 · '
+        + 'validateField 119 · postGetStagingData 116 · mapDataSourceToEntity 99 · delete 99 · '
+        + 'validateDelete 61 · initializeQuery 41',
+      'mapEntityToDataSource and mapDataSourceToEntity are NOT a symmetric pair, whatever the names '
+        + 'suggest: 1,116 entities override the first and 99 the second, an 11-to-1 split. The write path '
+        + 'is where the work is. Reach for mapDataSourceToEntity only when a READ needs shaping the view '
+        + 'itself cannot express',
+      'Signatures, read from shipped entities: '
+        + 'public void mapEntityToDataSource(DataEntityRuntimeContext _entityCtx, DataEntityDataSourceRuntimeContext _dataSourceCtx) · '
+        + 'public boolean insertEntityDataSource(same two) · public boolean updateEntityDataSource(same two) · '
+        + 'public boolean deleteEntityDataSource(same two) · '
+        + 'public Common findEntityDataSource(same two) — note it returns Common, not boolean · '
+        + 'public void initializeEntityDataSource(same two) · public void persistEntity(DataEntityRuntimeContext _entityCtx) · '
+        + 'public void postLoad() — NO parameters · public static Query defaultCTQuery() · '
+        + 'public container getDefaultingDependencies() · public void defaultField(FieldId _fieldId) · '
+        + 'public void defaultRow() · public boolean validateWrite() · public void initValue()',
+      'Inside the *DataSource methods, _dataSourceCtx.name() says WHICH data source is being handled and '
+        + '_entityCtx.getDatabaseOperation() says what is happening to it. The operation enum is '
+        + 'DataEntityDatabaseOperation and only four values appear in shipped code: Insert (898 uses), '
+        + 'Update (767), None (499) and Delete (95). The switch on data-source name is the idiom — an '
+        + 'entity with several sources runs the same method once per source',
+      'PrimaryCompanyContext decides which company an OData caller reads, and it is NOT boolean. Shipped '
+        + 'values: DataAreaId (3,526 entities), SysDataAreaId (216), ActualCompanyId (65), '
+        + 'LegalEntityId (36), Company (21). DataAreaId is the default answer; a cross-company entity is '
+        + 'the exception, not the norm',
+      'IsPublic=Yes (4,500 of 5,805) is what exposes the entity to OData at all, and '
+        + 'DataManagementEnabled=Yes (4,590) is what exposes it to DMF — they are separate switches and '
+        + 'setting one does not set the other. EntityCategory is Reference (994), Document (709), '
+        + 'Transaction (673), Parameters (294) or Configuration (23); it drives sequencing in a data '
+        + 'project, so a Transaction entity marked Reference imports before its own master data',
+      'postGetStagingData is STATIC and takes the DMF execution, not the entity: '
+        + 'public static void postGetStagingData(DMFDefinitionGroupExecution _dmfDefinitionGroupExecution). '
+        + 'It runs on the staging table after a DMF import, so it is the seam for fixing imported rows '
+        + 'before they reach the target — and it never runs for an OData call',
+      'DataEntityRuntimeContext and DataEntityDataSourceRuntimeContext are KERNEL classes: the member '
+        + 'oracle cannot read them and a symbol lookup answers "not found". That is not evidence they do '
+        + 'not exist',
+    ],
+    examples: [
+      {
+        label: 'The shape of a write-path override',
+        code: `public void mapEntityToDataSource(
+    DataEntityRuntimeContext _entityCtx,
+    DataEntityDataSourceRuntimeContext _dataSourceCtx)
+{
+    super(_entityCtx, _dataSourceCtx);
+
+    switch (_dataSourceCtx.name())
+    {
+        case dataEntityDataSourceStr(CustCustomerEntity, CustTable):
+            switch (_entityCtx.getDatabaseOperation())
+            {
+                case DataEntityDatabaseOperation::Insert:
+                case DataEntityDatabaseOperation::Update:
+                    // shape the row the entity is about to write
+                    break;
+            }
+            break;
+    }
+}`,
+      },
+    ],
+    related: ['data-entities', 'power-platform-integration'],
+  },
+  {
+    id: 'form-runtime-api',
+    title: 'Form runtime API: element, FormDataSource, FormDataObject, controls',
+    keywords: ['formrun', 'element', 'formdatasource', 'formdataobject', 'formcontrol', 'form runtime',
+      'executequery', 'research', 'reread', 'refresh', 'registeroverridemethod', 'displayoption',
+      'form control types', 'axformstringcontrol', 'form api', 'datasource method'],
+    summary:
+      'What `element`, a data source and a control can actually be asked to do. Read two ways because '
+      + 'the API is split in two: FormRun is an ordinary AOT class (ApplicationPlatform, 209 methods) '
+      + 'and the rest — xFormRun, FormDataSource, FormDataObject, every Form*Control — is KERNEL with no '
+      + 'AOT XML, so it can only be confirmed by compiling. Both were done on a VM (2026-09-02), and the '
+      + 'ranking comes from a census of all 9,442 shipped forms.',
+    rules: [
+      'Of FormRun\'s 209 methods, only 49 are ever called through `element.` in the 9,442 shipped forms, '
+        + 'and 167 are never called at all. The distribution is not a long tail, it is a spike: '
+        + '`element.args()` is 21,009 of the 22,913 platform calls — 92 percent. After it, in order: '
+        + 'close (613 uses / 457 forms), closedOk (188), lifecycleHelper (163), closeOk (136), task (109), '
+        + 'closeCancel (87), doRefresh (55), closeSelect (54), wait (33), doResearch (32), '
+        + 'selectControl (29), runAsync (13). If you are reaching for anything outside that list, check '
+        + 'that it is really on FormRun before writing it',
+      'element.updateDesign() is NOT form-runtime API, despite ranking FIRST in the raw census — 1,703 '
+        + 'uses across 724 forms. It is the inventory-dimension convention, '
+        + 'element.updateDesign(InventDimFormDesignUpdate::Init), which those forms declare themselves. '
+        + 'The compiler settled it: `UpdateDesignMode` appears in ZERO of 76,196 shipped files. Breadth '
+        + 'of use is not evidence of being platform, and the same trap catches numberSeqFormHandler, '
+        + 'enableFields and enableButtons — all conventions, none platform',
+      'The KERNEL half of `element` — compile-verified, not on FormRun: design() returns FormDesign; '
+        + 'name() the form name; controlId(str) the numeric id; control(int) the control for an id; '
+        + 'dataSource(int) or dataSource(formDataSourceStr(CustTable, CustTable)) the data source, named form-then-datasource; inViewMode(); '
+        + 'selectMode(FormControl). A member-oracle lookup of xFormRun answers "NOT FOUND", which means '
+        + 'kernel, not missing',
+      'FormDataSource, compile-verified: executeQuery() re-runs the query and RELOADS the grid; '
+        + 'research(true) keeps the current position, research() loses it; refresh() redraws from the '
+        + 'cache without touching the database; reread() refetches the current row only. They are not '
+        + 'interchangeable and picking the wrong one is the classic "my change does not show" bug. The '
+        + 'write half is write(), validateWrite(), delete(); cursor() hands back the current record as '
+        + 'Common',
+      'FormDataSource query API, compile-verified: queryBuildDataSource() for a range you add in code, '
+        + 'query() for the Query itself, queryRun() for the running one. Ranges added to '
+        + 'queryBuildDataSource() survive executeQuery(); ranges added to queryRun() do not, because '
+        + 'executeQuery() builds a new run',
+      'FormDataObject is the per-FIELD state, reached with _ds.object(fieldNum(Table, Field)) — '
+        + 'compile-verified — and it carries allowEdit(), visible() and mandatory(). Setting allowEdit on '
+        + 'the CONTROL affects one control; setting it on the FormDataObject affects every control bound '
+        + 'to that field, which is almost always what was meant',
+      'Row colouring goes through _ds.displayOption(Common, FormRowDisplayOption) and the option object '
+        + 'takes backColor(int) — compile-verified. It is a data-source method, not a control one',
+      'Controls: enabled(), visible() and allowEdit() are on the abstract FormControl; text() and '
+        + 'valueStr() are on FormStringControl. registerOverrideMethod takes THREE arguments '
+        + '(methodStr on the concrete control class, methodStr on the handler, the handler instance) and '
+        + 'is declared on the CONCRETE control only — calling it on a FormControl variable is a compile '
+        + 'error. All compile-verified',
+      'The 37 control classes shipped forms use, by occurrence, so the common ones are obvious: '
+        + 'String 78,145 (8,272 forms), Group 41,267, Real 23,802, MenuFunctionButton 17,813, '
+        + 'CheckBox 14,669, TabPage 14,497, ComboBox 14,387, ButtonGroup 12,775, Grid 11,079, '
+        + 'Date 9,334, ActionPane 8,999, CommandButton 8,570, Button 7,439, ReferenceGroup 7,390, '
+        + 'StaticText 5,368, Tab 5,313, Integer 4,653, DateTime 3,154, ActionPaneTab 2,678, '
+        + 'MenuButton 1,637, Container 1,306, SegmentedEntry 1,167, Image 1,022, DropDialogButton 771, '
+        + 'Int64 769, ButtonSeparator 594, Time 475, RadioButton 327, Tree 262, ListView 161, '
+        + 'Table 42, Guid 36, Progress 26, ListBox 25. Each is spelled AxForm<Kind>Control in the XML',
+      'The XML element name is not derivable from the type name in two places, and both are silent '
+        + 'failures: an integer control is AxFormIntegerControl, NOT AxFormIntControl; and an ENUM field '
+        + 'binds to AxFormComboBoxControl, not to anything called Enum. An unmapped type falls back to a '
+        + 'String control over the data, which builds and shows the wrong editor',
+    ],
+    examples: [
+      {
+        label: 'The four refresh verbs, which are not interchangeable',
+        code: `FormDataSource custTable_ds = element.dataSource(formDataSourceStr(CustTable, CustTable));
+
+custTable_ds.reread();          // this row, from the database
+custTable_ds.refresh();         // redraw from the cache, no database
+custTable_ds.research(true);    // re-run the query, KEEP the position
+custTable_ds.executeQuery();    // re-run and reload; position is lost`,
+      },
+      {
+        label: 'Per-field state, and where it is NOT',
+        code: `// Every control bound to the field, which is usually what was meant:
+custTable_ds.object(fieldNum(CustTable, AccountNum)).allowEdit(false);
+
+// Just this one control:
+element.control(element.controlId('CustTable_AccountNum')).allowEdit(false);`,
+      },
+    ],
+    related: ['formrun-lifecycle', 'form-patterns', 'lookups'],
+  },
+  {
     id: 'systest-attributes',
     title: 'SysTest attributes: filtering, isolation and dependencies',
     keywords: ['systest attribute', 'systestcheckintest', 'systestgranularity', 'systesttransaction',
@@ -1323,22 +1497,22 @@ while select crosscompany : companies
       'systestcaseusesingleinstance', 'automatic number sequences', 'systestcategory', 'systestrow'],
     summary:
       'Attributes decide whether a test RUNS, what it may touch, and whether its writes survive. '
-      + 'The set is large but the used set is small: a census of the 488 shipped test classes that '
-      + 'mention SysTest (2026-09-02) found ten attributes in real use and most of the documented '
+      + 'The set is large but the used set is small: a census of the 884 shipped classes whose name carries "test" '
+      + '(2026-09-02) found a SysTest attribute in 339 of them, ten in real use, and most of the documented '
       + 'catalogue in none at all.',
     rules: [
       'Write the SHORT name. Every attribute class is named ...Attribute, and X++ lets you drop the '
-        + 'suffix — shipped code overwhelmingly does: SysTestCheckInTest 1,621 uses vs '
-        + 'SysTestCheckInTestAttribute 2; SysTestMethod 331 vs SysTestMethodAttribute 8. Both compile. '
+        + 'suffix — shipped code overwhelmingly does: SysTestCheckInTest 1,622 uses vs '
+        + 'SysTestCheckInTestAttribute 2; SysTestMethod 336 vs SysTestMethodAttribute 8. Both compile. '
         + 'The name is also case-insensitive, and shipped code proves it by accident: SysTestCheckInTest, '
         + 'SysTestCheckinTest and SysTestCheckIntest all appear and all build',
-      'What shipped tests ACTUALLY carry, by use (census of 488 classes): [SysTestCheckInTest] 1,875 '
-        + 'across ~300 classes — the check-in filter, and by far the most common; [SysTestMethod] 339; '
+      'What shipped tests ACTUALLY carry, by use (census of 488 classes): [SysTestCheckInTest] 1,878 '
+        + 'across ~300 classes — the check-in filter, and by far the most common; [SysTestMethod] 344; '
         + '[SysTestGranularity(SysTestGranularity::Unit)] 165 across 144 classes — nearly every class has '
         + 'one; [SysTestCaseConfigurationKeyConstraint(<key>)] 75; [SysTestCaseUseSingleInstance] 28; '
-        + '[SysTestCaseAutomaticNumberSequences] 22; [SysTestTarget] 18; [SysTestCaseDataDependency] 7; '
+        + '[SysTestCaseAutomaticNumberSequences] 23; [SysTestTarget] 19; [SysTestCaseDataDependency] 9; '
         + '[SysTestTransaction] 3; [SysTestSecurity] 1',
-      'Placement is not free choice, and the census settles it. CLASS level: SysTestTarget (15 of 15), SysTestGranularity (135 of 136), SysTestCaseConfigurationKeyConstraint (75 of 75), SysTestCaseUseSingleInstance (28 of 28), SysTestCaseAutomaticNumberSequences (21 of 22), SysTestCaseDataDependency (7 of 7). METHOD level: SysTestMethod (331 of 331) and SysTestCheckInTest (1,616 of 1,621 — it marks which TESTS run at check-in, so it belongs beside SysTestMethod). The class block is written STACKED across lines, one attribute per line inside a single pair of brackets separated by commas — that is the shipped shape, and stacking SEPARATE bracket pairs on a method is a compile error (validator ATTR003)',
+      'Placement is not free choice, and the census settles it. CLASS level: SysTestTarget (19 of 19), SysTestGranularity (135 of 136), SysTestCaseConfigurationKeyConstraint (75 of 75), SysTestCaseUseSingleInstance (28 of 28), SysTestCaseAutomaticNumberSequences (22 of 23), SysTestCaseDataDependency (9 of 9). METHOD level: SysTestMethod (344 of 344) and SysTestCheckInTest (1,616 of 1,622 — it marks which TESTS run at check-in, so it belongs beside SysTestMethod). The class block is written STACKED across lines, one attribute per line inside a single pair of brackets separated by commas — that is the shipped shape, and stacking SEPARATE bracket pairs on a method is a compile error (validator ATTR003)',
       'Attributes the catalogue lists and shipped tests do NOT use: SysTestCategory, SysTestRow '
         + '(data-driven), SysTestFixture, SysTestKey, SysTestInactiveTest, SysTestPriority, SysTestOwner, '
         + 'SysTestAreaPath, SysTestCaseDemoDataDependency, SysTestCaseCompanyData, '
@@ -3014,6 +3188,11 @@ select salesTable where salesTable.ShippingDateRequested == cutoffDate;`,
       'Strict rules for authoring CoC wrappers. The most common mistake is copying default parameter values. ' +
       `next must always be called at first-level scope. Always use ${READ_METHOD_OPTIONS} before writing any wrapper.`,
     rules: [
+      'The EIGHT target kinds, ranked by a census of the 4,015 shipped classes that carry [ExtensionOf] (2026-09-02, case-insensitive): classStr 2,190 · tableStr 783 · formStr 632 · formDataSourceStr 238 · formControlStr 72 · dataEntityViewStr 55 · formDataFieldStr 41 · mapStr 4 · viewStr 2. **queryStr has ZERO shipped uses** — a query is extended by adding ranges in code or by a query extension, not by chain of command. mapStr and viewStr do work and are usually left off the list',
+      'What `this` IS depends on the target, and it is the whole reason the kinds are not interchangeable. classStr: an instance of the wrapped CLASS, so this.<method>() reaches its methods. tableStr / mapStr / viewStr: the BUFFER, so this.<Field> reads a field directly (shipped: this.EffectiveDate on an AgreementLine extension, this.MenuItemType on a map one). dataEntityViewStr: the ENTITY, so this.<EntityField> reads a mapped field. formStr: the FormRun, so element-level API is reached through this. formDataSourceStr: the FormDataSource, so this.cursor() is the current record. formControlStr: the CONTROL itself',
+      'The declaration shape, by census: `internal final class` 2,715 · `public final class` 735 · `final class` 426. `final` is not optional — the compiler requires it on an [ExtensionOf] class — and `internal` is the shipped default because a wrapper is not an API for anyone else. The 41 `static` variants exist only for wrapping static methods, where the wrapper must be static too',
+      'The intrinsic argument count differs per kind and getting it wrong is a compile error, not a runtime surprise: formStr(<form>) takes one, formDataSourceStr(<form>, <datasource>) two, formControlStr(<form>, <control>) two, formDataFieldStr(<form>, <datasource>, <field>) THREE. Shipped example of the last: formDataFieldStr(BankAccountTable, BankAccountTable, AccountNum)',
+      'Intrinsic names are case-insensitive and shipped code proves it by accident: dataentityviewstr, mapstr, viewstr, classstr, tablestr, formstr and even clasSstr all appear and all build. Write the camelCase form anyway — the compiler does not care, and a reader does',
       'NEVER copy default parameter values into the wrapper signature — wrapper uses bare parameter types only',
       'next must be at first-level statement scope: NOT inside if/while/for, NOT after return, NOT inside a logical expression. PU21+: permitted inside try/catch/finally',
       'Wrapper must always call next — except on [Replaceable] methods',

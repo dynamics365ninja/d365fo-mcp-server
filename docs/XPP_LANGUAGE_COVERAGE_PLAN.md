@@ -26,7 +26,46 @@ Do not keep an executed plan.
 | H3 — G-19 report runtime API, G-23 RDL census | **shipped** | `5618c62` |
 | §6.7 cases — parameters, TDD report-DP, print format, logo+barcode | **shipped** | `c8fe75a`, `27da803`, this branch |
 | **H2 test data & attributes** — G-26, G-27, `atlNodes.generated.ts`, both cases | **shipped** | this branch |
-| H4-H6 | not started | — |
+| **H4 catalogs** — G-10, G-12, G-14, G-15, G-17, G-18 | **shipped** | this branch |
+| H5-H6 | not started | — |
+
+**H4 found a defect in the censuses H2 and H3 had already shipped.** Every one of
+them enumerated `<root>/<package>/<package>/<AxType>`, which looks right and
+silently skips the **12 model folders not named after their package** —
+`ApplicationSuite/Foundation` among them, one of the largest. The repo's own
+`aotSource.ts` walks models correctly and was there all along; hand-rolling the
+walk was the mistake. `scripts/oracles/usageCensus.ts` now wraps it, the ATL
+oracle was rewritten onto it, and every published figure was re-measured. The
+conclusions held; the numbers moved slightly (the SysTest population is 884
+classes, not 488, and `SysTestCheckInTest` is 1,622 uses, not 1,621) and are
+corrected in the entries, the op-spec, the tests and the taxonomy.
+
+**What H4 corrected in its own gap definitions:**
+
+* **G-14.** Of `FormRun`'s 209 methods, only **49** are ever called through
+  `element.` in the 9,442 shipped forms, and `args()` alone is 21,009 of the
+  22,913 platform calls — 92 percent. Publishing 209 would have been a catalogue
+  of things nobody writes. The census also ranked `updateDesign` FIRST (1,703
+  uses, 724 forms) and it is **not form-runtime API at all**: it is the
+  inventory-dimension convention, and `UpdateDesignMode` appears in **zero** of
+  76,196 shipped files. The compiler settled it. Breadth of use is not evidence
+  of being platform — `numberSeqFormHandler`, `enableFields` and `enableButtons`
+  are the same trap.
+* **G-15.** `mapEntityToDataSource` and `mapDataSourceToEntity` are presented
+  everywhere as a symmetric pair. They are 1,116 and 99 — an 11-to-1 split toward
+  the write path. `findEntityDataSource` (318) and `getDefaultingDependencies`
+  (233) are missing from the plan's list and are more common than half of what is
+  on it. `PrimaryCompanyContext` is an enum with five shipped values, not the
+  boolean the ⊘ mark implies.
+* **G-10.** The plan names eight `[ExtensionOf]` target kinds. **`queryStr` has
+  ZERO shipped uses** — not one of the 4,015 classes that carry the attribute —
+  while `mapStr` and `viewStr`, which the list omits, both work and both ship.
+* **G-12.** `IncludedColumns` has **zero** occurrences in the 18,377 shipped
+  tables. The property exists; the platform never uses it.
+* **G-18.** `WorkflowQueueCreatedEventHandler` is not an interface like the other
+  ten — it is a class with 13 methods, so `implements` against it does not
+  compile. And the XDS "API" is **two static methods** on `SysSecXDSServices`,
+  confirming H0's finding that `XDSServiceBase` does not exist.
 
 **H2 was written from the wrong population, and the census said so.** §5.3 and the
 G-26 row list the SysTest attributes by reading the class inventory. A census of
