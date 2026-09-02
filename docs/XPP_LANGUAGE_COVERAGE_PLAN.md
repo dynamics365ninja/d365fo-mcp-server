@@ -735,6 +735,18 @@ The same run also **confirmed a claim rather than correcting one**: `[SysTestCat
 TestEssentials reference, fails with `Class 'SysTestCategory' was not found. Are you missing a module
 reference?` The scaffold's warning and the `unit-testing` entry were right.
 
+**ATTR003 cleared the bar.** Full-install sweep, 2026-09-02:
+
+```
+swept 105,686 files (615.3 MB of X++) in 2,504s
+ERROR-severity findings (the bar is zero):  none
+warnings: SEL005 17,412 · BP002 3,506 · SET001 2,103 · SEL006 1,597 · SEL004 1,560 · TTS003 1,144 · …
+```
+
+ATTR003 fired **zero** times across the install — the same answer the census gave, arrived at
+independently by the rule itself, which is the check worth having: a rule agreeing with the census that
+justified it is the only evidence that the rule implements the fact rather than the author's memory of it.
+
 **Correction, measured in H0.** An earlier draft of this section claimed the sweep's type list had to
 grow before TST001–003 could ship, "because the test and ATL packages have never been scanned". That was
 an inference and it is false: `walkAot` iterates every package directory, filtering only by AOT *type*,

@@ -22,6 +22,7 @@ import { normalizeObjectName } from '../../utils/objectNaming.js';
 import { renderPrepareOpSpec } from '../specs/opSpecs.js';
 import { rankContext, renderRankedContext } from '../../workspace/contextRanker.js';
 import { budgetRankedContext } from './prepareChange.js';
+import { findExistingTests, renderTestFirst, testFirstOffer } from './testFirst.js';
 import {
   canonicalSymbolName,
   lookupChildSymbolsNocase,
@@ -586,6 +587,17 @@ export async function prepareCreateTool(request: any, context: XppServerContext)
   lines.push('### Reusable labels _(labels index)_', labels, '');
   if (propertyDefaults) {
     lines.push('### Property defaults _(mined from standard models)_', propertyDefaults, '');
+  }
+
+  // The red-first offer, for a NEW object that will carry behaviour. On the create
+  // path there is no `operation` to read, so the signal is the goal: "calculate
+  // the discount" is a rule and gets the offer, "a table for service notes" is a
+  // shape and does not.
+  try {
+    const offer = testFirstOffer({ objectType, goal });
+    if (offer) lines.push(...renderTestFirst(offer, objectName, findExistingTests(context, objectName)));
+  } catch {
+    // Additive — omit on failure.
   }
 
   // Surface existing code relevant to the goal; best-effort, omit on failure,

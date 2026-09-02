@@ -14,6 +14,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { XppSymbolIndex } from '../../src/metadata/symbolIndex';
 import { prepareTestTool } from '../../src/tools/prepare/prepareTest';
+import { prepareCreateTool } from '../../src/tools/prepare/prepareCreate';
 import type { XppServerContext } from '../../src/types/context';
 
 let index: XppSymbolIndex;
@@ -119,6 +120,40 @@ describe('the two halves agree', () => {
       const out = await prepare(target);
       const emitted = /testTargetType: "([a-z-]+)"/.exec(out)?.[1];
       if (emitted) expect(shapes, target).toContain(emitted);
+    }
+  });
+});
+
+/**
+ * The offer on the CREATE path.
+ *
+ * There is no `operation` to read when nothing exists yet, so the goal is the
+ * only signal — which makes the negative case the important one: most creates are
+ * a table, a form or an enum, and offering a SysTest for those recommends the
+ * wrong oracle. Structure is proven by the golden diff.
+ */
+describe('prepare(mode="create") — the test-first offer', () => {
+  const create = async (objectType: string, goal: string, objectName = 'ConNewThing'): Promise<string> => {
+    const r = await prepareCreateTool({ goal, objectName, objectType }, context) as { content: { text: string }[] };
+    return r.content[0].text;
+  };
+
+  it('offers for a class whose goal describes a rule', async () => {
+    expect(await create('class', 'calculate the discount for a customer group')).toContain('Test first?');
+  });
+
+  it('does not offer for a table', async () => {
+    expect(await create('table', 'a table for service notes with a subject and a body'))
+      .not.toContain('Test first?');
+  });
+
+  it('does not offer for a class whose goal is a shape', async () => {
+    expect(await create('class', 'a holder for the import settings')).not.toContain('Test first?');
+  });
+
+  it('does not offer for an enum, a form or a menu item', async () => {
+    for (const t of ['enum', 'form', 'menu-item-display']) {
+      expect(await create(t, 'must validate the tier'), t).not.toContain('Test first?');
     }
   });
 });
