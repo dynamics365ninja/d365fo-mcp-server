@@ -1,5 +1,5 @@
 /**
- * The five SysTest shapes, and why they are not interchangeable.
+ * The six SysTest shapes, and why they are not interchangeable.
  *
  * Each observes the behaviour somewhere different, and using the wrong one
  * produces a test that compiles, runs, passes, and proves nothing:
@@ -10,7 +10,9 @@
  *    `new X()` and "expect an exception" find nothing;
  *  - an event handler cannot return a value, so only performing the write shows it;
  *  - a service reached through its controller drags in a dialog and the batch
- *    queue, which is neither fast nor deterministic.
+ *    queue, which is neither fast nor deterministic;
+ *  - a report tested through its controller asks the SSRS renderer a question,
+ *    when the X++ half ends at the staged rows.
  *
  * Three of the five shapes are promoted from SysTests that actually EXECUTED on
  * the VM under SysTestConsole (`eval/systests/L2-coc-extension.xml`,
@@ -113,7 +115,7 @@ describe('systest kinds — the shapes stay distinct', () => {
   });
 
   it('every kind is red on arrival', async () => {
-    for (const kind of ['class', 'table', 'coc', 'event-handler', 'service']) {
+    for (const kind of ['class', 'table', 'coc', 'event-handler', 'service', 'report-dp']) {
       const out = await generate({ name: 'ConThing', testTargetType: kind, testMethods: ['doIt'] });
       expect(out, kind).toMatch(/this\.fail\(/);
       expect(out, kind).toContain('Every test fails as written');
@@ -127,5 +129,58 @@ describe('systest kinds — the shapes stay distinct', () => {
     // the runner instead; nothing here may ask for a flag.
     const out = await generate({ name: 'ConThing', testTargetType: 'coc', testMethods: ['doIt'] });
     expect(out).not.toContain('expectRed');
+  });
+});
+
+/**
+ * The report-dp shape.
+ *
+ * A report has two halves and only one is testable here: the X++ half ends when
+ * the provider has staged its rows, and everything after that is RDL. So the
+ * test drives the provider directly — contract, `processReport()`, dataset
+ * getter — which is the same boundary the framework uses.
+ *
+ * Compiler-verified before the template was written (probe `coverage-v4g.ts`):
+ * `processReport()` is callable from outside, and the dataset getter returns the
+ * temp-table buffer.
+ */
+describe('systest kind: report-dp', () => {
+  it('drives the provider directly, with no controller', async () => {
+    const out = await generate({
+      name: 'ConDemoNoteReportDP', testTargetType: 'report-dp',
+      baseName: 'ConDemoNoteReportContract', datasetAccessor: 'getConDemoNoteReportTmp',
+      testMethods: ['processReport'],
+    });
+    expect(out).toContain('new ConDemoNoteReportContract()');
+    expect(out).toContain('dp.parmDataContract(contract)');
+    expect(out).toContain('dp.processReport();');
+    expect(out).toContain('dp.getConDemoNoteReportTmp()');
+    expect(out).not.toContain('SrsReportRunController');
+  });
+
+  it('takes the dataset getter as a parameter rather than deriving it', async () => {
+    // `SrsReportDataProviderBase` has eleven members and none is a `getTmp*` —
+    // the getter is developer-written, and the platform itself ships a mis-typed
+    // one (`geAssetBarCodeTmp`), so a derived name is a coin flip.
+    const out = await generate({
+      name: 'ConWeirdDP', testTargetType: 'report-dp',
+      baseName: 'ConWeirdContract', datasetAccessor: 'geConWeirdlyNamedTmp',
+    });
+    expect(out).toContain('dp.geConWeirdlyNamedTmp()');
+  });
+
+  it('generates the empty case beside the positive one', async () => {
+    // A provider that stages rows unconditionally passes the positive test alone.
+    const out = await generate({
+      name: 'ConDemoNoteReportDP', testTargetType: 'report-dp',
+      baseName: 'ConDemoNoteReportContract', testMethods: ['processReport'],
+    });
+    expect(out).toContain('testProcessReportStagesRows');
+    expect(out).toContain('testProcessReportStagesNothingWhenThereIsNoData');
+  });
+
+  it('says what a SysTest cannot reach', async () => {
+    const out = await generate({ name: 'ConDemoNoteReportDP', testTargetType: 'report-dp' });
+    expect(out).toContain('Report Designer');
   });
 });

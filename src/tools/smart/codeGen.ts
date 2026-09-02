@@ -58,7 +58,7 @@ const CodeGenArgsSchema = z.object({
       'One [SysTestMethod] per entry, each failing until its assertion is written. ' +
       'Read them from get_object_info(objectType="class", options:{members:"names"}).'
     ),
-  testTargetType: z.enum(['class', 'table', 'coc', 'event-handler', 'service']).optional()
+  testTargetType: z.enum(['class', 'table', 'coc', 'event-handler', 'service', 'report-dp']).optional()
     .describe(
       'For the systest pattern: what `name` denotes, which decides the SHAPE of the test. ' +
       '"class" (default) constructs and asserts. "table" emits the buffer shape — initValue(), ' +
@@ -66,7 +66,9 @@ const CodeGenArgsSchema = z.object({
       'including one a CoC class wraps. "coc" tests a class-method wrapper through the BASE class ' +
       '(naming the _Extension class proves nothing about `next`). "event-handler" performs the write ' +
       'and reads back what the handler changed. "service" calls a SysOperation service directly with ' +
-      'a hand-built contract (pass the contract class as `baseName`). ' +
+      'a hand-built contract (pass the contract class as `baseName`). "report-dp" drives a report data ' +
+      'provider directly: contract, processReport(), and the rows read back through the dataset getter ' +
+      '(name it in `datasetAccessor` — it is developer-written and cannot be derived). ' +
       'prepare(mode="test") reports which one the target is and emits this parameter for you.'
     ),
   targetObject: z.string().optional()
@@ -945,6 +947,103 @@ function sysTestServiceTemplate(serviceClass: string, contractClass: string, met
 /// </remarks>
 [SysTestTarget(classStr(${serviceClass}), UtilElementType::Class)]
 class ${serviceClass}Test extends SysTestCase
+{
+${bodies}}`;
+}
+
+/**
+ * SysTest for a report DATA PROVIDER.
+ *
+ * A report has two halves and only one of them is testable here. The X++ half
+ * ends when the provider has staged its rows; everything after that is RDL, and
+ * whether the design binds a field is a question for the Report Designer. So the
+ * test constructs the provider, hands it a contract, calls `processReport()` and
+ * reads the rows back through the dataset getter — which is exactly the boundary
+ * the framework itself uses.
+ *
+ * Compiler-verified before it was written (probe `coverage-v4g.ts`):
+ * `processReport()` is callable from outside, `parmQuery(new Query())` compiles,
+ * and the dataset getter returns the temp-table buffer.
+ *
+ * The accessor is a PARAMETER and is never derived. `SrsReportDataProviderBase`
+ * has eleven members and none of them is a `getTmp*`: the getter is written by
+ * the developer and carries `[SRSReportDataSetAttribute]`. The platform ships
+ * `geAssetBarCodeTmp` — a typo, and a permanent one — which is why the
+ * `report-dataset-extension` pattern already takes the same name as input rather
+ * than guessing it.
+ */
+function sysTestReportDpTemplate(
+  dpClass: string,
+  contractClass: string,
+  accessor: string,
+  tmpBuffer: string,
+  methods: string[],
+): string {
+  const testFor = (method: string): string => {
+    const cap = method.charAt(0).toUpperCase() + method.slice(1);
+    return `
+    /// <summary>
+    /// TODO: state what this run must produce, e.g. "one row per posted invoice".
+    /// </summary>
+    [SysTestMethod]
+    public void test${cap}StagesRows()
+    {
+        // Arrange - the contract carries every input the dialog would have
+        // collected. There is no controller here and no render request.
+        ${contractClass} contract = new ${contractClass}();
+        // TODO: contract.parmSomething(<value>);
+
+        ${dpClass} dp = new ${dpClass}();
+        dp.parmDataContract(contract);
+
+        // Act - processReport() is the entry point the framework calls, and it
+        // is callable directly (compiler-verified).
+        dp.processReport();
+
+        // Assert - read the rows back through the DATASET GETTER, the method
+        // carrying [SRSReportDataSetAttribute]. That is the contract the RDL
+        // consumes, so it is the thing worth asserting.
+        ${tmpBuffer} staged = dp.${accessor}();
+
+        this.fail('test${cap}StagesRows is not implemented yet.');
+    }
+
+    /// <summary>
+    /// The empty case. A provider that stages rows unconditionally passes the
+    /// test above, so one input that must produce NOTHING is what pins it.
+    /// </summary>
+    [SysTestMethod]
+    public void test${cap}StagesNothingWhenThereIsNoData()
+    {
+        ${contractClass} contract = new ${contractClass}();
+        // TODO: values that select no source rows.
+
+        ${dpClass} dp = new ${dpClass}();
+        dp.parmDataContract(contract);
+        dp.processReport();
+
+        ${tmpBuffer} staged = dp.${accessor}();
+
+        this.fail('test${cap}StagesNothingWhenThereIsNoData is not implemented yet.');
+    }
+`;
+  };
+
+  const bodies = (methods.length > 0 ? methods : ['processReport']).map(testFor).join('');
+
+  return `
+/// <summary>
+/// Unit tests for the report data provider <c>${dpClass}</c>.
+/// </summary>
+/// <remarks>
+/// The provider is exercised directly: a hand-built contract, processReport(),
+/// and the dataset getter. No controller, no dialog, no SSRS render request -
+/// which is what makes this fast, deterministic, and able to fail for exactly
+/// one reason. What it does NOT cover is the design: whether the RDL binds these
+/// fields is a question for the Report Designer, not for a SysTest.
+/// </remarks>
+[SysTestTarget(classStr(${dpClass}), UtilElementType::Class)]
+class ${dpClass}Test extends SysTestCase
 {
 ${bodies}}`;
 }
@@ -2763,12 +2862,21 @@ export async function codeGenTool(request: CallToolRequest) {
         coc: `${targetClass}CocTest`,
         'event-handler': `${targetClass}EventTest`,
         service: `${targetClass}Test`,
+        'report-dp': `${targetClass}Test`,
       }[kind] ?? `${targetClass}Test`;
+      // A report DP test needs two names the generator cannot derive: the dataset
+      // getter (developer-written, and the platform ships a typo'd one) and the
+      // temp-table type it returns. `datasetAccessor` already exists for the
+      // report-dataset-extension pattern and means the same thing here.
+      const accessor = (args.datasetAccessor ?? '').trim() || `get${targetClass.replace(/DP$/i, '')}Tmp`;
+      const tmpBuffer = `${targetClass.replace(/DP$/i, '')}Tmp`;
       code = kind === 'table' ? sysTestTableTemplate(targetClass, methods)
         : kind === 'coc' ? sysTestCocTemplate(targetClass, methods)
         : kind === 'event-handler' ? sysTestEventHandlerTemplate(targetClass, methods)
         : kind === 'service' ? sysTestServiceTemplate(targetClass, contractClass, methods)
-        : sysTestTemplate(targetClass, methods);
+        : kind === 'report-dp'
+          ? sysTestReportDpTemplate(targetClass, contractClass, accessor, tmpBuffer, methods)
+          : sysTestTemplate(targetClass, methods);
       displayName = testClassName;
       // Per-kind headline. The kinds differ in WHAT they observe, and saying it
       // wrong is expensive: a CoC test that names the wrapper class tests the
@@ -2779,6 +2887,7 @@ export async function codeGenTool(request: CallToolRequest) {
         coc: 'against the **base class**, never the wrapper: CoC is transparent at the call site, so a test that names the `_Extension` class proves nothing about `next`. Remove the wrapper and these tests must fail — that is what makes them a test OF the wrapper.',
         'event-handler': 'by performing the **write** and reading back what the handler changed. A handler fires out of band and cannot return a value, so there is nothing else to observe. Both halves are generated: it must fire when it should, AND leave an explicit value alone.',
         service: 'calling the service **directly** with a hand-built contract — no controller, no dialog, no batch queue. That is what keeps it fast and deterministic.',
+        'report-dp': 'driving the data provider **directly**: a hand-built contract, processReport(), and the staged rows read back through the dataset getter. No controller and no render request — the X++ half of a report ends where the RDL begins, and whether the design binds a field is a Report Designer question, not a SysTest one.',
       }[kind] ?? 'constructing the class and asserting the returned value.';
       namingNote =
         `📌 **Generated:** \`${testClassName} extends SysTestCase\` — one [SysTestMethod] per ` +
