@@ -336,3 +336,37 @@ describe('containers carry attributes, and the goldens hide that', () => {
     expect(r.message).toContain('no <Fields> collection');
   });
 });
+
+/**
+ * The other storage form.
+ *
+ * Shipped reports do not use CDATA at all — zero of the 1,057 on a full install.
+ * They put XML-escaped text in `<Text>`, which is inert by construction here:
+ * `&lt;Fields&gt;` cannot match a search for `<Fields>`. Masking is what makes
+ * OUR documents safe; escaping is what makes Microsoft's. Both are asserted, so
+ * a future change that starts un-escaping has to break a test to do it.
+ */
+describe('an escaped RDL is left alone too', () => {
+  const ESCAPED = REPORT_XML.replace(
+    /<Text><!\[CDATA\[[\s\S]*?\]\]><\/Text>/,
+    '<Text>&lt;Report&gt;&lt;DataSets&gt;&lt;DataSet Name="ConDemoNoteReportTmp"&gt;'
+    + '&lt;Fields&gt;&lt;Field Name="NoteId" /&gt;&lt;/Fields&gt;&lt;/DataSet&gt;&lt;/DataSets&gt;&lt;/Report&gt;</Text>',
+  );
+
+  beforeEach(() => writeFileSync(reportPath, ESCAPED, 'utf-8'));
+
+  it('adds the dataset fields without touching the escaped design', async () => {
+    const before = /<Text>([\s\S]*?)<\/Text>/.exec(readFileSync(reportPath, 'utf-8'))?.[1];
+    const r = await refreshReportDataset(reportPath, 'ConDemoNoteReportTmp', undefined, roots());
+    expect(r.success, r.message).toBe(true);
+    const after = readFileSync(reportPath, 'utf-8');
+    expect(after).toContain('<Name>Subject</Name>');
+    expect(/<Text>([\s\S]*?)<\/Text>/.exec(after)?.[1]).toBe(before);
+  });
+
+  it('does not treat the escaped <Fields> as the dataset\'s own', async () => {
+    await refreshReportDataset(reportPath, 'ConDemoNoteReportTmp', undefined, roots());
+    const design = /<Text>([\s\S]*?)<\/Text>/.exec(readFileSync(reportPath, 'utf-8'))?.[1] ?? '';
+    expect(design).not.toContain('Subject');
+  });
+});

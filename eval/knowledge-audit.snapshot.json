@@ -1,6 +1,6 @@
 {
-  "capturedAt": "2026-09-02T08:25:34.640Z",
-  "indexedAt": "2026-09-01T06:44:28.829Z",
+  "capturedAt": "2026-09-02T10:34:21.284Z",
+  "indexedAt": "2026-09-02T09:44:48.631Z",
   "ok": [
     "alerts-business-events|attribute|DataContract",
     "alerts-business-events|attribute|DataContractAttribute",
@@ -303,6 +303,7 @@
     "ssrs-contracts|extends|SrsReportRunController",
     "ssrs-contracts|static-call|SRSPrintMediumType::File",
     "ssrs-contracts|static-call|SRSReportFileFormat::PDF",
+    "ssrs-contracts|static-call|SrsReportRunUtil::getCurrentUserLangId",
     "ssrs-rdp-preprocess|attribute|SRSReportDataSetAttribute",
     "ssrs-rdp-preprocess|attribute|SrsReportParameterAttribute",
     "ssrs-rdp-preprocess|declaration|LedgerJournalTrans",
@@ -313,6 +314,8 @@
     "ssrs-reports|extends|SrsReportDataProviderBase",
     "ssrs-reports|extends|SrsReportRunController",
     "ssrs-reports|static-call|PrintMgmtReportRun::construct",
+    "ssrs-reports|static-call|SrsReportHelper::addParameterValueRangeToQuery",
+    "ssrs-reports|static-call|SysQuery::range",
     "ssrs-ui-builder|declaration|DialogField",
     "ssrs-ui-builder|declaration|SysTableLookup",
     "ssrs-ui-builder|extends|SrsReportDataContractUIBuilder",

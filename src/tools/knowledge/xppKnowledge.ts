@@ -1295,6 +1295,9 @@ while select crosscompany : companies
       'Print management in D365FO controls report destinations (screen, printer, email, archive) per document type. ' +
       'Use SrsPrintMgmtController for reports that integrate with the Print management setup form.',
     rules: [
+      'The extension point is a DELEGATE on PrintMgmtDocType and a HANDLER that subscribes to it. PrintMgmtDocType declares getDefaultReportFormatDelegate, getQueryRangeFieldsDelegate, getQueryTableIdDelegate, getEmailAddressDelegate, getPartyTypeDelegate, getPartyRecIdDelegate and getDestinationPartyTypeAndIdDelegate; PrintMgmtDelegatesHandler carries the matching …DelegateHandler methods. Subscribe to the delegate on the DocType — do not try to override the handler',
+      'PrintMgmtReportFormatPublisher has exactly TWO members, populate and notifyPopulate — there is no publishReportFormats, which is the name the shape suggests. Registering a format for a new document type goes through populate',
+      'SrsPrintMgmtController adds three things over SrsReportRunController: runPrintMgmt (abstract — you must implement it), initPrintMgmtReportRun and postPrintMgmtCompletion. It has NO parmPrintMgmtDocType, so the document type is decided inside runPrintMgmt',
       'Extend SrsPrintMgmtController (not SrsReportRunController) when the report supports Print management',
       'Register the document type in PrintMgmtDocType enum extension',
       'Override getDocumentName() and getDocumentTitle() in the controller class',
@@ -1885,6 +1888,7 @@ if (SecurityRights::hasTableAccess(tableNum(MyCustomTable), AccessType::Read))
       'D365FO SSRS reports use: TmpTable (TempDB) → DataContract → DP class → Controller → AxReport with RDL design. ' +
       'The scaffolded design is always named "Report"; ssrsReportStr is compile-time checked against it.',
     rules: [
+      'Translating a contract parameter into a query range has shipped helpers — SrsReportHelper::addParameterValueRangeToQuery, addFromAndToDateRangeToQuery, addDateTimeRangeToQuery, addFromAndToValueRangeToQuery, addPerDateRangeToQuery, addYesNoRangeToQuery, addSkipZeroRangeToQuery. They handle the empty/blank cases that hand-written SysQuery::range calls get wrong, and none of the names is guessable',
       '6 objects: TmpTable (TempDB), Contract (DataContractAttribute), DP (extends SrsReportDataProviderBase), Controller (extends SrsReportRunController), AxMenuItemOutput, AxReport XML with RDL design',
       'Scaffold ALL of them in one call: generate_object(mode="scaffold", objectType="report", name=..., fieldsHint=..., contractParams=[...]) — never hand-author the AxReport XML/RDL',
       'TmpTable: MUST be TableType=TempDB (NOT InMemory) — required for SSRS data connection',
@@ -1958,6 +1962,7 @@ public class MyReportDP extends SrsReportDataProviderBase
       'dialog is simply wrong. Every figure below is a census of the 1,057 AxReport documents on a ' +
       'complete install (13,833 parameters, 1,361 datasets).',
     rules: [
+      'The design text is stored TWO different ways and both are legal. Shipped reports put the RDL in <Text> as XML-ESCAPED text (&lt;Report&gt;…) — ZERO of the 1,057 use a CDATA block. This server\'s scaffold writes the CDATA form, and the compiler accepts it (VM-verified). So a tool that searches an AxReport for markup has to know which form it is looking at: escaped RDL cannot be mistaken for metadata at all, while CDATA has to be masked first',
       'A parameter is an <AxReportParameterBase i:type="AxReportParameter"> element, NOT <AxReportParameter> — ' +
       'the tag carries attributes and wraps across lines. Searching for the obvious spelling finds zero of ' +
       '1,057 documents, which is the kind of silent zero that ends a search early',
@@ -2025,6 +2030,9 @@ public class MyReportDP extends SrsReportDataProviderBase
       'contract (design-level parameters), the print contract (destination/format/copies) and the COMPOSITE that ' +
       'aggregates them for the controller. Mutate the parts — never replace the composite.',
     rules: [
+      'Controller members that exist, read off SrsReportRunController (164 of them): parmReportName, parmShowDialog, parmLoadFromSysLastValue, parmArgs, parmReportContract, parmDialogCaption, prePromptModifyContract, preRunModifyContract, startOperation, runReport, runToScreen, runToScreenPrintArchive, setDefaultPrintDestinationSettings, parmPrintDestinationTokens. **parmPrintDestination does NOT exist** — a plausible name the compiler answers with ClassDoesNotContainMethod. Set the destination through the print settings on the contract instead',
+      'Running in BATCH is the controller\'s business, not the DP\'s: parmInBatch, isInBatch, mustGoBatch, canGoBatch, batchInfo, parmExecutionMode, showBatchTab, showBatchRecurrenceButton. A DP that tries to detect batch mode is asking the wrong object',
+      'Localisation is read, never guessed: SrsReportRunUtil::getCurrentUserLangId, getFormatLanguageId and getSpecificCultureName answer it, and the design gets the culture through the platform parameter AX_RenderingCulture. Formatting a value in the DP hard-codes one user\'s locale into everyone\'s report',
       'RDP contract: your DataContractAttribute-decorated class with DataMemberAttribute parm methods — the one your DP reads via parmDataContract(); nested contracts are supported (a parm method returning another contract)',
       'RDL contract (SrsReportRdlDataContract): parameters modeled in the report DESIGN (query ranges, company, language) — set them in controller overrides, do not subclass it',
       'Print contract (SRSPrintDestinationSettings): destination medium, file format, printer, copies, orientation — reachable as parmPrintSettings() on the composite',
@@ -5054,6 +5062,7 @@ final class MyRentalForm_Extension
       'and the settings are changed in the CONTROLLER before it runs — not in the DP, not in the design. ' +
       'Six destinations exist and each needs a different pair of properties set.',
     rules: [
+      'SRSPrintDestinationSettings member names, read off the class rather than remembered: printMediumType, fileName, fileFormat, printerName, printAllPages, printLandscape, printOnBothSides, emailTo, emailCc, emailSubject, **emailbody** (lower-case b — the one that gets typed wrong), emailAttachmentFileFormat, parmPrintToArchive, parmFileName, parmPrinterId, parmEMailContract, parmSRSPrintArchiveContract',
       'Get the settings from the composite contract: controller.parmReportContract().parmPrintSettings() returns SRSPrintDestinationSettings. Change it in preRunModifyContract() — after the dialog, before the run — so a user\'s dialog choice is still respected when you do not override it',
       'The destinations are SRSPrintMediumType::{Screen, Printer, File, Email, Archive, Custom} — set printMediumType() FIRST, because the other properties that matter depend on it',
       'File/PDF: printMediumType(SRSPrintMediumType::File), fileFormat(SRSReportFileFormat::PDF), fileName(path), overwriteFile(true). The formats that exist are CSV, Excel, HTML4_0, Image, MHTML, PDF, XML, Word — there is no "Text"',
@@ -5102,6 +5111,13 @@ final class MyRentalForm_Extension
       'half you are in stops the two most common mistakes: formatting data in the DP, and computing ' +
       'business values in the design.',
     rules: [
+      'Census of the 961 shipped reports that carry RDL (365 MB), so this is what is USED rather than what SSRS supports. Data access: Fields! (960 files), Parameters! (954), Labels! (931), Globals! (795), ReportItems! (83), User! (2 — effectively never). If you are reaching for User!, the answer is almost always a platform parameter instead',
+      'Functions, by how many reports use them: IIf 775 files / 29,703 uses — the workhorse; Format 591; Sum 468; RowNumber 312; First 267; CStr 84; IsNothing 73; RunningValue 39; Last 38; FormatNumber 37; Switch 27; Count 26; Max 24; FormatDateTime 18; CDate 18; Previous 17; CountDistinct 10; Choose 4; Min 2. **Avg and Lookup appear in ZERO shipped reports** — reaching for them means you are solving it in the wrong half; aggregate in the data provider, where it can be tested',
+      'IsNothing() is the null guard, and it matters because a dataset field is nullable by default: =IIf(IsNothing(Fields!Amount.Value), 0, Fields!Amount.Value). 73 reports do this and the ones that do not are the ones that render #Error on an empty row',
+      'Layout is a TABLIX: 952 of 961 reports. Matrix appears in ZERO, Chart in 7, Subreport in 5. A matrix or a sub-report is not the D365FO idiom, and a sub-report in particular is a separate report run per row',
+      'Custom VB code (<Code> blocks, Code.MyFunction) is used by 2 reports out of 961 and is the wrong tool by default: it cannot be unit-tested, does not appear in a build, and duplicates logic that belongs on the temp table. Compute it in X++ and stage the result',
+      'Conditional visibility is everywhere — 871 reports, 22,837 <Hidden> expressions — and it is how a single design serves several cases. ToggleItem (22 reports) makes a section collapsible; UserSort (11) makes a column interactively sortable; explicit page breaks appear in 226',
+      'The platform parameters are consumed IN the design: AX_RenderingCulture (946 reports) drives =Format(...) and the language of a label, AX_CompanyName (938) titles the header, AX_RdpPreProcessedId (557) is what a pre-processed report filters its staged rows by. Read them, never set them',
       'Two design kinds, and the AOT stores the choice as an XML TYPE, not a property: i:type="AxReportPrecisionDesign" or i:type="AxReportAutoDesign". Across 400 shipped reports it is precision 416 to auto 56 — precision is the norm and the only one that gives pixel control',
       'AutoDesign is generated from the dataset and is fine for a list nobody has laid out; PrecisionDesign is a real RDL document you edit in the Visual Studio Report Designer. This server writes precision designs; nothing outside the designer can lay one out properly, so a request to "move that column" ends in VS',
       'Expressions start with = and read the dataset by NAME: =Fields!CustAccount.Value for a column, =Parameters!FromDate.Value for a parameter, =Labels!MyLabelId for a label, =ReportItems!Textbox1.Value to repeat another cell (page headers use this, since they cannot see the dataset)',
