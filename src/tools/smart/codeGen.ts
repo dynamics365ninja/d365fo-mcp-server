@@ -58,12 +58,16 @@ const CodeGenArgsSchema = z.object({
       'One [SysTestMethod] per entry, each failing until its assertion is written. ' +
       'Read them from get_object_info(objectType="class", options:{members:"names"}).'
     ),
-  testTargetType: z.enum(['class', 'table']).optional()
+  testTargetType: z.enum(['class', 'table', 'coc', 'event-handler', 'service']).optional()
     .describe(
-      'For the systest pattern: what `name` denotes. "table" emits the buffer-based shape — ' +
-      'initValue(), assertFalse(buffer.validateWrite()) and assertExpectedInfoLogMessage() — ' +
-      'which is what a table CoC rule (validateWrite/validateField/insert/update) needs. ' +
-      'Defaults to "class". prepare(mode="test") reports which one the target is.'
+      'For the systest pattern: what `name` denotes, which decides the SHAPE of the test. ' +
+      '"class" (default) constructs and asserts. "table" emits the buffer shape — initValue(), ' +
+      'assertFalse(buffer.validateWrite()) and assertExpectedInfoLogMessage() — for a table rule, ' +
+      'including one a CoC class wraps. "coc" tests a class-method wrapper through the BASE class ' +
+      '(naming the _Extension class proves nothing about `next`). "event-handler" performs the write ' +
+      'and reads back what the handler changed. "service" calls a SysOperation service directly with ' +
+      'a hand-built contract (pass the contract class as `baseName`). ' +
+      'prepare(mode="test") reports which one the target is and emits this parameter for you.'
     ),
   targetObject: z.string().optional()
     .describe('For menu-item pattern: target form/class/report name'),
@@ -732,6 +736,216 @@ class ${targetTable}Test extends SysTestCase
 
         // TODO: arrange shared fixtures here, or delete this method.
     }
+${bodies}}`;
+}
+
+/**
+ * SysTest for a CHAIN OF COMMAND wrapper on a class method.
+ *
+ * The shape is not the plain class shape, and the difference is the whole point:
+ * **a CoC test never names the wrapper**. CoC is transparent at the call site, so
+ * the test constructs the BASE class, calls the (now-wrapped) method and asserts
+ * the transform is observable. That is the behavioural signal a golden diff
+ * cannot give - a golden judges the wrapper SHAPE, not that `next` is actually
+ * reached and its result used.
+ *
+ * Promoted from `eval/systests/L2-coc-extension.xml`, which ran under
+ * SysTestConsole on 2026-08-31 and passed 2/2. The second method is not padding:
+ * a wrapper that ignores `next` and returns a constant passes the first assertion
+ * alone, so a second input has to prove the base value survives.
+ */
+function sysTestCocTemplate(baseClass: string, methods: string[]): string {
+  const testFor = (method: string): string => {
+    const cap = method.charAt(0).toUpperCase() + method.slice(1);
+    return `
+    /// <summary>
+    /// TODO: state what the wrapper ADDS, e.g. "appends the verified suffix".
+    /// </summary>
+    [SysTestMethod]
+    public void test${cap}IsWrapped()
+    {
+        // Arrange - the BASE class. Naming the _Extension class here would test
+        // nothing: CoC is transparent, and a wrapper is only observable through
+        // the method it wraps.
+        ${baseClass} instance = new ${baseClass}();
+
+        // Act
+        // TODO: call instance.${method}(...) with an input the wrapper transforms.
+
+        // Assert - the transformed value, not merely "not empty".
+        this.fail('test${cap}IsWrapped is not implemented yet.');
+    }
+
+    /// <summary>
+    /// The base value survives. Without this, a wrapper that ignores next and
+    /// returns a constant passes the test above.
+    /// </summary>
+    [SysTestMethod]
+    public void test${cap}PreservesBaseValueForDifferentInput()
+    {
+        ${baseClass} instance = new ${baseClass}();
+
+        // TODO: a DIFFERENT input, asserting the base part is carried through
+        // unchanged and only the wrapper contribution is added.
+        this.fail('test${cap}PreservesBaseValueForDifferentInput is not implemented yet.');
+    }
+`;
+  };
+
+  const bodies = (methods.length > 0 ? methods : ['wrappedMethod']).map(testFor).join('');
+
+  return `
+/// <summary>
+/// Runtime tests for the Chain of Command wrapper on <c>${baseClass}</c>.
+/// </summary>
+/// <remarks>
+/// The wrapper class is deliberately not referenced: CoC is transparent at the
+/// call site, so these tests exercise the base class and observe the wrapper
+/// through its effect. Remove the wrapper and they must fail - that is what
+/// proves they test the wrapper at all.
+/// </remarks>
+[SysTestTarget(classStr(${baseClass}), UtilElementType::Class)]
+class ${baseClass}CocTest extends SysTestCase
+{
+${bodies}}`;
+}
+
+/**
+ * SysTest for a table DATA EVENT HANDLER.
+ *
+ * An event handler fires out of band: it cannot return a value or block the call
+ * the way a CoC wrapper can, so the only way to see it is to perform the write
+ * and read back what it changed. A golden diff can confirm the handler class and
+ * its attribute exist with the right signature; it cannot confirm the default is
+ * ever applied.
+ *
+ * Promoted from `eval/systests/L2-event-handler-basic.xml` (ran 2026-08-31,
+ * passed 2/2). Both halves are needed: the handler must fire when it should AND
+ * leave an explicit value alone, or a handler that overwrites unconditionally
+ * passes the first test.
+ */
+function sysTestEventHandlerTemplate(targetTable: string, methods: string[]): string {
+  const buffer = lcFirst(targetTable);
+  const testFor = (event: string): string => {
+    const cap = event.charAt(0).toUpperCase() + event.slice(1);
+    return `
+    /// <summary>
+    /// TODO: state the rule, e.g. "a blank Subject is defaulted on insert".
+    /// </summary>
+    [SysTestMethod]
+    public void test${cap}AppliesTheRule()
+    {
+        ${targetTable} ${buffer};
+
+        // Arrange - set the key and LEAVE BLANK the field the handler fills.
+        // TODO: set the mandatory fields, and only those.
+        ${buffer}.insert();
+
+        // Assert on the buffer AFTER the write: the handler mutated it in place.
+        this.fail('test${cap}AppliesTheRule is not implemented yet.');
+    }
+
+    /// <summary>
+    /// An explicit value is left untouched. Without this, a handler that
+    /// overwrites unconditionally passes the test above.
+    /// </summary>
+    [SysTestMethod]
+    public void test${cap}PreservesAnExplicitValue()
+    {
+        ${targetTable} ${buffer};
+
+        // TODO: set the field the handler would default, to a distinct value.
+        ${buffer}.insert();
+
+        this.fail('test${cap}PreservesAnExplicitValue is not implemented yet.');
+    }
+`;
+  };
+
+  const bodies = (methods.length > 0 ? methods : ['inserting']).map(testFor).join('');
+
+  return `
+/// <summary>
+/// Runtime tests for the data event handlers on <c>${targetTable}</c>.
+/// </summary>
+/// <remarks>
+/// Each test runs in its own transaction, which the framework rolls back - the
+/// rows inserted here need no cleanup. The handler is observed through its
+/// EFFECT, never referenced by name: an event handler cannot return a value, so
+/// performing the write is the only way to see it run.
+/// </remarks>
+[SysTestTarget(tableStr(${targetTable}), UtilElementType::Table)]
+class ${targetTable}EventTest extends SysTestCase
+{
+${bodies}}`;
+}
+
+/**
+ * SysTest for a SysOperation SERVICE method.
+ *
+ * The service is called DIRECTLY, bypassing the controller, the dialog and the
+ * batch queue - exactly as a unit test should, and exactly what makes it fast and
+ * deterministic. A golden diff can confirm the method exists with the right
+ * signature; only this can confirm the arithmetic.
+ *
+ * Promoted from `eval/systests/L3-batch-basic.xml` (ran 2026-08-31, passed 2/2).
+ * The contract class is a PARAMETER, never derived: the sysoperation scaffold
+ * emits `{N}DataContract` while hand-written services commonly use `{N}Contract`,
+ * and guessing produces a class that does not exist.
+ */
+function sysTestServiceTemplate(serviceClass: string, contractClass: string, methods: string[]): string {
+  const testFor = (method: string): string => {
+    const cap = method.charAt(0).toUpperCase() + method.slice(1);
+    return `
+    /// <summary>
+    /// TODO: state the rule as an equation, e.g. "10 * 3 = 30".
+    /// </summary>
+    [SysTestMethod]
+    public void test${cap}()
+    {
+        // Arrange - the contract carries every input; there is no dialog here.
+        ${contractClass} contract = new ${contractClass}();
+        // TODO: contract.parmSomething(<value>);
+
+        ${serviceClass} service = new ${serviceClass}();
+
+        // Act - call the service method directly, not through the controller.
+        // TODO: capture the result of service.${method}(contract).
+
+        // Assert
+        this.fail('test${cap} is not implemented yet.');
+    }
+
+    /// <summary>
+    /// A second input, so the test pins an equation rather than one constant.
+    /// </summary>
+    [SysTestMethod]
+    public void test${cap}WithDifferentInputs()
+    {
+        ${contractClass} contract = new ${contractClass}();
+        // TODO: different values, a different expected result.
+
+        ${serviceClass} service = new ${serviceClass}();
+
+        this.fail('test${cap}WithDifferentInputs is not implemented yet.');
+    }
+`;
+  };
+
+  const bodies = (methods.length > 0 ? methods : ['process']).map(testFor).join('');
+
+  return `
+/// <summary>
+/// Unit tests for the SysOperation service <c>${serviceClass}</c>.
+/// </summary>
+/// <remarks>
+/// The service is exercised directly with a hand-built contract: no controller,
+/// no dialog, no batch. That is what keeps these tests fast and deterministic -
+/// the plumbing is the framework business, the arithmetic is yours.
+/// </remarks>
+[SysTestTarget(classStr(${serviceClass}), UtilElementType::Class)]
+class ${serviceClass}Test extends SysTestCase
+{
 ${bodies}}`;
 }
 
@@ -2535,30 +2749,58 @@ export async function codeGenTool(request: CallToolRequest) {
       // the naming the platform's own tests use.
       const targetClass = args.name.trim();
       const methods = (args.testMethods ?? []).map(m => m.trim()).filter(Boolean);
-      const isTable = args.testTargetType === 'table';
-      code = isTable
-        ? sysTestTableTemplate(targetClass, methods)
+      const kind = args.testTargetType ?? 'class';
+      // The contract a service test builds is a PARAMETER, never derived: the
+      // sysoperation scaffold emits `{N}DataContract` while hand-written services
+      // commonly use `{N}Contract`, so deriving it produces a class that does not
+      // exist — and the compiler's message for that names the contract, not the
+      // guess that invented it.
+      const contractClass = (args.baseName ?? '').trim()
+        || `${targetClass.replace(/Service$/i, '')}Contract`;
+      const testClassName = {
+        class: `${targetClass}Test`,
+        table: `${targetClass}Test`,
+        coc: `${targetClass}CocTest`,
+        'event-handler': `${targetClass}EventTest`,
+        service: `${targetClass}Test`,
+      }[kind] ?? `${targetClass}Test`;
+      code = kind === 'table' ? sysTestTableTemplate(targetClass, methods)
+        : kind === 'coc' ? sysTestCocTemplate(targetClass, methods)
+        : kind === 'event-handler' ? sysTestEventHandlerTemplate(targetClass, methods)
+        : kind === 'service' ? sysTestServiceTemplate(targetClass, contractClass, methods)
         : sysTestTemplate(targetClass, methods);
-      displayName = `${targetClass}Test`;
+      displayName = testClassName;
+      // Per-kind headline. The kinds differ in WHAT they observe, and saying it
+      // wrong is expensive: a CoC test that names the wrapper class tests the
+      // wrapper in isolation and passes with `next` never reached.
+      const kindNote = {
+        class: 'constructing the class and asserting the returned value, plus the expected-exception shape.',
+        table: 'against a **table buffer**: `initValue()`, the boolean verdict, and the infolog line the rule writes. A validation test gets a rejecting AND an accepting case — a rule that refuses everything passes the rejecting one.',
+        coc: 'against the **base class**, never the wrapper: CoC is transparent at the call site, so a test that names the `_Extension` class proves nothing about `next`. Remove the wrapper and these tests must fail — that is what makes them a test OF the wrapper.',
+        'event-handler': 'by performing the **write** and reading back what the handler changed. A handler fires out of band and cannot return a value, so there is nothing else to observe. Both halves are generated: it must fire when it should, AND leave an explicit value alone.',
+        service: 'calling the service **directly** with a hand-built contract — no controller, no dialog, no batch queue. That is what keeps it fast and deterministic.',
+      }[kind] ?? 'constructing the class and asserting the returned value.';
       namingNote =
-        `📌 **Generated:** \`${targetClass}Test extends SysTestCase\` — one [SysTestMethod] per ` +
-        `target method${methods.length ? ` (${methods.join(', ')})` : ''}, ` +
-        (isTable
-          ? 'against a **table buffer**: `initValue()`, the boolean verdict, and the infolog line the ' +
-            'rule writes. A validation test gets a rejecting AND an accepting case — a rule that ' +
-            'refuses everything passes the rejecting one.'
-          : 'plus the expected-exception shape.') + '\n\n' +
-        (isTable
+        `📌 **Generated:** \`${testClassName} extends SysTestCase\` — one [SysTestMethod] per ` +
+        `target method${methods.length ? ` (${methods.join(', ')})` : ''}, ` + kindNote + '\n\n' +
+        (kind === 'table'
           ? '⚠️ `assertExpectedInfoLogMessage` scans the infolog for TEXT. Pass the resolved label ' +
             'text, not the `"@Label:Id"` the rule passes to `checkFailed` — the infolog holds the ' +
             'resolved string, so the id never matches.\n\n'
           : '') +
+        (kind === 'service'
+          ? `ℹ️ Contract class: \`${contractClass}\`. Pass \`baseName\` to name a different one — it is not derived from ` +
+            'the service name, because the scaffold emits `{N}DataContract` and hand-written services ' +
+            'commonly use `{N}Contract`.\n\n'
+          : '') +
         `🔴 **Every test fails as written.** That is the point: run it first and watch it fail, so a ` +
         `later pass means the behaviour arrived rather than the assertion being empty. Replace each ` +
-        `\`this.fail(...)\`${isTable ? ' and each TODO' : ''} with the assertion the test exists for.\n\n` +
+        `\`this.fail(...)\` and each TODO with the assertion the test exists for.\n\n` +
         `**The cycle:** \`d365fo_file(action="create", objectType="class")\` → ` +
         `\`build_d365fo_project\` (must COMPILE — red means a failing assertion, not a broken file) → ` +
-        `\`run_systest_class(className="${targetClass}Test")\` (expect failures) → implement → build → ` +
+        `\`run_systest_class(className="${testClassName}")\` — **expect it to fail**, and it will say so: ` +
+        `the runner reports "Red phase confirmed" while the scaffold's \`this.fail(...)\` lines are still ` +
+        `there, and warns you if everything passes on a class created this session. → implement → build → ` +
         `run again (expect green) → \`run_bp_check\`.\n\n` +
         `⚠️ The test model must reference **TestEssentials**; [SysTestCategory], [SysTestOwner] and ` +
         `[SysTestPriority] live there, while [SysTestMethod] and [SysTestCheckInTest] are in ` +

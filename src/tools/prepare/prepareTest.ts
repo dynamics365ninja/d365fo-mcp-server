@@ -19,6 +19,7 @@ import * as path from 'path';
 
 import type { XppServerContext } from '../../types/context.js';
 import { createProvenanceToken } from '../../utils/provenanceStore.js';
+import { resolveTestTarget } from './testFirst.js';
 import { getConfigManager } from '../../utils/configManager.js';
 import { lookupSymbolsNocase } from '../../utils/symbolLookup.js';
 
@@ -53,6 +54,47 @@ function targetKind(context: XppServerContext, name: string): 'class' | 'table' 
   } catch {
     return 'unknown';
   }
+}
+
+/**
+ * The SHAPE the test must take, beyond "class or table".
+ *
+ * The five scaffolds observe the behaviour in five different places, and picking
+ * the wrong one produces a test that compiles, runs, passes and proves nothing —
+ * most sharply for a Chain of Command wrapper, where a test that names the
+ * `_Extension` class exercises the wrapper in isolation and passes with `next`
+ * never reached.
+ *
+ * Every signal here is read from the index, never guessed from the goal text:
+ * the caller says what they are testing, not how, and inferring the shape from
+ * prose is how a service test ends up constructing a controller.
+ */
+function testShape(
+  context: XppServerContext,
+  target: string,
+  kind: 'class' | 'table' | 'unknown',
+  askedForExtension: boolean,
+): 'class' | 'table' | 'coc' | 'event-handler' | 'service' {
+  if (kind === 'table') return 'table';
+  if (kind !== 'class') return 'class';
+
+  // A SysOperation service is reached with a hand-built contract, never through
+  // its controller — so the shape is decided by what the class extends.
+  try {
+    const db = context.symbolIndex.getReadDb();
+    const row = db.prepare(
+      "SELECT signature FROM symbols WHERE type = 'class' AND name = ? LIMIT 1",
+    ).get(target) as { signature?: string } | undefined;
+    if (row?.signature && /SysOperationServiceBase/i.test(row.signature)) return 'service';
+  } catch {
+    // Index unavailable — fall through to the name-based signals below.
+  }
+  if (/Service$/.test(target)) return 'service';
+
+  // The caller named an extension: they are testing a WRAPPER, and the base
+  // class is what the test must construct.
+  if (askedForExtension) return 'coc';
+  return 'class';
 }
 
 /** Public/protected instance and static methods of the target, from the index. */
@@ -150,10 +192,21 @@ export async function prepareTestTool(request: unknown, context: XppServerContex
   // "CustTable.validateWrite" is how a developer names the thing under test, and
   // how real sessions asked for it. Split it rather than failing to resolve it.
   const dotted = /^([A-Za-z_]\w*)\.([A-Za-z_]\w*)$/.exec(objectName.trim());
-  const target = (dotted ? dotted[1] : objectName).trim();
-  const testClass = `${target}Test`;
+  const rawTarget = (dotted ? dotted[1] : objectName).trim();
+
+  // An extension name is reduced to the object it extends: a CoC wrapper is
+  // transparent to a test, so `CustTableConExtension_Extension` is tested by
+  // exercising `CustTable`. The reduction is index-verified — the infix between
+  // base and `_Extension` is a per-model convention, so stripping the suffix
+  // alone leaves a name that is not an object.
+  const askedForExtension = /_Extension$/i.test(rawTarget) || Boolean(dotted && /extension/i.test(dotted[2]));
+  const target = (askedForExtension ? resolveTestTarget(context, rawTarget) : undefined) ?? rawTarget;
 
   const kind = targetKind(context, target);
+  const shape = testShape(context, target, kind, askedForExtension);
+  const testClass = shape === 'coc' ? `${target}CocTest`
+    : shape === 'event-handler' ? `${target}EventTest`
+    : `${target}Test`;
   const methods = targetMethods(context, target);
   const focus = (methodName ?? dotted?.[2])?.trim();
   // Lifecycle and serialisation members are not what a unit test pins down.
@@ -195,11 +248,36 @@ export async function prepareTestTool(request: unknown, context: XppServerContex
     lines.push('```');
     lines.push(`generate_object(mode="pattern", pattern="systest", name="${target}",`);
     lines.push(`  params: { testMethods: [${suggested.map(m => `"${m.name}"`).join(', ')}]` +
-      `${kind === 'table' ? ', testTargetType: "table"' : ''} })`);
+      `${shape !== 'class' ? `, testTargetType: "${shape}"` : ''}` +
+      `${shape === 'service' ? ', baseName: "<the DataContract class>"' : ''} })`);
     lines.push('```');
   }
 
-  if (kind === 'table') {
+  if (shape === 'coc') {
+    lines.push('');
+    lines.push(`**\`${rawTarget}\` is an extension, so the test targets \`${target}\`** — and ` +
+      '`testTargetType: "coc"` above is what selects that shape:');
+    lines.push('  • The test constructs the BASE class and calls the wrapped method. It must NOT name the ' +
+      'extension class: Chain of Command is transparent at the call site, so a test that references the ' +
+      'wrapper exercises it in isolation and passes with `next` never reached.');
+    lines.push('  • Two inputs, not one. A wrapper that ignores `next` and returns a constant passes a ' +
+      'single assertion; the second input is what proves the base value is carried through.');
+    lines.push('  • The honest check: remove the wrapper and the test must fail. If it still passes, it is ' +
+      'testing the base method.');
+  }
+
+  if (shape === 'service') {
+    lines.push('');
+    lines.push('**This is a SysOperation service** — `testTargetType: "service"` above selects the shape:');
+    lines.push('  • Build the contract by hand and call the service method directly. No controller, no ' +
+      'dialog, no batch queue — that plumbing is the framework\'s business and it is neither fast nor ' +
+      'deterministic to drag into a unit test.');
+    lines.push('  • Name the contract class in `baseName`. It is not derived: the scaffold emits ' +
+      '`{N}DataContract` while hand-written services commonly use `{N}Contract`, and a guess names a ' +
+      'class that does not exist.');
+  }
+
+  if (shape === 'table' || shape === 'event-handler') {
     lines.push('');
     lines.push('**This is a TABLE, so the test has a different shape** — and `testTargetType: "table"` ' +
       'above is what selects it:');

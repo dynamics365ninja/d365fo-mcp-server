@@ -1,0 +1,187 @@
+# The API surface the coverage plan intends to document, as a committed list.
+#
+# Regenerate the snapshot on a VM after a platform update:
+#   npm run oracle:members -- --from-file scripts/oracles/apiSurface.txt \
+#     --names-only --json eval/api-members.snapshot.json
+#
+# WHY A LIST AND NOT A COMMAND LINE. Every knowledge defect this repo has shipped
+# of the "names an API that does not exist" class was written from memory
+# (`SysRunnable::run()`, `assertExpectedException`, `initArgs()` on a report
+# controller). A committed list makes the question reviewable and lets the same
+# question be re-asked after a platform update, which is when an answer silently
+# changes.
+#
+# A NOT-FOUND HERE IS AN ANSWER, NOT A FAILURE. Kernel-implemented types have no
+# AOT XML anywhere by construction (xRecord, FormRun, FormDataSource, the
+# DataEntity runtime contexts), so "not found" is how the snapshot records
+# "kernel — the metadata index cannot answer about it, use a compiler probe and
+# add an allow-list entry". Those are grouped last, and they are expected to be
+# absent.
+#
+# Lines are trimmed; `#` starts a comment.
+
+# ─── Testing: SysTest framework (G-25, G-26) ─────────────────────────────────
+SysTestCase
+SysTestAssert
+SysTestSuite
+SysTestSuiteCompanyIsolateClass
+SysTestSuiteCompanyIsolateMethod
+SysTestSuiteCompIsolateClassWithTts
+SysTestSuiteTTS
+SysTestSuiteNoCleanup
+SysTestListenerXML
+SysTestListenerConsoleOutput
+SysTestBatchScheduler
+SysTestBatchTask
+SysTestMethodAttribute
+SysTestTargetAttribute
+SysTestCheckInTestAttribute
+SysTestNonCheckInTestAttribute
+SysTestInactiveTestAttribute
+SysTestGranularityAttribute
+SysTestCategoryAttribute
+SysTestOwnerAttribute
+SysTestPriorityAttribute
+SysTestAreaPathAttribute
+SysTestRowAttribute
+SysTestRowInactiveAttribute
+SysTestCaseDataDependencyAttribute
+SysTestCaseDemoDataDependencyAttribute
+SysTestCaseCountryRegionDependencyAttribute
+SysTestCaseAutomaticNumberSequencesAttribute
+SysTestCaseNumSeqModuleDependencyAttribute
+SysTestCaseNumSeqTypeDependencyAttribute
+SysTestCaseConfigurationKeyDependencyAttribute
+SysTestCaseDependsOnReportAttribute
+SysTestCaseDependsOnBatchAttribute
+SysTestFeatureDependencyAttribute
+SysTestFeatureConfigurationAttribute
+SysTestCaseFlightDependencyAttribute
+SysTestCaseUseSingleInstanceAttribute
+SysTestSecurityAttribute
+SysTestTransactionAttribute
+SysTestFixtureAttribute
+SysTestKeyAttribute
+SysTestExtendedInfologEntryCaptureAttribute
+SysTestCaseCompanyData
+SysTestableExceptionExpected
+SysTestableExceptionAndInfologExpected
+
+# ─── Testing: ATL test data (G-27) ───────────────────────────────────────────
+AtlDataRootNode
+AtlCommand
+AtlCreatorRecordBased
+AtlCreatorJournalTable
+AtlDataInvent
+AtlDataCustomers
+AtlDataDimensions
+AtlDataCompanyInfo
+
+# ─── Testing: form adaptors (G-28) ───────────────────────────────────────────
+CustTableFormAdaptor
+SysTestCaseFormRunTracker
+
+# ─── Reporting: SSRS runtime (G-19, G-21) ────────────────────────────────────
+SrsReportDataProviderBase
+SrsReportDataProviderPreProcess
+SrsReportDataProviderPreProcessTempDB
+SrsReportRunController
+SrsReportRunUtil
+SrsReportHelper
+SrsReportRunPermission
+SrsReportParameterValidator
+SrsReportParameterValidatorBase
+SrsReportRunCache
+SrsReportDrillThruUtil
+SrsReportDataContract
+SrsReportRdlDataContract
+SrsReportDataContractUIBuilder
+SrsReportEMailDataContract
+SrsReportRunMailer
+SrsReportRunPrinter
+SrsReportNameAttribute
+SrsReportParameterAttribute
+SrsReportQueryAttribute
+SrsReportDataSetAttribute
+SRSPrintDestinationSettings
+SRSPrintArchiveContract
+SrsPrintDestinationUIBuilder
+SrsProxy
+
+# ─── Reporting: print management (G-19) ──────────────────────────────────────
+SrsPrintMgmtController
+SrsPrintMgmtFormLetterController
+PrintMgmtDocType
+PrintMgmtReportFormatPublisher
+PrintMgmtReportFormatSubscriber
+PrintMgmtDelegatesHandler
+PrintMgmtDocumentTypeFactoryAttribute
+PrintMgmtNode
+PrintMgmtHierarchy
+PrintMgmtPrintSettingDetail
+FormLetterReport
+
+# ─── Reporting: images and barcodes (G-23) ───────────────────────────────────
+Barcode
+BarcodeCode128
+BarcodeEAN128
+BarcodeTypeFactoryAttribute
+
+# ─── Frameworks: SysOperation and batch (G-17) ───────────────────────────────
+SysOperationServiceController
+SysOperationServiceBase
+SysOperationValidatable
+SysOperationInitializable
+SysOperationDataContractBase
+SysOperationProgress
+SysOperationSandbox
+SysPackable
+RunBase
+RunBaseBatch
+BatchHeader
+
+# ─── Frameworks: number sequences (G-17) ─────────────────────────────────────
+NumberSeq
+NumberSeqScope
+NumberSeqScopeFactory
+NumberSeqApplicationModule
+NumberSeqFormHandler
+
+# ─── Frameworks: workflow event handlers (G-18) ──────────────────────────────
+WorkflowStartedEventHandler
+WorkflowCompletedEventHandler
+WorkflowCanceledEventHandler
+WorkflowElementStartedEventHandler
+WorkflowElementCompletedEventHandler
+WorkflowElementCanceledEventHandler
+WorkflowElementReturnedEventHandler
+WorkflowElementDeniedEventHandler
+WorkflowWorkItemsCreatedEventHandler
+WorkflowWorkItemActionManager
+
+# ─── Frameworks: security, notifications, ER (G-18) ──────────────────────────
+XDSServiceBase
+SystemNotificationsManager
+SysMailerMessageBuilder
+SysMailerFactory
+SysExtensionAppClassFactory
+SysPluginFactory
+
+# ─── Data entities (G-15) ────────────────────────────────────────────────────
+DataEntity
+
+# ─── Expected to be KERNEL (no AOT XML) — a NOT FOUND here is the answer ─────
+xRecord
+Common
+FormRun
+FormDataSource
+FormDataObject
+FormStringControl
+FormReferenceControl
+DataEntityRuntimeContext
+DataEntityDataSourceRuntimeContext
+xSession
+xInfo
+xUserInfo
+Query
+QueryRun

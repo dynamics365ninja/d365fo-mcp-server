@@ -1,6 +1,6 @@
 {
-  "capturedAt": "2026-08-31T11:38:15.189Z",
-  "indexedAt": "2026-08-31T11:36:29.348Z",
+  "capturedAt": "2026-09-02T07:07:30.065Z",
+  "indexedAt": "2026-09-01T06:44:28.829Z",
   "ok": [
     "alerts-business-events|attribute|DataContract",
     "alerts-business-events|attribute|DataContractAttribute",
@@ -18,6 +18,8 @@
     "async-retryable-batch|extends|BatchRetryable",
     "async-retryable-batch|extends|SysOperationServiceBase",
     "async-retryable-batch|static-call|SysOperationExecutionMode::ScheduledBatch",
+    "attributes-authoring|attribute|DataMemberAttribute",
+    "attributes-authoring|attribute|ExportAttribute",
     "attributes-authoring|attribute|SysObsolete",
     "attributes-authoring|extends|SysAttribute",
     "bp-rules|attribute|SuppressBPWarning",
@@ -372,11 +374,7 @@
     "temp-tables|attribute|SrsReportParameterAttribute",
     "temp-tables|extends|SrsReportDataProviderBase",
     "testing|attribute|SysTestMethod",
-    "testing|declaration|Amount",
-    "testing|extends|SysTestAssert",
-    "testing|extends|SysTestCase",
     "testing|static-call|AtlDataRootNode::construct",
-    "testing|static-call|UtilElementType::Class",
     "transactions|declaration|CustTable",
     "transactions|static-call|Exception::DuplicateKeyException",
     "transactions|static-call|Exception::UpdateConflict",
@@ -401,8 +399,12 @@
     "unit-testing|attribute|SysTestTarget",
     "unit-testing|attribute|SysTestTransaction",
     "unit-testing|declaration|AmountMST",
+    "unit-testing|extends|SysTestAssert",
     "unit-testing|extends|SysTestCase",
+    "unit-testing|static-call|AtlDataRootNode::construct",
     "unit-testing|static-call|Exception::Error",
+    "unit-testing|static-call|UtilElementType::Class",
+    "unit-testing|static-call|UtilElementType::Table",
     "xpp-collections|declaration|CustAccount",
     "xpp-collections|declaration|CustTable",
     "xpp-collections|declaration|CustTrans",
@@ -421,6 +423,7 @@
     "xpp-collections|static-call|Types::Int64",
     "xpp-collections|static-call|Types::Integer",
     "xpp-collections|static-call|Types::Real",
-    "xpp-collections|static-call|Types::String"
+    "xpp-collections|static-call|Types::String",
+    "xrecord-buffer-api|attribute|ExtensionOf"
   ]
 }

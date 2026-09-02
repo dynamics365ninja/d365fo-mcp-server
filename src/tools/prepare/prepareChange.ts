@@ -32,6 +32,7 @@ import {
   renderTableDataMethodSignature,
 } from '../../knowledge/tableDataMethods.js';
 import { renderPrepareOpSpec } from '../specs/opSpecs.js';
+import { findExistingTests, renderTestFirst, testFirstOffer } from './testFirst.js';
 import { rankContext, renderRankedContext } from '../../workspace/contextRanker.js';
 
 // Schema
@@ -672,6 +673,23 @@ export async function prepareChangeTool(request: any, context: XppServerContext)
     lines.push(`### Naming validation for \`${proposedName}\``);
     lines.push(namingText);
     lines.push('');
+  }
+
+  // The red-first offer, for a change that carries BEHAVIOUR. Placed here — after
+  // the deliverable and the discovery sections, before the ranked block — because
+  // the loop it points at was used zero times in 1,603 measured calls while this
+  // very mode ran 54 times: it is not findable from the tool list, so it has to
+  // be findable from the answer. Best-effort and additive, like the ranked block.
+  try {
+    const offer = testFirstOffer({
+      objectType: resolvedType,
+      methodName,
+      goal,
+      operation: (raw as { operation?: string | string[] })?.operation,
+    });
+    if (offer) lines.push(...renderTestFirst(offer, objectName, findExistingTests(context, objectName)));
+  } catch {
+    // omit on failure
   }
 
   // Ranked neighborhood, anchored on the target object; additive, best-effort,

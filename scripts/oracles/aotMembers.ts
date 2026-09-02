@@ -25,10 +25,21 @@
  *   npm run oracle:members -- SrsReportRunController --grep parm
  *   npm run oracle:members -- Global --names-only
  *   npm run oracle:members -- Box Debug xInfo xUserInfo --json members.json
+ *   npm run oracle:members -- --from-file scripts/oracles/apiSurface.txt \
+ *       --names-only --json eval/api-members.snapshot.json
  *
  * Names are matched case-insensitively, and the reported spelling comes from the
  * `<Name>` element — never from the file name, which disagrees with it in real
  * cases (`SRSReportParameterAttribute.xml` holds `SrsReportParameterAttribute`).
+ *
+ * `--from-file` + `--names-only --json` is the BATCH mode: it answers "does this
+ * member exist" for a committed list of classes and writes a names-only snapshot,
+ * so knowledge authoring can be checked on a machine with no D365FO install. It
+ * is names-only on purpose — the existence question is the one that produced
+ * every shipped defect of this class (`SysRunnable::run()`,
+ * `assertExpectedException`, `initArgs()` on a report controller), and a
+ * signature dump would be a far larger copy of Microsoft's surface for no extra
+ * answer.
  */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -213,8 +224,21 @@ function main(): void {
   const names = process.argv.slice(2).filter(a => !a.startsWith('--') &&
     // drop values consumed by --flag value
     !Object.values(args).includes(a));
+
+  // A committed list beats a hundred-item command line: the list is then
+  // reviewable, and a re-capture after a platform update asks the same question.
+  if (typeof args['from-file'] === 'string') {
+    const listed = fs.readFileSync(args['from-file'], 'utf-8')
+      .split(/\r?\n/)
+      .map(l => l.replace(/#.*$/, '').trim())
+      .filter(Boolean);
+    names.push(...listed);
+  }
+
   if (!names.length) {
-    console.error('usage: aotMembers.ts <Name> [<Name>…] [--grep <substr>] [--names-only] [--json out.json]');
+    console.error(
+      'usage: aotMembers.ts <Name> [<Name>…] [--from-file <list>] [--grep <substr>] [--names-only] [--json out.json]',
+    );
     process.exit(2);
   }
 
@@ -249,7 +273,35 @@ function main(): void {
   }
 
   if (typeof args.json === 'string') {
-    fs.writeFileSync(args.json, `${JSON.stringify({ readAt: new Date().toISOString(), reports }, null, 2)}\n`, 'utf8');
+    // `--names-only` shrinks the snapshot to the question it answers: existence.
+    // The full report carries every signature of every base class, which for the
+    // ~110-class API surface is megabytes of Microsoft's source restated to no
+    // extra purpose.
+    const payload = args['names-only'] === true
+      ? reports.map(r => (r.found
+        ? {
+          name: r.name,
+          packageName: r.packageName,
+          type: r.type,
+          extends: r.extends,
+          implements: r.implements,
+          members: (r.methods ?? []).map(mm => mm.name).sort(),
+          enumValues: r.enumValues,
+        }
+        : { requested: r.requested, found: false }))
+      : reports;
+    fs.writeFileSync(
+      args.json,
+      `${JSON.stringify({
+        readAt: new Date().toISOString(),
+        packagesRoot: PACKAGES_ROOT,
+        namesOnly: args['names-only'] === true,
+        requested: names.length,
+        resolved: reports.filter(r => r.found).length,
+        reports: payload,
+      }, null, 2)}\n`,
+      'utf8',
+    );
     console.log(`\n→ ${args.json}`);
   }
 }

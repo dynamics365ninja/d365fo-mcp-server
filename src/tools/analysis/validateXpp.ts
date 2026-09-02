@@ -2056,6 +2056,75 @@ function checkAttributeArguments(code: string): ValidationViolation[] {
 }
 
 /**
+ * ATTR003 — two attributes stacked on a METHOD.
+ *
+ * X++ allows several attributes on a method only inside ONE bracket, separated by
+ * commas. Two bracketed lines in a row is a parse error, and the compiler's answer
+ * is `Compile Fatal Error: … Invalid token '['` with a line and column — it names
+ * a token, not a rule, and it kills the whole file rather than the method. Nothing
+ * in that message tells a developer that the fix is a comma.
+ *
+ * That is what separates this rule from DECL001/CONV001, which were rejected
+ * because "the compiler's own messages are exact and arrive at the same moment a
+ * build would". Here the message is neither exact nor local.
+ *
+ * The rule is worth having because the shape is inviting: the `unit-testing` topic
+ * lists [SysTestMethod], [SysTestCheckInTest], [SysTestCategory], [SysTestPriority]
+ * one under another, and stacking them is the obvious reading.
+ *
+ * ON A CLASS IT IS LEGAL, and that exemption is not a guess: a census of the
+ * install found 2,163 AxClass files stacking attributes on a declaration and
+ * **0 of 760,583 methods** doing it. The compiler agrees — probes
+ * `StackedFullFormsOnMethod` / `StackedShortFormsOnMethod`
+ * (scripts/oracles/probes/coverage-v4c.ts) fail identically on both the short and
+ * the suffixed attribute names, while the same names compile alone.
+ */
+function checkStackedMethodAttributes(code: string): ValidationViolation[] {
+  const masked = maskStringsAndComments(code);
+  const lines = code.split('\n');
+  const maskedLines = masked.split('\n');
+  const violations: ValidationViolation[] = [];
+
+  /** A line that is nothing but one bracketed attribute list. */
+  const attributeLine = /^[ \t]*\[[A-Za-z_][^\]]*\][ \t]*$/;
+  /** The declaration an attribute stack is ALLOWED to precede. */
+  const classDecl = /^[ \t]*(?:(?:public|private|protected|internal|final|abstract|static)\s+)*(?:class|interface)\b/;
+
+  for (let i = 0; i + 1 < maskedLines.length; i++) {
+    if (!attributeLine.test(maskedLines[i]) || !attributeLine.test(maskedLines[i + 1])) continue;
+
+    // Walk past any further attribute lines, blank lines and doc comments to find
+    // what is being decorated. Only that decides legality.
+    let j = i + 2;
+    while (j < maskedLines.length) {
+      const line = maskedLines[j];
+      if (attributeLine.test(line) || line.trim() === '' || line.trim().startsWith('///')) { j++; continue; }
+      break;
+    }
+    const target = maskedLines[j] ?? '';
+    if (classDecl.test(target)) continue;
+
+    const names = [maskedLines[i], maskedLines[i + 1]]
+      .map(l => /\[\s*([A-Za-z_]\w*)/.exec(l)?.[1])
+      .filter(Boolean);
+    violations.push({
+      rule: 'ATTR003',
+      severity: 'error',
+      line: i + 1,
+      excerpt: lines[i]?.trim() ?? '',
+      fix:
+        `Merge them into ONE bracket: [${names.join(', ')}]. Two bracketed lines in a row on a method ` +
+        "is a parse error — xppc answers \"Invalid token '['\" and abandons the whole file. " +
+        '(Stacking IS legal above a class declaration; 2,163 shipped files do it, and 0 of 760,583 ' +
+        'shipped methods do.)',
+    });
+    i = j; // one finding per stack, not one per pair
+  }
+
+  return violations;
+}
+
+/**
  * EXT001 — an extension-method class whose members do not match its shape.
  *
  * A static class holds extension methods; every method in it must be static and the
@@ -2310,6 +2379,7 @@ const XPP_RULES = [
   checkSelectExpressionAndValidTimeState,
   checkAttributeArguments,
   checkExtensionMethodClassShape,
+  checkStackedMethodAttributes,
   checkReservedIdentifiers,
 ];
 

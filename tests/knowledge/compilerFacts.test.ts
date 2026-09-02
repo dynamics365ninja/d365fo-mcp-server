@@ -349,13 +349,24 @@ describe('knowledge names the testing API the platform actually has', () => {
   it('names the suite classes that exist and not the one that does not', () => {
     const text = rulesText('unit-testing');
     expect(text).toMatch(/SysTestSuiteCompanyIsolateClass/);
+    // …and says it is OBSOLETE. Compiler-verified 2026-09-02 (probe
+    // coverage-v4f, SuiteIsolationAfterD2): returning one builds with
+    // "'SysTestSuiteCompanyIsolateClass' is obsolete: 'This suite type is
+    // obsolete. Please use SysTestSuite directly'". The entry used to list it
+    // among "the ones that exist", which is true and reads as a recommendation.
+    expect(text).toMatch(/OBSOLETE/);
+    expect(text).toMatch(/use SysTestSuite directly/i);
     expect(text).toMatch(/SysTestSuiteCompanyIsolateMethod/);
     expect(text).not.toMatch(/SysTestSuiteCompanyIsolateShared/);
     expect(text).not.toMatch(/SysTestCaseAutoRollback\b(?!\s+attribute)/);
   });
 
   it('places SysTestCase where the platform ships it', () => {
-    expect(rulesText('testing')).toMatch(/ApplicationFoundation/);
+    // Moved from the `testing` entry when the two testing topics were
+    // consolidated: `unit-testing` is now the authoritative one for the
+    // SysTestCase contract, and which package ships the base class is part of
+    // that contract — it is the reference a model needs before anything compiles.
+    expect(rulesText('unit-testing')).toMatch(/ApplicationFoundation/);
   });
 
   it('carries the run-time function catalog with the compiler-verified ranges', () => {

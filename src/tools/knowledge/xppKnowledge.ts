@@ -1045,58 +1045,21 @@ MyRentEquipmentId newId = numSeq.num();
   // ── Testing ─────────────────────────────────────────────────────────────
   {
     id: 'testing',
-    title: 'Unit Testing (SysTest Framework)',
-    keywords: ['test', 'unit test', 'systest', 'systestcase', 'assert', 'atl', 'acceptance test library', 'mock'],
+    title: 'Choosing a test kind (SysTestCase vs ATL) — and where the details are',
+    keywords: ['testing', 'test strategy', 'which test', 'integration test', 'test kind', 'acceptance test'],
     summary:
-      'D365FO uses SysTestCase for unit tests and ATL (Acceptance Test Library) for integration tests.',
+      'D365FO ships two test frameworks for two different questions, and picking the wrong one is the ' +
+      'expensive mistake. SysTestCase answers "does this rule hold?" in an always-rolled-back transaction; ' +
+      'ATL answers "does this business process still work?" over real, created data. The full SysTestCase ' +
+      'contract — asserts, attributes, suites, isolation, the red-first loop — lives in the unit-testing topic.',
     rules: [
-      'Test class: extends SysTestCase (ApplicationFoundation, and it extends SysTestAssert — the asserts are inherited, not a separate class) — methods start with "test" or carry [SysTestMethod]',
-      'SysTestMethodAttribute: [SysTestMethod] on each test method',
-      'Assert methods, the full inherited set: assertEquals, assertNotEqual, assertEquivalent, assertNotEquivalent, assertTrue, assertFalse, assertNull, assertNotNull, assertSame, assertNotSame, assertObjectEquals, assertRealEquals, assertUTCDateTimeEquals, fail. There is NO assertExpectedException — declare the expectation first with this.parmExceptionExpected(true) (optionally with the message), then run the code that should throw',
-      'setUp() / tearDown(): run before/after each test method; setUpTestCase() / tearDownTestCase() run once per class',
-      'ATL (Acceptance Test Library): entry point is AtlDataRootNode::construct(); navigate via data.invent()/data.sales()/… and use the Creators/Commands/Queries/Specifications concepts (AtlCommand* family) — there is NO AtlScenario or AtlDataHelper class',
-      'Test data: use the ATL data root (AtlDataRootNode) creators or setUp() to create transient test records',
-      'Run with: run_systest_class (it passes SysTestConsole.exe /unattended, which skips the debugger-attach prompt — the runner is NOT interactive-only) or Visual Studio Test Explorer',
-      'Naming: <TestedClass>Test (e.g. CustTableTest) — the repo systests use this suffix; pick ONE convention per model and keep it consistent',
-      'See the unit-testing topic for the detailed SysTestCase rules (transaction rollback, SysTestSuite, mocking)',
+      'Unit (SysTestCase): one rule, one class, no data setup beyond a buffer and initValue(). This is what the server scaffolds: prepare(mode="test") then generate_object(mode="pattern", pattern="systest")',
+      'Integration (ATL): a business process across several tables, using AtlDataRootNode::construct() to create the data. Slower, needs the ATL packages referenced by the test model, and fails for many more reasons than the rule under test',
+      'Metadata is NOT a SysTest question. Whether a field, a control or an enum value has the right shape is proven by a build plus the eval golden diff — a SysTest that asserts metadata is asserting the compiler did its job',
+      'A test that passes the first time it runs has proven nothing about its assertion. Write it red, run it red, then implement — see unit-testing for the exact loop the tools support',
+      'For everything else about SysTestCase — the 14 asserts, parmExceptionExpected, [SysTestMethod] and the dependency attributes, suite isolation, run_systest_class — read the unit-testing topic. This entry deliberately does not restate them: two topics that both explain SysTestCase is how they came to disagree about the naming convention',
     ],
-    examples: [
-      {
-        label: 'Basic unit test',
-        code: `// SysTestTarget(str _name, utilElementType _type = UtilElementType::Class)
-// — the second argument is the element TYPE, not a method name.
-[SysTestTarget(classStr(MyHelper), UtilElementType::Class)]
-class MyHelperTest extends SysTestCase
-{
-    [SysTestMethod]
-    public void testCalculateDiscount_ZeroQty()
-    {
-        MyHelper helper = new MyHelper();
-        Amount result = helper.calculateDiscount(0, 100);
-        this.assertEquals(0, result, 'Discount should be 0 for zero quantity');
-    }
-
-    [SysTestMethod]
-    public void testCalculateDiscount_RejectsNegativeQty()
-    {
-        MyHelper helper = new MyHelper();
-
-        // No assertExpectedException in X++: declare the expectation, then call.
-        this.parmExceptionExpected(true);
-        helper.calculateDiscount(-1, 100);
-    }
-
-    [SysTestMethod]
-    public void testCalculateDiscount_LargeQty()
-    {
-        MyHelper helper = new MyHelper();
-        Amount result = helper.calculateDiscount(100, 50);
-        this.assertTrue(result > 0, 'Discount should be positive for large qty');
-    }
-}`,
-      },
-    ],
-    related: ['sysoperation'],
+    related: ['unit-testing', 'sysoperation'],
   },
 
   // ── Financial Dimensions ────────────────────────────────────────────────
@@ -1350,24 +1313,36 @@ while select crosscompany : companies
   {
     id: 'unit-testing',
     title: 'X++ Unit Testing (SysTestCase / SysTestSuite)',
-    keywords: ['unit test', 'systestcase', 'systestsuite', 'test', 'assert', 'testmethod', 'mock', 'stub', 'systestcasestub', 'testautomation'],
+    keywords: ['unit test', 'systestcase', 'systestsuite', 'systest', 'test', 'assert', 'testmethod',
+      'mock', 'stub', 'systestcasestub', 'testautomation', 'atl', 'acceptance test library',
+      'systesttarget', 'test data', 'red first', 'tdd'],
     summary:
       'X++ unit tests extend SysTestCase. They run in a fresh database transaction that is always rolled back, ' +
       'ensuring tests are isolated. Run in Visual Studio → Test Explorer or via SysTestSuite.',
     rules: [
-      'Test class: extends SysTestCase, must be in the same model as the code under test (or a test model)',
+      'Test class: extends SysTestCase, which ships in ApplicationFoundation and itself extends SysTestAssert — '
+        + 'the asserts are inherited, not a separate class. The test class must be in the same model as the code '
+        + 'under test, or in a test model that references it',
       'Test methods: public void testXxx() — method name MUST start with "test" (case-insensitive)',
       'Setup/teardown: override setUp() and tearDown() — called before/after EACH test method',
       'Assertions (inherited from SysTestAssert): assertEquals, assertNotEqual, assertEquivalent, assertNotEquivalent, assertTrue, assertFalse, assertNull, assertNotNull, assertSame, assertNotSame, assertObjectEquals, assertRealEquals, assertUTCDateTimeEquals, fail',
       'Expected exceptions: this.parmExceptionExpected(true [, message [, messageIsRegEx]]) before the call that must throw — assertExpectedException does not exist. clearExceptionExpected() resets it',
-      'SysTestSuite groups SysTestCase classes; override createSuite() on the test case to pick a variant. The ones that exist: SysTestSuite, SysTestSuiteCompanyIsolateClass, SysTestSuiteCompanyIsolateMethod, SysTestSuiteCompIsolateClassWithTts, SysTestSuiteTTS, SysTestSuiteNoCleanup, SysTestSuiteActor, SysTestSuiteProvider',
+      'SysTestSuite groups SysTestCase classes; override createSuite() on the test case to pick a variant. The AOT carries SysTestSuite, SysTestSuiteCompanyIsolateClass, SysTestSuiteCompanyIsolateMethod, SysTestSuiteCompIsolateClassWithTts, SysTestSuiteTTS, SysTestSuiteNoCleanup, SysTestSuiteActor and SysTestSuiteProvider — but the two company-isolating ones are OBSOLETE. Compiler-verified: returning a SysTestSuiteCompanyIsolateClass builds with "\'SysTestSuiteCompanyIsolateClass\' is obsolete: \'This suite type is obsolete. Please use SysTestSuite directly\'". Return a plain SysTestSuite unless you have a reason not to; the per-test transaction rollback already isolates the data',
       'Filtering and selection attributes that exist: [SysTestMethod], [SysTestCheckInTest] / [SysTestNonCheckInTest], [SysTestInactiveTest], [SysTestTarget], [SysTestGranularity], [SysTestRow(...)] and [SysTestRowInactive(...)] for data-driven rows (10.0.25+), [SysTestCaseDataDependency], [SysTestCaseUseSingleInstance], [SysTestFeatureDependency], [SysTestFixture], [SysTestKey], [SysTestSecurity], [SysTestTransaction]. [SysTestCategory], [SysTestOwner], [SysTestPriority] and [SysTestAreaPath] live in TestEssentials, so the test model must reference it. There is NO SysTestCaseAutoRollback attribute — rollback is the framework default',
+      'Those attributes go in ONE bracket when a method needs more than one — [SysTestMethod, SysTestCheckInTest] — because two bracketed LINES on a method is a parse error, not a resolution error: xppc answers "Invalid token \'[\'" and abandons the file. The list above is a menu, not a stack (validate_code catches it as ATTR003)',
+      '[SysTestPriority] takes an INT, not a string: [SysTestPriority(1)]. [SysTestPriority(\'1\')] is refused with "Cannot implicitly convert from type \'str\' to type \'int\'" — while [SysTestOwner] and [SysTestAreaPath] beside it do take strings, so the bracket looks uniform and is not',
       'Transaction rollback: all DML in a test is rolled back after each test — no cleanup needed for DB state',
       'For methods that call ttsbegin internally: wrap test in try/catch and expect a clean state',
       'Mock dependencies: use delegation pattern or extract interfaces — X++ has no built-in mocking framework',
       'Naming convention: <ClassName>Test (e.g. MyServiceTest) — matches the repo systests and the testing topic; avoid mixing the <ClassName>_Test variant in the same model',
       'Attributes: [SysTestMethod] is optional when the method name starts with "test", and required otherwise',
       'Run tests: Visual Studio → Test → Run All Tests, or SysTestSuite.run() in a batch job',
+      '[SysTestTarget] takes the element TYPE as its second argument, not a method name: '
+        + '[SysTestTarget(classStr(MyHelper), UtilElementType::Class)] — and UtilElementType::Table for a table\'s rules',
+      'ATL (Acceptance Test Library) is the integration-test half, and it is a separate reference: the entry point is '
+        + 'AtlDataRootNode::construct(), navigation is data.invent()/data.sales()/… and the concepts are '
+        + 'Creators/Commands/Queries/Specifications (the AtlCommand* family). There is NO AtlScenario and NO AtlDataHelper class. '
+        + 'The test model must reference the ATL packages before any of it compiles',
       'RED FIRST: write the test before the behaviour and RUN it — a test that passes on its first run has proven nothing about the assertion inside it. The scaffold generate_object(mode="pattern", pattern="systest", name=<TargetClass>) emits exactly that: one [SysTestMethod] per target method, each ending in this.fail(...) until you write the assertion',
       'The loop the server supports: prepare(mode="test", objectName=<TargetClass>) → generate_object(pattern="systest") → d365fo_file(action="create") → build_d365fo_project (must COMPILE — red means a failing assertion, not a broken file) → run_systest_class (expect failures) → implement → build → run again (expect green) → run_bp_check',
       'run_systest_class reports per METHOD: it parses the /xml: document the runner writes (SysTestListenerXML: test-case/@name, @success and a failure/message child), so a green run is not mis-read as failed because a method is called testErrorHandling',
@@ -4361,6 +4336,8 @@ switch (status)
       'An attribute class is a plain X++ class deriving from SysAttribute, applied in square brackets with ' +
       'LITERAL-only constructor arguments and read back via reflection. Instances are constructed lazily.',
     rules: [
+      'SEVERAL attributes on one METHOD go in ONE bracket, comma-separated: [DataMemberAttribute(\'SalesId\'), SysOperationLabelAttribute(\'@SYS1\')]. Two bracketed lines in a row is a PARSE error — xppc answers "Invalid token \'[\'" with a line and column and abandons the whole file, saying nothing about attributes. Compiler-verified, and it fails the same way whether you write the short name or the ...Attribute suffix',
+      'On a CLASS declaration the opposite is true: stacked attribute lines are normal and 2,163 shipped AxClass files do it (feature classes stack [ExportAttribute] over the metadata attribute). The position decides, not the attribute — 0 of 760,583 shipped METHODS stack them. validate_code reports the method case as ATTR003',
       'An attribute class is a non-abstract X++ class deriving from SysAttribute; the name conventionally ends in "Attribute" and that suffix may be OMITTED at the usage site',
       'Constructor arguments at the usage site MUST be compile-time literals of primitive types (str/int/boolean/enum value/date) — a variable is "Invalid token \',\'", a call is "Invalid token \'(\'". A #define MACRO is legal, because it expands to a literal before the compiler sees it',
       'Attributes apply to classes, interfaces, methods, class fields and table methods; several stack comma-separated in one bracket or in separate brackets',
@@ -4793,6 +4770,103 @@ int first   = conPeek(c, 1);`,
     ],
     related: ['intrinsic-functions', 'xpp-data-types', 'enum-conversions', 'datetime-timezones', 'xpp-collections'],
   },
+  // ── xRecord buffer API ──────────────────────────────────────────────────
+  {
+    id: 'xrecord-buffer-api',
+    title: 'The table buffer itself — xRecord/Common members every table inherits',
+    keywords: [
+      'xrecord', 'common', 'buffer', 'orig', 'recversion', 'data', 'buf2buf', 'settmp', 'settmpdata',
+      'setconnection', 'wascached', 'isfielddataretrieved', 'fieldstate', 'selectforupdate', 'reread',
+      'renameprimarykey', 'checkrecord', 'dynamic field', 'pre-image', 'temp table', 'tempdb',
+    ],
+    summary:
+      'Every table variable is an xRecord, and the members it inherits are kernel — no AOT metadata, so ' +
+      'get_object_info and the symbol index answer "not found" for all of them. That silence is why they ' +
+      'get guessed, and several have a shape nobody guesses right. Compiler-verified on this platform.',
+    rules: [
+      'orig() returns a BUFFER OF THE SAME TABLE — the pre-image, already in memory from when the row was ' +
+      'fetched. Read old values from it (this.orig().MyField); never re-select by RecId, which costs a round ' +
+      'trip per write and returns the CURRENT stored state, not what this buffer was fetched with. ' +
+      'this.orig().RecId == 0 is the "new record" test',
+      'data() ALSO returns a buffer, not a container. The idiom is copy = buf.data() or copy.data(buf.data()); ' +
+      'the container belief is common and does not compile ("Cannot implicitly convert from type ' +
+      '\'MyTable\' to type \'container\'"). There is NO setData() on a table',
+      'buf2Buf(from, to) is a GLOBAL function, not a member — it copies the fields the two buffers share and ' +
+      'deliberately skips the system fields, which is what makes it the right tool for a copy-record action',
+      'merge(other) folds another buffer of the same table into this one',
+      'RecVersion is a FIELD, not a method: int64 v = buf.RecVersion. It is what optimistic concurrency ' +
+      'compares, so carrying a stale one is how UpdateConflict happens',
+      'setTmp() turns a real buffer into an in-memory one — the standard way to run logic over rows without ' +
+      'touching the database. setTmpData(other) seeds it from another buffer',
+      'setConnection(UserConnection) binds a buffer to a specific connection. This is the one that matters for ' +
+      'reports: a TempDB temp table filled by a data provider must be bound to the report\'s own connection, ' +
+      'or the rows are written where the renderer cannot see them and the report comes out EMPTY with no error',
+      'isFieldDataRetrieved takes a field NAME (a str), not a FieldId: ' +
+      'buf.isFieldDataRetrieved(fieldStr(MyTable, MyField)). Passing fieldNum is refused with "The expected ' +
+      'type is \'str\'". Use it after a field-list select to tell "not fetched" from "empty"',
+      'fieldState(fieldId) — this one DOES take the id. The FieldId/FieldName split between neighbouring ' +
+      'members is not a pattern; check each one',
+      'selectForUpdate(true) before a select promotes it to a pessimistic read; reread() refreshes the buffer ' +
+      'from the database and DISCARDS unsaved changes in it',
+      'wasCached() reports whether this row came from the table cache rather than from SQL — the honest way ' +
+      'to check whether a CacheLookup setting is doing anything',
+      'buf.(fieldId) is dynamic field access and yields anytype: anytype v = buf.(fieldNum(MyTable, MyField)). ' +
+      'It is the escape hatch for generic code, and it gives up every compile-time check that makes ' +
+      'fieldNum worth using — prefer the direct field where the field is known',
+      'checkRecord() and checkRecord(boolean) both exist and control whether mandatory-field validation runs ' +
+      'on the next write',
+      'renamePrimaryKey() cascades a changed key through the relations that point at it — the only correct ' +
+      'way to change a natural primary key',
+      'caption() returns the record\'s caption, built from TitleField1/TitleField2 unless overridden. ' +
+      'canSubmitToWorkflow() takes an optional str',
+      'getSQLStatements() is NOT a buffer member — the name exists in AX 2012 material and does not compile ' +
+      'here ("Table \'MyTable\' does not contain a definition for method \'getSQLStatements\'")',
+    ],
+    examples: [
+      {
+        label: 'The pre-image, and the re-select that must not replace it',
+        code: `[ExtensionOf(tableStr(MyTable))]
+final class MyTableMyPrefix_Extension
+{
+    public boolean validateWrite()
+    {
+        boolean ret = next validateWrite();
+
+        // The pre-image is already here. No database access, and it holds the
+        // values this buffer was FETCHED with.
+        if (this.orig().RecId != 0 && this.orig().MyAmount > this.MyAmount)
+        {
+            ret = checkFailed("@MyModel:AmountMayNotDecrease");
+        }
+
+        return ret;
+    }
+}`,
+      },
+      {
+        label: 'A temp buffer, and the connection a report data provider must bind',
+        code: `public void buildRows(UserConnection _connection)
+{
+    MyTmpTable tmp;
+    MyTable    source;
+
+    // A TempDB temp table writes to a session-scoped table. Without this the
+    // report renderer reads a DIFFERENT session and finds nothing — and the
+    // build is clean, so nothing tells you.
+    tmp.setConnection(_connection);
+
+    while select source
+    {
+        tmp.clear();
+        tmp.MyField = source.MyField;
+        tmp.insert();
+    }
+}`,
+      },
+    ],
+    related: ['coc-authoring', 'occ-unitofwork', 'temp-tables', 'ssrs-reports'],
+  },
+
   {
     id: 'date-effective',
     title: 'Date-Effective Tables (ValidTimeStateFieldType, validTimeState)',

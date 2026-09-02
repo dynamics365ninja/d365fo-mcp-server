@@ -1,0 +1,68 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>FixtureAttributeStacking</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// Attribute shapes around ATTR003, which refuses two BRACKETED LINES on a method.
+///
+/// The class declaration below carries a stack of its own, and that is the point:
+/// on a class it is legal and shipped 2,163 times, while 0 of 760,583 shipped
+/// methods do it. A rule that cannot tell the two positions apart would report
+/// every feature class in the install.
+[ExportAttribute(identifierStr(Microsoft.Dynamics.ApplicationPlatform.FeatureExposure.IFeatureMetadata))]
+[SysObsolete('Fixture only.', false, 31\12\2030)]
+internal final class FixtureAttributeStacking
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>oneBracketManyAttributes</Name>
+				<Source><![CDATA[
+    /// The LEGAL way to carry several attributes on a method: one bracket, commas.
+    [DataMemberAttribute('SalesId'), SysOperationLabelAttribute('@SYS12345')]
+    public str oneBracketManyAttributes()
+    {
+        return '';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>singleAttribute</Name>
+				<Source><![CDATA[
+    /// The overwhelmingly common shape — one attribute, one method.
+    [SysTestMethod]
+    public void singleAttribute()
+    {
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>containerDestructuring</Name>
+				<Source><![CDATA[
+    /// Two consecutive lines that BEGIN with '[' and are not attributes at all.
+    /// ATTR001 once read this shape as an attribute list in 195 shipped classes.
+    public void containerDestructuring(container _con)
+    {
+        str first, second;
+
+        [first, second] = _con;
+        [second, first] = _con;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>attributeThenDocComment</Name>
+				<Source><![CDATA[
+    /// An attribute separated from its method by a doc comment still decorates a
+    /// METHOD, so a rule that stops looking at the first non-attribute line would
+    /// miss it — and one that treats the comment as the target would misreport it.
+    [SysTestMethod]
+    public void attributeThenDocComment()
+    {
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
