@@ -1481,6 +1481,10 @@ const BRIDGE_MODIFY_OPS = new Set([
   // No C# op exists for query ranges on entities — served entirely by a
   // direct-XML writer (data-entity is already in BRIDGE_MODIFY_TYPES).
   'add-query-range', 'remove-query-range',
+  // Routed straight to the XML writer by XML_ONLY_MODIFY_PAIRS below, but the
+  // dispatch gate is checked FIRST — an op absent here is refused as unknown
+  // before the pair table is ever consulted.
+  'report-design',
 ]);
 
 /**
@@ -1516,6 +1520,12 @@ const XML_ONLY_MODIFY_PAIRS: Record<string, ReadonlySet<string>> = {
   'remove-entry-point': new Set(['security-privilege']),
   'remove-diagnostic-suppression': new Set(['ignore-diagnostic-list']),
   'add-diagnostic-suppression': new Set(['ignore-diagnostic-list']),
+  // An AxReport has no bridge write path at all — IMetadataProvider cannot express
+  // a dataset field or a report parameter through a Dictionary<string,string> — and
+  // `report` is deliberately absent from BRIDGE_MODIFY_TYPES for that reason. Without
+  // this pair the caller would get "the bridge could not resolve the object" instead
+  // of the operation actually running.
+  'report-design': new Set(['report']),
 };
 
 /**

@@ -102,6 +102,7 @@ import {
   directXmlAddDiagnosticSuppression,
   directXmlEnsureRelationProperties,
 } from './directXmlWriters.js';
+import { addReportParameter, refreshReportDataset } from './reportDesignXml.js';
 
 
 /**
@@ -521,6 +522,7 @@ export const ModifyD365FileArgsSchema = z.object({
     'add-enum-value', 'modify-enum-value', 'remove-enum-value',
     'add-display-method', 'add-table-method', 'add-menu-item-to-menu',
     'add-query-range', 'remove-query-range',
+    'report-design',
   ]).describe(
     'Operation to perform. ' +
     'replace-code REQUIRES parameters: oldCode (exact code to find) + newCode (replacement). ' +
@@ -849,6 +851,39 @@ export const ModifyD365FileArgsSchema = z.object({
     'add-query-range: filter value, REQUIRED (e.g. "1" for NoYes, "Sales" for an enum, "1..99" for an ' +
     'interval). Pass the two characters "" for the empty-string filter — a range with no value at all ' +
     'filters nothing and is not a shape D365FO ships.'
+  ),
+  // ── report-design ─────────────────────────────────────────────────────────
+  // Declared here so a strict MCP client can send them: these are top-level keys,
+  // and an undeclared one is dropped before it reaches the handler.
+  reportAction: z.enum(['refresh-dataset', 'add-parameter']).optional().describe(
+    'report-design: which half to do. "refresh-dataset" copies the temp table fields into the ' +
+    'dataset (needs tableName); "add-parameter" declares a parameter and binds it (needs parameterName). ' +
+    'There is deliberately no "add-column" — that edits the RDL, whose failures surface only in the ' +
+    'SSRS renderer.'
+  ),
+  tableName: z.string().optional().describe(
+    'report-design(refresh-dataset): the temp table whose fields the dataset should carry. Read off ' +
+    'disk, so it must exist; only MISSING fields are added, never rewritten or removed.'
+  ),
+  datasetName: z.string().optional().describe(
+    'report-design: which dataset to act on. Optional when the report has exactly one — required when ' +
+    'it has several, because guessing puts the field on the wrong dataset.'
+  ),
+  parameterName: z.string().optional().describe(
+    'report-design(add-parameter): the parameter to declare and bind.'
+  ),
+  parameterDataType: z.string().optional().describe(
+    'report-design(add-parameter): .NET type name, default System.String. The vocabulary shipped ' +
+    'reports use is System.String / System.Boolean / System.DateTime / System.Int32 / System.Int64.'
+  ),
+  parameterHidden: z.boolean().optional().describe(
+    'report-design(add-parameter): true writes <UserVisibility>Hidden</UserVisibility>. Leave it off ' +
+    'for a VISIBLE parameter — there is no "Visible" value in any of the 8,977 shipped parameters, a ' +
+    'visible one omits the element, and an unknown value is dropped silently.'
+  ),
+  promptString: z.string().optional().describe(
+    'report-design(add-parameter): the dialog caption. Pass a LABEL id ("@MyModel:FromDate") — it is ' +
+    'user-visible text in metadata, which no BP rule checks.'
   ),
   joinSource: z.string().optional().describe(
     'Optional name of an existing data source on the form to join the new data source to (add-data-source).'
@@ -2777,6 +2812,42 @@ export async function modifyD365FileTool(
             (args as any).joinSource,
             (args as any).linkType,
           );
+        }
+        break;
+      }
+      case 'report-design': {
+        // The first write path an AxReport has ever had, and deliberately a
+        // narrow one: metadata only, additive only, and the RDL inside the
+        // <![CDATA[…]]> block is never touched. A malformed RDL fails in the
+        // SSRS renderer at run time, where no build and no test can see it.
+        const reportAction = String((args as any).reportAction ?? '').trim();
+        if (reportAction === 'refresh-dataset') {
+          bridgeResult = viaXmlFallback(await refreshReportDataset(
+            actualFilePath,
+            String((args as any).tableName ?? ''),
+            (args as any).datasetName,
+          ));
+        } else if (reportAction === 'add-parameter') {
+          bridgeResult = viaXmlFallback(await addReportParameter(
+            actualFilePath,
+            String((args as any).parameterName ?? ''),
+            {
+              dataType: (args as any).parameterDataType,
+              hidden: (args as any).parameterHidden === true,
+              promptString: (args as any).promptString,
+              datasetName: (args as any).datasetName,
+            },
+          ));
+        } else {
+          bridgeResult = viaXmlFallback({
+            success: false,
+            message:
+              `❌ report-design: reportAction '${reportAction || '(missing)'}' is not one this operation ` +
+              'knows. Pass "refresh-dataset" (sync the dataset with its temp table) or "add-parameter". ' +
+              'There is deliberately no "add-column": placing a column edits the RDL, and a malformed ' +
+              'RDL fails in the SSRS renderer at run time rather than at build time — that half stays ' +
+              'with the Report Designer.',
+          });
         }
         break;
       }

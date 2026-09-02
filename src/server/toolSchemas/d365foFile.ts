@@ -104,6 +104,7 @@ Model + prefix auto-applied.`,
             'add-menu-item-to-menu',
             'modify-property',
             'add-query-range', 'remove-query-range',
+            'report-design',
           ],
           description:
             '[modify] REQUIRED unless using operations[]. add-method also UPDATES in place; ' +

@@ -128,7 +128,7 @@ Mode-specific parameters go in a single `params` object (flat top-level keys sti
 `d365fo_file` actions:
 
 - **`create`** — create any of 39 AOT object types in the correct location + register in `.rnrproj` (gated by grounding token and form-pattern validation).
-- **`modify`** — safe metadata edits via the C# bridge, 38 operations: add-field, add-control, remove-control, add-entry-point, add-method, replace-code, modify-property, …
+- **`modify`** — safe metadata edits via the C# bridge, 39 operations: add-field, add-control, remove-control, add-entry-point, add-method, replace-code, modify-property, report-design, …
 - **`delete`** — remove an object's XML and un-register it from every `.rnrproj` of the model that lists it (irreversible; guarded against standard-model and cross-model targets).
 - **`undo`** — roll `filePath` back: git-tracked → `git checkout HEAD`, which discards ALL uncommitted changes to that file, not just the last edit; untracked → deleted; the symbol/label index is re-synced either way.
 - **`generate`** — XML preview without writing (cloud-friendly).

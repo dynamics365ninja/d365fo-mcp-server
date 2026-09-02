@@ -248,7 +248,14 @@ describe('tool inventory contract', () => {
       expect(annotated.has(toolName), `missing TOOL_ANNOTATIONS entry for '${toolName}'`).toBe(true);
       const a = TOOL_ANNOTATIONS[toolName];
       expect(a.title.length, `empty title for '${toolName}'`).toBeGreaterThan(0);
-      expect(typeof a.readOnlyHint).toBe('boolean');
+      // readOnlyHint is asserted by MEANING, not by presence. A hint equal to
+      // its MCP spec default (`readOnlyHint: false`) says exactly what its
+      // absence says, and the ListTools payload is re-sent on every request
+      // against a 45,000-char ratchet — so the default-valued ones were dropped
+      // to pay for the report-design operation. What must stay true is that a
+      // read tool CLAIMS to be read-only; a write tool simply must not.
+      expect([true, undefined], `'${toolName}' readOnlyHint must be true or absent`)
+        .toContain(a.readOnlyHint);
       expect(a.openWorldHint).toBe(false);
     }
     // No orphan annotations for tools that no longer exist
@@ -265,7 +272,18 @@ describe('tool inventory contract', () => {
       'run_systest_class',
     ];
     for (const toolName of writeTools) {
-      expect(TOOL_ANNOTATIONS[toolName]?.readOnlyHint, `'${toolName}' must not be read-only`).toBe(false);
+      // `false` and absent both mean "not read-only" — absent because that IS
+      // the MCP default. What must never happen is a write tool claiming true,
+      // which is what makes a client skip its write-confirmation dialog.
+      expect(TOOL_ANNOTATIONS[toolName]?.readOnlyHint, `'${toolName}' must not be read-only`)
+        .not.toBe(true);
+      // …and each one still declares whether it is destructive, explicitly.
+      // That hint is ALSO its own spec default (`true`), and it is kept anyway:
+      // a client that reads absence as "unknown" gets more cautious about a
+      // missing readOnlyHint and less cautious about a missing destructiveHint,
+      // and only the first direction is safe to take for free bytes.
+      expect(typeof TOOL_ANNOTATIONS[toolName]?.destructiveHint,
+        `'${toolName}' must state destructiveHint explicitly`).toBe('boolean');
     }
   });
 
