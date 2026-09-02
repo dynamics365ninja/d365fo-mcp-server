@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoPrintFmtHandler</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Event handler class for con demo print fmt events.
+/// </summary>
+public final class ConDemoPrintFmtHandler
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getDefaultReportFormatDelegate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Publishes this model's report as the default print-management format for
+    /// the free-text invoice document type.
+    /// </summary>
+    /// <param name = "_docType">The document type print management is asking about.</param>
+    /// <param name = "_result">The result carrier the delegate answers through.</param>
+    [SubscribesTo(classStr(PrintMgmtDocType), delegateStr(PrintMgmtDocType, getDefaultReportFormatDelegate))]
+    public static void getDefaultReportFormatDelegate(PrintMgmtDocumentType _docType, EventHandlerResult _result)
+    {
+        switch (_docType)
+        {
+            case PrintMgmtDocumentType::SalesFreeTextInvoice:
+                _result.result(ssrsReportStr(ConDemoPrintFmt, Report));
+                break;
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

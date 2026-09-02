@@ -1,6 +1,6 @@
 {
-  "capturedAt": "2026-09-02T10:34:21.284Z",
-  "indexedAt": "2026-09-02T09:44:48.631Z",
+  "capturedAt": "2026-09-02T12:54:00.891Z",
+  "indexedAt": "2026-09-02T11:35:19.356Z",
   "ok": [
     "alerts-business-events|attribute|DataContract",
     "alerts-business-events|attribute|DataContractAttribute",
@@ -219,6 +219,8 @@
     "posting-engine|static-call|LedgerVoucherTransObject::newTransactionAmountDefault",
     "posting-engine|static-call|SysModule::Ledger",
     "power-platform-integration|extends|BusinessEventsBase",
+    "print-management|attribute|SubscribesTo",
+    "print-management|intrinsic|PrintMgmtDocType",
     "print-management|static-call|PrintMgmtReportRun::construct",
     "query-object-model|attribute|ExtensionOf",
     "query-object-model|attribute|QueryRangeFunction",
@@ -313,6 +315,10 @@
     "ssrs-reports|attribute|SrsReportParameterAttribute",
     "ssrs-reports|extends|SrsReportDataProviderBase",
     "ssrs-reports|extends|SrsReportRunController",
+    "ssrs-reports|static-call|Barcode::construct",
+    "ssrs-reports|static-call|BarcodeType::Code128",
+    "ssrs-reports|static-call|CompanyImage::findByRecord",
+    "ssrs-reports|static-call|CompanyInfo::find",
     "ssrs-reports|static-call|PrintMgmtReportRun::construct",
     "ssrs-reports|static-call|SrsReportHelper::addParameterValueRangeToQuery",
     "ssrs-reports|static-call|SysQuery::range",

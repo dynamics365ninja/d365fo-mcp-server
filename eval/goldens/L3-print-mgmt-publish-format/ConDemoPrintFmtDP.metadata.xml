@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoPrintFmtDP</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Data provider for the Demo print format report.
+/// Extends <c>SrsReportDataProviderBase</c> and populates the <c>ConDemoPrintFmtTmp</c> temporary table.
+/// </summary>
+[
+    SRSReportParameterAttribute(classStr(ConDemoPrintFmtContract))
+]
+public class ConDemoPrintFmtDP extends SrsReportDataProviderBase
+{
+    ConDemoPrintFmtTmp conDemoPrintFmtTmp;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getConDemoPrintFmtTmp</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the temporary table buffer used by the report dataset.
+    /// </summary>
+    /// <returns>The <c>ConDemoPrintFmtTmp</c> table buffer.</returns>
+    [SRSReportDataSetAttribute(tableStr(ConDemoPrintFmtTmp))]
+    public ConDemoPrintFmtTmp getConDemoPrintFmtTmp()
+    {
+        select conDemoPrintFmtTmp;
+        return conDemoPrintFmtTmp;
+    }
+
+]]></Source>
+			</Method>
+
+			<Method>
+				<Name>processReport</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Main data processing method. Populates the <c>ConDemoPrintFmtTmp</c> temporary table
+    /// with report data based on the contract parameters.
+    /// </summary>
+    public void processReport()
+    {
+        // No contract parameters
+
+        // TODO: Replace with actual query / business logic
+        // Example pattern:
+        //   while select sourceTable
+        //       where sourceTable.Field == paramValue
+        //   {
+        //       conDemoPrintFmtTmp.clear();
+        //       conDemoPrintFmtTmp.NoteId = ''; // TODO: populate from data source
+        //       conDemoPrintFmtTmp.Subject = ''; // TODO: populate from data source
+        //       conDemoPrintFmtTmp.insert();
+        //   }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

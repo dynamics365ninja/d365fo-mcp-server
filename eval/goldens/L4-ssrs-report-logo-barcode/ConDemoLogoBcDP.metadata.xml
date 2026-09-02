@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoLogoBcDP</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Data provider for the Demo logo and barcode report.
+/// Extends <c>SrsReportDataProviderBase</c> and populates the <c>ConDemoLogoBcTmp</c> temporary table.
+/// </summary>
+[
+    SRSReportParameterAttribute(classStr(ConDemoLogoBcContract))
+]
+public class ConDemoLogoBcDP extends SrsReportDataProviderBase
+{
+    ConDemoLogoBcTmp conDemoLogoBcTmp;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getConDemoLogoBcTmp</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns the temporary table buffer used by the report dataset.
+    /// </summary>
+    /// <returns>The <c>ConDemoLogoBcTmp</c> table buffer.</returns>
+    [SRSReportDataSetAttribute(tableStr(ConDemoLogoBcTmp))]
+    public ConDemoLogoBcTmp getConDemoLogoBcTmp()
+    {
+        select conDemoLogoBcTmp;
+        return conDemoLogoBcTmp;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processReport</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Stages one row per note, each carrying an ENCODED barcode and the company logo.
+    /// </summary>
+    public void processReport()
+    {
+        ConDemoNoteHeader source;
+        ConDemoLogoBcTmp  tmp;
+        Barcode           barcode      = Barcode::construct(BarcodeType::Code128);
+        CompanyImage      companyImage = CompanyImage::findByRecord(CompanyInfo::find());
+
+        while select source
+        {
+            // string() is a SETTER only in its two-argument form: the first parameter is
+            // a boolean _set, so string(value) alone reads the current value away.
+            barcode.string(true, source.NoteId);
+            barcode.encode();
+
+            tmp.clear();
+            tmp.NoteId      = source.NoteId;
+            tmp.Subject     = source.Subject;
+            // barcodeStr() carries the start/stop characters a scanner needs; the design
+            // must render it in barcode.defaultFont() or it is unreadable ink.
+            tmp.NoteBarcode = barcode.barcodeStr();
+            tmp.CompanyLogo = companyImage.Image;
+            tmp.insert();
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

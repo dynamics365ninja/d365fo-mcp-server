@@ -8,8 +8,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
-| core | 68 | 68 | **100%** |
-| total | 112 | 112 | 100% |
+| core | 69 | 69 | **100%** |
+| total | 114 | 114 | 100% |
 
 ## Data model (12/12)
 
@@ -86,7 +86,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Form event handlers | core | ✅ | ✅ | ✅ | L3-form-event-handler-class |
 | Lookups (table, reference, multi-select, override) | core | ✅ | ✅ | ✅ | L2-lookup-reference-multiselect |
 
-## Reporting (12/12)
+## Reporting (14/14)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -102,6 +102,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Report parameters and dataset upkeep (after the scaffold) | core | ✅ | ✅ | ✅ | L4-ssrs-report-parameters |
 | Testing a report data provider (red-first) | core | ✅ | ✅ | ✅ | L4-tdd-report-dp |
 | Report print destinations (file, e-mail, archive, batch) | core | ✅ | ✅ | ✅ | L4-ssrs-report-print-destinations |
+| Publishing a report as a print-management format | core | ✅ | ✅ | ✅ | L3-print-mgmt-publish-format |
+| Logo and barcode on a report (container + encoded string) | total | ✅ | ✅ | ✅ | L4-ssrs-report-logo-barcode |
 
 ## Frameworks (21/21)
 

@@ -746,6 +746,20 @@ export const TAXONOMY: CoverageLeaf[] = [
     note: 'Member names read from SrsPrintDestinationSettings and compile-verified; proven by L4-ssrs-report-print-destinations (captured 2026-08-31). The case proves the code compiles and the settings are set, not that a report reached an inbox.',
   },
   {
+    id: 'print-mgmt-format', label: 'Publishing a report as a print-management format',
+    domain: 'Reporting', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['report', 'class'], knowledgeIds: ['print-management'],
+    caseIds: ['L3-print-mgmt-publish-format'],
+    note: 'The supported seam is a delegate, not an overlayer: PrintMgmtDocType declares seven, and getDefaultReportFormatDelegate is the one that answers "which report". Signature and enum values read off the shipped class and enum, and proven by L3-print-mgmt-publish-format, whose golden came from a full xppc build with zero errors and zero warnings (2026-09-02). What the case does NOT prove is that print management PICKS the format at runtime; that needs a posted document.',
+  },
+  {
+    id: 'report-logo-barcode', label: 'Logo and barcode on a report (container + encoded string)',
+    domain: 'Reporting', source: 'topic', tier: 'total', weight: 3,
+    aotTypes: ['report', 'table'], knowledgeIds: ['ssrs-reports'],
+    caseIds: ['L4-ssrs-report-logo-barcode'],
+    note: 'Two staging problems a printed document always has. The logo is a container from CompanyImage::findByRecord(CompanyInfo::find()).Image, typed with the Bitmap EDT; the barcode is ENCODED through Barcode::construct/string(true, v)/encode()/barcodeStr(), where the one-argument string() is a getter and does not compile. Both APIs read off the shipped classes and proven by L4-ssrs-report-logo-barcode (2026-09-02, xppc clean). Authoring it corrected two of its own claims by census: 280 of 332 shipped container fields DO carry a container EDT, and typing the field with Bitmap is what silences BPErrorTableFieldNotDefinedUsingType. What the case does NOT prove is that the design renders either one — the barcode column still needs barcode.defaultFont() in Report Designer.',
+  },
+  {
     id: 'document-attachments', label: 'Attachments (DocuRef / DocumentManagement)',
     domain: 'Integration', source: 'topic', tier: 'total', weight: 3,
     aotTypes: ['class'], knowledgeIds: ['document-attachments'], caseIds: ['L3-attachment-docuref-pdf'],

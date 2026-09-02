@@ -1,14 +1,14 @@
 {
   "core": {
     "tier": "core",
-    "total": 68,
-    "covered": 68,
+    "total": 69,
+    "covered": 69,
     "percent": 100
   },
   "total": {
     "tier": "all",
-    "total": 112,
-    "covered": 112,
+    "total": 114,
+    "covered": 114,
     "percent": 100
   },
   "leaves": [
@@ -1795,6 +1795,34 @@
       "covered": true,
       "cases": [
         "L4-ssrs-report-print-destinations"
+      ]
+    },
+    {
+      "id": "print-mgmt-format",
+      "label": "Publishing a report as a print-management format",
+      "domain": "Reporting",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L3-print-mgmt-publish-format"
+      ]
+    },
+    {
+      "id": "report-logo-barcode",
+      "label": "Logo and barcode on a report (container + encoded string)",
+      "domain": "Reporting",
+      "tier": "total",
+      "weight": 3,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L4-ssrs-report-logo-barcode"
       ]
     },
     {

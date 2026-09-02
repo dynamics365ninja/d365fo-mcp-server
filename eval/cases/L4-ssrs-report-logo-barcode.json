@@ -1,0 +1,28 @@
+{
+  "id": "L4-ssrs-report-logo-barcode",
+  "title": "Stage a company logo and an encoded barcode on a report",
+  "tier": 4,
+  "instruction": "In the sandbox model, put the two things a printed document always needs onto an SSRS report: the company logo and a scannable barcode. (1) Scaffold a report named DemoLogoBc over ConDemoNoteHeader with generate_object(mode=\"scaffold\", objectType=\"report\", fieldsHint=\"NoteId, Subject\", generateController=false). (2) Add two fields to the temp table with d365fo_file(action=\"modify\", objectType=\"table\", operation=\"add-field\"): CompanyLogo with fieldType=\"Bitmap\" and NoteBarcode with fieldType=\"BarCodeString\". Both are real EDTs and both have a trap. Bitmap is a CONTAINER EDT (AxEdtContainer), so the field comes out as an AxTableFieldContainer with no base type passed by hand; do NOT pass \"Container\" as the EDT, because container is a primitive and never an EDT name, and a bare container field draws BPErrorTableFieldNotDefinedUsingType. BarCodeString has a capital C in the middle while the class is Barcode. Put both fields in the AutoReport field group in the same call, or the check reports BPErrorTableFieldNotInFieldGroup. (3) Give processReport() the staging logic. The logo is CompanyImage::findByRecord(CompanyInfo::find()).Image, a container copied straight across. The barcode is ENCODED, not formatted: Barcode::construct(BarcodeType::Code128), then barcode.string(true, <value>) — the two-argument form, because the first parameter is a boolean _set and the one-argument call is a getter — then barcode.encode(), then barcode.barcodeStr(). (4) Build the model with bpCheck; it must compile with zero errors. Do NOT touch the RDL: binding the container to an Image element and setting the barcode column to barcode.defaultFont() is Report Designer work, and a barcode rendered in the wrong font is unreadable ink no build can catch.",
+  "target_artifact_types": [
+    "AxTable",
+    "AxClass",
+    "AxClass",
+    "AxReport"
+  ],
+  "golden_path": "eval/goldens/L4-ssrs-report-logo-barcode/",
+  "ignore": [
+    "Report/@Id",
+    "Table/@Id",
+    "Table/Fields/AxTableField/@Id",
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "ssrs",
+    "report",
+    "barcode",
+    "container",
+    "add-field",
+    "multi-artifact"
+  ],
+  "split": "holdout"
+}
