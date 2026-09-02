@@ -22,7 +22,17 @@ Do not keep an executed plan.
 | H1 live verification of the loop | **shipped** | `cea4aa5` |
 | H1 remainder — G-13 catalog, G-06 topic, D2 verified | **shipped** | `7ebd55b` |
 | H1 cases §5.5 | deferred into the H2 capture wave (see below) | — |
-| H2-H6 | not started | — |
+| **H3 reports — G-20, G-21, G-24** (D3: reports first) | **shipped** | `a5478e8`, `76b5341`, `9243d48` |
+| H3 remainder — G-19 (partial), G-23, cases §6.7 | not started | — |
+| H2, H4-H6 | not started | — |
+
+**H3 so far, and it went differently than written.** G-20's alarming premise was
+REFUTED — the scaffold is fine, and RPT003 is rejected on measurement (31 shipped
+classes would have fired). G-21 shipped `axreport-anatomy` from a census of 1,057
+documents plus a different, measurable RPT103 (0 findings on those same 1,057).
+G-24 shipped the `report-dp` test shape after a probe proved `processReport()` is
+callable from outside. G-19 is partly done — the corrections it produced
+(`parmPrintDestination` does not exist) are in, the wider member sweep is not.
 
 **Why §5.5's cases are deferred rather than dropped.** They are a capture WAVE — serial VM runs sharing
 one sandbox — and the plan already schedules one for H2 (`L2-systest-attributes-isolation`,
