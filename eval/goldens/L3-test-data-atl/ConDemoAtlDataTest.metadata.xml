@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoAtlDataTest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[
+SysTestTarget(tableStr(ConDemoNoteHeader), UtilElementType::Table),
+SysTestGranularity(SysTestGranularity::Unit)
+]
+class ConDemoAtlDataTest extends SysTestCase
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>testAtlYieldsARealCustomerBuffer</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// ATL hands back an AtlEntity WRAPPER; .record() is what turns it into a buffer.
+    /// </summary>
+    [SysTestMethod, SysTestCheckInTest]
+    public void testAtlYieldsARealCustomerBuffer()
+    {
+        AtlDataRootNode data = AtlDataRootNode::construct();
+        CustTable       customer;
+
+        customer = data.cust().customers().default().record();
+
+        this.assertNotEqual('', customer.AccountNum, 'ATL must hand back a saved customer');
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>testAtlItemNodeYieldsAnItem</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// The module accessor, not the root, is what a missing package reference breaks.
+    /// </summary>
+    [SysTestMethod, SysTestCheckInTest]
+    public void testAtlItemNodeYieldsAnItem()
+    {
+        AtlDataRootNode data = AtlDataRootNode::construct();
+        InventTable     item;
+
+        item = data.invent().items().default();
+
+        this.assertNotEqual('', item.ItemId, 'ATL must hand back a released item');
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

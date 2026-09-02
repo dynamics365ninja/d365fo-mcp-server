@@ -71,6 +71,7 @@
     "oracle:members": "tsx scripts/oracles/aotMembers.ts",
     "oracle:kernel-enums": "tsx scripts/oracles/kernelEnumAudit.ts",
     "oracle:terms": "tsx scripts/oracles/termProbe.ts",
+    "oracle:atl": "tsx scripts/oracles/atlNodes.ts",
     "oracle:demand": "tsx scripts/mine-copilot-demand.ts"
   },
   "keywords": [

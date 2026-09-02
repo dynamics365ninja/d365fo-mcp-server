@@ -25,7 +25,51 @@ Do not keep an executed plan.
 | **H3 reports — G-20, G-21, G-24** (D3: reports first) | **shipped** | `a5478e8`, `76b5341`, `9243d48` |
 | H3 — G-19 report runtime API, G-23 RDL census | **shipped** | `5618c62` |
 | §6.7 cases — parameters, TDD report-DP, print format, logo+barcode | **shipped** | `c8fe75a`, `27da803`, this branch |
-| H2, H4-H6 | not started | — |
+| **H2 test data & attributes** — G-26, G-27, `atlNodes.generated.ts`, both cases | **shipped** | this branch |
+| H4-H6 | not started | — |
+
+**H2 was written from the wrong population, and the census said so.** §5.3 and the
+G-26 row list the SysTest attributes by reading the class inventory. A census of
+the 488 shipped test classes that mention SysTest (2026-09-02) shows what is
+actually used, and the two lists barely overlap:
+
+* The plan's list omits the two most common attributes entirely.
+  `[SysTestCheckInTest]` has **1,875 uses across ~300 classes** and
+  `[SysTestGranularity]` **165 across 144** — nearly every shipped test class
+  carries one of each.
+* Most of what the plan lists has **zero** shipped occurrences: `SysTestCategory`,
+  `SysTestRow` (the data-driven one), `SysTestFixture`, `SysTestKey`,
+  `SysTestInactiveTest`, `SysTestPriority`, `SysTestOwner`, `SysTestAreaPath`,
+  `SysTestCaseDemoDataDependency`, `SysTestCaseCompanyData`,
+  `SysTestCaseCountryRegionDependency`, the two NumSeq dependencies and the two
+  DependsOn ones. The classes exist and compile; there is simply no precedent.
+* Every one of them is named `...Attribute` in the AOT, and shipped code
+  overwhelmingly drops the suffix (1,621 : 2 for the check-in one). The name is
+  also case-insensitive, which shipped code proves by accident — `SysTestCheckInTest`,
+  `SysTestCheckinTest` and `SysTestCheckIntest` all appear and all build.
+* **`SysTestSuiteCompanyIsolateClass`, which §5.3 names as the isolation
+  mechanism, is `[SysObsolete]`** — "Please use SysTestSuite directly", dated 2014.
+
+**G-27's census source does not exist here.** The plan says to census
+`AtlSampleTests`; this install ships none. The tree was read from the AOT instead
+(`scripts/oracles/atlNodes.ts`), and the usage numbers come from the 784 shipped
+test classes, 185 of which use ATL. The generator itself then had to be corrected
+twice, both times by measurement rather than review:
+
+1. `default()` usually takes DEFAULTED parameters, so an empty-parens regex
+   silently dropped the biggest nodes — `AtlDataCustomers` among them. 147 → 192.
+2. 107 nodes hand back an `AtlEntity` WRAPPER, not a buffer; `.record()` is what
+   turns it into one. The oracle's own header example omitted it — the exact
+   mistake the file exists to prevent.
+3. `AtlDataSalesOrders` has no `default()` at all, only `createDefault()`.
+   Flattening the two would have claimed ATL hands you an existing sales order.
+
+**The isolation case carries a matched negative control**, because "both tests
+passed" is not by itself evidence of a rollback. The same two methods were run
+with `[SysTestTransaction(TestTransactionMode::None)]` and one FAILED on the
+empty-table assertion (`Expected: 0; Actual: 1`) — and left its row behind in the
+sandbox, which is the clearest statement of what that mode means. Both documents
+are committed and both are read by a test.
 
 **The §6.7 cases each corrected something they were written to assert.** That is
 now three for three, and the corrections did not come from review — they came from

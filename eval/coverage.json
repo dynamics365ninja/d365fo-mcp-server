@@ -1,14 +1,14 @@
 {
   "core": {
     "tier": "core",
-    "total": 69,
-    "covered": 69,
+    "total": 70,
+    "covered": 70,
     "percent": 100
   },
   "total": {
     "tier": "all",
-    "total": 114,
-    "covered": 114,
+    "total": 116,
+    "covered": 116,
     "percent": 100
   },
   "leaves": [
@@ -1448,8 +1448,10 @@
       "cases": [
         "L2-coc-extension",
         "L2-event-handler-basic",
+        "L2-systest-attributes-isolation",
         "L2-systest-authoring-basic",
         "L3-batch-basic",
+        "L3-test-data-atl",
         "L4-tdd-report-dp"
       ]
     },
@@ -1767,6 +1769,34 @@
       "covered": true,
       "cases": [
         "L4-ssrs-report-parameters"
+      ]
+    },
+    {
+      "id": "systest-attributes",
+      "label": "SysTest attributes: filtering, isolation, dependencies",
+      "domain": "Testing",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L2-systest-attributes-isolation"
+      ]
+    },
+    {
+      "id": "test-data-atl",
+      "label": "Test data through ATL",
+      "domain": "Testing",
+      "tier": "total",
+      "weight": 3,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L3-test-data-atl"
       ]
     },
     {

@@ -1,0 +1,22 @@
+{
+  "id": "L2-systest-attributes-isolation",
+  "title": "SysTest attributes and the rollback the framework promises",
+  "tier": 2,
+  "instruction": "In the sandbox model, write a SysTest class over the ConDemoNoteHeader table that carries the attributes shipped tests actually carry, and that PROVES the framework rolls each test back. (1) Scaffold it with generate_object(mode=\"pattern\", pattern=\"systest\", testTargetType=\"table\", attributes=[\"SysTestGranularity(SysTestGranularity::Unit)\", \"SysTestCheckInTest\"]). Placement is not yours to choose and the tool applies it for you: SysTestTarget and SysTestGranularity go on the CLASS, SysTestCheckInTest goes on the METHODS beside SysTestMethod. The class block is ONE bracket pair with the attributes stacked inside it, comma separated — separate stacked pairs on a member are a compile error. (2) Replace the scaffold bodies with two tests that each assert the table is EMPTY, then insert a row, then assert they can see exactly their own row. Two such tests can only both pass if the framework rolled the other one back. Do NOT write \"one test inserts, the next asserts it is gone\": SysTest does not promise an execution order, so that shape proves nothing when the order flips. (3) Do NOT reach for SysTestSuiteCompanyIsolateClass — it is marked [SysObsolete] in the shipped class and has been since 2014. (4) Build, then run it with run_systest_class; both methods must pass.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-systest-attributes-isolation/",
+  "systest": "eval/systests/L2-systest-attributes-isolation.xml",
+  "ignore": [
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "systest",
+    "attributes",
+    "isolation",
+    "rollback",
+    "runtime"
+  ],
+  "split": "holdout"
+}
