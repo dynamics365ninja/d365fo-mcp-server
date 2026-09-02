@@ -721,8 +721,9 @@ export const TAXONOMY: CoverageLeaf[] = [
   {
     id: 'rdl-expressions', label: 'Report design & RDL expressions',
     domain: 'Reporting', source: 'topic', tier: 'core', weight: 4,
-    aotTypes: ['report'], knowledgeIds: ['rdl-design-expressions'], caseIds: ['L4-ssrs-report-design-rdl'],
-    note: 'Design kind is an XML i:type (precision 416 : auto 56 over 400 shipped reports); the six AX_* parameters are platform-supplied. Proven by L4-ssrs-report-design-rdl (captured 2026-08-31). What the case does NOT prove is the RDL expression grammar itself — the golden asserts the document, not what the renderer does with it.',
+    aotTypes: ['report'], knowledgeIds: ['rdl-design-expressions', 'axreport-anatomy'],
+    caseIds: ['L4-ssrs-report-design-rdl'],
+    note: 'Two halves of one document, so one leaf: axreport-anatomy is the metadata (parameters, datasets, the i:type design kind) and rdl-design-expressions is the RDL inside it. Both censused over the full install 2026-09-02 — 1,057 documents, 13,833 parameters: precision 1,163 : auto 123, and UserVisibility has only Hidden (8,972) and Internal (5), which is what RPT103 checks. Proven by L4-ssrs-report-design-rdl (captured 2026-08-31). What the case does NOT prove is the RDL expression grammar itself — the golden asserts the document, not what the renderer does with it.',
   },
   {
     id: 'report-destinations', label: 'Report print destinations (file, e-mail, archive, batch)',
