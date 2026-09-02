@@ -726,6 +726,13 @@ export const TAXONOMY: CoverageLeaf[] = [
     note: 'Two halves of one document, so one leaf: axreport-anatomy is the metadata (parameters, datasets, the i:type design kind) and rdl-design-expressions is the RDL inside it. Both censused over the full install 2026-09-02 — 1,057 documents, 13,833 parameters: precision 1,163 : auto 123, and UserVisibility has only Hidden (8,972) and Internal (5), which is what RPT103 checks. Proven by L4-ssrs-report-design-rdl (captured 2026-08-31). What the case does NOT prove is the RDL expression grammar itself — the golden asserts the document, not what the renderer does with it.',
   },
   {
+    id: 'report-parameters', label: 'Report parameters and dataset upkeep (after the scaffold)',
+    domain: 'Reporting', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['report'], knowledgeIds: ['axreport-anatomy'],
+    caseIds: ['L4-ssrs-report-parameters'],
+    note: 'The half of a report that is NOT layout: a field arrives on the temp table, or a parameter is needed. Both are now writable through d365fo_file(operation="report-design") — metadata-only and additive-only, because a malformed RDL fails in the SSRS renderer where no build can see it. The case exercises the grounded path end to end and its golden was captured from a clean xppc build. What it does NOT prove is that the design USES either one; placing them is Report Designer work.',
+  },
+  {
     id: 'report-destinations', label: 'Report print destinations (file, e-mail, archive, batch)',
     domain: 'Reporting', source: 'topic', tier: 'core', weight: 4,
     aotTypes: ['report'], knowledgeIds: ['report-print-destinations'], caseIds: ['L4-ssrs-report-print-destinations'],

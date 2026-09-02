@@ -8,8 +8,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
-| core | 66 | 66 | **100%** |
-| total | 110 | 110 | 100% |
+| core | 67 | 67 | **100%** |
+| total | 111 | 111 | 100% |
 
 ## Data model (12/12)
 
@@ -86,7 +86,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Form event handlers | core | ✅ | ✅ | ✅ | L3-form-event-handler-class |
 | Lookups (table, reference, multi-select, override) | core | ✅ | ✅ | ✅ | L2-lookup-reference-multiselect |
 
-## Reporting (10/10)
+## Reporting (11/11)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
@@ -99,6 +99,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Electronic Reporting (ER) | total | ✅ | ✅ | ✅ | L3-electronic-reporting-integration |
 | Extending a standard report | core | ✅ | ✅ | ✅ | L3-report-dataset-extension |
 | Report design & RDL expressions | core | ✅ | ✅ | ✅ | L4-ssrs-report-design-rdl |
+| Report parameters and dataset upkeep (after the scaffold) | core | ✅ | ✅ | ✅ | L4-ssrs-report-parameters |
 | Report print destinations (file, e-mail, archive, batch) | core | ✅ | ✅ | ✅ | L4-ssrs-report-print-destinations |
 
 ## Frameworks (21/21)

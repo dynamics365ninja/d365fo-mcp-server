@@ -1,14 +1,14 @@
 {
   "core": {
     "tier": "core",
-    "total": 66,
-    "covered": 66,
+    "total": 67,
+    "covered": 67,
     "percent": 100
   },
   "total": {
     "tier": "all",
-    "total": 110,
-    "covered": 110,
+    "total": 111,
+    "covered": 111,
     "percent": 100
   },
   "leaves": [
@@ -1752,6 +1752,20 @@
       "covered": true,
       "cases": [
         "L4-ssrs-report-design-rdl"
+      ]
+    },
+    {
+      "id": "report-parameters",
+      "label": "Report parameters and dataset upkeep (after the scaffold)",
+      "domain": "Reporting",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L4-ssrs-report-parameters"
       ]
     },
     {
