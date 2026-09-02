@@ -111,19 +111,42 @@ export async function compareSysTestDataAccess(
  * for a strict MCP client to drop, and no ListTools bytes spent (headroom at the
  * time of writing: 49 chars of 45,000).
  */
+const sawFailingRun = new Set<string>();
+
+/** Test-only: forget which classes have been seen red in this process. */
+export function _clearRedPhaseMemory(): void {
+  sawFailingRun.clear();
+}
+
 export function renderRedPhaseNote(
   className: string,
   outcomes: readonly { name: string; passed: boolean; message?: string }[],
 ): string {
   if (outcomes.length === 0) return '';
-  const unwritten = outcomes.filter(o => !o.passed && /not implemented yet/i.test(o.message ?? ''));
-  if (unwritten.length > 0) {
-    return `\n\n🔴 **Red phase confirmed.** ${unwritten.length} of ${outcomes.length} method(s) still carry the ` +
-      'scaffold\'s `this.fail(...)` — replace each one with the assertion the test exists for, then run again.';
+  const key = className.trim().toLowerCase();
+
+  if (outcomes.some(o => !o.passed)) {
+    sawFailingRun.add(key);
+    const unwritten = outcomes.filter(o => !o.passed && /not implemented yet/i.test(o.message ?? ''));
+    if (unwritten.length > 0) {
+      return `\n\n🔴 **Red phase confirmed.** ${unwritten.length} of ${outcomes.length} method(s) still carry the ` +
+        'scaffold\'s `this.fail(...)` — replace each one with the assertion the test exists for, then run again.';
+    }
+    // A failure carrying a real assertion message is the assertion doing its job.
+    // Saying anything here would be commentary on a result that speaks for itself.
+    return '';
   }
-  if (outcomes.every(o => o.passed) && wasCreatedThisSession(className)) {
-    return `\n\n⚠️ **Every method passed, and \`${className}\` was created in this session.** A test that passes ` +
-      'the first time it runs has proven nothing about its assertion. Check that each method actually ' +
+
+  // All green. Whether that deserves a warning depends entirely on what came
+  // before it — and getting this wrong was a real defect, found by running the
+  // loop rather than by testing it. An all-green run on a session-created class
+  // is exactly what the GREEN half of red→green looks like, so warning about it
+  // fires on the developer who did the right thing. The warning is only for a
+  // class this process created and has NEVER seen fail.
+  if (sawFailingRun.has(key)) return '';
+  if (wasCreatedThisSession(className)) {
+    return `\n\n⚠️ **Every method passed, and \`${className}\` has never failed in this session.** A test that ` +
+      'passes the first time it runs has proven nothing about its assertion. Check that each method actually ' +
       'asserts something, then break the behaviour on purpose once and watch this go red.';
   }
   return '';

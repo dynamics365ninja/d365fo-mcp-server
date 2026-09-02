@@ -16,7 +16,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { renderRedPhaseNote } from '../../src/tools/sdlc/sysTestRunner';
+import { _clearRedPhaseMemory, renderRedPhaseNote } from '../../src/tools/sdlc/sysTestRunner';
 import {
   _clearCreatedArtifactLedger,
   recordCreatedArtifact,
@@ -24,7 +24,10 @@ import {
 
 const outcome = (name: string, passed: boolean, message?: string) => ({ name, passed, message });
 
-afterEach(() => _clearCreatedArtifactLedger());
+afterEach(() => {
+  _clearCreatedArtifactLedger();
+  _clearRedPhaseMemory();
+});
 
 describe('renderRedPhaseNote — the red phase', () => {
   it('confirms the red phase from the scaffold\'s own failure text', () => {
@@ -46,15 +49,44 @@ describe('renderRedPhaseNote — the red phase', () => {
 });
 
 describe('renderRedPhaseNote — all green', () => {
-  it('warns when everything passes on a class created in this session', () => {
-    recordCreatedArtifact({
-      filePath: 'K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxClass/ConThingTest.xml',
-      objectName: 'ConThingTest',
-      objectType: 'class',
-    });
+  const created = () => recordCreatedArtifact({
+    filePath: 'K:/AosService/PackagesLocalDirectory/fm-mcp/fm-mcp/AxClass/ConThingTest.xml',
+    objectName: 'ConThingTest',
+    objectType: 'class',
+  });
+
+  it('warns when everything passes on a class that has never failed here', () => {
+    created();
     const note = renderRedPhaseNote('ConThingTest', [outcome('testA', true), outcome('testB', true)]);
-    expect(note).toContain('created in this session');
+    expect(note).toContain('never failed in this session');
     expect(note).toContain('proven nothing');
+  });
+
+  /**
+   * The defect a live run found, and the reason this file exists in the shape it
+   * does. The first version warned on any all-green run of a session-created
+   * class — which is EXACTLY what the green half of red-green looks like. It
+   * fired on the developer who had just done the right thing.
+   *
+   * Verified against the real loop on the VM: scaffold (red) -> assertion, wrong
+   * behaviour (red) -> implemented (green). Only the last run must be quiet.
+   */
+  it('is silent on the green that follows a red — that is the loop working', () => {
+    created();
+    renderRedPhaseNote('ConThingTest', [outcome('testA', false, 'testA is not implemented yet.')]);
+    expect(renderRedPhaseNote('ConThingTest', [outcome('testA', true)])).toBe('');
+  });
+
+  it('remembers a red run under any casing of the class name', () => {
+    created();
+    renderRedPhaseNote('conthingtest', [outcome('testA', false, 'Expected: 30; Actual: 2')]);
+    expect(renderRedPhaseNote('ConThingTest', [outcome('testA', true)])).toBe('');
+  });
+
+  it('does not let one class\'s red run silence another class', () => {
+    created();
+    renderRedPhaseNote('ConOtherTest', [outcome('testA', false, 'boom')]);
+    expect(renderRedPhaseNote('ConThingTest', [outcome('testA', true)])).toContain('never failed');
   });
 
   it('is silent for a class this session did not create', () => {
@@ -67,7 +99,7 @@ describe('renderRedPhaseNote — all green', () => {
     recordCreatedArtifact({
       filePath: 'K:/x/AxClass/ConThingTest.xml', objectName: 'ConThingTest', objectType: 'class',
     });
-    expect(renderRedPhaseNote('conthingtest', [outcome('testA', true)])).toContain('created in this session');
+    expect(renderRedPhaseNote('conthingtest', [outcome('testA', true)])).toContain('never failed');
   });
 });
 
@@ -79,7 +111,8 @@ describe('renderRedPhaseNote — silence', () => {
     expect(renderRedPhaseNote('ConThingTest', [])).toBe('');
   });
 
-  it('says nothing for a mixed run with no scaffold markers', () => {
+  it('says nothing for a failing run whose message is a real assertion', () => {
+    // "Expected: 30; Actual: 2" speaks for itself; commentary on it is noise.
     expect(renderRedPhaseNote('ConThingTest', [
       outcome('testA', true),
       outcome('testB', false, 'Expected: 30; Actual: 2'),
