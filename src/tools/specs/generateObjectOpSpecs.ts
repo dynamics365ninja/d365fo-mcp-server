@@ -72,10 +72,10 @@ export const GENERATE_OBJECT_PARAM_SPECS: Record<string, { type: string; descrip
     type: 'string[]',
     description:
       'systest: extra attributes, written exactly as in source ("SysTestGranularity(SysTestGranularity::Unit)", '
-      + '"SysTestCheckInTest"). Placement is handled for you and is MEASURED, not chosen: across the 488 shipped '
+      + '"SysTestCheckInTest"). Placement is handled for you and is MEASURED, not chosen: across the 884 shipped '
       + 'test classes SysTestGranularity, SysTestCaseConfigurationKeyConstraint, SysTestCaseUseSingleInstance and '
       + 'SysTestCaseDataDependency sit on the CLASS, while SysTestCheckInTest sits on the METHODS beside '
-      + 'SysTestMethod (1,616 of 1,621). The class block is emitted stacked inside ONE bracket pair, which is the '
+      + 'SysTestMethod (1,616 of 1,622). The class block is emitted stacked inside ONE bracket pair, which is the '
       + 'shipped shape — separate stacked pairs on a member are a compile error. See '
       + 'get_knowledge(topic="systest-attributes") for what shipped tests actually carry, and for the list the '
       + 'catalogue advertises that no shipped test uses.',

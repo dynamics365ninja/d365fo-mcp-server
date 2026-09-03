@@ -1,14 +1,14 @@
 {
   "core": {
     "tier": "core",
-    "total": 70,
-    "covered": 70,
+    "total": 72,
+    "covered": 72,
     "percent": 100
   },
   "total": {
     "tier": "all",
-    "total": 116,
-    "covered": 116,
+    "total": 118,
+    "covered": 118,
     "percent": 100
   },
   "leaves": [
@@ -1772,6 +1772,36 @@
       ]
     },
     {
+      "id": "form-runtime-api",
+      "label": "Form runtime API (element, data source, controls)",
+      "domain": "Forms",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L2-form-control-removal-lifecycle",
+        "L2-form-extension-basic"
+      ]
+    },
+    {
+      "id": "data-entity-methods",
+      "label": "Data entity lifecycle methods",
+      "domain": "Integration",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L2-entity-query-range-roundtrip",
+        "L3-data-entity-extension-field"
+      ]
+    },
+    {
       "id": "systest-attributes",
       "label": "SysTest attributes: filtering, isolation, dependencies",
       "domain": "Testing",
@@ -1875,8 +1905,6 @@
     "cases": [
       "L0-create-readback-no-reindex",
       "L2-batched-object-reads",
-      "L2-entity-query-range-roundtrip",
-      "L2-form-control-removal-lifecycle",
       "L2-object-delete-and-entry-point-cleanup",
       "L2-oracle-discriminator-random-wrapper-name",
       "L4-headerlines-document-slice"

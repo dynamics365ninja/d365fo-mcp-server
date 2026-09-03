@@ -33,9 +33,8 @@
  */
 
 import * as fs from 'node:fs';
-import * as path from 'node:path';
+import { walkAot } from './aotSource.js';
 
-const PACKAGES = process.env.D365FO_PACKAGES ?? 'K:/AosService/PackagesLocalDirectory';
 const OUT = 'src/knowledge/atlNodes.generated.ts';
 const DRY = process.argv.includes('--dry-run');
 
@@ -53,19 +52,21 @@ interface AtlClass {
 /** AtlEntity* → the buffer its record() hands back. */
 const entityRecord = new Map<string, string>();
 
-/** Every AxClass file in every package, restricted to the ATL data tree. */
+/**
+ * Every AxClass in every package, restricted to the ATL data tree.
+ *
+ * Walked with the shared aotSource oracle rather than by hand. A hand-rolled
+ * `<root>/<pkg>/<pkg>/AxClass` walk looks right and silently skips every model
+ * whose folder is not named after its package — 12 of them here, including
+ * `ApplicationSuite/Foundation`, which is one of the largest. This file's first
+ * version did exactly that.
+ */
 function readAtlClasses(): Map<string, AtlClass> {
   const out = new Map<string, AtlClass>();
-  for (const pkg of fs.readdirSync(PACKAGES)) {
-    const dir = path.join(PACKAGES, pkg, pkg, 'AxClass');
-    let entries: string[];
-    try { entries = fs.readdirSync(dir); } catch { continue; }
-    for (const file of entries) {
-      const isEntity = file.startsWith('AtlEntity');
-      if ((!file.startsWith('AtlData') && !isEntity) || !file.endsWith('.xml')) continue;
-      const name = file.slice(0, -4);
-      let src: string;
-      try { src = fs.readFileSync(path.join(dir, file), 'utf-8'); } catch { continue; }
+  for (const { name, packageName: pkg, xml: src } of walkAot({ types: ['AxClass'] })) {
+    {
+      const isEntity = name.startsWith('AtlEntity');
+      if (!name.startsWith('AtlData') && !isEntity) continue;
 
       if (isEntity) {
         const rec = /public\s+final\s+(\w+)\s+record\s*\([^)]*\)/.exec(src);

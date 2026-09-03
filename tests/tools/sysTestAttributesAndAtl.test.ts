@@ -2,11 +2,11 @@
  * Regression tests — the two systest scaffold parameters added for H2 (G-26/G-27).
  *
  * Both encode a MEASUREMENT rather than a preference, and that is the point of
- * pinning them. A census of the 488 shipped test classes that mention SysTest
+ * pinning them. A census of the 884 shipped classes whose name carries "test"
  * (2026-09-02) settled two things a reader would otherwise guess:
  *
  *  - Placement. SysTestGranularity sits on the CLASS (135 of 136),
- *    SysTestCheckInTest on the METHOD (1,616 of 1,621). Putting the second on the
+ *    SysTestCheckInTest on the METHOD (1,616 of 1,622). Putting the second on the
  *    class compiles and quietly changes what it selects.
  *  - The class block is one bracket pair with the attributes stacked inside it,
  *    comma separated. Separate stacked pairs on a member are a compile error
@@ -55,7 +55,7 @@ describe('applySysTestAttributes — placement is measured, not chosen', () => {
     expect(out).not.toMatch(/\]\n\[/);
   });
 
-  it('routes SysTestCheckInTest to the METHOD, where 1,616 of 1,621 shipped uses are', () => {
+  it('routes SysTestCheckInTest to the METHOD, where 1,616 of 1,622 shipped uses are', () => {
     const out = applySysTestAttributes(CLASS_TEMPLATE, ['SysTestCheckInTest']);
 
     expect(out).toContain('[SysTestMethod, SysTestCheckInTest]');

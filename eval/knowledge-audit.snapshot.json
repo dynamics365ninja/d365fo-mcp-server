@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-09-02T14:01:31.522Z",
+  "capturedAt": "2026-09-02T16:09:41.870Z",
   "indexedAt": "2026-09-02T11:35:19.356Z",
   "ok": [
     "alerts-business-events|attribute|DataContract",
@@ -65,6 +65,9 @@
     "custom-services|attribute|SysEntryPointAttribute",
     "custom-services|attribute|SysODataActionAttribute",
     "custom-services|declaration|ItemId",
+    "data-entity-methods|intrinsic|CustCustomerEntity",
+    "data-entity-methods|static-call|DataEntityDatabaseOperation::Insert",
+    "data-entity-methods|static-call|DataEntityDatabaseOperation::Update",
     "datetime-timezones|declaration|Timezone",
     "datetime-timezones|static-call|Timezone::GMTCOORDINATEDUNIVERSALTIME",
     "deprecated|attribute|ExtensionOf",
@@ -146,6 +149,9 @@
     "form-event-handlers|static-call|FormEventType::Initialized",
     "form-event-handlers|static-call|SysTableLookup::newParameters",
     "form-patterns|attribute|ExtensionOf",
+    "form-runtime-api|declaration|FormDataSource",
+    "form-runtime-api|intrinsic|CustTable",
+    "form-runtime-api|static-call|InventDimFormDesignUpdate::Init",
     "formrun-lifecycle|attribute|ExtensionOf",
     "global-address-book|declaration|DirPartyPostalAddressView",
     "global-address-book|declaration|DirPartyRecId",

@@ -733,11 +733,25 @@ export const TAXONOMY: CoverageLeaf[] = [
     note: 'The half of a report that is NOT layout: a field arrives on the temp table, or a parameter is needed. Both are now writable through d365fo_file(operation="report-design") — metadata-only and additive-only, because a malformed RDL fails in the SSRS renderer where no build can see it. The case exercises the grounded path end to end and its golden was captured from a clean xppc build. What it does NOT prove is that the design USES either one; placing them is Report Designer work.',
   },
   {
+    id: 'form-runtime-api', label: 'Form runtime API (element, data source, controls)',
+    domain: 'Forms', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['form', 'class'], knowledgeIds: ['form-runtime-api'],
+    caseIds: ['L2-form-extension-basic', 'L2-form-control-removal-lifecycle'],
+    note: 'Two oracles because the API is split in two: FormRun is an ordinary AOT class (209 methods, member oracle) and xFormRun / FormDataSource / FormDataObject / every Form*Control are KERNEL with no AOT XML, confirmed only by compiling (probe coverage-v4h, 9 of 10 compile, negative control fails). Ranked by a census of all 9,442 shipped forms: of FormRun\'s 209 methods only 49 are ever called through element. and args() is 92% of those calls. The census also REMOVED something — updateDesign ranks first in the raw counts and is not platform at all but the inventory-dimension convention, which the compiler settled (UpdateDesignMode appears in 0 of 76,196 files). What this does NOT cover is form personalization and the view/workspace API.',
+  },
+  {
+    id: 'data-entity-methods', label: 'Data entity lifecycle methods',
+    domain: 'Integration', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['data-entity'], knowledgeIds: ['data-entity-methods'],
+    caseIds: ['L3-data-entity-extension-field', 'L2-entity-query-range-roundtrip'],
+    note: 'Ranked by a census of all 5,805 shipped data entities and every signature read from shipped source (2026-09-02). Two things the documentation gets wrong: mapEntityToDataSource and mapDataSourceToEntity are not a symmetric pair (1,116 vs 99, an 11-to-1 split toward the write path), and findEntityDataSource (318) and getDefaultingDependencies (233) are common enough to belong in any list that claims to be one. PrimaryCompanyContext is an enum with five shipped values, not a boolean. What this does NOT cover is the OData wire protocol or DMF project sequencing.',
+  },
+  {
     id: 'systest-attributes', label: 'SysTest attributes: filtering, isolation, dependencies',
     domain: 'Testing', source: 'topic', tier: 'core', weight: 4,
     aotTypes: ['class'], knowledgeIds: ['systest-attributes'],
     caseIds: ['L2-systest-attributes-isolation'],
-    note: 'Written from a USE census, not from the class inventory: of the 488 shipped test classes that mention SysTest (2026-09-02), ten attributes appear and most of the documented catalogue appears in none — SysTestCategory, SysTestRow, SysTestFixture, SysTestKey, SysTestPriority and SysTestOwner have zero shipped occurrences. Placement is measured too (SysTestGranularity 135/136 on the class, SysTestCheckInTest 1,616/1,621 on the method) and the scaffold applies it. The case is a RUNTIME one and its oracle was proven to discriminate: the same two methods run with TestTransactionMode::None fail on the empty-table assertion, and that document is committed beside the green one. What it does NOT cover is the attributes nobody ships — they compile, they simply have no precedent.',
+    note: 'Written from a USE census, not from the class inventory: of the 884 shipped classes whose name carries "test" (2026-09-02), 339 carry a SysTest attribute, ten appear and most of the documented catalogue appears in none — SysTestCategory, SysTestRow, SysTestFixture, SysTestKey, SysTestPriority and SysTestOwner have zero shipped occurrences. Placement is measured too (SysTestGranularity 135/136 on the class, SysTestCheckInTest 1,616/1,622 on the method) and the scaffold applies it. The case is a RUNTIME one and its oracle was proven to discriminate: the same two methods run with TestTransactionMode::None fail on the empty-table assertion, and that document is committed beside the green one. What it does NOT cover is the attributes nobody ships — they compile, they simply have no precedent.',
   },
   {
     id: 'test-data-atl', label: 'Test data through ATL',
