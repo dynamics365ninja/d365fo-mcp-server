@@ -28,6 +28,12 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+_Nothing released yet._
+
+---
+
+## [1.17.0] — 2026-09-03
+
 ### Removed
 - `docs/XPP_LANGUAGE_COVERAGE_PLAN.md` (the **v4** plan) is **deleted**, under the
   lifecycle rule it carried itself: all phases H0-H6 shipped, core coverage 74/74,
