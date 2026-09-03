@@ -26,6 +26,9 @@
  *   --name-filter <s>  Only files whose NAME contains this, case-insensitive.
  *   --declaration      Count class-level (in <Declaration>) and member-level
  *                      (in <Source>) hits separately. AxClass only.
+ *   --flags <s>        Extra regex flags, e.g. 'i'. X++ is case-insensitive and shipped code
+ *                      proves it (#define 9,848 / #DEFINE 1,575 / #Define 674), so a
+ *                      case-sensitive census of a language construct undercounts silently.
  *   --top <n>          Rows to print (default 30).
  *   --json <path>      Also write the full counts.
  */
@@ -51,6 +54,7 @@ const nameFilter = arg('name-filter')?.toLowerCase();
 const splitDeclaration = flag('declaration');
 const top = Number(arg('top') ?? 30);
 const jsonOut = arg('json');
+const extraFlags = (arg('flags') ?? '').replace(/[^imsu]/g, '');
 
 /**
  * The pattern, compiled ONCE and checked before the walk starts.
@@ -83,7 +87,7 @@ function compilePattern(source: string): RegExp {
     process.exit(2);
   }
   try {
-    return new RegExp(source, 'g');
+    return new RegExp(source, 'g' + extraFlags);
   } catch (err) {
     console.error(`--pattern is not a valid regular expression:\n  ${source}\n  ${String(err)}`);
     process.exit(2);

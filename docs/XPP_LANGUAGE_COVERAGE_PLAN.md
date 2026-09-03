@@ -27,7 +27,51 @@ Do not keep an executed plan.
 | §6.7 cases — parameters, TDD report-DP, print format, logo+barcode | **shipped** | `c8fe75a`, `27da803`, this branch |
 | **H2 test data & attributes** — G-26, G-27, `atlNodes.generated.ts`, both cases | **shipped** | this branch |
 | **H4 catalogs** — G-10, G-12, G-14, G-15, G-17, G-18 | **shipped** | this branch |
-| H5-H6 | not started | — |
+| **H5 breadth** — G-01, G-03, G-04, G-05, G-08, G-09, G-11, G-16, G-28, G-31, G-32 | **shipped** | this branch |
+| H5 — G-02 (runtime `anytype` case) | **shipped** | this branch |
+| H6 | not started | — |
+
+**H5's validator rules are not the rules §5.7 specified, and the census is why.**
+Two of the three had to change before they could ship:
+
+* **TST002** was specified as "`[SysTestMethod]` in a class that does not
+  `extends SysTestCase`". Of the 56 shipped classes carrying the attribute, only
+  24 extend it literally; **31 reach it through a chain** — 256 shipped test
+  classes extend `AtlWHSTestCase`. The rule as written would have fired on more
+  shipped classes than it caught, and a source-text validator cannot follow the
+  chain. It checks for **no base at all** instead. The single candidate in the
+  whole install was `SysTest` itself, from the string literal `'SysTestMethod'`
+  inside an event-tracing call — which is why the check runs on masked source.
+* **TST003** was specified to trigger on a `test*` method name. Only **8 of the
+  336** shipped `[SysTestMethod]` methods — 2.4% — are named that way, so the
+  rule would have missed 98% of real tests. The attribute is the trigger. It also
+  had to accept ANY `assert*(`, because shipped tests lean on domain helpers
+  (`assertExpectedLines` 229 uses, `assertWorkCompleted` 139) more than on
+  `assertEquals` (223); a rule that knew only SysTestAssert's 14 methods would
+  have fired on hundreds of good tests.
+
+**The bar was met on the whole install, not just the test packages:** 105,686
+files, 615.3 MB of X++, **zero error-severity findings**, TST003 warning on 3.0%.
+
+**The sweep report was hiding quiet rules.** Its warning list is `slice(0, 15)`
+with nothing saying so, and TST003 — with ten hits — fell below the cut on the
+full run. A reader checking whether a new rule fired would have read "it did
+not". Fixed: the tail is now named.
+
+**What the breadth censuses removed rather than added,** the pattern from H4
+again: `#globalmacro` and `#else` appear **zero** times in 66,754 shipped classes,
+so conditional compilation is a rounding error next to `#define` (12,097); the
+`[n,m]` array declaration appears **twice** in the whole install; `avg` in a
+select appears 27 times against `sum`'s 9,538; and `Uncheck::` has exactly two
+values, both security escapes.
+
+**G-02 refuted the claim it was written to document.** The R-only case was
+authored to REPORT what happens rather than assert what everyone says, and the
+run settled it: an `anytype` **can** be re-typed at run time — as a local, as a
+class MEMBER, and it keeps its type across a method boundary. 4 of 4 under
+`SysTestConsole.exe` (2026-09-03). The widely repeated "an anytype takes the type
+of its first assignment and cannot be re-typed" is wrong on this platform build,
+and the knowledge entry now says so with the run behind it.
 
 **H4 found a defect in the censuses H2 and H3 had already shipped.** Every one of
 them enumerated `<root>/<package>/<package>/<AxType>`, which looks right and

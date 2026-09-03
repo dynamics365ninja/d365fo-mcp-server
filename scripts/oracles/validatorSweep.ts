@@ -119,6 +119,15 @@ function main(): void {
   const warnings = [...warningCounts.entries()].sort((a, b) => b[1] - a[1]);
   if (!warnings.length) console.log('  none');
   for (const [rule, count] of warnings.slice(0, 15)) console.log(`  ${rule}: ${count}`);
+  // Say so when the list is cut. A reader who checks whether a NEW rule fired
+  // reads this block, and a silently truncated top-15 answers "it did not" for
+  // any rule quieter than the fifteenth — which is exactly what a good new rule
+  // looks like.
+  if (warnings.length > 15) {
+    const hidden = warnings.slice(15);
+    console.log(`  … ${hidden.length} quieter rule(s) not shown: `
+      + hidden.map(([rule, count]) => `${rule}:${count}`).join(' '));
+  }
   console.log(`  lintXppSelect: ${selectLintFiles.length} files`);
 
   if (typeof args.json === 'string') {

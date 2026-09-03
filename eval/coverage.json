@@ -1,14 +1,14 @@
 {
   "core": {
     "tier": "core",
-    "total": 72,
-    "covered": 72,
+    "total": 73,
+    "covered": 73,
     "percent": 100
   },
   "total": {
     "tier": "all",
-    "total": 118,
-    "covered": 118,
+    "total": 123,
+    "covered": 123,
     "percent": 100
   },
   "leaves": [
@@ -1446,6 +1446,7 @@
       "t": true,
       "covered": true,
       "cases": [
+        "L2-anytype-retyping-runtime",
         "L2-coc-extension",
         "L2-event-handler-basic",
         "L2-systest-attributes-isolation",
@@ -1772,6 +1773,76 @@
       ]
     },
     {
+      "id": "anytype-runtime",
+      "label": "anytype at run time",
+      "domain": "Language",
+      "tier": "total",
+      "weight": 2,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L2-anytype-retyping-runtime"
+      ]
+    },
+    {
+      "id": "email-sending",
+      "label": "Sending e-mail (SysMailerMessageBuilder)",
+      "domain": "Integration",
+      "tier": "total",
+      "weight": 2,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L3-attachment-docuref-pdf"
+      ]
+    },
+    {
+      "id": "file-io-write",
+      "label": "Writing files (CSV, XLSX, SendFileToUser)",
+      "domain": "Integration",
+      "tier": "total",
+      "weight": 2,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L3-file-csv-import"
+      ]
+    },
+    {
+      "id": "http-json-xml",
+      "label": "HTTP, JSON and regex from X++",
+      "domain": "Integration",
+      "tier": "total",
+      "weight": 2,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L2-entity-query-range-roundtrip"
+      ]
+    },
+    {
+      "id": "test-authoring-rules",
+      "label": "Validator rules for test authoring (TST001-003)",
+      "domain": "Testing",
+      "tier": "core",
+      "weight": 3,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L2-systest-attributes-isolation"
+      ]
+    },
+    {
       "id": "form-runtime-api",
       "label": "Form runtime API (element, data source, controls)",
       "domain": "Forms",
@@ -1901,7 +1972,9 @@
     }
   ],
   "orphans": {
-    "knowledge": [],
+    "knowledge": [
+      "form-adaptor-tests"
+    ],
     "cases": [
       "L0-create-readback-no-reindex",
       "L2-batched-object-reads",

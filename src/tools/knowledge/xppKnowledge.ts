@@ -16,6 +16,7 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { READ_METHOD_OPTIONS } from '../../utils/methodBodyHint.js';
+import { XPP_INTRINSICS, COMPILER_VERSION } from '../../knowledge/compilerFacts.generated.js';
 
 // ─── Schema ─────────────────────────────────────────────────────────────────
 
@@ -59,6 +60,43 @@ export interface KnowledgeEntry {
 }
 
 // ─── Knowledge Base ─────────────────────────────────────────────────────────
+
+/**
+ * The intrinsic catalog, built from the compiler's own table rather than typed
+ * out here (G-09).
+ *
+ * A hand-written list of 80 names is wrong the moment the platform adds one, and
+ * nobody notices — a knowledge entry has no build to fail. `XPP_INTRINSICS` is
+ * captured from the running xppc by reflection
+ * (scripts/capture-compiler-facts.ts), so this line cannot drift from what the
+ * compiler accepts. `tests/knowledge/intrinsicCatalog.test.ts` pins the shape.
+ *
+ * Grouped by ARITY because that is the part callers get wrong: a one-argument
+ * `ssrsReportStr` compiles as a different error than the two-argument truth, and
+ * FN001 exists because of it.
+ */
+function intrinsicCatalogRule(): string {
+  const byArity = new Map<number, string[]>();
+  for (const [name, arity] of Object.entries(XPP_INTRINSICS)) {
+    const list = byArity.get(arity) ?? [];
+    list.push(name);
+    byArity.set(arity, list);
+  }
+  const groups = [...byArity.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([arity, names]) => {
+      const label = arity === 0
+        ? 'no arguments (compile-time constants, not metadata assertions)'
+        : `${arity} argument${arity === 1 ? '' : 's'}`;
+      return `${label}: ${names.sort((x, y) => x.localeCompare(y)).join(', ')}`;
+    });
+  return (
+    `The complete catalog is ${Object.keys(XPP_INTRINSICS).length} intrinsics, read from the compiler `
+    + `itself (xppc ${COMPILER_VERSION}) rather than from documentation, and grouped by ARITY because `
+    + `that is what callers get wrong — validator FN001 exists for the one-argument ssrsReportStr. `
+    + groups.join(' · ')
+  );
+}
 
 export const KNOWLEDGE_BASE: KnowledgeEntry[] = [
   // ── Batch / SysOperation ────────────────────────────────────────────────
@@ -167,6 +205,9 @@ class MyProcessContract
       'X++ uses ttsbegin/ttscommit for transaction scoping. Transactions are nestable (reference-counted). ' +
       'OCC (Optimistic Concurrency Control) is the default — always handle UpdateConflict exceptions.',
     rules: [
+      'appl.ttsLevel() is the idiom for asking whether you are already inside a transaction — 1,826 uses across 1,210 shipped files. It is what a method uses to decide whether to open its own ttsbegin or join the caller\'s, and it is also what the SysTest framework compares before and after a test to report an unbalanced transaction. Reading it is cheap; branching on it to SKIP a ttsbegin is the shape to avoid, because ttsbegin/ttscommit nest safely and the level is a diagnostic, not a control',
+      'Uncheck:: has exactly TWO values in the whole install, and both are security escapes: Uncheck::TableSecurityPermission (138 uses, 90 files) and Uncheck::XDS (122, 59). There is no third. Both suspend a check the platform put there on purpose, so each use wants a comment saying which record set it is safe for and why',
+      'flush appears 240 times across 160 files (both casings) and is not a transaction verb at all — it flushes a table CACHE. If a change is invisible after a commit, the cause is nearly always the record cache on a Found/FoundAndEmpty table, and flush is the answer; ttscommit is not',
       'ALWAYS pair ttsbegin with ttscommit — unbalanced calls cause runtime crash',
       'Inside an open transaction only TWO exceptions are catchable by a catch INSIDE the tts scope: Exception::UpdateConflict and the duplicate-key exception — and only when named EXPLICITLY; a bare catch-all inside tts does NOT catch them',
       'Every other exception thrown inside tts aborts the transaction and transfers control to the first catch OUTSIDE the tts block — an inner catch-all is dead code',
@@ -261,6 +302,9 @@ ttscommit; // ← will crash: tts level mismatch`,
       d365fo: 'insert_recordset / update_recordset / delete_from / RecordInsertList',
     },
     rules: [
+      'The skip* family, censused across the install, and the ranking is the warning: skipDataMethods 1,347 uses in 632 files · skipEvents 829 in 408 · skipDatabaseLog 622 in 325 · skipDeleteActions 374 in 156 · skipAosValidation 280 in 157 · skipDeleteMethod 97 in 65 · skipTTSCheck 92 in 57. Every one of them turns off something the platform does for correctness, and they are per-BUFFER, not global — the flag lives on the record instance you call it on and does not follow the data',
+      'skipDataMethods(true) and skipEvents(true) are NOT the same switch and the difference is exactly what breaks: skipDataMethods suppresses the table\'s OWN insert/update/delete overrides, while skipEvents suppresses the [DataEventHandler] subscriptions on them. Turning off the first leaves every subscriber still firing on a row the table never validated. If the goal is a genuinely silent bulk write, both are needed — and then nothing defaults a field or writes an audit row, which has to be a deliberate decision rather than a copied line',
+      'QueryFetchMode has two values in shipped code: One2One 1,436 uses in 475 files and One2Many 36 in 18. One2One is the default reading and the one that makes a join return a flat row set; One2Many changes how a child data source is fetched and is rare enough that reaching for it wants a reason written down',
       'ALWAYS prefer set-based operations over while-select + DML loops',
       'insert_recordset: bulk insert from one table to another with field mapping',
       'update_recordset: bulk update with WHERE clause, no row-by-row fetch needed',
@@ -582,6 +626,9 @@ class MyReportDP extends SrsReportDataProviderBase
     summary:
       'X++ uses a structured exception model with mandatory labels for all user-facing messages.',
     rules: [
+      'The retryable exception set, censused over the 66,754 shipped classes: Exception::UpdateConflict 2,958 uses in 1,208 files · Exception::Deadlock 2,146 in 1,282 · Exception::UpdateConflictNotRecovered 1,432 in 1,018 · Exception::DuplicateKeyExceptionNotRecovered 175 in 132. The pairing matters: catch UpdateConflict to RETRY and UpdateConflictNotRecovered to give up — 1,018 of the 1,208 files that catch the first also catch the second, because a retry loop that omits it spins until the retry count runs out and then reports the wrong error',
+      'Deadlock and UpdateConflict are both retryable and they are NOT the same event: a deadlock is the database choosing a victim, an update conflict is optimistic concurrency noticing someone else wrote first. Retry both, but only the second is worth logging as a hint that the transaction is holding rows too long',
+      'The `using (…)` statement is ordinary X++ and heavily used — 7,030 occurrences across 2,700 files — for anything implementing System.IDisposable, which in practice means CLR streams, readers and the test framework\'s own scopes. Both `using (` and `using(` appear; the spacing is style',
       'ALWAYS use label references in info(), warning(), error() — never hardcoded strings (BPErrorLabelIsText)',
       'checkFailed(): posts error to infolog AND returns false — use in validateWrite/validateField',
       'Return pattern: ret = ret && checkFailed("@Label:Message") — accumulates all errors before returning',
@@ -624,6 +671,10 @@ class MyReportDP extends SrsReportDataProviderBase
     summary:
       'Every user-visible string MUST be a label. D365FO enforces this via BP rule BPErrorLabelIsText.',
     rules: [
+      'Resolving a label AT RUNTIME goes through SysLabel, and the census of 76,196 shipped files says which call: SysLabel::labelId2String(LabelId, LanguageId = LanguageTable::defaultLanguage()) 700 uses across 246 files, then labelId2String2 214 (the same thing typed LabelType rather than LabelId), isLabelId 44, expandLabel 20, getLabelInstance 4, resolveLabels 3, labelIds2Strings 1. Everything else on the class is effectively unused',
+      'The language argument is the whole point and it DEFAULTS to the system language, not the user one. A message resolved without passing a language reads correctly for the developer and in the wrong language for the user — pass the recipient language explicitly whenever the text leaves the current session (a printed document, an e-mail, a queued notification)',
+      'SysLabel::isLabelId(str) is the guard for text that MIGHT be a label id, and it is what separates \'@Sys12345\' from a caption someone typed. SysLabel::expandLabel(str) goes further and resolves labels embedded inside a longer string. Neither throws on plain text, so they are safe to call on user input',
+      'SysLabel extends Label, and Label itself is KERNEL — a member-oracle lookup answers NOT FOUND, which means kernel-implemented rather than missing',
       'ALL user-facing text must use labels: @ModelName:LabelId',
       'BP check BPErrorLabelIsText fires on any hardcoded string in info/warning/error/dialog',
       'Label ID naming: describe the MEANING, no model prefix (e.g. CustomerName, not ContosoExtCustomerName)',
@@ -1490,6 +1541,40 @@ element.control(element.controlId('CustTable_AccountNum')).allowEdit(false);`,
     related: ['formrun-lifecycle', 'form-patterns', 'lookups'],
   },
   {
+    id: 'form-adaptor-tests',
+    title: 'Testing a form through its FormAdaptor',
+    keywords: ['form adaptor', 'formadaptor', 'ui test', 'form test', 'buttonadaptor', 'gridadaptor',
+      'attach', 'dispatched form', 'scenario test'],
+    summary:
+      'A form cannot be driven from a SysTest directly, but every form ships a generated adaptor that '
+      + 'can. Read from the AOT on a VM (2026-09-03): 6,480 *FormAdaptor classes, one per form, in the '
+      + 'dedicated *FormAdaptor packages.',
+    rules: [
+      'There is an adaptor for essentially every form — 6,480 of them, generated, living in packages '
+        + 'named after the source package plus FormAdaptor (CustTableFormAdaptor is in '
+        + 'ApplicationSuiteFormAdaptor, not ApplicationSuite). Your model must reference that package, '
+        + 'and it is a different reference from the one that gives you the form',
+      'Two ways in, and the census says which: attach 252 uses across 52 files, open 187 across 50. '
+        + 'attach() binds to a form that is ALREADY open — the shape a scenario test uses after '
+        + 'navigating — while open()/open<FormName>() launches one. The per-menu-item openers '
+        + '(openCustTableListPage, openCustTableDetails, …) each take the record and a FormViewOption, '
+        + 'so a test can land on the exact page a user would',
+      'The adaptor is enormous and that is the point: CustTableFormAdaptor has 890 methods, 94 of them '
+        + 'inherited from FormAdaptor. The generated ones are named after the CONTROLS — NewCustomer() '
+        + 'returns a ButtonAdaptor, a group returns a GroupAdaptor — so the test reads like the screen '
+        + 'rather than like the metadata',
+      'The base gives the verbs a test needs regardless of form: save(boolean refreshAfterSave), '
+        + 'isOpen(), canEdit(), canSwitchViewMode(), and invokeCommand(str, Map, container) for anything '
+        + 'without a generated accessor',
+      'These are SCENARIO tests, not unit tests, and they cost accordingly: a form adaptor drives the '
+        + 'real form through a dispatcher, so it needs a running environment and it is slow. Test a '
+        + 'validation rule on the TABLE and a wrapper through its BASE class; reach for an adaptor only '
+        + 'when the behaviour under test genuinely lives in the form — an enable/disable rule, a '
+        + 'datasource link, a button that must be hidden',
+    ],
+    related: ['unit-testing', 'form-runtime-api', 'systest-attributes'],
+  },
+  {
     id: 'systest-attributes',
     title: 'SysTest attributes: filtering, isolation and dependencies',
     keywords: ['systest attribute', 'systestcheckintest', 'systestgranularity', 'systesttransaction',
@@ -1830,6 +1915,7 @@ str emailAddr = email.Locator;`,
       'factory ATTRIBUTE class (extends SysAttribute implements SysExtensionIAttribute) that each concrete class ' +
       'is decorated with, and a lookup via SysExtensionAppClassFactory.',
     rules: [
+      '[ExportMetadataAttribute] is how a class advertises itself to the extension framework, and it is widespread: 1,248 uses across 1,099 shipped classes (the short spelling [ExportMetadata] works too). It takes TWO arguments — a key and a value — and shipped code writes the key with an INTRINSIC rather than a string: [ExportMetadataAttribute(identifierStr(TableName), tableStr(SalesTable))]. That is what makes a typo a build error instead of a silent miss, because a key that does not match the factory lookup produces no error and no instance, just a null the caller usually does not check',
       'Define an interface (or abstract base class) for the strategy: interface IMyStrategy { void execute(); }',
       'Create an extensible enum (IsExtensible=Yes) with one value per strategy',
       'Write ONE factory attribute per strategy family: `class MyProcessorAttribute extends SysAttribute implements SysExtensionIAttribute`, taking the enum value in new() and returning a unique parmCacheKey()',
@@ -3123,6 +3209,8 @@ else
       'Complete grammar reference for X++ select/while select. Statement order: [FindOptions] [FieldList from] tableBuffer [index] [order by / group by] [where …] [join … [where …]]. ' +
       'FindOptions go BETWEEN "select" and the table buffer. Each joined buffer has its own where clause immediately after it.',
     rules: [
+      'The aggregates, censused over the 66,754 shipped classes: sum 9,538 uses in ~1,700 files · count 2,916 · maxof 880 · minof 361 · **avg 27, in 17 files**. avg is the one to think twice about: it is legal and almost nobody uses it, because an average over a filtered set is usually wanted per group and X++ has no HAVING. Compute it from sum and count, or in the data provider where it can be tested',
+      'getSQLStatement() is how you see the SQL a query object will actually run — 27 uses across 21 files, plus helpers like getSqlStatementFromQueryRun. It is the right first move when a query returns the wrong rows and reading the X++ has not settled it, and it costs nothing at runtime because you call it instead of executing',
       'FindOptions (crossCompany, firstOnly, firstOnly1/10/100/1000, forUpdate, forceNestedLoop, forceSelectOrder, forcePlaceholders, forceLiterals, pessimisticLock, optimisticLock, repeatableRead, generateOnly, validTimeState, noFetch, reverse, firstFast) go BETWEEN "select" and the table buffer / field list',
       'firstOnly variants: firstOnly (1 row), firstOnly10, firstOnly100, firstOnly1000 — row-count hints to the plan; firstFast is a priority hint only and does NOT limit rows',
       'exists join / notexists join are semi-joins: the joined buffer fetches NO fields and cannot be read in the loop body — its conditions go in its own where clause',
@@ -4060,6 +4148,8 @@ select firstonly lookup
       'cross-tier marshalling and table fields. Choosing the wrong one is a classic performance bug: containers are ' +
       'copied on every assignment and grow O(n²) when appended in a loop.',
     rules: [
+      'A container UNPACKS positionally in one statement — `[a, b, c] = someContainer;` — and shipped code leans on it heavily: 3,233 distinct destructuring sites. It is how pack/unpack, SysOperation controllers and any multi-value return are written, because X++ methods return one value. The trap is that it is positional and unchecked: adding a field to the packed container in one place and not the other compiles fine and reads the wrong slot at runtime, which is why #CurrentVersion / #CurrentList exist beside it',
+      'Container access by function, censused across the install and aggregated across casings: conPeek 16,488 uses in ~3,900 files · conNull 4,673 · conLen 4,859 · conPoke 812 · conFind 655. conPeek is 1-BASED, and it is the single most-used container call in the codebase, so an off-by-one here is expensive',
       'Element types are declared at construction with the kernel `Types` enum: new List(Types::String), new Map(Types::Int64, Types::Class), new Set(Types::Integer)',
       'List — ordered, duplicates allowed: addEnd()/addStart(), elements(), getEnumerator(). Iterate with a ListEnumerator: while (enumerator.moveNext()) { … enumerator.current() }',
       'Map — key/value: insert(key, value), exists(key), lookup(key) (THROWS if the key is absent — guard with exists() or use MapEnumerator), remove(key), elements()',
@@ -4287,6 +4377,8 @@ public static str buildCsvLine(container _values)
       'instantiate a class by id, translate an enum value to its label. Use them for genuinely generic code — ' +
       'never as a substitute for the compile-time intrinsics, which the compiler and the cross-reference can check.',
     rules: [
+      'The Dict family, censused over the 66,754 shipped classes and aggregated across casings: DictTable 6,895 uses in ~1,380 files · DictField 4,466 · DictClass 2,547 · DictEnum 2,273 · DictType 1,506 · DictDataEntity 514 · DictMethod 468 · DictRelation 542 · DictIndex 528 · DictView 132. The first four are the working set; the rest are for tools rather than business logic',
+      'Reflection is the LAST resort, not the first, and the census shape says why: 1,380 files reach for DictTable while the intrinsics (tableStr, fieldNum) are compile-CHECKED and free at runtime. Use a Dict object only when the element is not known until run time — a generic framework, a data-driven mapping — and never to spell a name you already know',
       'Always seed the Dict* object from an intrinsic, not a string: new DictTable(tableNum(CustTable)), new DictField(tableNum(CustTable), fieldNum(CustTable, AccountNum)), new DictClass(classNum(MyClass)), new DictEnum(enumNum(NoYes))',
       'DictTable: name(), label(), fieldCnt(), fieldCnt2Id(i) → field id, fieldObject(fieldId) → DictField, makeRecord() → an empty buffer of that table',
       'DictField: name(), label(), baseType() (Types enum), enumId(), typeId() — the way to render a generic field/value pair with the right label',
@@ -4417,6 +4509,10 @@ public static void runIfPresent(ClassId _classId, str _methodName)
       'use const, an enum or a class constant instead — the two places macros still legitimately appear are ' +
       'feature flight names and legacy platform includes.',
     rules: [
+      'The directive table, censused over the 66,754 shipped AxClass files (2026-09-03) and aggregated across casings: #define 12,097 uses in 3,660 files · #localmacro 2,771 / #endmacro 2,723 (a matched pair, so the small gap is files that open one in a macro library) · #endif 132 / #if 93 / #ifnot 39 · #macrolib 111 · #file 95 · #linenumber 72 · #undef 3. **#globalmacro and #else appear ZERO times.** Conditional compilation is therefore a rounding error next to plain #define, and if a design leans on it, that is a sign the branch belongs in code',
+      'Directives are CASE-INSENSITIVE and shipped code proves it by accident rather than by design: #define, #DEFINE and #Define all appear (9,848 / 1,575 / 674), and #localmacro is written five different ways. Any tool that censuses or rewrites macros case-sensitively undercounts silently — write the lowercase form and read all of them',
+      '#if has no #else in this codebase — zero occurrences — so an either/or is written as two guards, #if then #ifnot. That is not a style preference to argue with; there is no shipped precedent for the alternative',
+      '#undef exists and is used three times in the entire install. A macro that needs undefining is almost always one that should have been a #localmacro, whose scope ends at #endmacro on its own',
       'A macro library is an AOT element under AxMacroDictionary; its entire body is the Source property — there is no per-macro sub-element',
       'Declare with #define.NAME(value) for a constant, #localmacro.NAME … #endmacro for a code fragment; use with #NAME',
       'Include a library at the top of the class/table declaration with the include directive `#<LibraryName>` (e.g. #ApplicationFoundationFlights)',
@@ -4572,6 +4668,10 @@ public class MyPostingLimits
       'X++ value types have no null references — each type has a null-EQUIVALENT value (0, empty string, 1900-01-01). ' +
       'Conversions are explicit functions, not casts, and declared string lengths truncate silently.',
     rules: [
+      'anytype CAN be re-typed at run time, and the widely repeated claim that it cannot is wrong. Measured on the VM 2026-09-03 (eval case L2-anytype-retyping-runtime, 4 of 4 passing under SysTestConsole.exe): a local anytype assigned 42 reports Types::Integer, is then assigned a str and reports Types::String; a class MEMBER of type anytype does exactly the same; and an anytype returned from a method keeps its type across the boundary. This was settled by running it, not by reading',
+      'typeOf(value) returns a Types enum and is the way to ask what an anytype is currently holding. Compare it with enum2Str in a message, because a raw enum in an assertion failure prints as a number and tells you nothing about which type was there',
+      'That anytype re-types freely is a reason for CAUTION, not for using it. Nothing warns when a '
+        + 'variable silently changes shape halfway through a method, and the compiler cannot help you afterwards. Use anytype where the platform hands you one — a container unpack, a Dict call, a generic framework — and give it a real type as soon as you know one',
       'Primitives: boolean, int (32-bit), int64, real (128-bit decimal — no float drift; exponent literals like 1.0e3), str, date, utcdatetime, timeOfDay (seconds since midnight, 0–86400), guid, enum, container, anytype. There are NO unsigned integer types',
       'Date literals use backslashes day\\month\\year (21\\11\\1998); date range 1900-01-01..2154-12-31 (maxDate()); utcdatetime literal form 1988-07-20T13:34:45',
       'str is unlimited Unicode by default; a declared length (str 20 code;) TRUNCATES silently on assignment — prefer EDT-typed variables so the length lives in metadata',
@@ -4610,6 +4710,9 @@ str asText = any2Str(v);`,
       'X++ allows declare-anywhere with block scope and REJECTS shadowing at compile time. const/readonly replace ' +
       'macros for constants; using has two unrelated meanings (namespace import clause vs disposable statement).',
     rules: [
+      'A sized string — `str 60 name;` — is legal and rare: 178 declarations across ~90 shipped classes, and the sizes are all over the place (1, 2, 4, 10, 200 …). It caps the LOCAL variable, not the column, so it buys nothing a table field does not already enforce and silently truncates when someone assigns more. Declare a plain `str` and let the EDT carry the length',
+      'The `[n,m]` array declaration — an array with an explicit memory-page size — appears TWICE in the entire 66,754-class install. Plain `Type name[n];` arrays are ordinary, but the two-number form is effectively dead language surface; if a design needs it, the design is the thing to look at',
+      '`byref` is a real modifier and it is used: 194 occurrences across 107 shipped classes, spelled both byref and byRef. It matters at a CLR boundary, where a .NET method with an `out`/`ref` parameter cannot be called without it — the platform\'s own the SysTest framework passes an activity id that way to a .NET tracing call. Inside pure X++ it is not needed: objects are already references and value types are not',
       'Declare anywhere; scope is the enclosing block. The compiler REJECTS shadowing an outer variable — rename instead of nesting the same name',
       '"var" requires an initializer and infers its type; not allowed for fields or parameters; skip it when the right side is not obviously typed',
       'const = compile-time constant, initializer required at the declaration; readonly = assignable at the declaration OR in new(), immutable afterwards',
@@ -4788,6 +4891,124 @@ public class MyCustomerSyncStrategy
     related: ['reflection-dict', 'sysextension', 'deprecated', 'xpp-class-rules'],
   },
   {
+    id: 'email-sending',
+    title: 'Sending e-mail from X++',
+    keywords: ['email', 'e-mail', 'mail', 'sysmailermessagebuilder', 'sysmailerfactory',
+      'sendnoninteractive', 'attachment', 'smtp', 'notification email'],
+    summary:
+      'One builder and one factory. The shape below is compile-verified on a VM (probe MailerBuilder, '
+      + 'scripts/oracles/probes/coverage-v3.ts) rather than reconstructed from documentation.',
+    rules: [
+      'SysMailerMessageBuilder is FLUENT and every setter returns the builder, so the whole message is '
+        + 'one statement: setFrom(str) then addTo(str) then setSubject(str) then setBody(str, boolean). '
+        + 'The second argument of setBody is isHtml — passing HTML with it false sends the markup as '
+        + 'visible text, which is the mistake that reaches a customer inbox before anyone notices',
+      'Nothing is sent by the builder. It carries the message and '
+        + 'SysMailerFactory::sendNonInteractive(builder.getMessage()) is what sends it. '
+        + '"NonInteractive" is the point: it does not need a signed-in user, which is what makes it the '
+        + 'right call from a batch job, a service or an event handler. An interactive send from batch is '
+        + 'a silent no-op',
+      'Do not build the message with strFmt into an HTML string and hope. Labels and user language '
+        + 'belong in the body the same way they do anywhere else, and an e-mail assembled from raw text '
+        + 'fails the same best-practice checks a form caption does',
+    ],
+    examples: [
+      {
+        label: 'The whole thing (compile-verified)',
+        code: `SysMailerMessageBuilder builder = new SysMailerMessageBuilder();
+
+builder.setFrom('noreply@contoso.com')
+       .addTo('user@contoso.com')
+       .setSubject('Subject')
+       .setBody('<p>Body</p>', true);
+
+SysMailerFactory::sendNonInteractive(builder.getMessage());`,
+      },
+    ],
+    related: ['alerts-business-events', 'async-retryable-batch'],
+  },
+  {
+    id: 'file-io-write',
+    title: 'Writing files from X++ (CSV, XLSX, and the download)',
+    keywords: ['file write', 'csv', 'xlsx', 'excel', 'epplus', 'officeopenxml', 'sendfiletouser',
+      'memorystream', 'export', 'download', 'file io'],
+    summary:
+      'The read side is covered by file-readers; this is the write side. Two facts do the work: the '
+      + 'file is built in a MemoryStream, and File::SendFileToUser is what hands it to the user. Both '
+      + 'compile-verified on a VM (probes ClrExcel and FileSendToUser).',
+    rules: [
+      'Build into a System.IO.MemoryStream, never onto a path. There is no local disk to write to in '
+        + 'a cloud-hosted environment, and code that opens a file by path works in a developer VM and '
+        + 'fails in every environment that matters',
+      'XLSX goes through EPPlus, which is already referenced: '
+        + 'new OfficeOpenXml.ExcelPackage(stream) — compile-verified. It is a CLR object, so the usual '
+        + 'CLR rules apply: no X++ null checks on it, and dispose through using where the API offers it',
+      'The download is File::SendFileToUser(stream, name) — compile-verified, two arguments, the stream '
+        + 'first. Reset the stream position to 0 before handing it over, or the user receives an empty '
+        + 'file with the right name, which looks like a permissions problem and is not',
+      'CSV needs no library: write the lines into the stream yourself. The trap is the separator and the '
+        + 'decimal point, both of which follow the USER language, so a CSV built with strFmt on a real '
+        + 'number is not portable between users of the same system',
+    ],
+    examples: [
+      {
+        label: 'Stream, package, download (all three compile-verified)',
+        code: `System.IO.MemoryStream    stream = new System.IO.MemoryStream();
+OfficeOpenXml.ExcelPackage package;
+
+package = new OfficeOpenXml.ExcelPackage(stream);
+// … fill worksheets …
+
+File::SendFileToUser(stream, 'export.xlsx');`,
+      },
+    ],
+    related: ['file-readers', 'dotnet-interop'],
+  },
+  {
+    id: 'http-json-xml',
+    title: 'HTTP, JSON, XML and regular expressions from X++',
+    keywords: ['http', 'httpclient', 'json', 'formjsonserializer', 'newtonsoft', 'jobject', 'regex',
+      'regular expression', 'rest', 'api call', 'deserialize', 'serialize'],
+    summary:
+      'All four are CLR types reachable from a sandbox model, compile-verified on a VM (probes ClrHttp2 '
+      + 'and ClrNewtonsoft). The one thing that stops the obvious code compiling is a keyword, not a '
+      + 'reference.',
+    rules: [
+      '`client` is a RESERVED WORD in X++ and cannot name a variable. The compiler says so plainly — '
+        + '"\'client\' is an invalid name for a variable because it is an X++ keyword" — but only after '
+        + 'you have written the line everyone writes first, `System.Net.Http.HttpClient client;`. Name '
+        + 'it httpClient. `server` is reserved too, and both are in the compiler keyword table (115 '
+        + 'words, captured by reflection)',
+      'The four types, all compile-verified in a sandbox model with no extra references: '
+        + 'System.Net.Http.HttpClient · System.Text.RegularExpressions.Regex · '
+        + 'Newtonsoft.Json.Linq.JObject (with ::Parse for a string) · FormJsonSerializer, whose '
+        + 'serializeClass(object) is the X++-native way to turn a contract into JSON',
+      'Prefer FormJsonSerializer for anything that is already an X++ data contract: it understands '
+        + '[DataMember] and it round-trips. Reach for Newtonsoft only when the JSON shape is not yours — '
+        + 'an external API response you have to walk rather than deserialize',
+      'A CLR regex pattern is a verbatim string in X++: @\'^[A-Z]{2}[0-9]+$\'. Without the @ the '
+        + 'backslashes are X++ escapes first and the pattern reaching Regex is not the one written',
+      'HttpClient is CLR and holds an unmanaged socket. Do not construct one per call in a loop — the '
+        + 'same socket-exhaustion problem it has in C# applies here, and a batch job is exactly where it '
+        + 'shows up',
+    ],
+    examples: [
+      {
+        label: 'The three CLR types, with the variable name that compiles',
+        code: `System.Net.Http.HttpClient            httpClient;
+System.Text.RegularExpressions.Regex expression;
+str                                  json;
+
+httpClient = new System.Net.Http.HttpClient();
+expression = new System.Text.RegularExpressions.Regex(@'^[A-Z]{2}[0-9]+$');
+json       = FormJsonSerializer::serializeClass(this);
+
+Newtonsoft.Json.Linq.JObject parsed = Newtonsoft.Json.Linq.JObject::Parse('{"a":1}');`,
+      },
+    ],
+    related: ['dotnet-interop', 'data-entities'],
+  },
+  {
     id: 'intrinsic-functions',
     title: 'Compile-Time (Intrinsic) Functions — the full catalog',
     keywords: ['intrinsic', 'compile-time function', 'tablestr', 'classstr', 'fieldstr', 'methodstr', 'fieldnum',
@@ -4798,6 +5019,7 @@ public class MyCustomerSyncStrategy
       'fails the build when the element does not exist, and the call costs nothing at runtime. Always prefer them ' +
       'over string literals.',
     rules: [
+      intrinsicCatalogRule(),
       'Arguments must be LITERAL element names — never variables; the compiler validates existence and (for member forms) membership',
       'Element names: classStr, tableStr, formStr, queryStr, reportStr, menuStr, enumStr, extendedTypeStr, attributeStr, resourceStr, tileStr, dutyStr, privilegeStr, roleStr, tableCollectionStr, workflowTypeStr, workflowTaskStr, workflowApprovalStr, workflowCategoryStr, measureStr, measurementStr, dimensionHierarchyStr',
       'Member forms take the owner first: fieldStr(MyTable, MyField), tableMethodStr, tableStaticMethodStr, methodStr(MyClass, myMethod), staticMethodStr, delegateStr(MyClass, myDelegate), staticDelegateStr, indexStr(MyTable, MyIdx), tableFieldGroupStr(MyTable, MyGroup), enumLiteralStr(MyEnum, MyValue)',

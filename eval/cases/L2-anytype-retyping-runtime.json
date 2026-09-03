@@ -1,0 +1,22 @@
+{
+  "id": "L2-anytype-retyping-runtime",
+  "title": "What anytype actually does when it is re-typed at run time",
+  "tier": 2,
+  "instruction": "In the sandbox model, settle a language claim with a RUNTIME test rather than by reading. The claim in circulation is that an `anytype` takes the type of its first assignment and cannot then hold a different type. Write a SysTest class that measures it instead of asserting it from memory. (1) Scaffold with generate_object(mode=\"pattern\", pattern=\"systest\", attributes=[\"SysTestGranularity(SysTestGranularity::Unit)\", \"SysTestCheckInTest\"]). (2) Write four methods, each using typeOf(...) as the observation and comparing with enum2Str so a failure message names the type: a local anytype reports the type it was given; the SAME local accepts a str after an int; a class MEMBER of type anytype accepts the same change (this is where the folklore is usually told); and an anytype returned from a method keeps its type across the boundary. (3) Build and run with run_systest_class. Do NOT write the assertions to match what you expect — write them to report what happens, run, and let the result decide what the knowledge entry says. That is the whole point of an R-only case.",
+  "target_artifact_types": [
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-anytype-retyping-runtime/",
+  "systest": "eval/systests/L2-anytype-retyping-runtime.xml",
+  "ignore": [
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "anytype",
+    "language",
+    "runtime",
+    "systest",
+    "typeof"
+  ],
+  "split": "holdout"
+}
