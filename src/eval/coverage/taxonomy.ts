@@ -733,6 +733,13 @@ export const TAXONOMY: CoverageLeaf[] = [
     note: 'The half of a report that is NOT layout: a field arrives on the temp table, or a parameter is needed. Both are now writable through d365fo_file(operation="report-design") — metadata-only and additive-only, because a malformed RDL fails in the SSRS renderer where no build can see it. The case exercises the grounded path end to end and its golden was captured from a clean xppc build. What it does NOT prove is that the design USES either one; placing them is Report Designer work.',
   },
   {
+    id: 'anytype-runtime', label: 'anytype at run time',
+    domain: 'Language', source: 'topic', tier: 'total', weight: 2,
+    aotTypes: ['class'], knowledgeIds: ['xpp-data-types'],
+    caseIds: ['L2-anytype-retyping-runtime'],
+    note: 'An R-only case: the assertions were written to REPORT what happens, then run, and the result decided the knowledge. It refuted a widely repeated claim — an anytype can be re-typed at run time, as a local AND as a class member, and it keeps its type across a method boundary (4 of 4 under SysTestConsole.exe, 2026-09-03). typeOf() compared through enum2Str is the observation, because a raw Types enum prints as a number in a failure message. What this does NOT settle is anytype in a table field or through a CLR boundary.',
+  },
+  {
     id: 'email-sending', label: 'Sending e-mail (SysMailerMessageBuilder)',
     domain: 'Integration', source: 'topic', tier: 'total', weight: 2,
     aotTypes: ['class'], knowledgeIds: ['email-sending'],

@@ -4668,6 +4668,10 @@ public class MyPostingLimits
       'X++ value types have no null references — each type has a null-EQUIVALENT value (0, empty string, 1900-01-01). ' +
       'Conversions are explicit functions, not casts, and declared string lengths truncate silently.',
     rules: [
+      'anytype CAN be re-typed at run time, and the widely repeated claim that it cannot is wrong. Measured on the VM 2026-09-03 (eval case L2-anytype-retyping-runtime, 4 of 4 passing under SysTestConsole.exe): a local anytype assigned 42 reports Types::Integer, is then assigned a str and reports Types::String; a class MEMBER of type anytype does exactly the same; and an anytype returned from a method keeps its type across the boundary. This was settled by running it, not by reading',
+      'typeOf(value) returns a Types enum and is the way to ask what an anytype is currently holding. Compare it with enum2Str in a message, because a raw enum in an assertion failure prints as a number and tells you nothing about which type was there',
+      'That anytype re-types freely is a reason for CAUTION, not for using it. Nothing warns when a '
+        + 'variable silently changes shape halfway through a method, and the compiler cannot help you afterwards. Use anytype where the platform hands you one — a container unpack, a Dict call, a generic framework — and give it a real type as soon as you know one',
       'Primitives: boolean, int (32-bit), int64, real (128-bit decimal — no float drift; exponent literals like 1.0e3), str, date, utcdatetime, timeOfDay (seconds since midnight, 0–86400), guid, enum, container, anytype. There are NO unsigned integer types',
       'Date literals use backslashes day\\month\\year (21\\11\\1998); date range 1900-01-01..2154-12-31 (maxDate()); utcdatetime literal form 1988-07-20T13:34:45',
       'str is unlimited Unicode by default; a declared length (str 20 code;) TRUNCATES silently on assignment — prefer EDT-typed variables so the length lives in metadata',

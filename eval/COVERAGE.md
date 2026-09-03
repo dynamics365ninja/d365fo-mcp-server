@@ -9,7 +9,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
 | core | 73 | 73 | **100%** |
-| total | 122 | 122 | 100% |
+| total | 123 | 123 | 100% |
 
 ## Data model (12/12)
 
@@ -165,9 +165,15 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
-| SysTest unit testing | core | ✅ | ✅ | ✅ | L2-coc-extension, L2-event-handler-basic, L2-systest-attributes-isolation +4 |
+| SysTest unit testing | core | ✅ | ✅ | ✅ | L2-anytype-retyping-runtime, L2-coc-extension, L2-event-handler-basic +5 |
 | Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +62 |
 | TDD loop (red-first SysTest authoring) | core | ✅ | ✅ | ✅ | L2-systest-authoring-basic |
+
+## Language (1/1)
+
+| Leaf | Tier | K | E | T | Evidence / gap |
+| --- | --- | :-: | :-: | :-: | --- |
+| anytype at run time | total | ✅ | ✅ | ✅ | L2-anytype-retyping-runtime |
 
 ## Testing (3/3)
 

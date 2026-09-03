@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoAnytypeTest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[
+SysTestTarget(classStr(Global), UtilElementType::Class),
+SysTestGranularity(SysTestGranularity::Unit)
+]
+class ConDemoAnytypeTest extends SysTestCase
+{
+    anytype memberValue;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>testAnytypeReportsTheTypeItWasGiven</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// An anytype holds the value it was given, and typeOf() reports that type.
+    /// </summary>
+    [SysTestMethod, SysTestCheckInTest]
+    public void testAnytypeReportsTheTypeItWasGiven()
+    {
+        anytype value = 42;
+
+        this.assertEquals(enum2Str(Types::Integer), enum2Str(typeOf(value)), 'an int assigned to anytype is an Integer');
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>testAnytypeAcceptsADifferentTypeLater</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// The open question: can the SAME anytype hold a str afterwards?
+    /// </summary>
+    [SysTestMethod, SysTestCheckInTest]
+    public void testAnytypeAcceptsADifferentTypeLater()
+    {
+        anytype value = 42;
+        Types    first = typeOf(value);
+
+        value = 'now a string';
+
+        this.assertEquals(enum2Str(Types::String), enum2Str(typeOf(value)),
+            strFmt('was %1, then assigned a str', enum2Str(first)));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>testAnytypeKeepsItsTypeAcrossAMethodBoundary</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// And does it survive a round trip through a method boundary?
+    /// </summary>
+    [SysTestMethod, SysTestCheckInTest]
+    public void testAnytypeKeepsItsTypeAcrossAMethodBoundary()
+    {
+        anytype value = this.echo('text');
+
+        this.assertEquals(enum2Str(Types::String), enum2Str(typeOf(value)), 'a str returned as anytype stays a String');
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>testAnytypeMemberAcceptsADifferentTypeLater</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// The folklore is usually told about a class FIELD, not a local. Same test.
+    /// </summary>
+    [SysTestMethod, SysTestCheckInTest]
+    public void testAnytypeMemberAcceptsADifferentTypeLater()
+    {
+        memberValue = 42;
+        Types first = typeOf(memberValue);
+
+        memberValue = 'now a string';
+
+        this.assertEquals(enum2Str(Types::String), enum2Str(typeOf(memberValue)),
+            strFmt('member was %1, then assigned a str', enum2Str(first)));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>echo</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Returns whatever it was given, typed anytype.
+    /// </summary>
+    private anytype echo(anytype _value)
+    {
+        return _value;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

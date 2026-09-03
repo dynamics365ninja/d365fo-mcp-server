@@ -7,8 +7,8 @@
   },
   "total": {
     "tier": "all",
-    "total": 122,
-    "covered": 122,
+    "total": 123,
+    "covered": 123,
     "percent": 100
   },
   "leaves": [
@@ -1446,6 +1446,7 @@
       "t": true,
       "covered": true,
       "cases": [
+        "L2-anytype-retyping-runtime",
         "L2-coc-extension",
         "L2-event-handler-basic",
         "L2-systest-attributes-isolation",
@@ -1769,6 +1770,20 @@
       "covered": true,
       "cases": [
         "L4-ssrs-report-parameters"
+      ]
+    },
+    {
+      "id": "anytype-runtime",
+      "label": "anytype at run time",
+      "domain": "Language",
+      "tier": "total",
+      "weight": 2,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L2-anytype-retyping-runtime"
       ]
     },
     {

@@ -28,7 +28,7 @@ Do not keep an executed plan.
 | **H2 test data & attributes** — G-26, G-27, `atlNodes.generated.ts`, both cases | **shipped** | this branch |
 | **H4 catalogs** — G-10, G-12, G-14, G-15, G-17, G-18 | **shipped** | this branch |
 | **H5 breadth** — G-01, G-03, G-04, G-05, G-08, G-09, G-11, G-16, G-28, G-31, G-32 | **shipped** | this branch |
-| H5 remainder — G-02 (runtime `anytype` case) | not started | — |
+| H5 — G-02 (runtime `anytype` case) | **shipped** | this branch |
 | H6 | not started | — |
 
 **H5's validator rules are not the rules §5.7 specified, and the census is why.**
@@ -65,9 +65,13 @@ so conditional compilation is a rounding error next to `#define` (12,097); the
 select appears 27 times against `sum`'s 9,538; and `Uncheck::` has exactly two
 values, both security escapes.
 
-**G-02 is the one H5 item left.** It is an R-only eval case (`anytype` re-typed
-at run time) and needs a VM capture cycle of its own rather than a knowledge
-edit.
+**G-02 refuted the claim it was written to document.** The R-only case was
+authored to REPORT what happens rather than assert what everyone says, and the
+run settled it: an `anytype` **can** be re-typed at run time — as a local, as a
+class MEMBER, and it keeps its type across a method boundary. 4 of 4 under
+`SysTestConsole.exe` (2026-09-03). The widely repeated "an anytype takes the type
+of its first assignment and cannot be re-typed" is wrong on this platform build,
+and the knowledge entry now says so with the run behind it.
 
 **H4 found a defect in the censuses H2 and H3 had already shipped.** Every one of
 them enumerated `<root>/<package>/<package>/<AxType>`, which looks right and
