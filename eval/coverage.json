@@ -1,14 +1,14 @@
 {
   "core": {
     "tier": "core",
-    "total": 73,
-    "covered": 73,
+    "total": 74,
+    "covered": 74,
     "percent": 100
   },
   "total": {
     "tier": "all",
-    "total": 123,
-    "covered": 123,
+    "total": 124,
+    "covered": 124,
     "percent": 100
   },
   "leaves": [
@@ -1451,6 +1451,7 @@
         "L2-event-handler-basic",
         "L2-systest-attributes-isolation",
         "L2-systest-authoring-basic",
+        "L2-tdd-red-green-cycle",
         "L3-batch-basic",
         "L3-test-data-atl",
         "L4-tdd-report-dp"
@@ -1826,6 +1827,20 @@
       "covered": true,
       "cases": [
         "L2-entity-query-range-roundtrip"
+      ]
+    },
+    {
+      "id": "tdd-red-green",
+      "label": "The red-green cycle, both runs recorded",
+      "domain": "Testing",
+      "tier": "core",
+      "weight": 4,
+      "k": true,
+      "e": true,
+      "t": true,
+      "covered": true,
+      "cases": [
+        "L2-tdd-red-green-cycle"
       ]
     },
     {

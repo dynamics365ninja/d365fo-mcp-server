@@ -1,6 +1,6 @@
 # X++ language coverage plan — v4 (PLAN ONLY, 2026-09-02)
 
-**Status:** plan, not started. Nothing in this document has been implemented.
+**Status:** EXECUTED. Every phase H0-H6 has shipped; see the execution log below for what changed along the way and why. Kept for the census figures, the decisions and the corrections it records, not as a work list.
 **Execution:** on the D365FO VM (xppc 7.0.7996.33, sandbox model `fm-mcp`, prefix `Con`), because every
 new claim below is gated by an oracle that only exists there (`oracle:members`, `oracle:census`,
 `oracle:probe`, `oracle:sweep`, `SysTestConsole.exe`). Repo-only work is marked **[repo]**, VM-bound
@@ -21,7 +21,7 @@ Do not keep an executed plan.
 | H1c ATTR003 + the language fact behind it | **shipped** | `19b4a0f`, `98e23a6` |
 | H1 live verification of the loop | **shipped** | `cea4aa5` |
 | H1 remainder — G-13 catalog, G-06 topic, D2 verified | **shipped** | `7ebd55b` |
-| H1 cases §5.5 | deferred into the H2 capture wave (see below) | — |
+| H1 cases §5.5 | discharged — see the H6 note | `#1003`, this branch |
 | **H3 reports — G-20, G-21, G-24** (D3: reports first) | **shipped** | `a5478e8`, `76b5341`, `9243d48` |
 | H3 — G-19 report runtime API, G-23 RDL census | **shipped** | `5618c62` |
 | §6.7 cases — parameters, TDD report-DP, print format, logo+barcode | **shipped** | `c8fe75a`, `27da803`, this branch |
@@ -29,7 +29,53 @@ Do not keep an executed plan.
 | **H4 catalogs** — G-10, G-12, G-14, G-15, G-17, G-18 | **shipped** | this branch |
 | **H5 breadth** — G-01, G-03, G-04, G-05, G-08, G-09, G-11, G-16, G-28, G-31, G-32 | **shipped** | this branch |
 | H5 — G-02 (runtime `anytype` case) | **shipped** | this branch |
-| H6 | not started | — |
+| **H6 write op** — G-22 | **shipped early, in D4** | `#1001`, case in `#1002` |
+| H1 §5.5 cases — the red-green pair, and `tdd-workflow` | **shipped** | this branch |
+
+**H6 was already done when its turn came, and both of G-22's sub-items were
+deliberately rejected rather than skipped.** The `report-design` op shipped in D4
+(PR #1001) with the trim that paid for it, and its VM-built case
+(`L4-ssrs-report-parameters`) landed in PR #1002. Its two open questions were
+settled at the time, with the reasoning recorded in the shipped source:
+
+* **`add-column` is refused on purpose.** Placing a column means editing the RDL,
+  and an RDL failure surfaces only in the SSRS renderer — where no build and no
+  test can see it. The op-spec says so to the caller.
+* **The "refuse foreign designs" fingerprint was rejected for having the wrong
+  shape.** It is a property of the FILE's provenance, so every report scaffolded
+  before the marker existed — the committed goldens included — would be refused,
+  while a hand-written report that acquired the marker would be accepted. The
+  guarantee is a property of the OPERATION instead (metadata-only, additive-only)
+  and it holds for every document regardless of origin.
+
+Gates verified rather than assumed: the op is published, the budget test is green
+at 44,749 of 45,000 chars, and the case has a captured golden.
+
+**§5.5's remaining cases were not all authored, and that is deliberate.** Six of
+the ten name shapes the catalog already covers with a recorded SysTest run —
+`L2-coc-extension`, `L2-coc-inherited-method`, `L2-event-handler-basic`,
+`L3-form-event-handler-class`, `L3-sysoperation-dialog-attributes`,
+`L3-sysoperation-query-parameter-batch`, `L3-data-entity-extension-field`.
+Authoring duplicates would have added catalog weight and no evidence.
+
+**What was genuinely missing is the one the done-bar singles out: a case with
+BOTH runs recorded.** Every other case commits its green document, and a green
+document alone cannot tell a working test from an empty one.
+`L2-tdd-red-green-cycle` now commits the red run beside it, from one
+uninterrupted cycle — the same test against an unfinished implementation
+(`Expected: 10; Actual: 0`) and then against a fixed one, with nothing about the
+test changed. `tests/eval/redGreenCycle.test.ts` reads both.
+
+**And the `tdd-workflow` entry §5.1 asked for had never been written.** H1 was
+logged as shipped without it; the taxonomy caught the dangling id the moment a
+leaf referenced it. It exists now, and it is process rather than API: what to
+test per artifact kind, why red must be a failing assertion and not a broken
+file, and when a SysTest is the wrong tool.
+
+**One decision left for the owner.** The plan's own done-bar ends with "this file
+deleted", and the v3 plan was deleted on completion for the same reason. This one
+carries census figures and rejected-option reasoning that nothing else records,
+so it is left in place rather than removed unilaterally.
 
 **H5's validator rules are not the rules §5.7 specified, and the census is why.**
 Two of the three had to change before they could ship:

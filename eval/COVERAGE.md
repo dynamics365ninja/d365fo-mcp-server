@@ -8,8 +8,8 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Tier | Covered | Leaves | % |
 | --- | ---: | ---: | ---: |
-| core | 73 | 73 | **100%** |
-| total | 123 | 123 | 100% |
+| core | 74 | 74 | **100%** |
+| total | 124 | 124 | 100% |
 
 ## Data model (12/12)
 
@@ -165,7 +165,7 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
-| SysTest unit testing | core | ✅ | ✅ | ✅ | L2-anytype-retyping-runtime, L2-coc-extension, L2-event-handler-basic +5 |
+| SysTest unit testing | core | ✅ | ✅ | ✅ | L2-anytype-retyping-runtime, L2-coc-extension, L2-event-handler-basic +6 |
 | Labels & localisation | core | ✅ | ✅ | ✅ | L0-edt-basic, L0-enum-basic, L1-class-basic +62 |
 | TDD loop (red-first SysTest authoring) | core | ✅ | ✅ | ✅ | L2-systest-authoring-basic |
 
@@ -175,10 +175,11 @@ A taxonomy leaf counts as covered only when all three hold: **K** a knowledge en
 | --- | --- | :-: | :-: | :-: | --- |
 | anytype at run time | total | ✅ | ✅ | ✅ | L2-anytype-retyping-runtime |
 
-## Testing (3/3)
+## Testing (4/4)
 
 | Leaf | Tier | K | E | T | Evidence / gap |
 | --- | --- | :-: | :-: | :-: | --- |
+| The red-green cycle, both runs recorded | core | ✅ | ✅ | ✅ | L2-tdd-red-green-cycle |
 | Validator rules for test authoring (TST001-003) | core | ✅ | ✅ | ✅ | L2-systest-attributes-isolation |
 | SysTest attributes: filtering, isolation, dependencies | core | ✅ | ✅ | ✅ | L2-systest-attributes-isolation |
 | Test data through ATL | total | ✅ | ✅ | ✅ | L3-test-data-atl |
