@@ -2435,9 +2435,15 @@ public class MyReportDP extends SrsReportDataProviderBase
       '<DataMethods> is effectively dead: 11 of 1,057 reports have any content in it. If you are reaching ' +
       'for a data method, the answer is almost always a field on the temp table instead — computed in X++, ' +
       'where it can be tested',
-      'There is no d365fo_file operation for an AxReport. A dataset field, a parameter or a column cannot be ' +
-      'added after the scaffold — that is a deliberate gap (docs/BACKLOG.md), so plan the temp table and the ' +
-      'contract BEFORE generating, and treat the design as owned by the Report Designer afterwards',
+      'CHILD ORDER IS THE CONTRACT. The deserializer drops an element it meets out of sequence without a word ' +
+      'and the build stays green. Census of all 13,911 shipped parameters: Name, AOTQuery (query-bound reports only), AllowBlank, DataType, ' +
+      'Nullable, MultiValue (when present), PromptString, UserVisibility, DefaultValue, Values — zero contradicting instances. ' +
+      'DataType written after PromptString is silently lost and a DateTime parameter becomes a string',
+      'After the scaffold, d365fo_file(action="modify", objectType="report", operation="report-design") is the ' +
+      'write path for the two changes that are bookkeeping, not layout: reportAction="refresh-dataset" copies the ' +
+      'temp table\'s fields onto the dataset, reportAction="add-parameter" declares a parameter and binds it to the ' +
+      'dataset in one write. Placing either in the DESIGN (a column, a dialog control) is still Report Designer ' +
+      'work — there is no add-column, deliberately, because an RDL error surfaces only in the SSRS renderer',
     ],
     examples: [
       {
@@ -2455,9 +2461,9 @@ public class MyReportDP extends SrsReportDataProviderBase
 <AxReportParameterBase xmlns="" i:type="AxReportParameter">
     <Name>MyDateFrom</Name>
     <AllowBlank>true</AllowBlank>
+    <DataType>System.DateTime</DataType>
     <Nullable>true</Nullable>
     <PromptString>@MyModel:FromDate</PromptString>
-    <DataType>System.DateTime</DataType>
     <DefaultValue />
     <Values />
 </AxReportParameterBase>`,

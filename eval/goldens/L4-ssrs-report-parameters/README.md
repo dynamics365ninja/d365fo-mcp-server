@@ -26,3 +26,19 @@ Confirm before relying on this golden: the artifacts compile, are BP-clean, and
 say what the case instruction asked for.
 
 <!-- capture-golden: provenance above, hand-written notes below -->
+
+## 2026-09-03 — corrected by hand, not re-captured
+
+The parameter block this golden pinned was WRONG, and the build could not see
+it. `add-parameter` wrote `DataType` after `PromptString`; a census of all
+13,911 parameters in the 1,063 shipped reports puts it between `AllowBlank` and
+`Nullable` with zero contradicting instances, and the deserializer drops an
+element it meets out of sequence without a word. So the committed
+`DemoRptFromDate` compiled clean and would have reached the dialog as a
+`String`, not a `DateTime`.
+
+The block now carries the shipped order, and the three inserted elements sit on
+their own lines instead of after the closing tag's indentation. The writer was
+fixed in the same PR and its unit tests pin the order; a re-capture on the VM is
+the next step for this case, and until then this note is the reason the
+reviewed file and the capture date disagree.

@@ -141,3 +141,65 @@ public static class MyExt_Extension
 }`)).toEqual([]);
   });
 });
+
+/**
+ * The false positive a release audit found, one day after the rule shipped.
+ *
+ * `maskStringsAndComments` keeps a comment's opener and blanks the rest, so a
+ * `///` line comes back as `//` and spaces — the `startsWith('///')` skip never
+ * matched anything, and `//` and block comments were not skipped at all. The
+ * comment line became the "target", failed the class-declaration test, and a
+ * legal class-level stack was reported as a parse error. The full-install sweep
+ * missed it because shipped code puts its doc comment ABOVE the attributes.
+ */
+describe('ATTR003 walks past every comment spelling between a class stack and its declaration', () => {
+  it('a line comment', () => {
+    expect(attr003(`[ExtensionOf(classStr(SalesLine))]
+[SysObsolete('x', false, 31\\12\\2030)]
+// wraps the base
+final class SalesLine_Extension
+{
+}`)).toEqual([]);
+  });
+
+  it('a doc comment', () => {
+    expect(attr003(`[A]
+[B]
+/// <summary>Documented after the attributes.</summary>
+public final class MyFeature
+{
+}`)).toEqual([]);
+  });
+
+  it('a block comment, including a multi-line one', () => {
+    expect(attr003(`[A]
+[B]
+/* one line */
+internal final class MyFeature
+{
+}`)).toEqual([]);
+    expect(attr003(`[A]
+[B]
+/*
+   several
+   lines
+*/
+internal final class MyFeature
+{
+}`)).toEqual([]);
+  });
+
+  it('still fires when the same comments precede a METHOD', () => {
+    // The skip must not turn into an exemption: what is decorated still decides.
+    expect(attr003(`class T
+{
+    [SysTestMethod]
+    [SysTestPriority('1')]
+    // ordinary comment
+    /* and a block */
+    public void testX()
+    {
+    }
+}`)).toHaveLength(1);
+  });
+});
