@@ -244,3 +244,60 @@ class ConPlainHelper
 }`, 'TST003')).toEqual([]);
   });
 });
+
+/**
+ * Two false positives a release audit found the day after the rules shipped.
+ * Neither was in the full-install sweep's population: shipped code keeps the
+ * whole class header on one line and puts its doc comment above the attributes.
+ */
+describe('TST002 reads a class header that wraps', () => {
+  it('finds extends on the continuation line', () => {
+    expect(only(`
+class ConVeryLongWarehouseScenarioTest
+    extends AtlWHSTestCase
+{
+    [SysTestMethod]
+    public void testSomething()
+    {
+        this.assertTrue(true);
+    }
+}`, 'TST002')).toEqual([]);
+  });
+
+  it('still fires when the wrapped header extends nothing', () => {
+    expect(only(`
+class ConFooTest
+    implements SysTestSetup
+{
+    [SysTestMethod]
+    public void testSomething()
+    {
+        this.assertTrue(true);
+    }
+}`, 'TST002')).toHaveLength(1);
+  });
+});
+
+describe('TST003 walks past every comment spelling between the attribute and the signature', () => {
+  it('a line comment, a doc comment and a block comment', () => {
+    // maskStringsAndComments turns `///` into `//` + spaces, so a skip that
+    // tested for `///` never matched; `//` and `/* */` were not skipped at all.
+    // The comment line was then taken as the signature, had no `(`, and the
+    // method was silently NOT checked — a false negative here, and the
+    // mirror-image false positive in ATTR003.
+    const found = only(`
+class ConFooTest extends SysTestCase
+{
+    [SysTestMethod]
+    // arranges nothing, asserts nothing
+    /// <summary>Doc.</summary>
+    /* block */
+    public void checksNothing()
+    {
+        ConFoo::doWork();
+    }
+}`, 'TST003');
+    expect(found).toHaveLength(1);
+    expect(found[0].excerpt).toBe('public void checksNothing()');
+  });
+});

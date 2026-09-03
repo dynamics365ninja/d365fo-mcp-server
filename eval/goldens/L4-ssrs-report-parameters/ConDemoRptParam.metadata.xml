@@ -23,14 +23,14 @@
 				<DisplayWidth>Auto</DisplayWidth>
 				<UserDefined>false</UserDefined>
 			</AxReportDataSetField>
-						<AxReportDataSetField>
+			<AxReportDataSetField>
 				<Name>NoteDateTime</Name>
 				<Alias>ConDemoRptParamTmp.1.NoteDateTime</Alias>
 				<DataType>System.DateTime</DataType>
 				<DisplayWidth>Auto</DisplayWidth>
 				<UserDefined>false</UserDefined>
 			</AxReportDataSetField>
-</Fields>
+			</Fields>
 			<Parameters>
 				<AxReportDataSetParameter>
 					<Name>AX_PartitionKey</Name>
@@ -74,13 +74,13 @@
 					<DataType>Microsoft.Dynamics.AX.Framework.Services.Client.QueryMetadata</DataType>
 					<Parameter>CONDEMORPTPARAMDP_DynamicParameter</Parameter>
 				</AxReportDataSetParameter>
-							<AxReportDataSetParameter>
+				<AxReportDataSetParameter>
 					<Name>DemoRptFromDate</Name>
 					<Alias>DemoRptFromDate</Alias>
 					<DataType>System.DateTime</DataType>
 					<Parameter>DemoRptFromDate</Parameter>
 				</AxReportDataSetParameter>
-</Parameters>
+			</Parameters>
 		</AxReportDataSet>
 	</DataSets>
 	<DefaultParameterGroup>
@@ -148,17 +148,17 @@
 				<DefaultValue />
 				<Values />
 			</AxReportParameterBase>
-					<AxReportParameterBase xmlns=""
+			<AxReportParameterBase xmlns=""
 					i:type="AxReportParameter">
 				<Name>DemoRptFromDate</Name>
 				<AllowBlank>true</AllowBlank>
+				<DataType>System.DateTime</DataType>
 				<Nullable>true</Nullable>
 				<PromptString>@SYS14656</PromptString>
-				<DataType>System.DateTime</DataType>
 				<DefaultValue />
 				<Values />
 			</AxReportParameterBase>
-</ReportParameterBases>
+		</ReportParameterBases>
 	</DefaultParameterGroup>
 	<Designs>
 		<AxReportDesign xmlns=""

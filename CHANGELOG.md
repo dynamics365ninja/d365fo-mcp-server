@@ -49,6 +49,92 @@ those are called out explicitly below.
 
 
 ### Added
+- **`report-design` — the first write path an AxReport has ever had.**
+  `d365fo_file(action="modify", objectType="report", operation="report-design")`
+  with `reportAction="refresh-dataset"` (copy the temp table's fields onto the
+  report's dataset — the information is on disk, nothing about it is a design
+  decision) or `reportAction="add-parameter"` (declare a parameter AND bind it
+  to the dataset in one write, because the two elements must agree). New
+  parameters: `reportAction`, `tableName`, `datasetName`, `parameterName`,
+  `parameterDataType`, `parameterHidden`, `promptString`. Layout stays with the
+  Report Designer: there is deliberately no `add-column`, because an RDL error
+  surfaces only in the SSRS renderer where no build and no test can see it. The
+  operation is metadata-only and additive-only, and that guarantee is a property
+  of the operation, not of the file's provenance — a fingerprint that refused
+  "foreign" designs was rejected for having the wrong shape.
+
+  It paid for its schema bytes with a measured trim: tool annotations that only
+  repeat the MCP spec default (`readOnlyHint: false` on 6 tools,
+  `idempotentHint: false` on 4) are no longer sent. `destructiveHint: true` is
+  also a default and is kept on purpose: a client that reads absence as
+  "unknown" becomes MORE cautious about a missing `readOnlyHint` and LESS
+  cautious about a missing `destructiveHint`, and only the first direction is
+  safe. ListTools headroom 49 → 251 chars. (PR #1001)
+
+- **`add-field` can write a container field.** `fieldBaseType="Container"` was
+  refused as a parameter that changes nothing and `fieldType="Container"` as a
+  missing EDT; the C# bridge had handled it since it was written and only the
+  TypeScript side never routed to it. A census settled the type question on the
+  way: 280 of 332 shipped container fields DO carry an EDT (`Bitmap` is what a
+  shipped report temp table uses for a company logo), and typing the field with
+  it silences `BPErrorTableFieldNotDefinedUsingType`. (PR #1002)
+
+- **Reports, the runtime half.** `get_knowledge` topics for the report runtime
+  API (contracts, print destinations, pre-processing) and for the RDL people
+  actually write, from a census over the 961 shipped designs: `IIf` 29,703 uses
+  across 775 reports; `Avg` and `Lookup` zero — an aggregation belongs in the
+  data provider, where it can be tested. `generate_object(pattern="systest")`
+  gains `testTargetType="report-dp"`, and four eval cases were captured from
+  clean builds, one of them (`L4-tdd-report-dp`) with a red-then-green run under
+  `SysTestConsole.exe`. That red run corrected the case's own premise:
+  `assertNotNull(dp.getTmp())` takes `Object`, an empty buffer boxes to null,
+  and the assertion tests whether the last select found a row. (PR #1002)
+
+- **SysTest attributes and ATL, both re-derived from usage.** The scaffold takes
+  `attributes: string[]` and `arrange: "buffer" | "atl"`; `prepare(mode="test")`
+  names the ATL packages a model is missing and what each costs. The catalogue is
+  a census of the 884 shipped test classes, and it inverted the plan: the two
+  most-used attributes (`[SysTestCheckInTest]` 1,875 uses, `[SysTestGranularity]`
+  165) were missing from it, most of what it listed has zero shipped uses, and
+  `SysTestSuiteCompanyIsolateClass` — named as THE isolation mechanism — has been
+  `[SysObsolete]` since 2014. The ATL tree is read from the AOT
+  (`src/knowledge/atlNodes.generated.ts`, 1,105 data classes, 351
+  record-producing nodes); 107 of them hand back an `AtlEntity` wrapper that
+  needs `.record()`, which the oracle's own header example had omitted. (PR #1003)
+
+- **Six knowledge catalogues written from censuses, and every one got SMALLER.**
+  `form-runtime-api` (of `FormRun`'s 209 methods, 49 are ever called through
+  `element.` across 9,442 shipped forms; `args()` alone is 92% of platform calls;
+  `UpdateDesignMode` appears in zero files), `data-entity-methods` (ranked over
+  5,805 entities; `mapEntityToDataSource` outnumbers its "pair" 11 to 1), CoC
+  target kinds (`queryStr` has zero shipped uses; `mapStr` and `viewStr`, which
+  the plan omitted, both ship), `IncludedColumns` (zero in 18,377 tables),
+  relation types and index properties. The censuses H2 and H3 had shipped were
+  re-measured first: a hand-rolled `<root>/<pkg>/<pkg>/<AxType>` walk silently
+  skipped the 12 model folders not named after their package, ApplicationSuite/
+  Foundation among them. `npm run oracle:usage` and `npm run oracle:atl` now walk
+  models the way the server does. (PR #1004)
+
+- **H5 breadth: twelve gaps, three validator rules, one refuted claim.** Topics
+  `email-sending`, `file-io-write`, `http-json-xml`, `xrecord-buffer-api` and
+  eight extended ones. `validate_code` gains **TST001** (`assertExpectedException`
+  does not exist; 0 of 66,754 shipped classes), **TST002** (`[SysTestMethod]` in
+  a class that extends NOTHING — not "does not extend SysTestCase", because 31 of
+  the 56 shipped classes reach it through a chain and the literal rule would fire
+  on more shipped classes than it caught) and **TST003** (a test method with no
+  `assert*(`, warning; triggered by the attribute, since only 2.4% of shipped
+  test methods are named `test*`). Whole-install sweep: 105,686 files, zero
+  error-severity findings. An R-only case measured that an `anytype` CAN be
+  re-typed at run time, contrary to the folklore. `get_knowledge` topic
+  `tdd-workflow` — asked for by the plan, logged as shipped, never written until
+  the taxonomy's dangling-id check caught it. (PRs #1005, #1006)
+
+- **`L2-tdd-red-green-cycle` commits the RED run beside the green one**, from one
+  uninterrupted cycle on the VM: the assertion failed for the stated reason, then
+  passed with only the implementation changed. Every other case commits a green
+  document, and a green document alone cannot tell a working test from an empty
+  one. (PR #1006)
+
 - **The red-first loop, made findable.** It was complete and unused: across 1,603
   real MCP calls in 47 sessions, `prepare(mode="test")` was called 0 times and
   `run_systest_class` 0 times, while `prepare(mode="change")` ran 54 and
@@ -115,6 +201,46 @@ those are called out explicitly below.
   a committed list of the API surface.
 
 ### Fixed
+- **`report-design(add-parameter)` wrote `DataType` where the deserializer drops
+  it.** The writer emitted `Nullable, PromptString, DataType`; a census of all
+  13,911 parameters in the 1,063 shipped reports puts `DataType` between
+  `AllowBlank` and `Nullable` with zero contradicting instances (before
+  `PromptString` 3,104:0, before `Nullable` 2,139:0). An element met out of
+  sequence is dropped without a word and the build stays green, so a
+  `System.DateTime` parameter reached the dialog as a `String` — in the committed
+  golden of `L4-ssrs-report-parameters`, too, which was corrected by hand and
+  says so in its README. The order is now the shipped one, the tests pin it
+  against what the scaffold itself emits, and the `axreport-anatomy` topic
+  carries the census and no longer claims the operation does not exist.
+
+- **`add-parameter` wrote half a parameter and called it success.** The
+  declaration was written BEFORE the dataset was resolved; when no dataset could
+  be found (several datasets and no `datasetName`, a wrong name, a self-closing
+  `<Parameters />`) the reply was ✅ "bound it to dataset '(none — no dataset
+  resolved)'", and the retry with the right name hit the "already declared"
+  guard, so the parameter could never be bound at all — the exact half-write the
+  operation exists to prevent. Both insertion sites are now resolved before the
+  first byte is written, an unresolved dataset is an error that writes nothing,
+  and a parameter left declared-but-unbound by the old version is bound on the
+  next call rather than refused. Also: `promptString` is XML-escaped,
+  `parameterDataType` must look like a .NET type name, inserted elements take
+  the closing tag's line instead of doubling its indentation, and
+  `refresh-dataset` drops the memoised table listing before looking the temp
+  table up, so one created a moment ago is no longer "not found on disk".
+
+- **ATTR003 fired on a legal class-level attribute stack** whenever a comment
+  sat between the attributes and `class`. `maskStringsAndComments` keeps the
+  comment opener and blanks the rest, so a `///` line comes back as `//` and
+  spaces: the `startsWith('///')` skip never matched, `//` and `/* */` lines were
+  not skipped at all, and the comment became the "declaration". Shipped code
+  puts its doc comment above the attributes, which is why the 105,686-file sweep
+  was clean. TST003 had the same skip and silently did NOT check a test method
+  behind a comment; both share one masked-line helper now.
+
+- **TST002 reported `extends nothing` when the `extends` clause sat on the next
+  line.** The header regex stopped at the newline; it now runs to the opening
+  brace.
+
 - **`testTargetType` was invisible.** It shipped in 1.16.0 as the selector for the
   table test shape and was absent from the `pattern` mode's op-spec `optional`
   list — and since these parameters are deliberately kept off the wire schema, the
@@ -140,6 +266,13 @@ those are called out explicitly below.
   `[SysTestTarget]`'s second argument is the element TYPE, and the ATL entry
   point; `testing` keeps the one question it uniquely owns, which kind of test to
   write at all.
+
+### Changed
+- Dependencies: `@biomejs/biome` 2.5.11 → 2.5.12, `@types/node` 26.4.0 → 26.4.1,
+  `tsx` 4.23.12 → 4.23.13 (30 lockfile entries, no major). `npm update` on
+  Windows had dropped the two Linux `@biomejs` optional-dependency entries from
+  the lockfile, which broke `npm ci` on the Linux CI runners; they are restored.
+  (PR #1007)
 
 
 ---

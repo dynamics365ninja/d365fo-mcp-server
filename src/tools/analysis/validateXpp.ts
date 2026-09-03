@@ -2100,6 +2100,22 @@ function checkAttributeArguments(code: string): ValidationViolation[] {
 }
 
 /**
+ * True for a MASKED line that carries no code: blank, or a comment.
+ *
+ * `maskStringsAndComments` keeps the comment opener and blanks the rest, so a
+ * `///` doc line comes back as `//` followed by spaces, `// text` as `//` and
+ * spaces, and a `/* … *\/` block as `/*` and spaces (its later lines are
+ * spaces alone). A rule that walks past comments therefore cannot test for
+ * `///` — that spelling never survives masking — and one that tests for
+ * nothing at all treats the comment as the declaration it was looking for.
+ * ATTR003 did the second and fired on a legal class-level stack whenever a
+ * comment sat between the attributes and `class`; TST003 did the first.
+ */
+function isBlankOrCommentMasked(maskedLine: string): boolean {
+  return /^[ \t]*(?:\/\/|\/\*)?[ \t]*$/.test(maskedLine);
+}
+
+/**
  * ATTR003 — two attributes stacked on a METHOD.
  *
  * X++ allows several attributes on a method only inside ONE bracket, separated by
@@ -2137,12 +2153,12 @@ function checkStackedMethodAttributes(code: string): ValidationViolation[] {
   for (let i = 0; i + 1 < maskedLines.length; i++) {
     if (!attributeLine.test(maskedLines[i]) || !attributeLine.test(maskedLines[i + 1])) continue;
 
-    // Walk past any further attribute lines, blank lines and doc comments to find
+    // Walk past any further attribute lines, blank lines and comments to find
     // what is being decorated. Only that decides legality.
     let j = i + 2;
     while (j < maskedLines.length) {
       const line = maskedLines[j];
-      if (attributeLine.test(line) || line.trim() === '' || line.trim().startsWith('///')) { j++; continue; }
+      if (attributeLine.test(line) || isBlankOrCommentMasked(line)) { j++; continue; }
       break;
     }
     const target = maskedLines[j] ?? '';
@@ -2228,8 +2244,10 @@ function checkTestMethodWithoutBase(code: string): ValidationViolation[] {
   const masked = maskStringsAndComments(code);
   if (!/\[[^\]]*\bSysTestMethod\b[^\]]*\]/.test(masked)) return [];
 
-  // The class declaration, wherever it sits after any attribute block.
-  const decl = /^[ \t]*(?:(?:public|private|protected|internal|final|abstract|static)\s+)*class\s+(\w+)([^\n{]*)/m
+  // The class declaration, wherever it sits after any attribute block. Its
+  // `extends` clause may sit on the next line — the header runs to the opening
+  // brace, not to the end of the line.
+  const decl = /^[ \t]*(?:(?:public|private|protected|internal|final|abstract|static)\s+)*class\s+(\w+)([^{]*)/m
     .exec(masked);
   if (!decl) return [];
   if (/\bextends\b/.test(decl[2])) return [];
@@ -2282,7 +2300,7 @@ function checkTestMethodWithoutAssert(code: string): ValidationViolation[] {
     let j = i + 1;
     while (j < maskedLines.length) {
       const t = maskedLines[j].trim();
-      if (t === '' || t.startsWith('///') || /^\[/.test(t)) { j++; continue; }
+      if (isBlankOrCommentMasked(maskedLines[j]) || /^\[/.test(t)) { j++; continue; }
       break;
     }
     const signature = maskedLines[j] ?? '';

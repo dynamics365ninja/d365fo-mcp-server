@@ -370,3 +370,165 @@ describe('an escaped RDL is left alone too', () => {
     expect(design).not.toContain('Subject');
   });
 });
+
+/**
+ * What a release audit found the day after the operation shipped, none of it
+ * visible to a build.
+ *
+ * 1. **Child order is the contract.** The writer put `DataType` LAST. A census
+ *    of all 13,911 parameters in the 1,063 shipped reports puts it after
+ *    `AllowBlank` and before `Nullable`, with ZERO contradicting instances
+ *    (DataType before PromptString 3,104:0, before Nullable 2,139:0). The
+ *    deserializer drops an element it meets out of sequence without a word,
+ *    so the build stayed green and a `System.DateTime` parameter became a
+ *    string — in the committed golden, too.
+ * 2. **Half a write reported as success.** The declaration was written before
+ *    the dataset was resolved; when the dataset was not found the reply said
+ *    "bound it to dataset '(none — no dataset resolved)'" with a ✅, and the
+ *    retry with the right name hit the "already declared" guard. Both sites are
+ *    resolved before the first byte now, and a parameter left in that state by
+ *    the old version is repaired rather than refused.
+ */
+describe('add-parameter writes the shipped child order', () => {
+  const CANONICAL = ['Name', 'AllowBlank', 'DataType', 'Nullable', 'PromptString', 'UserVisibility', 'DefaultValue', 'Values'];
+  const childOrder = (block: string): string[] =>
+    [...block.matchAll(/^[ \t]*<([A-Za-z]+)[ >\/]/gm)].map(m => m[1]).filter(n => n !== 'AxReportParameterBase');
+
+  it('DataType sits between AllowBlank and Nullable, PromptString before UserVisibility', async () => {
+    await addReportParameter(reportPath, 'MyFull', { dataType: 'System.DateTime', hidden: true, promptString: '@SYS14656' });
+    const block = parameterBlock(readFileSync(reportPath, 'utf-8'), 'MyFull');
+    expect(childOrder(block)).toEqual(CANONICAL);
+  });
+
+  it('keeps the order when the optional elements are absent', async () => {
+    await addReportParameter(reportPath, 'MyBare', {});
+    const block = parameterBlock(readFileSync(reportPath, 'utf-8'), 'MyBare');
+    expect(childOrder(block)).toEqual(CANONICAL.filter(n => n !== 'PromptString' && n !== 'UserVisibility'));
+  });
+
+  it('agrees with what the scaffold itself emits for a parameter', () => {
+    // The scaffold had the order right all along (AllowBlank, DataType,
+    // Nullable, UserVisibility); the operation that extends its output must not
+    // disagree with it.
+    const scaffoldOrder = ['Name', 'AllowBlank', 'DataType', 'Nullable', 'UserVisibility', 'DefaultValue', 'Values'];
+    expect(CANONICAL.filter(n => scaffoldOrder.includes(n))).toEqual(scaffoldOrder);
+  });
+});
+
+describe('add-parameter resolves both halves before writing either', () => {
+  const TWO_DATASETS = REPORT_XML.replace(
+    '\t</DataSets>',
+    `\t\t<AxReportDataSet xmlns="">
+\t\t\t<Name>ConDemoNoteReportLinesTmp</Name>
+\t\t\t<Fields>
+\t\t\t</Fields>
+\t\t\t<Parameters>
+\t\t\t</Parameters>
+\t\t</AxReportDataSet>
+\t</DataSets>`,
+  );
+
+  it('refuses, and writes nothing, when the dataset is ambiguous', async () => {
+    writeFileSync(reportPath, TWO_DATASETS, 'utf-8');
+    const r = await addReportParameter(reportPath, 'MyDateFrom', {});
+    expect(r.success).toBe(false);
+    expect(r.message).toContain('datasetName is required');
+    expect(readFileSync(reportPath, 'utf-8')).toBe(TWO_DATASETS);
+  });
+
+  it('refuses, and writes nothing, when the named dataset does not exist', async () => {
+    const r = await addReportParameter(reportPath, 'MyDateFrom', { datasetName: 'NoSuchDataSet' });
+    expect(r.success).toBe(false);
+    expect(r.message).toContain('ConDemoNoteReportTmp');
+    expect(readFileSync(reportPath, 'utf-8')).toBe(REPORT_XML);
+  });
+
+  it('refuses, and writes nothing, when <Parameters /> is self-closing', async () => {
+    const selfClosing = REPORT_XML.replace(/<Parameters>[\s\S]*?<\/Parameters>/, '<Parameters />');
+    writeFileSync(reportPath, selfClosing, 'utf-8');
+    const r = await addReportParameter(reportPath, 'MyDateFrom', {});
+    expect(r.success).toBe(false);
+    expect(r.message).toContain('no <Parameters> collection');
+    expect(readFileSync(reportPath, 'utf-8')).toBe(selfClosing);
+  });
+
+  it('then succeeds with the right datasetName — the retry the old guard blocked', async () => {
+    writeFileSync(reportPath, TWO_DATASETS, 'utf-8');
+    await addReportParameter(reportPath, 'MyDateFrom', {});
+    const r = await addReportParameter(reportPath, 'MyDateFrom', { datasetName: 'ConDemoNoteReportLinesTmp' });
+    expect(r.success, r.message).toBe(true);
+    expect(r.message).toContain("dataset 'ConDemoNoteReportLinesTmp'");
+  });
+
+  it('binds a parameter the old version left declared but unbound', async () => {
+    // The state the first release produced. Repairing it is cheaper than
+    // explaining it.
+    const halfWritten = REPORT_XML.replace(
+      '\t</ReportParameterBases>',
+      `\t\t<AxReportParameterBase xmlns=""
+\t\t\t\ti:type="AxReportParameter">
+\t\t\t<Name>MyOrphan</Name>
+\t\t\t<AllowBlank>true</AllowBlank>
+\t\t\t<DataType>System.Int32</DataType>
+\t\t\t<Nullable>true</Nullable>
+\t\t\t<DefaultValue />
+\t\t\t<Values />
+\t\t</AxReportParameterBase>
+\t</ReportParameterBases>`,
+    );
+    writeFileSync(reportPath, halfWritten, 'utf-8');
+    const r = await addReportParameter(reportPath, 'MyOrphan', { dataType: 'System.Int32' });
+    expect(r.success).toBe(true);
+    expect(r.message).toContain('was declared but bound to no dataset');
+    const xml = readFileSync(reportPath, 'utf-8');
+    expect(xml).toMatch(/<AxReportDataSetParameter>[\s\S]*?<Name>MyOrphan<\/Name>/);
+    // And only one declaration, still.
+    expect(xml.match(/<Name>MyOrphan<\/Name>/g)).toHaveLength(2);
+  });
+
+  it('is idempotent once both halves exist', async () => {
+    await addReportParameter(reportPath, 'MyDateFrom', {});
+    const after = readFileSync(reportPath, 'utf-8');
+    const second = await addReportParameter(reportPath, 'MyDateFrom', {});
+    expect(second.message).toContain('already declared and bound');
+    expect(readFileSync(reportPath, 'utf-8')).toBe(after);
+  });
+});
+
+describe('add-parameter keeps the document well-formed', () => {
+  it('escapes a raw prompt caption', async () => {
+    await addReportParameter(reportPath, 'MyRange', { promptString: 'From & to <date>' });
+    const block = parameterBlock(readFileSync(reportPath, 'utf-8'), 'MyRange');
+    expect(block).toContain('<PromptString>From &amp; to &lt;date&gt;</PromptString>');
+  });
+
+  it('refuses a data type that is not a .NET type name', async () => {
+    const r = await addReportParameter(reportPath, 'MyBad', { dataType: 'date<script>' });
+    expect(r.success).toBe(false);
+    expect(r.message).toContain('not a .NET type name');
+    expect(readFileSync(reportPath, 'utf-8')).toBe(REPORT_XML);
+  });
+
+  it('accepts the array spelling a container field maps to', async () => {
+    const r = await addReportParameter(reportPath, 'MyBlob', { dataType: 'System.Byte[]' });
+    expect(r.success, r.message).toBe(true);
+  });
+
+  it('inserts on the closing tag\'s line, so indentation does not double', async () => {
+    await addReportParameter(reportPath, 'MyDateFrom', {});
+    const xml = readFileSync(reportPath, 'utf-8');
+    expect(xml).toMatch(/\n\t\t<AxReportParameterBase xmlns=""\n\t\t\t\ti:type="AxReportParameter">\n\t\t\t<Name>MyDateFrom<\/Name>/);
+    expect(xml).toMatch(/\n\t<\/ReportParameterBases>/);
+    expect(xml).toMatch(/\n\t\t\t\t<AxReportDataSetParameter>\n\t\t\t\t\t<Name>MyDateFrom<\/Name>/);
+    expect(xml).toMatch(/\n\t\t\t<\/Parameters>/);
+  });
+});
+
+describe('refresh-dataset inserts on the closing tag\'s line too', () => {
+  it('keeps </Fields> on its own indented line', async () => {
+    await refreshReportDataset(reportPath, 'ConDemoNoteReportTmp', undefined, roots());
+    const xml = readFileSync(reportPath, 'utf-8');
+    expect(xml).toMatch(/\n\t\t\t\t<AxReportDataSetField>\n\t\t\t\t\t<Name>Subject<\/Name>/);
+    expect(xml).toMatch(/\n\t\t\t<\/Fields>/);
+  });
+});
