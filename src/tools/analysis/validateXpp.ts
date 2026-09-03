@@ -2169,6 +2169,159 @@ function checkStackedMethodAttributes(code: string): ValidationViolation[] {
 }
 
 /**
+ * TST001 — `assertExpectedException`, a method that does not exist.
+ *
+ * X++ has no such assert. Expected exceptions are DECLARED, with
+ * `this.parmExceptionExpected(true)` before the act, and the framework fails the
+ * test if the exception does not arrive. The name is the one a JUnit or NUnit
+ * habit produces, and it reads so plausibly that the knowledge base has said so
+ * in prose for a year — prose an agent does not read at the moment it writes.
+ *
+ * Measured: `assertExpectedException` appears in 0 of the 66,754 shipped AxClass
+ * files, and `SysTestAssert` resolves to exactly 14 asserts, none of them this
+ * one (H0 members oracle).
+ */
+function checkAssertExpectedException(code: string): ValidationViolation[] {
+  const masked = maskStringsAndComments(code);
+  const lines = code.split('\n');
+  const violations: ValidationViolation[] = [];
+
+  masked.split('\n').forEach((line, i) => {
+    if (!/\bassertExpectedException\s*\(/.test(line)) return;
+    violations.push({
+      rule: 'TST001',
+      severity: 'error',
+      line: i + 1,
+      excerpt: lines[i]?.trim() ?? '',
+      fix:
+        'There is no assertExpectedException in X++. Declare the expectation before the act instead: ' +
+        'this.parmExceptionExpected(true); then call the method that must throw. The framework fails ' +
+        'the test when the exception does NOT arrive.',
+    });
+  });
+
+  return violations;
+}
+
+/**
+ * TST002 — `[SysTestMethod]` in a class that extends nothing.
+ *
+ * A test method only runs if its class is a testable, and the framework finds
+ * that through the base class. A class with test methods and no base at all
+ * cannot be one, and the failure is silent in the worst way: the build is clean
+ * and the runner simply reports no tests.
+ *
+ * The rule deliberately checks for NO `extends` rather than for
+ * `extends SysTestCase`, and that is a measurement, not caution. Of the 56
+ * shipped classes carrying [SysTestMethod], only 24 extend SysTestCase directly;
+ * 31 reach it through a chain — 256 shipped test classes extend
+ * `AtlWHSTestCase`, for one. A rule demanding the literal base would fire on
+ * more shipped classes than it caught. Following the chain needs the symbol
+ * index, which a source-text validator does not have.
+ *
+ * With the narrowed shape the sweep is clean: the single candidate in the whole
+ * install was `SysTest` itself, and that match came from the string literal
+ * `'SysTestMethod'` inside an event-tracing call — which is why the check runs
+ * on masked source.
+ */
+function checkTestMethodWithoutBase(code: string): ValidationViolation[] {
+  const masked = maskStringsAndComments(code);
+  if (!/\[[^\]]*\bSysTestMethod\b[^\]]*\]/.test(masked)) return [];
+
+  // The class declaration, wherever it sits after any attribute block.
+  const decl = /^[ \t]*(?:(?:public|private|protected|internal|final|abstract|static)\s+)*class\s+(\w+)([^\n{]*)/m
+    .exec(masked);
+  if (!decl) return [];
+  if (/\bextends\b/.test(decl[2])) return [];
+
+  const line = masked.slice(0, decl.index).split('\n').length;
+  return [{
+    rule: 'TST002',
+    severity: 'error',
+    line,
+    excerpt: code.split('\n')[line - 1]?.trim() ?? '',
+    fix:
+      `Class ${decl[1]} carries [SysTestMethod] but extends nothing, so the framework cannot see it as ` +
+      'a testable: the build stays clean and the runner reports no tests at all. Add ' +
+      '`extends SysTestCase` (or a base that itself derives from it).',
+  }];
+}
+
+/**
+ * TST003 — a test method with no assertion, advisory.
+ *
+ * A test that asserts nothing passes forever and proves nothing, and this repo
+ * has paid for exactly that more than once. It is a WARNING because a legitimate
+ * shape exists: a scenario test whose assertion is that the act did not throw.
+ *
+ * Two details are measured rather than assumed, and the plan had both wrong:
+ *
+ *  - The trigger is the ATTRIBUTE, not the method name. Of the 336 shipped
+ *    methods carrying [SysTestMethod], only 8 — 2.4% — are named `test*`, so a
+ *    name-triggered rule would miss 98% of real tests.
+ *  - Any `assert*(` counts, not a known list. Shipped tests lean on domain
+ *    helpers (`assertExpectedLines` 229 uses, `assertWorkCompleted` 139,
+ *    `assertExpectedOnHand` 103) far more than on `assertEquals` (223). A rule
+ *    that only knew SysTestAssert's own 14 methods would fire on hundreds of
+ *    perfectly good tests.
+ *
+ * With both corrections the rate on shipped code is 10 of 336 — 3.0%.
+ */
+function checkTestMethodWithoutAssert(code: string): ValidationViolation[] {
+  const masked = maskStringsAndComments(code);
+  if (!/\[[^\]]*\bSysTestMethod\b[^\]]*\]/.test(masked)) return [];
+
+  const lines = code.split('\n');
+  const maskedLines = masked.split('\n');
+  const violations: ValidationViolation[] = [];
+
+  for (let i = 0; i < maskedLines.length; i++) {
+    if (!/\[[^\]]*\bSysTestMethod\b[^\]]*\]/.test(maskedLines[i])) continue;
+
+    // The signature is the next non-attribute, non-comment, non-blank line.
+    let j = i + 1;
+    while (j < maskedLines.length) {
+      const t = maskedLines[j].trim();
+      if (t === '' || t.startsWith('///') || /^\[/.test(t)) { j++; continue; }
+      break;
+    }
+    const signature = maskedLines[j] ?? '';
+    const name = /\b(\w+)\s*\(/.exec(signature)?.[1];
+    if (!name) continue;
+
+    // Body: from the signature to the matching close brace, by depth.
+    let depth = 0;
+    let started = false;
+    let end = j;
+    for (let k = j; k < maskedLines.length; k++) {
+      for (const ch of maskedLines[k]) {
+        if (ch === '{') { depth++; started = true; }
+        else if (ch === '}') depth--;
+      }
+      if (started && depth <= 0) { end = k; break; }
+      end = k;
+    }
+    const body = maskedLines.slice(j, end + 1).join('\n');
+
+    if (/\bassert\w*\s*\(|\bfail\s*\(|parmExceptionExpected|parmFaultExpected/.test(body)) continue;
+
+    violations.push({
+      rule: 'TST003',
+      severity: 'warning',
+      line: j + 1,
+      excerpt: lines[j]?.trim() ?? '',
+      fix:
+        `${name} is marked [SysTestMethod] but asserts nothing, so it passes whatever the code does. ` +
+        'Add the assertion the test exists for — any assert*() counts, including a domain helper — or ' +
+        'this.parmExceptionExpected(true) when the point IS that the call throws.',
+    });
+    i = end;
+  }
+
+  return violations;
+}
+
+/**
  * EXT001 — an extension-method class whose members do not match its shape.
  *
  * A static class holds extension methods; every method in it must be static and the
@@ -2424,6 +2577,9 @@ const XPP_RULES = [
   checkAttributeArguments,
   checkExtensionMethodClassShape,
   checkStackedMethodAttributes,
+  checkAssertExpectedException,
+  checkTestMethodWithoutBase,
+  checkTestMethodWithoutAssert,
   checkReservedIdentifiers,
 ];
 
