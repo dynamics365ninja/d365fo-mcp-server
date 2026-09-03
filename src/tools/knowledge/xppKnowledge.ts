@@ -1709,6 +1709,50 @@ entity.setDeliveryModeId('Air');`,
     related: ['unit-testing', 'systest-attributes'],
   },
   {
+    id: 'tdd-workflow',
+    title: 'The TDD loop in D365FO: what to test, and how to know the test works',
+    keywords: ['tdd', 'red green', 'test first', 'what to test', 'arrange act assert', 'aaa',
+      'empty assert', 'red phase', 'test strategy', 'when not to test'],
+    summary:
+      'Process, not API — the API is in unit-testing and systest-attributes. This is what to test for '
+      + 'each kind of artifact, the shape a test takes, and the one habit that separates a test suite '
+      + 'from a suite-shaped decoration.',
+    rules: [
+      'RED FIRST, and red means a FAILING ASSERTION, never a broken file. The build must be clean in '
+        + 'both phases; a compile error produces no test document at all and proves nothing. This is '
+        + 'recorded rather than asserted: eval case L2-tdd-red-green-cycle commits both runs of one '
+        + 'cycle — the same test against an unfinished implementation (Expected: 10; Actual: 0) and then '
+        + 'against a fixed one, with nothing about the test changed between them',
+      'A green document alone cannot tell a working test from an empty one. That is the whole reason to '
+        + 'watch it fail once: an assertion that has never failed has not been observed to do anything. '
+        + 'If you inherit a suite you did not see go red, break the behaviour on purpose once and watch',
+      'What to test, by artifact kind — each one observes the behaviour somewhere different, and the '
+        + 'shapes are not interchangeable: a TABLE rule through a buffer and validateWrite (verdict AND '
+        + 'infolog message, plus an accepting case); a CoC wrapper through the BASE class, never the '
+        + '_Extension, because CoC is transparent and a test naming the wrapper passes with next never '
+        + 'reached; an EVENT HANDLER by performing the write and reading back what it changed, since a '
+        + 'handler fires out of band and returns nothing; a SYSOPERATION service called directly with a '
+        + 'hand-built contract, no controller and no batch; a REPORT DP through parmDataContract and '
+        + 'processReport with the staged rows read back',
+      'Arrange, act, assert — and the arrange is where D365FO differs from other languages. Prefer a raw '
+        + 'buffer with initValue() for a table in your own model; use ATL when the fixture is a customer, '
+        + 'an item or an order Microsoft ships a node for. Validation tests usually need NO saved row at '
+        + 'all, because table rules run on an unsaved buffer',
+      'Name the test after the RULE, not the method: testRejectsADowngrade, not testValidateWrite. The '
+        + 'name is what a failing run shows first, and shipped code agrees that the method name carries '
+        + 'no framework meaning — only 8 of 336 shipped [SysTestMethod] methods are even called test*',
+      'When a SysTest is the WRONG tool: layout and RDL (the golden oracle covers the document, and the '
+        + 'renderer is where a bad design fails); metadata-only objects with no behaviour; and anything '
+        + 'whose assertion would be "it did not throw" — that is a smoke check, and saying so honestly '
+        + 'beats dressing it as a test',
+      'A test that asserts nothing passes forever. Validator TST003 warns about it, and the bar it uses '
+        + 'is deliberately generous: ANY assert*() counts, including a domain helper, plus '
+        + 'parmExceptionExpected for the throwing case. On shipped code that warning fires on 3% of test '
+        + 'methods',
+    ],
+    related: ['unit-testing', 'systest-attributes', 'test-data-atl'],
+  },
+  {
     id: 'unit-testing',
     title: 'X++ Unit Testing (SysTestCase / SysTestSuite)',
     keywords: ['unit test', 'systestcase', 'systestsuite', 'systest', 'test', 'assert', 'testmethod',

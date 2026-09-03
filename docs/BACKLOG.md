@@ -406,6 +406,59 @@ reopen it on the grounds that it would now be easy to build.
 
 ---
 
+## X++ coverage v4 non-goals and decisions — recorded here when the plan file was deleted
+
+**Status:** deferred / non-goal 2026-09-03 · **Area:** knowledge, validator, eval
+taxonomy
+
+**What.** `docs/XPP_LANGUAGE_COVERAGE_PLAN.md` (the v4 plan) was deleted on
+2026-09-03 under its own lifecycle rule: all phases H0-H6 shipped
+(PRs #999-#1006), core coverage 74/74 and total 124/124, 0 `golden_pending`, the
+full-install validator sweep clean. Most of what it carried now lives in the
+knowledge entries, the taxonomy notes, the rule doc comments and the PR bodies.
+These items had no home anywhere else and would otherwise have gone with it:
+
+**Non-goals, carried forward and still rejected:**
+
+- ALM / LCS / pipelines / deployable packages / TFVC-git workflow / version-update
+  guidance — outside the copilot's tool reach; a knowledge entry would be prose
+  the model already has.
+- Extensible controls, embedded Power Apps / Power BI, SSRS sub-reports, Financial
+  Reporting, Document Routing Agent internals, Key Vault / Blob SDKs — carried
+  from v3, still no demand.
+- Domain packs (tax, fixed assets, projects, HRM, retail, production, MRP, TMS) —
+  tax only on the owner's ask (its own entry above); the rest have zero demand and
+  multi-day cost each.
+- RSAT, Task recorder, performance / load tests — tooling outside the MCP surface.
+- Code-quality heuristics (complexity, method length) and any rule needing scope —
+  the standing "no AST" decision. `DECL001`, `CONV001`, `EVT001`, the generics
+  rule, the `*=` rule and the buffer-select rule stay rejected.
+- New MCP tools, or new published enum values not paid for by a measured trim.
+
+**Rules rejected on measurement** (do not re-propose without new evidence):
+
+- **RPT003** — 31 shipped classes would have fired, roughly half the category it
+  judged.
+- **`add-column` on `report-design`** — placing a column edits the RDL, whose
+  failures surface only in the SSRS renderer. The reasoning is in
+  `src/tools/write/reportDesignXml.ts`; the op-spec tells the caller.
+- **A "scaffold owns this design" fingerprint** — a property of the FILE's
+  provenance, so it would refuse every report scaffolded before the marker
+  existed (the committed goldens included) and accept a hand-written one that
+  acquired it. The safety guarantee is a property of the OPERATION instead.
+
+**Eval cases deliberately NOT authored.** §5.5 named ten; six of them describe
+shapes the catalog already covers with recorded SysTest runs — `L2-coc-extension`,
+`L2-coc-inherited-method`, `L2-event-handler-basic`, `L3-form-event-handler-class`,
+`L3-sysoperation-dialog-attributes`, `L3-sysoperation-query-parameter-batch`,
+`L3-data-entity-extension-field`. Duplicates would add catalog weight and no
+evidence. **Trigger to revisit:** a corpus record showing one of those shapes
+failing in a way the existing case does not exercise.
+
+**One defect noted and not fixed.** `remove-field` leaves the field's
+`AxTableFieldGroupField` entry behind, so a table can be left referencing a field
+that no longer exists. Small, real, and wants its own change.
+
 ## X++ coverage v3 non-goals — recorded here when the plan file was deleted
 
 **Status:** deferred / non-goal 2026-09-01 · **Area:** knowledge, generator, eval

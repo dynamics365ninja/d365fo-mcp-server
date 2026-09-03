@@ -28,6 +28,26 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Removed
+- `docs/XPP_LANGUAGE_COVERAGE_PLAN.md` (the **v4** plan) is **deleted**, under the
+  lifecycle rule it carried itself: all phases H0-H6 shipped, core coverage 74/74,
+  total 124/124, 0 `golden_pending`, and the full-install validator sweep clean at
+  105,686 files with zero error-severity findings.
+
+  The durable record is where it belongs and not in a plan file: the census
+  figures are inside the knowledge rules that use them, the rejected options are
+  in the source that implements the alternative (`reportDesignXml.ts` explains why
+  there is no `add-column` and no provenance fingerprint; the TST rule comments
+  explain why they are not what the plan specified), the evidence is in the
+  goldens and the two committed SysTest documents of `L2-tdd-red-green-cycle`, and
+  the reasoning per phase is in PRs #999-#1006.
+
+  Its non-goals, its measurement-rejected rules, the six eval cases deliberately
+  not authored and the one noted-but-unfixed defect moved to `docs/BACKLOG.md`
+  rather than disappearing with it. This is the second plan file to go the same
+  way; the v3 one was deleted 2026-09-01.
+
+
 ### Added
 - **The red-first loop, made findable.** It was complete and unused: across 1,603
   real MCP calls in 47 sessions, `prepare(mode="test")` was called 0 times and

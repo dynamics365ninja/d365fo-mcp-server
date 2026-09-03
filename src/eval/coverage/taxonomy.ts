@@ -761,6 +761,13 @@ export const TAXONOMY: CoverageLeaf[] = [
     note: 'All four CLR types compile-verified in a sandbox model with no extra references (probes ClrHttp2, ClrNewtonsoft). The blocker is a language fact, not a reference: `client` is a reserved word, so the line everyone writes first does not compile — confirmed against the compiler keyword table (115 words, captured by reflection). What this does NOT cover is authentication or a live endpoint.',
   },
   {
+    id: 'tdd-red-green', label: 'The red-green cycle, both runs recorded',
+    domain: 'Testing', source: 'topic', tier: 'core', weight: 4,
+    aotTypes: ['class'], knowledgeIds: ['unit-testing', 'tdd-workflow'],
+    caseIds: ['L2-tdd-red-green-cycle'],
+    note: 'The only case in the catalog that commits its RED run beside the green one, captured from one uninterrupted cycle on the VM (2026-09-03). A green document alone cannot tell a working test from an empty one; the pair proves the assertion could fail, failed for the stated reason (Expected: 10; Actual: 0), and that only the implementation changed. tests/eval/redGreenCycle.test.ts reads both. Note what the runner does NOT do: it stays silent on a red run carrying a real assertion message, deliberately, because the same note would fire on a genuine regression.',
+  },
+  {
     id: 'test-authoring-rules', label: 'Validator rules for test authoring (TST001-003)',
     domain: 'Testing', source: 'topic', tier: 'core', weight: 3,
     aotTypes: ['class'], knowledgeIds: ['unit-testing', 'systest-attributes'],

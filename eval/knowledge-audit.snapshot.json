@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-09-03T05:32:16.841Z",
+  "capturedAt": "2026-09-03T06:33:38.498Z",
   "indexedAt": "2026-09-02T11:35:19.356Z",
   "ok": [
     "alerts-business-events|attribute|DataContract",
@@ -415,6 +415,7 @@
     "systest-attributes|static-call|SysTestGranularity::Unit",
     "systest-attributes|static-call|TestTransactionMode::None",
     "systest-attributes|static-call|UtilElementType::Class",
+    "tdd-workflow|attribute|SysTestMethod",
     "telemetry|declaration|SysInfologEnumerator",
     "telemetry|declaration|SysInfologMessageStruct",
     "telemetry|static-call|Exception::Info",

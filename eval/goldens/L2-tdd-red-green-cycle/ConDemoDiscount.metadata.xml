@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoDiscount</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+public class ConDemoDiscount
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>rateForTier</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// The discount rate for a contract tier, in percent.
+    /// </summary>
+    public static int rateForTier(int _tier)
+    {
+        switch (_tier)
+        {
+            case 1: return 5;
+            case 2: return 10;
+            case 3: return 15;
+        }
+
+        return 0;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

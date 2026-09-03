@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ConDemoDiscountTest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[
+SysTestTarget(classStr(ConDemoDiscount), UtilElementType::Class),
+SysTestGranularity(SysTestGranularity::Unit)
+]
+class ConDemoDiscountTest extends SysTestCase
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>testTierTwoIsTenPercent</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Tier 2 is a ten percent discount.
+    /// </summary>
+    [SysTestMethod, SysTestCheckInTest]
+    public void testTierTwoIsTenPercent()
+    {
+        this.assertEquals(10, ConDemoDiscount::rateForTier(2), 'tier 2 must be 10 percent');
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

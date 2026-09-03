@@ -1,0 +1,23 @@
+{
+  "id": "L2-tdd-red-green-cycle",
+  "title": "The red-green cycle, with both runs recorded",
+  "tier": 2,
+  "instruction": "In the sandbox model, run one complete red-green cycle and keep BOTH runs. (1) Write a small class ConDemoDiscount with a static rateForTier(int) that is deliberately unfinished — it returns 0 for every tier. (2) Scaffold its test with generate_object(mode=\"pattern\", pattern=\"systest\", attributes=[\"SysTestGranularity(SysTestGranularity::Unit)\", \"SysTestCheckInTest\"]) and replace the scaffold body with ONE real assertion: tier 2 must be 10 percent. (3) Build and run with run_systest_class. The build must be CLEAN and the test must FAIL — red means a failing assertion, never a broken file, and the failure message must name the expected and actual values. (4) Now fix rateForTier and change NOTHING about the test. Build and run again; it must pass. The pair is the evidence: a green document alone cannot tell a working test from an empty one, which is why this case commits the red run beside the green one. Note that the runner says nothing on a red run carrying a real assertion message — that is deliberate, because the same note would fire on a genuine regression.",
+  "target_artifact_types": [
+    "AxClass",
+    "AxClass"
+  ],
+  "golden_path": "eval/goldens/L2-tdd-red-green-cycle/",
+  "systest": "eval/systests/L2-tdd-red-green-cycle.xml",
+  "ignore": [
+    "**/ModelSaveInfo"
+  ],
+  "tags": [
+    "tdd",
+    "systest",
+    "red-green",
+    "runtime",
+    "loop"
+  ],
+  "split": "holdout"
+}
