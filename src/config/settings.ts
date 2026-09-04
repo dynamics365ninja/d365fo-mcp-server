@@ -160,6 +160,20 @@ export const SETTINGS: Setting[] = [
     placeholder: 'C:\\AOSService\\PackagesLocalDirectory',
   },
   {
+    path: 'environment.scanDrives',
+    env: 'D365FO_SCAN_DRIVES',
+    section: 'environment',
+    tier: 'advanced',
+    type: 'string',
+    label: 'Drive letters probed for AosService',
+    description:
+      'Comma-separated letters the packages-root scan probes when no packagePath is configured, e.g. "C,K". ' +
+      'Empty probes C: to Z: — the letters that have ever held AosService first, the rest inside a 2 s budget. ' +
+      'Set it on a machine with a disconnected mapped network drive: one stat on such a drive stalls for the ' +
+      'SMB timeout, and the scan runs on the first tool call of a session.',
+    placeholder: 'C,K',
+  },
+  {
     path: 'environment.customModels',
     env: 'CUSTOM_MODELS',
     section: 'environment',

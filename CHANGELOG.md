@@ -28,7 +28,50 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
-_Nothing released yet._
+### Changed
+- **Workspace detection prints only conflicts.** The four-line
+  `Auto-detection successful` block (ProjectPath / ModelName / SolutionPath /
+  Source) went to stderr on every start, and VS Code shows every stderr line as
+  `[warning]` - four warnings per session on every machine, working or not,
+  which made a healthy resolution look like a fault. The routine outcome (and
+  the cache-hit, root-match, git-branch and BFS-fallback lines around it) now
+  goes to the debug log (`DEBUG_LOGGING=true`); `get_workspace_info` and
+  `d365fo-mcp doctor` still report the resolution with its source. What IS
+  printed, once per distinct case, is the one state that was never reported
+  before: the model named in `D365FO_MODEL_NAME` / `.mcp.json` disagreeing
+  with the `<Model>` of the project the workspace scan picked - the state in
+  which writes target one model while new files are registered into a project
+  of another. Silent when a `projectPath` is configured too, because the
+  detected project is unused then. The per-call `Using explicit packagePath`
+  line, printed on most tool requests, moves to the debug log as well.
+- **The AosService drive scan is bounded.** It probed C: to Z: with one
+  synchronous stat per letter, lazily on the first tool call that needed a
+  packages path - and a stat on a disconnected mapped network drive stalls for
+  the SMB timeout, which is how `get_workspace_info` could hang for tens of
+  seconds and then be instant for the rest of the session. C:, K:, J: and I:
+  are now probed first and always, the other letters only inside a 2 s budget;
+  `D365FO_SCAN_DRIVES` (e.g. `C,K`) pins the probed set. `doctor` and the
+  not-found messages name the letters that were skipped and any probe that
+  took over a second, so a missed volume is reported rather than silent.
+- **The .rnrproj walk skips profile and system folders.** The workspace it
+  starts from is whatever the client reported - `process.cwd()` when VS Code
+  gives nothing better - and that has been `C:\Users\<user>` itself, where
+  five levels of `AppData` is hundreds of thousands of entries walked to find
+  nothing. `AppData`, `$Recycle.Bin`, `Windows`, `Program Files`, `ProgramData`
+  and the package caches are skipped now, case-insensitively.
+- **First-start metadata indexing runs on a worker thread.** With an empty
+  symbol database and `METADATA_PATH` set, the server indexes before it
+  declares itself ready - synchronously, end to end, and inline on the main
+  thread, so every tool call (`get_workspace_info` included) hung for the whole
+  build on exactly the machine where the server was being tried for the first
+  time. The same build now runs in `startupIndexWorker` on its own WAL
+  connection; `dbReady` is still held until it completes, so symbol-backed
+  tools keep answering "still loading" instead of returning empty results, but
+  the event loop is free and the tools that need no symbols answer at once.
+  The worker's console output is routed to stderr (stdout is the protocol
+  channel in stdio mode), and a failed build is reported by name rather than
+  as "metadata path not accessible".
+
 
 ---
 

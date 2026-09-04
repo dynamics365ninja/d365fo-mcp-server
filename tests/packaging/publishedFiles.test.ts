@@ -88,6 +88,7 @@ describe.skipIf(!isBuilt)('published package contents', () => {
     // in dist/metadata/ where tsc puts them. See tests/packaging/workerBundles.
     expect(packed).toContain('dist/scripts/symbolCountsWorker.js');
     expect(packed).toContain('dist/scripts/buildIndexWorker.js');
+    expect(packed).toContain('dist/scripts/startupIndexWorker.js');
   });
 
   it('ships the C# bridge sources, so the wizard can build the write path', () => {

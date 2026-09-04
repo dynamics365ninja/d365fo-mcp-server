@@ -101,7 +101,7 @@ Get-Content "C:\Temp\d365fo-bridge.log" -Encoding UTF8 -Wait -Tail 50
 
 **Write target (traditional):** tool argument `packagePath` → `D365FO_PACKAGE_PATH` → derived from `D365FO_WORKSPACE_PATH` → drive scan for `<drive>:\AosService\PackagesLocalDirectory`
 
-The drive scan walks C: to Z: and keeps every volume that has an `AosService\PackagesLocalDirectory`, preferring one that looks populated over an empty stub. That is what makes the server work unconfigured on any VM image — K: on cloud-hosted environments, C: on the downloadable VHD, J: on newer images — without a hardcoded drive letter anywhere. `d365fo-mcp doctor` prints what it found.
+The drive scan walks C: to Z: and keeps every volume that has an `AosService\PackagesLocalDirectory`, preferring one that looks populated over an empty stub. That is what makes the server work unconfigured on any VM image — K: on cloud-hosted environments, C: on the downloadable VHD, J: on newer images — without a hardcoded drive letter anywhere. The scan is bounded: C:, K:, J: and I: are probed first and always, the other letters only inside a 2 s budget, because one stat on a disconnected mapped network drive stalls for the SMB timeout and the scan runs on the first tool call of a session. `D365FO_SCAN_DRIVES` (e.g. `C,K`) pins the probed letters on a machine where that happens. `d365fo-mcp doctor` prints what it found, what it skipped, and which probe was slow.
 
 **Write target (UDE):** explicit env paths → XPP config auto-detection (`%LOCALAPPDATA%\Microsoft\Dynamics365\XPPConfig\`, selected by `XPP_CONFIG_NAME` or newest) → `D365FO_PACKAGE_PATH` fallback (the legacy `PACKAGES_PATH` spelling still works)
 

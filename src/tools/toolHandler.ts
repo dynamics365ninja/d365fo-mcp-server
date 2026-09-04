@@ -181,7 +181,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         return {
           content: [{
             type: 'text',
-            text: `⏳ The MCP server is still loading the X++ symbol database (takes 30–90 s on first start). Please retry the request in a few seconds.`,
+            text: `⏳ The MCP server is still loading the X++ symbol database (30–90 s on a normal start; a first start that indexes metadata can take several minutes). Please retry the request in a few seconds.`,
           }],
           isError: true,
         };
