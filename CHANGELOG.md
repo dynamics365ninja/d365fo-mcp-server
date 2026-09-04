@@ -44,6 +44,21 @@ those are called out explicitly below.
   of another. Silent when a `projectPath` is configured too, because the
   detected project is unused then. The per-call `Using explicit packagePath`
   line, printed on most tool requests, moves to the debug log as well.
+- **The AosService drive scan is bounded.** It probed C: to Z: with one
+  synchronous stat per letter, lazily on the first tool call that needed a
+  packages path - and a stat on a disconnected mapped network drive stalls for
+  the SMB timeout, which is how `get_workspace_info` could hang for tens of
+  seconds and then be instant for the rest of the session. C:, K:, J: and I:
+  are now probed first and always, the other letters only inside a 2 s budget;
+  `D365FO_SCAN_DRIVES` (e.g. `C,K`) pins the probed set. `doctor` and the
+  not-found messages name the letters that were skipped and any probe that
+  took over a second, so a missed volume is reported rather than silent.
+- **The .rnrproj walk skips profile and system folders.** The workspace it
+  starts from is whatever the client reported - `process.cwd()` when VS Code
+  gives nothing better - and that has been `C:\Users\<user>` itself, where
+  five levels of `AppData` is hundreds of thousands of entries walked to find
+  nothing. `AppData`, `$Recycle.Bin`, `Windows`, `Program Files`, `ProgramData`
+  and the package caches are skipped now, case-insensitively.
 
 
 ---

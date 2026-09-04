@@ -48,6 +48,7 @@ Which developer box this is and where its X++ packages live.
 | --- | --- | --- | --- | --- |
 | `environment.type` | setup | `D365FO_DEV_ENVIRONMENT_TYPE` | — | Classic AOSService VM ("traditional") or Unified Developer Experience / Power Platform Tools ("ude"). The wizard preselects the one it detects — UDE when XPP config files exist in %LOCALAPPDATA%\\Microsoft\\Dynamics365\\XPPConfig. Left unset, the server falls back to that same detection. Values: `traditional` — classic AOSService VM with PackagesLocalDirectory; `ude` — Unified Developer Experience / Power Platform Tools. |
 | `environment.packagePath` | setup | `D365FO_PACKAGE_PATH` | — | AOT packages folder (PackagesLocalDirectory) used as the read-only source for indexing. Machine-wide on a traditional VM; UDE resolves it from the XPP config instead. Left empty, the server scans the machine's drives for AosService\\PackagesLocalDirectory — which volume that is depends on the VM image (K:, C:, J:, …). |
+| `environment.scanDrives` | advanced | `D365FO_SCAN_DRIVES` | — | Comma-separated letters the packages-root scan probes when no packagePath is configured, e.g. "C,K". Empty probes C: to Z: — the letters that have ever held AosService first, the rest inside a 2 s budget. Set it on a machine with a disconnected mapped network drive: one stat on such a drive stalls for the SMB timeout, and the scan runs on the first tool call of a session. |
 | `environment.customModels` | setup | `CUSTOM_MODELS` | — | Your own (non-Microsoft) models, comma-separated. They are indexed with priority and treated as writable. Find them in VS → Dynamics 365 → Model Management → View models. UDE detects these automatically. |
 | `environment.xppConfigName` | setup | `XPP_CONFIG_NAME` | — | Name of a config file in %LOCALAPPDATA%\\Microsoft\\Dynamics365\\XPPConfig. Pinning one keeps the server on a specific environment/version; leave empty to always use the newest config. |
 | `environment.customPackagesPath` | advanced | `D365FO_CUSTOM_PACKAGES_PATH` | — | Where custom model XML is written and tracked by git. Normally read from the XPP config — override only when your working tree lives somewhere else. |
@@ -169,6 +170,7 @@ Downloading a pre-built index from blob storage instead of building it locally.
   "environment": {
     "type": "traditional",
     "packagePath": "C:\\AOSService\\PackagesLocalDirectory",
+    "scanDrives": "C,K",
     "customModels": "ContosoRobotics,ContosoBank",
     "xppConfigName": "",
     "customPackagesPath": "",

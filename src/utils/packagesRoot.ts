@@ -14,8 +14,16 @@
  * frequently exists and is empty, and picking it over the populated volume is
  * exactly the failure this ranking prevents.
  *
- * The scan is cheap (one existsSync per drive letter, one readdir per hit) and
- * cached for the process lifetime; drives do not appear mid-session.
+ * The scan is one stat per drive letter plus one readdir per hit, cached for
+ * the process lifetime; drives do not appear mid-session. It is NOT always
+ * cheap: a stat on a disconnected mapped network drive stalls for the SMB
+ * timeout — tens of seconds for one letter — and the scan runs lazily, on the
+ * first tool call that needs a packages path. So the letters that have ever
+ * held AosService are probed first and unconditionally, the remaining ones
+ * only while the scan is inside DRIVE_SCAN_BUDGET_MS, and D365FO_SCAN_DRIVES
+ * pins the probed set outright on a machine whose mapped drives are known to
+ * stall. What was probed, skipped and slow is kept for `doctor` and the
+ * not-found messages, so a missed volume names the letter it sits on.
  */
 
 import * as fs from 'fs';
@@ -40,6 +48,54 @@ const PREFERRED_DRIVES = ['C', 'K', 'J', 'I'];
  * them on a machine that still exposes a floppy controller stalls for seconds.
  */
 const SCANNED_DRIVES = 'CDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+/**
+ * Wall-clock budget for the letters outside PREFERRED_DRIVES. Two seconds is
+ * far above a healthy probe (a local stat is microseconds) and far below one
+ * hung SMB stat, so a healthy machine still scans every letter and a machine
+ * with one dead mapped drive pays for that drive once, not for every letter
+ * behind it.
+ */
+export const DRIVE_SCAN_BUDGET_MS = 2_000;
+
+/** A single probe slower than this is reported by name — it is the hang. */
+const SLOW_PROBE_MS = 1_000;
+
+/** What the last scan did, for doctor and the not-found messages. */
+export interface DriveScanReport {
+  /** Letters actually probed, in probe order. */
+  probed: string[];
+  /** Letters the budget left unprobed — a root there would have been missed. */
+  skipped: string[];
+  /** Probes that took SLOW_PROBE_MS or more, with their cost. */
+  slow: Array<{ letter: string; ms: number }>;
+  /** True when D365FO_SCAN_DRIVES fixed the probed set. */
+  pinned: boolean;
+}
+
+let lastReport: DriveScanReport | null = null;
+
+/** The report of the most recent scan, or null when none has run. */
+export function lastDriveScanReport(): DriveScanReport | null {
+  return lastReport;
+}
+
+/**
+ * The letters to probe, in probe order. A D365FO_SCAN_DRIVES value such as
+ * "C,K" (separators and colons tolerated) pins the set; otherwise the
+ * preferred letters come first so a stalled drive further down the alphabet
+ * cannot delay the ones that actually hold AosService.
+ */
+export function driveLettersToProbe(pinnedSpec?: string): { letters: string[]; pinned: boolean } {
+  const pinned = (pinnedSpec ?? '')
+    .toUpperCase()
+    .split(/[,;\s]+/)
+    .map(s => s.replace(/[:\\/]/g, ''))
+    .filter(l => /^[C-Z]$/.test(l));
+  if (pinned.length > 0) return { letters: [...new Set(pinned)], pinned: true };
+  const rest = SCANNED_DRIVES.filter(l => !PREFERRED_DRIVES.includes(l));
+  return { letters: [...PREFERRED_DRIVES, ...rest], pinned: false };
+}
 
 /** Filesystem seam so the scan can be tested off Windows. */
 export interface ProbeIo {
@@ -84,21 +140,46 @@ function plausibility(root: string, io: ProbeIo): number {
  * Every `<drive>:\AosService\PackagesLocalDirectory` that exists on this
  * machine, most plausible first. Empty on non-Windows.
  */
-export function scanPackagesRoots(io: ProbeIo = realIo): string[] {
+export interface ScanOptions {
+  /** Clock seam for the budget (tests advance it per probe). */
+  clock?: () => number;
+  budgetMs?: number;
+  /** Overrides D365FO_SCAN_DRIVES. */
+  drives?: string;
+}
+
+export function scanPackagesRoots(io: ProbeIo = realIo, opts: ScanOptions = {}): string[] {
   if (io.platform !== 'win32') return [];
 
+  const clock = opts.clock ?? Date.now;
+  const budgetMs = opts.budgetMs ?? DRIVE_SCAN_BUDGET_MS;
+  const { letters, pinned } = driveLettersToProbe(opts.drives ?? process.env.D365FO_SCAN_DRIVES);
+  const report: DriveScanReport = { probed: [], skipped: [], slow: [], pinned };
+
   const hits: { root: string; score: number; rank: number }[] = [];
-  for (const letter of SCANNED_DRIVES) {
-    if (!io.isDirectory(`${letter}:\\`)) continue;
-    const root = `${letter}:\\AosService\\PackagesLocalDirectory`;
-    if (!io.isDirectory(root)) continue;
+  const start = clock();
+  for (const letter of letters) {
     const preferred = PREFERRED_DRIVES.indexOf(letter);
+    // The preferred letters and a pinned set are always probed; everything
+    // else only while the scan is still inside its budget.
+    if (!pinned && preferred === -1 && clock() - start > budgetMs) {
+      report.skipped.push(letter);
+      continue;
+    }
+    const t0 = clock();
+    const root = `${letter}:\\AosService\\PackagesLocalDirectory`;
+    const hit = io.isDirectory(`${letter}:\\`) && io.isDirectory(root);
+    const ms = clock() - t0;
+    report.probed.push(letter);
+    if (ms >= SLOW_PROBE_MS) report.slow.push({ letter, ms });
+    if (!hit) continue;
     hits.push({
       root,
       score: plausibility(root, io),
       rank: preferred === -1 ? PREFERRED_DRIVES.length : preferred,
     });
   }
+  lastReport = report;
 
   return hits
     .sort((a, b) => b.score - a.score || a.rank - b.rank || a.root.localeCompare(b.root))
@@ -136,10 +217,35 @@ export function packagesRootCandidates(...relative: string[]): string[] {
 
 /** Human-readable summary of what the scan found, for error messages. */
 export function describePackagesRootScan(): string {
-  const found = packagesRoots();
-  return found.length > 0
+  return describeDriveScan(packagesRoots(), lastReport);
+}
+
+/** The sentence for a given outcome — pure, so a fake scan can be described in tests. */
+export function describeDriveScan(found: string[], report: DriveScanReport | null): string {
+  const notes: string[] = [];
+  if (report?.slow.length) {
+    notes.push(
+      `Probing ${report.slow.map(s => `${s.letter}: took ${(s.ms / 1000).toFixed(1)} s`).join(', ')} — ` +
+      'a disconnected mapped network drive stalls every probe; set D365FO_SCAN_DRIVES (e.g. "C,K") to skip it, ' +
+      'or D365FO_PACKAGE_PATH to skip the scan.'
+    );
+  }
+  if (report?.skipped.length) {
+    notes.push(
+      `The scan ran out of its ${DRIVE_SCAN_BUDGET_MS / 1000} s budget and did not probe ` +
+      `${report.skipped.map(l => `${l}:`).join(' ')} — a packages root there was not seen. ` +
+      'Name the drive in D365FO_SCAN_DRIVES, or set D365FO_PACKAGE_PATH.'
+    );
+  }
+  const scanned = report?.pinned
+    ? `${report.probed.map(l => `${l}:`).join(', ')} were scanned (D365FO_SCAN_DRIVES)`
+    : report?.skipped.length
+      ? `${report.probed.map(l => `${l}:`).join(', ')} were scanned`
+      : 'C: to Z: were scanned';
+  const head = found.length > 0
     ? `Detected packages roots: ${found.join(', ')}`
-    : `No <drive>:\\AosService\\PackagesLocalDirectory found on any drive (C: to Z: were scanned).`;
+    : `No <drive>:\\AosService\\PackagesLocalDirectory found on any drive (${scanned}).`;
+  return [head, ...notes].join(' ');
 }
 
 /**
@@ -238,4 +344,5 @@ export function isAotSourcePath(filePath: string | null | undefined): filePath i
 /** Test seam — drops the cached scan. */
 export function resetPackagesRootCache(): void {
   cached = null;
+  lastReport = null;
 }

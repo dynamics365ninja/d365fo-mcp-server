@@ -56,6 +56,37 @@ export function isMicrosoftDemoModel(modelName: string): boolean {
 }
 
 /**
+ * Directories the .rnrproj walk never enters, compared case-insensitively
+ * (Windows names are, and the walk runs over paths the IDE hands us as-is).
+ *
+ * The profile and system folders are here because the workspace the walk
+ * starts from is whatever the client reported — process.cwd() when VS Code
+ * gives nothing better — and that has been C:\Users\<user> itself. Five
+ * levels of AppData is hundreds of thousands of entries; the walk took
+ * minutes, on the first tool call of the session, to find nothing.
+ */
+const SKIPPED_DIRS = new Set([
+  'node_modules', 'bin', 'obj', '.git', '.vs', 'PackagesLocalDirectory',
+  // Profile, package-cache and system folders — never hold a .rnrproj, and
+  // enormous when the workspace root is a user profile or a drive root.
+  'AppData', 'Application Data', 'Local Settings', '.nuget', '.npm', '.cache',
+  '$Recycle.Bin', 'Windows', 'Program Files', 'Program Files (x86)', 'ProgramData',
+  'System Volume Information',
+  // AOT artifact folders inside model directories — skip to avoid crawling thousands of XML files
+  'AxClass', 'AxTable', 'AxForm', 'AxEnum', 'AxQuery', 'AxView',
+  'AxDataEntityView', 'AxTableExtension', 'AxFormExtension',
+  'AxMenuItemAction', 'AxMenuItemDisplay', 'AxMenuItemOutput',
+  'AxMenu', 'AxSecurityRole', 'AxSecurityDuty', 'AxSecurityPrivilege',
+  'AxLabel', 'AxResource', 'AxReport',
+  'AxEdt', 'AxExtendedDataType',
+].map(d => d.toLowerCase()));
+
+/** True when the walk must not descend into a directory of this name. */
+export function isSkippedProjectWalkDir(name: string): boolean {
+  return SKIPPED_DIRS.has(name.toLowerCase());
+}
+
+/**
  * Find all .rnrproj files in a directory (recursive search)
  * Limited to reasonable depth to avoid performance issues
  */
@@ -75,18 +106,7 @@ async function findProjectFiles(
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
 
-      // Skip common directories that won't contain .rnrproj
-      const skipDirs = [
-        'node_modules', 'bin', 'obj', '.git', '.vs', 'PackagesLocalDirectory',
-        // AOT artifact folders inside model directories — skip to avoid crawling thousands of XML files
-        'AxClass', 'AxTable', 'AxForm', 'AxEnum', 'AxQuery', 'AxView',
-        'AxDataEntityView', 'AxTableExtension', 'AxFormExtension',
-        'AxMenuItemAction', 'AxMenuItemDisplay', 'AxMenuItemOutput',
-        'AxMenu', 'AxSecurityRole', 'AxSecurityDuty', 'AxSecurityPrivilege',
-        'AxLabel', 'AxResource', 'AxReport',
-        'AxEdt', 'AxExtendedDataType',
-      ];
-      if (entry.isDirectory() && skipDirs.includes(entry.name)) {
+      if (entry.isDirectory() && isSkippedProjectWalkDir(entry.name)) {
         continue;
       }
 
