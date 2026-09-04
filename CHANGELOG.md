@@ -28,7 +28,13 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
-_Nothing released yet._
+### Fixed
+- **`install.ps1` failed on every machine without a `K:` drive** (#1010). The
+  installer probes `K:\d365fo-mcp-server` for a pre-npm checkout, and Windows
+  PowerShell 5.1's `Join-Path` validates the drive and throws
+  `DriveNotFoundException` before the npm install ever starts - which is the
+  case on a stock D365FO VHD. The `.git` probe now composes the path without
+  drive validation; a candidate on a missing drive is simply skipped.
 
 ---
 

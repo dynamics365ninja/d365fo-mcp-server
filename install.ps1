@@ -140,7 +140,10 @@ function Find-Checkout {
     $candidates += (Join-Path $env:USERPROFILE 'd365fo-mcp-server')
 
     foreach ($dir in $candidates) {
-        if (Test-Path (Join-Path $dir '.git')) { return $dir }
+        # Composed without Join-Path: Windows PowerShell 5.1 validates the drive
+        # there and throws DriveNotFoundException for a candidate on a drive the
+        # machine does not have (K: on a stock D365FO VHD, see #1010).
+        if (Test-Path -LiteralPath ([IO.Path]::Combine($dir, '.git'))) { return $dir }
     }
     # An explicitly named directory that holds something else is a mistake worth
     # stopping on: installing beside it would leave two installations.
