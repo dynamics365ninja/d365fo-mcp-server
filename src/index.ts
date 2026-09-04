@@ -16,6 +16,7 @@ import { createXppMcpServer } from './server/mcpServer.js';
 import { createStreamableHttpTransport } from './server/transport.js';
 import { XppSymbolIndex } from './metadata/symbolIndex.js';
 import { shouldWarmIndexes, warmIndexes, renderWarmupReport } from './metadata/indexWarmup.js';
+import { canIndexOffThread, indexMetadataOffThread } from './metadata/startupIndexing.js';
 import { XppMetadataParser } from './metadata/xmlParser.js';
 import { WorkspaceScanner } from './workspace/workspaceScanner.js';
 import { HybridSearch } from './workspace/hybridSearch.js';
@@ -327,8 +328,14 @@ async function initializeServices() {
       log.detail('or set METADATA_PATH and the server will index on startup');
 
       // If metadata path exists, index it
+      let metadataAccessible = false;
       try {
         await fs.access(METADATA_PATH);
+        metadataAccessible = true;
+      } catch {
+        log.warn('Metadata path not accessible — starting with empty index');
+      }
+      if (metadataAccessible) {
         log.step(`Indexing metadata from ${METADATA_PATH}` + glyph.ellipsis);
         serverState.statusMessage = 'Indexing metadata...';
         const modelNamesStr = process.env.CUSTOM_MODELS || 'CustomModel';
@@ -338,11 +345,29 @@ async function initializeServices() {
         // Single pass over all requested models — the FTS index is rebuilt once at the
         // end of the call, so looping per model would repeat a full-table rebuild.
         log.detail(`indexing ${modelNames.join(', ')}` + glyph.ellipsis);
-        await symbolIndex.indexMetadataDirectory(METADATA_PATH, modelNames);
-
-        log.ok(`Indexed ${symbolIndex.getSymbolCount().toLocaleString('en-US')} symbols from ${modelNames.length} model(s)`);
-      } catch {
-        log.warn('Metadata path not accessible — starting with empty index');
+        try {
+          if (canIndexOffThread(DB_PATH, LABELS_DB_PATH)) {
+            // On a worker thread: the build is synchronous end to end, and inline
+            // it blocked the event loop for its whole duration — every tool call,
+            // get_workspace_info included, hung until it finished. dbReady is still
+            // held until it completes, so symbol-backed tools keep answering "still
+            // loading" rather than returning empty results; the loop stays free.
+            const { elapsedMs } = await indexMetadataOffThread({
+              dbPath: DB_PATH,
+              labelsDbPath: LABELS_DB_PATH,
+              metadataPath: METADATA_PATH,
+              modelNames,
+              output: process.stderr,
+            });
+            log.detail(`indexed in ${(elapsedMs / 1000).toFixed(1)}s on a worker thread`);
+          } else {
+            await symbolIndex.indexMetadataDirectory(METADATA_PATH, modelNames);
+          }
+          log.ok(`Indexed ${symbolIndex.getSymbolCount().toLocaleString('en-US')} symbols from ${modelNames.length} model(s)`);
+        } catch (error) {
+          log.warn(`Metadata indexing failed — starting with empty index: ${error}`);
+          log.detail('run `npm run index-metadata` to build the database');
+        }
       }
     } else {
       log.ok(`Database opened in ${((Date.now() - dbLoadStart) / 1000).toFixed(1)}s ${glyph.dot} counting symbols in background`);

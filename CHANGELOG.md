@@ -59,6 +59,18 @@ those are called out explicitly below.
   five levels of `AppData` is hundreds of thousands of entries walked to find
   nothing. `AppData`, `$Recycle.Bin`, `Windows`, `Program Files`, `ProgramData`
   and the package caches are skipped now, case-insensitively.
+- **First-start metadata indexing runs on a worker thread.** With an empty
+  symbol database and `METADATA_PATH` set, the server indexes before it
+  declares itself ready - synchronously, end to end, and inline on the main
+  thread, so every tool call (`get_workspace_info` included) hung for the whole
+  build on exactly the machine where the server was being tried for the first
+  time. The same build now runs in `startupIndexWorker` on its own WAL
+  connection; `dbReady` is still held until it completes, so symbol-backed
+  tools keep answering "still loading" instead of returning empty results, but
+  the event loop is free and the tools that need no symbols answer at once.
+  The worker's console output is routed to stderr (stdout is the protocol
+  channel in stdio mode), and a failed build is reported by name rather than
+  as "metadata path not accessible".
 
 
 ---
