@@ -28,6 +28,12 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+_Nothing released yet._
+
+---
+
+## [1.17.1] — 2026-09-04
+
 ### Fixed
 - **`install.ps1` failed on every machine without a `K:` drive** (#1010). The
   installer probes `K:\d365fo-mcp-server` for a pre-npm checkout, and Windows
