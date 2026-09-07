@@ -1451,7 +1451,7 @@ export class XppSymbolIndex {
    * objects only have to clear MIN_SAMPLE (4) and MIN_COVERAGE (60 %) for the
    * leading token. Reading 400 of them to settle a 4-name question was paid on the
    * first call of every session. They cannot be dropped altogether — the underscore
-   * form ("AslEDS_" vs "AslEDS") appears in no extension name, so only a regular
+   * form ("ConSK_" vs "ConSK") appears in no extension name, so only a regular
    * object can decide it.
    */
   getModelObjectNames(model: string, limit = 400): string[] {
@@ -1468,7 +1468,7 @@ export class XppSymbolIndex {
           // choose idx_symbols_parent_name, whose ANALYZE stats claim ~13 rows per
           // value. NULL is not one value — it is every top-level object of every
           // model, 180,664 of the 1,188,748 rows on the production DB, against 274
-          // for `model = 'AslEnhancedDataSharing'`. Measured warm: 454 ms on the
+          // for the one model being asked about. Measured warm: 454 ms on the
           // parent_name plan, 1 ms on the model plan; cold it is the difference
           // between a 5-minute first get_workspace_info and an instant one.
           // EXPLAIN QUERY PLAN must keep reporting
