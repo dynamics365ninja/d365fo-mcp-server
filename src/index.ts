@@ -105,8 +105,36 @@ console.error = (...args: any[]) => {
   const isModuleDebugMessage = /^\[[\w\- ]+\]/.test(firstArg) && !hasErrorIndicator;
   if (!isModuleDebugMessage) {
     originalConsoleError(...args);
+    return;
   }
+  logFileOnly(args);
 };
+
+/**
+ * Write a line the client never sees to LOG_FILE anyway.
+ *
+ * Both filters below the tee — this one and the stdio console.log redirect — exist
+ * so the MCP client's stderr pane is not a scroll of operational chatter. They were
+ * dropping the line entirely, and since the tee sits on process.stderr, a dropped
+ * line never reached the log file either. So a session that hung for five and a
+ * half minutes on its first call left a log holding a start banner and nothing
+ * else: "Loading symbols…", "Database opened in Xs" and "Database loaded in N ms"
+ * are all log.step/log.ok, all suppressed, all the answer to what it was doing.
+ * Setting DEBUG_LOGGING=true was the only way to see them, and it turns the client
+ * pane into that same scroll. The file is the right place for both.
+ */
+function logFileOnly(args: any[]): void {
+  if (!_logStream) return;
+  try {
+    // Timestamped, unlike the tee'd lines: these are the progress lines, and the
+    // question they answer ("which phase took the five minutes?") is unanswerable
+    // without the clock. Time only — the banner above carries the date.
+    const at = new Date().toISOString().slice(11, 23);
+    _logStream.write(`[${at}] ` + args.map(a => (typeof a === 'string' ? a : String(a))).join(' ') + '\n');
+  } catch {
+    // Mirroring is best-effort; it must never take down the caller.
+  }
+}
 
 // ─── Global safety net ────────────────────────────────────────────────────────
 // An unhandled promise rejection terminates the Node process by default
@@ -585,7 +613,12 @@ async function main() {
           msg.includes('Error') || msg.includes('error') ||
           msg.includes('Failed') || msg.includes('failed')) {
         process.stderr.write(msg + '\n');
+        return;
       }
+      // Suppressed from the client's pane, kept in LOG_FILE — see logFileOnly.
+      // This is where every startup progress line goes: log.step/ok/detail are
+      // console.log, and console.log is this function in stdio mode.
+      logFileOnly([msg]);
     };
     console.log = stderrWrite;
     console.info = stderrWrite;

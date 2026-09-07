@@ -54,8 +54,11 @@ describe('getModelObjectNames', () => {
 
     const names = index.getModelObjectNames('ContosoFinanceSK');
 
-    expect(names).toHaveLength(400);
     expect(names.filter(n => n.endsWith('.ConSKExtension'))).toHaveLength(6);
+    // Every extension, and only as many regular objects as inference can use — it
+    // needs MIN_SAMPLE (4) of them and decides on 60 % coverage, so the other 440
+    // were read on the first call of every session and changed no answer.
+    expect(names.filter(n => !n.includes('.'))).toHaveLength(60);
   });
 
   it('gives the unused half of the budget back to the other band', () => {
@@ -66,10 +69,51 @@ describe('getModelObjectNames', () => {
     add('CustTable.ConSKExtension', 'table-extension', 'CustTable');
     add('VendTable.ConSKExtension', 'table-extension', 'VendTable');
 
-    const names = index.getModelObjectNames('ContosoFinanceSK', 100);
+    // Below the regular band's own cap, so what is measured here is the hand-back
+    // and not the cap: 2 of the 20 extension slots used, 38 left for regulars.
+    const names = index.getModelObjectNames('ContosoFinanceSK', 40);
 
-    expect(names).toHaveLength(100);
+    expect(names).toHaveLength(40);
     expect(names.filter(n => n.includes('.'))).toHaveLength(2);
+  });
+
+  it('seeks on idx_symbols_model, not on the parent_name index', () => {
+    // The plan IS the assertion. `parent_name IS NULL` reads like a cheap equality
+    // and ANALYZE prices it as one (~13 rows per value), but NULL is every
+    // top-level object of every model — 180,664 of 1,188,748 rows on the production
+    // DB against 274 for the model. Picking that index turned the first
+    // get_workspace_info of a session into 337 s of random reads over a 2.5 GB file.
+    for (let m = 0; m < 40; m++) {
+      for (let i = 0; i < 40; i++) {
+        add(`Con${m}Table${String(i).padStart(3, '0')}`, 'table');
+        index.addSymbol({
+          name: 'validateWrite', type: 'method', parentName: `Con${m}Table${String(i).padStart(3, '0')}`,
+          filePath: 'p', model: `Model${m}`,
+        } as any);
+      }
+    }
+    // Without stats the planner has no reason to prefer either index; the bad
+    // choice only appears once it has them, exactly as in production.
+    index.db.exec('ANALYZE');
+
+    const planOf = (guard: string) => (index.db
+      .prepare(
+        `EXPLAIN QUERY PLAN
+         SELECT name FROM symbols
+         WHERE model = ? AND type NOT LIKE '%-extension' AND ${guard}
+           AND type NOT IN ('method', 'field')
+         ORDER BY type, name LIMIT ?`,
+      )
+      .all('ContosoFinanceSK', 60) as Array<{ detail: string }>)
+      .map(r => r.detail)
+      .join('\n');
+
+    // Both halves, so the fixture cannot go quietly vacuous: if the unguarded form
+    // ever stops choosing the wrong index here, this test has stopped reproducing
+    // the thing the guard exists for and the assertion below proves nothing.
+    expect(planOf('parent_name IS NULL')).toContain('idx_symbols_parent_name');
+    expect(planOf('+parent_name IS NULL')).toContain('idx_symbols_model');
+    expect(planOf('+parent_name IS NULL')).not.toContain('idx_symbols_parent_name');
   });
 
   it('still excludes members and non-extension children', () => {

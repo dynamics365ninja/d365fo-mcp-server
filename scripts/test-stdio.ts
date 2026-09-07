@@ -62,7 +62,7 @@ const switchPath    = getArg('--switch');
 const primaryRoot: string = resolveToFolder(
   testPath ??
   process.env.D365FO_SOLUTIONS_PATH ??
-  'K:\\repos\\ASL\\src\\d365fo\\projects'
+  'K:\\repos\\Contoso\\src\\d365fo\\projects'
 );
 
 // Convert Windows path → file:// URI so it matches what VS 2022 sends

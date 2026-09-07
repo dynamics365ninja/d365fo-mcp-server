@@ -1404,6 +1404,16 @@ export class XppSymbolIndex {
    * Returns the names of top-level objects that were removed (for cache invalidation).
    */
   /**
+   * How many regular (non-extension) object names the prefix sample may draw.
+   *
+   * inferPrefixFromObjectNames needs MIN_SAMPLE (4) of them and decides on a 60 %
+   * coverage threshold, so a few dozen settle the question as well as a few hundred
+   * — and this is the band that costs, since a model's extensions are counted in
+   * tens while its classes and tables run to thousands.
+   */
+  private static readonly REGULAR_NAME_SAMPLE = 60;
+
+  /**
    * Top-level object names belonging to one model — the evidence from which a
    * model's naming prefix is inferred (see utils/modelPrefixInference.ts).
    *
@@ -1434,6 +1444,15 @@ export class XppSymbolIndex {
    * so the same model always yields the same sample — a silent, self-reinforcing
    * failure otherwise, since this server writes names with the inferred prefix and
    * those names become evidence for the next inference.
+   *
+   * The regular band is capped well below its share of the budget
+   * (REGULAR_NAME_SAMPLE), because it is the expensive half and the cheap half
+   * carries most of the signal: extensions state the infix outright, while regular
+   * objects only have to clear MIN_SAMPLE (4) and MIN_COVERAGE (60 %) for the
+   * leading token. Reading 400 of them to settle a 4-name question was paid on the
+   * first call of every session. They cannot be dropped altogether — the underscore
+   * form ("ConSK_" vs "ConSK") appears in no extension name, so only a regular
+   * object can decide it.
    */
   getModelObjectNames(model: string, limit = 400): string[] {
     if (!model) return [];
@@ -1444,10 +1463,20 @@ export class XppSymbolIndex {
       if (cap <= 0) return [];
       const rows = db
         .prepare(
+          // Unary + on parent_name, for the same reason as searchCustomExtensions'
+          // `+type IN (…)`: written plainly, `parent_name IS NULL` makes the planner
+          // choose idx_symbols_parent_name, whose ANALYZE stats claim ~13 rows per
+          // value. NULL is not one value — it is every top-level object of every
+          // model, 180,664 of the 1,188,748 rows on the production DB, against 274
+          // for the one model being asked about. Measured warm: 454 ms on the
+          // parent_name plan, 1 ms on the model plan; cold it is the difference
+          // between a 5-minute first get_workspace_info and an instant one.
+          // EXPLAIN QUERY PLAN must keep reporting
+          // `SEARCH symbols USING INDEX idx_symbols_model`.
           `SELECT name FROM symbols
            WHERE model = ?
              AND type ${extensions ? 'LIKE' : 'NOT LIKE'} '%-extension'
-             ${extensions ? '' : 'AND parent_name IS NULL'}
+             ${extensions ? '' : 'AND +parent_name IS NULL'}
              AND type NOT IN ('method', 'field')
            ORDER BY type, name
            LIMIT ?`
@@ -1461,7 +1490,10 @@ export class XppSymbolIndex {
     // regular objects before the infix evidence is ever read.
     const half = Math.max(1, Math.ceil(limit / 2));
     const extensionNames = band(true, half);
-    const regularNames = band(false, limit - extensionNames.length);
+    const regularNames = band(
+      false,
+      Math.min(XppSymbolIndex.REGULAR_NAME_SAMPLE, limit - extensionNames.length),
+    );
     return [...extensionNames, ...regularNames];
   }
 

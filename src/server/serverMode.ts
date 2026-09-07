@@ -39,6 +39,33 @@ export const LOCAL_TOOLS = new Set([
 ]);
 
 /**
+ * The LOCAL_TOOLS that do read the symbol database after all, and so must NOT
+ * inherit this set's exemption from the dbReady wait in toolHandler.
+ *
+ * "Local" answers a question about LOCALITY — can this run away from the K:\ drive
+ * — and the dbReady exemption rode along on it as if it also meant "needs no
+ * index". For two of them it does not:
+ *
+ *  • get_workspace_info infers the model's prefix from symbols.getModelObjectNames
+ *    and reads getLastIndexedAt. Exempt, it had no timeout either: while the 2.5 GB
+ *    database opened, the tool a session STARTS with sat there with no answer and
+ *    no way to fail. Measured live 2026-09-07: 337.5 s, and 356 s / 424 s on two
+ *    earlier cold starts, where every other tool would have said "still loading,
+ *    retry" after 55 s. It also answered from the empty stub index when it did
+ *    return early — a configured prefix reported as if the model had taught it.
+ *  • update_symbol_index writes THROUGH context.symbolIndex (removeSymbolsByFile,
+ *    removeLabelsByFile). Before the swap that is the :memory: stub, so the call
+ *    reports a successful re-index of a database nobody will ever read.
+ *
+ * The rest (build, bp-check, systest, verify) genuinely only touch the filesystem
+ * and the compiler, and keep the exemption.
+ */
+export const DB_BACKED_LOCAL_TOOLS = new Set([
+  'get_workspace_info',
+  'update_symbol_index',
+]);
+
+/**
  * Tools exposed in EVERY server mode, bypassing the LOCAL_TOOLS partition,
  * because each spans both localities and gates unavailable actions at runtime:
  *  - get_object_info: dispatches to bridge-backed types (local VM) and

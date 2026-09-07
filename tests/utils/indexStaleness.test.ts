@@ -2,7 +2,7 @@
  * Index staleness detection tests.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -170,6 +170,53 @@ describe('non-blocking freshness scan (audit 2026-08-25)', () => {
     resetMetadataMtimeCache();
     const report = checkIndexStaleness(new Date(Date.now() - 24 * 3_600_000).toISOString(), root());
     expect(report.status).toBe('stale');
+  });
+
+  /**
+   * "Call again for the verdict" has to be an instruction the caller can carry out.
+   * The entry lives 30 s and expiring it dropped the state back to 'pending', so an
+   * agent re-asking any later than that got the identical "still running" line —
+   * seen live on 2026-09-07 as three get_workspace_info calls 105 s apart with
+   * byte-identical output. After the first scan there is always an answer.
+   */
+  const scanned = async () => {
+    resetMetadataMtimeCache();
+    let state = findNewestMetadataMtimeCached(root(), { blocking: false });
+    const deadline = Date.now() + 5000;
+    while (state.status !== 'ready' && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 5));
+      state = findNewestMetadataMtimeCached(root(), { blocking: false });
+    }
+    expect(state.status).toBe('ready');
+  };
+
+  /** Run `fn` as if `ms` had passed, without touching timers the scan itself uses. */
+  const laterBy = <T>(ms: number, fn: () => T): T => {
+    const realNow = Date.now.bind(Date);
+    const spy = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + ms);
+    try { return fn(); } finally { spy.mockRestore(); }
+  };
+
+  it('serves the last completed scan after the cache expires, rather than "pending" again', async () => {
+    await scanned();
+
+    const state = laterBy(10 * 60_000, () => findNewestMetadataMtimeCached(root(), { blocking: false }));
+
+    expect(state.status).toBe('ready');
+    expect(state.status === 'ready' && state.result!.newestFile).toContain('ContosoHelper.xml');
+  });
+
+  it('says how old the scan behind a "fresh" verdict is when it is served from an expired entry', async () => {
+    await scanned();
+
+    const report = laterBy(10 * 60_000, () =>
+      checkIndexStaleness(new Date().toISOString(), root(), { blocking: false }));
+
+    expect(report.status).toBe('fresh');
+    // A stale verdict from an old scan would still be true — files only get newer —
+    // so only this one has to admit what it did not look at.
+    expect(report.compactLines.join('\n')).toContain('10 min ago');
+    expect(report.compactLines.join('\n')).toContain('rescan running');
   });
 });
 

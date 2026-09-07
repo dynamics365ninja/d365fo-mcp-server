@@ -182,6 +182,119 @@ export async function findD365FileOnDisk(
 }
 
 /**
+ * The read surface findD365FileViaIndex needs, stated structurally so a util does
+ * not have to import the symbol index (and, through it, half the server) to ask
+ * one question of it. XppSymbolIndex satisfies it as-is.
+ */
+export interface SymbolFileLookupSource {
+  getReadDb(): { prepare(sql: string): { all(...params: any[]): any[] } };
+}
+
+/** Where the index says an object lives, once the path has been verified on disk. */
+export interface IndexedObjectFile {
+  filePath: string;
+  model: string;
+}
+
+/**
+ * Locate an object's XML through the SYMBOL INDEX rather than through the
+ * configured model's folder layout.
+ *
+ * findD365FileOnDisk answers "where would an object of this name be, in the model
+ * I am configured for" — which is the right question for a write and the wrong one
+ * for a read. Reads span every model: get_object_info(include="xml") on a Microsoft
+ * class, or on another custom model's class, hit the model-shaped lookup, missed,
+ * and were answered with "pass options.modelName" — a whole round trip to supply a
+ * fact the same server had already printed ("**Model:** Foundation") one call
+ * earlier, and one the caller then has to GUESS. Observed 2026-09-07: three such
+ * pairs in one session, one of which took three calls because the guess
+ * ("Application Foundation") was wrong.
+ *
+ * The index stores some paths absolute and some relative to a packages root (582
+ * of 60,918 classes on the production DB), so a relative row is resolved against
+ * the same roots findD365FileOnDisk prefers. Every candidate is checked on disk
+ * before it is returned: an index row whose file is gone is exactly the stale
+ * state `search` already warns about, and returning its path would turn a clean
+ * "not found" into "found it, but could not read it".
+ */
+export async function findD365FileViaIndex(
+  index: SymbolFileLookupSource,
+  objectType: string,
+  objectName: string,
+  modelName?: string,
+): Promise<IndexedObjectFile | null> {
+  // Types with no folder of their own are not objects this can read a file for.
+  if (!AOT_FOLDER_BY_OBJECT_TYPE[objectType]) return null;
+
+  let rows: Array<{ file_path: string; model: string }>;
+  try {
+    const db = index.getReadDb();
+    // parent_name IS NULL keeps methods and fields of the same name out; the
+    // (type, name) index carries this lookup, so it costs a seek, not a scan.
+    const sql =
+      `SELECT file_path, model FROM symbols
+       WHERE type = ? AND name = ? AND parent_name IS NULL` +
+      (modelName ? ` AND model = ?` : ``) +
+      ` LIMIT 20`;
+    const params = modelName ? [objectType, objectName, modelName] : [objectType, objectName];
+    rows = db.prepare(sql).all(...params) as Array<{ file_path: string; model: string }>;
+  } catch {
+    return null; // index unavailable (stub context during startup, :memory:) — caller falls back
+  }
+  if (rows.length === 0) return null;
+
+  // Resolved on first need: most rows carry an absolute path (60,336 of 60,918
+  // classes on the production DB), and those need no config at all.
+  let roots: string[] | null = null;
+  const packageRoots = async (): Promise<string[]> => {
+    if (roots) return roots;
+    const configManager = getConfigManager();
+    await configManager.ensureLoaded();
+    roots = [
+      await configManager.getCustomPackagesPath(),
+      configManager.getPackagePath() || fallbackPackagePath(),
+      await configManager.getMicrosoftPackagesPath(),
+    ].filter((r): r is string => !!r);
+    return roots;
+  };
+
+  for (const row of rows) {
+    const candidates = path.isAbsolute(row.file_path)
+      ? [row.file_path]
+      : (await packageRoots()).map(root => path.join(root, row.file_path));
+    for (const candidate of candidates) {
+      try {
+        await fs.access(candidate);
+        return { filePath: candidate, model: row.model };
+      } catch { /* next candidate */ }
+    }
+  }
+  return null;
+}
+
+/**
+ * The models that hold an object of this type and name, for a "not found" message
+ * that can name the answer instead of asking the caller to guess it.
+ */
+export function modelsHoldingObject(
+  index: SymbolFileLookupSource,
+  objectType: string,
+  objectName: string,
+  limit = 5,
+): string[] {
+  try {
+    const rows = index.getReadDb().prepare(
+      `SELECT DISTINCT model FROM symbols
+       WHERE type = ? AND name = ? AND parent_name IS NULL
+       ORDER BY model LIMIT ?`
+    ).all(objectType, objectName, limit) as Array<{ model: string }>;
+    return rows.map(r => r.model);
+  } catch {
+    return [];
+  }
+}
+
+/**
  * The path an object's XML WOULD have, whether or not it exists yet.
  *
  * findD365FileOnDisk gates every candidate on fs.access and returns null when

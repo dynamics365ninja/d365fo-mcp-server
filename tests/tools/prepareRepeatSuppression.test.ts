@@ -35,7 +35,7 @@ const ADD_FIELD = {
   mode: 'change',
   objectType: 'table',
   operation: 'add-field',
-  objectName: 'AslFinCore_TaxTransReportChangeLog',
+  objectName: 'ConCore_TaxTransReportChangeLog',
 };
 
 beforeEach(() => {

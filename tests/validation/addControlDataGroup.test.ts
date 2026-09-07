@@ -14,7 +14,7 @@ import {
   findDataGroupRenderers,
 } from '../../src/tools/analysis/validateFormPattern';
 
-/** The AslFinCore_TaxTransReportChangeLog shape: Grid > Group[DataGroup=Administration]. */
+/** The ConCore_TaxTransReportChangeLog shape: Grid > Group[DataGroup=Administration]. */
 const BASE_FORM_XML = `<?xml version="1.0" encoding="utf-8"?>
 <AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
   <Name>DemoChangeLog</Name>

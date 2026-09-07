@@ -246,7 +246,14 @@ export async function buildContextSnapshot(
       } else if (cached && Date.now() - cached.at < RECENT_CACHE_MS) {
         recentObjects = cached.objects;
       } else {
-        recentPending = true;
+        // 'pending' only until the FIRST scan lands. After that an expired entry is
+        // served and refreshed behind the answer, because "call again for the list"
+        // is otherwise a promise this cannot keep: the entry lives RECENT_CACHE_MS
+        // (30 s), so any re-ask later than that finds it expired and is told to call
+        // again — the same line, forever. Half a minute stale was already declared
+        // an accurate answer here; several minutes stale still beats no answer.
+        recentObjects = cached?.objects ?? [];
+        recentPending = !cached;
         // Not awaited. The result lands in the cache above, so the NEXT call
         // shows it — the information is deferred, never dropped.
         if (!recentScanInFlight.has(workspacePath)) {

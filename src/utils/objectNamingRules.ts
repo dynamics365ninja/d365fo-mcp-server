@@ -66,7 +66,7 @@ const UNDERSCORE_EXTENSION = /^[A-Za-z]\w*_Extension$/;
  * Reinterpret `objectType` when the proposed name is unmistakably an extension.
  *
  * Callers reach for the base type — "is this a valid *form* name?" — while proposing
- * `AslFinCore_TaxTransReportChangeLog.AslFinSKExtension`. Validated as a plain form
+ * `ConCore_TaxTransReportChangeLog.ConSKExtension`. Validated as a plain form
  * that trips the "non-extension objects must not contain underscores" rule and comes
  * back as a hard ERROR, which is both wrong and a wasted round trip: run f2e7b71a
  * asked with `form`, was refused, and asked again with `form-extension` (T56 → T59).

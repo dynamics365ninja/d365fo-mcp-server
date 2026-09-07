@@ -44,13 +44,13 @@ afterEach(async () => {
 
 describe('PackageResolver.resolve', () => {
   it('answers from the model-named directory without building the map', async () => {
-    await writePackage('AslFinanceSK', { descriptorFor: ['AslFinanceSK', 'AslFinanceSK'], modelDir: 'AslFinanceSK' });
+    await writePackage('ContosoFinanceSK', { descriptorFor: ['ContosoFinanceSK', 'ContosoFinanceSK'], modelDir: 'ContosoFinanceSK' });
     await writePackage('SomeOtherPackage', { descriptorFor: ['OtherModel', 'SomeOtherPackage'] });
 
     const resolver: any = new PackageResolver([root]);
-    const resolved = await resolver.resolve('AslFinanceSK');
+    const resolved = await resolver.resolve('ContosoFinanceSK');
 
-    expect(resolved).toMatchObject({ packageName: 'AslFinanceSK', modelName: 'AslFinanceSK' });
+    expect(resolved).toMatchObject({ packageName: 'ContosoFinanceSK', modelName: 'ContosoFinanceSK' });
     // The sweep never ran — that, not the timing, is the property under test.
     expect(resolver.modelToPackageMap).toBeNull();
   });
@@ -92,7 +92,7 @@ describe('PackageResolver.resolve', () => {
   });
 
   it('returns null for a model no root knows', async () => {
-    await writePackage('AslFinanceSK', { descriptorFor: ['AslFinanceSK', 'AslFinanceSK'] });
+    await writePackage('ContosoFinanceSK', { descriptorFor: ['ContosoFinanceSK', 'ContosoFinanceSK'] });
 
     expect(await new PackageResolver([root]).resolve('NoSuchModel')).toBeNull();
   });

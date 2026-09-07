@@ -7,7 +7,8 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { mkdtemp, writeFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import path from 'path';
-import { renderObjectXml, objectXmlNotFound } from '../../src/tools/readers/objectXml';
+import { renderObjectXml, objectXmlNotFound, readObjectXml } from '../../src/tools/readers/objectXml';
+import type { SymbolFileLookupSource } from '../../src/utils/objectFileLookup';
 import { createPhaseTimer } from '../../src/utils/phaseTimer';
 
 const XML_LINES = Array.from({ length: 120 }, (_, i) => `\t<Line${i + 1}>value</Line${i + 1}>`);
@@ -59,11 +60,61 @@ describe('get_object_info(include="xml")', () => {
     expect(res.text).toContain('could not read it');
   });
 
-  it('names modelName as the fix when nothing was located', () => {
-    const res = objectXmlNotFound('table', 'NoSuchTable', 'MyModel');
+  it('names the models that hold the object, so the caller does not guess', () => {
+    const res = objectXmlNotFound('class', 'JournalVoucherNum', 'Application Foundation', ['Foundation']);
     expect(res.isError).toBe(true);
     expect(res.text).toContain('no file on disk');
-    expect(res.text).toContain('options.modelName');
+    // The model, not just the parameter to pass it in. Told only "pass
+    // options.modelName", an agent guessed "Application Foundation" and spent a
+    // third call getting to "Foundation" (2026-09-07).
+    expect(res.text).toContain('options.modelName="Foundation"');
+  });
+
+  it('says a retry cannot help when no model has the object at all', () => {
+    const res = objectXmlNotFound('class', 'NoSuchClass', 'MyModel', []);
+    expect(res.text).toContain('will not help');
+  });
+});
+
+/**
+ * include="xml" resolved the file through the CONFIGURED model's folder layout and
+ * nothing else, so every read of another model's object — a Microsoft class, another
+ * custom model's class — came back as "pass options.modelName" even though the same
+ * tool prints "**Model:** Foundation" in every other include mode. Three such pairs
+ * in one session on 2026-09-07, one of them three calls long because the guess was
+ * wrong.
+ */
+describe('get_object_info(include="xml") across models', () => {
+  const indexWith = (
+    rows: Array<{ file_path: string; model: string }>,
+    models: string[] = [],
+  ): SymbolFileLookupSource => ({
+    getReadDb: () => ({
+      prepare: (sql: string) => ({
+        all: () => (sql.includes('DISTINCT model') ? models.map(m => ({ model: m })) : rows),
+      }),
+    }),
+  });
+
+  it('finds the file through the index when the configured model does not hold it', async () => {
+    const res = await readObjectXml('table', 'MyTable', {
+      modelName: 'SomeOtherModel',
+      index: indexWith([{ file_path: file, model: 'Foundation' }]),
+    });
+
+    expect(res.isError).toBe(false);
+    expect(res.text).toContain('<Line1>value</Line1>');
+  });
+
+  it('treats an index row whose file is gone as not found, not as a read failure', async () => {
+    const res = await readObjectXml('table', 'Vanished', {
+      index: indexWith([{ file_path: path.join(root, 'not-there.xml'), model: 'Foundation' }],
+        ['Foundation']),
+    });
+
+    expect(res.isError).toBe(true);
+    expect(res.text).toContain('no file on disk');
+    expect(res.text).toContain('stale');
   });
 });
 

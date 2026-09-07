@@ -26,6 +26,46 @@ import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
  */
 export type ProgressReporter = (message: string, progress: number, total?: number) => Promise<void>;
 
+/**
+ * How often an in-flight tool call re-announces itself.
+ *
+ * Long enough that a normal call never sends one, short enough to stay inside the
+ * request timeouts clients reset on each notification (VS Code's is ~60 s).
+ */
+export const PROGRESS_HEARTBEAT_MS = 15_000;
+
+/**
+ * Keep saying "still running" until the returned stop() is called.
+ *
+ * The dispatcher sends one notification when a tool starts, and then nothing for
+ * however long it takes — so a call that runs for minutes is indistinguishable from
+ * a hung one. On 2026-09-07 a first get_workspace_info ran 337.5 s behind a cold
+ * database open: the IDE showed "⚙️ Reading workspace configuration" and no further
+ * sign of life for five and a half minutes, and the server log (which mirrors
+ * stderr, and startup progress does not reach stderr) held nothing either.
+ *
+ * A tick says the call is alive and how long it has been running, and — for clients
+ * that honour progress notifications — resets their request timeout, the mechanism
+ * build_d365fo_project already relies on to survive a long xppc. Elapsed seconds is
+ * the progress value because MCP requires it to increase and no total is known.
+ * Nothing fires before the first tick, so tools answering in milliseconds send
+ * exactly what they sent before.
+ */
+export function startProgressHeartbeat(
+  report: ProgressReporter,
+  message: string,
+  everyMs: number = PROGRESS_HEARTBEAT_MS,
+): () => void {
+  const startedAt = Date.now();
+  const timer = setInterval(() => {
+    const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
+    void report(`${message} — still running, ${elapsedSec}s`, elapsedSec);
+  }, everyMs);
+  // Never hold the process open for a heartbeat.
+  timer.unref?.();
+  return () => clearInterval(timer);
+}
+
 /** The slice of the SDK's request `extra` that the reporter needs. */
 export interface ProgressRequestExtra {
   _meta?: Record<string, unknown>;

@@ -24,7 +24,7 @@ import {
   describeUnrenderedFieldGroup,
 } from '../../src/tools/write/modifyD365File';
 
-const FORM_PATH = 'K:\\Packages\\AslFinanceCore\\AslFinanceCore\\AxForm\\TaxLog.xml';
+const FORM_PATH = 'K:\\Packages\\ContosoFinanceCore\\ContosoFinanceCore\\AxForm\\TaxLog.xml';
 
 /** SimpleList shape: Grid > Group[DataGroup=Modified], plus one unbound group. */
 const FORM_XML = `<?xml version="1.0" encoding="utf-8"?>
@@ -78,12 +78,12 @@ describe('add-field-to-field-group names the form the group already renders on',
 
   it('names the form, the control and the control the compiler will generate', async () => {
     const note = await describeFieldGroupRendering(
-      'TaxLog', 'Modified', 'AslFinSK_QualityTier', indexWith(ON_TAX_LOG),
+      'TaxLog', 'Modified', 'ConSK_QualityTier', indexWith(ON_TAX_LOG),
     );
 
     expect(note).toContain('TaxLog');
     expect(note).toContain('Modified');
-    expect(note).toContain('Modified_AslFinSK_QualityTier');
+    expect(note).toContain('Modified_ConSK_QualityTier');
     expect(note).toContain('already on the form');
     // The whole point: do not build the thing that then has to be undone.
     expect(note).toMatch(/form extension/i);
@@ -91,13 +91,13 @@ describe('add-field-to-field-group names the form the group already renders on',
 
   it('says nothing for a field group no control renders', async () => {
     expect(await describeFieldGroupRendering(
-      'TaxLog', 'Identification', 'AslFinSK_QualityTier', indexWith(ON_TAX_LOG),
+      'TaxLog', 'Identification', 'ConSK_QualityTier', indexWith(ON_TAX_LOG),
     )).toBe('');
   });
 
   it('says nothing when no form uses the table', async () => {
     expect(await describeFieldGroupRendering(
-      'TaxLog', 'Modified', 'AslFinSK_QualityTier', indexWith([]),
+      'TaxLog', 'Modified', 'ConSK_QualityTier', indexWith([]),
     )).toBe('');
   });
 
@@ -105,7 +105,7 @@ describe('add-field-to-field-group names the form the group already renders on',
     // Same group name on another table's datasource renders another table's
     // fields — claiming it would send the agent after the wrong form.
     const note = await describeFieldGroupRendering(
-      'TaxLog', 'Modified', 'AslFinSK_QualityTier',
+      'TaxLog', 'Modified', 'ConSK_QualityTier',
       indexWith([{ form_name: 'TaxLog', datasource_name: 'SomeOtherTable' }]),
     );
     expect(note).toBe('');
@@ -114,7 +114,7 @@ describe('add-field-to-field-group names the form the group already renders on',
   it('says nothing when the form XML cannot be read', async () => {
     mockReadFile.mockRejectedValue(new Error('ENOENT'));
     expect(await describeFieldGroupRendering(
-      'TaxLog', 'Modified', 'AslFinSK_QualityTier', indexWith(ON_TAX_LOG),
+      'TaxLog', 'Modified', 'ConSK_QualityTier', indexWith(ON_TAX_LOG),
     )).toBe('');
   });
 

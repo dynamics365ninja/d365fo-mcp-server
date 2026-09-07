@@ -32,49 +32,49 @@ const touch = (name: string): string => {
 // never/stale; the message is unchanged either way.
 describe('buildFreshness status', () => {
   it('reports never, stale, incremental and full', () => {
-    expect(buildFreshness(dir, 'AslFinanceSK').status).toBe('never');
+    expect(buildFreshness(dir, 'ContosoFinanceSK').status).toBe('never');
 
-    recordBuild(dir, 'AslFinanceSK', {
+    recordBuild(dir, 'ContosoFinanceSK', {
       builtAt: new Date(Date.now() - 60_000).toISOString(),
       fullBuild: true,
       succeeded: true,
     });
-    const written = touch('AslFinSK_QualityTier.xml');
-    expect(buildFreshness(dir, 'AslFinanceSK', [written]).status).toBe('stale');
+    const written = touch('ConSK_QualityTier.xml');
+    expect(buildFreshness(dir, 'ContosoFinanceSK', [written]).status).toBe('stale');
 
-    recordBuild(dir, 'AslFinanceSK', {
+    recordBuild(dir, 'ContosoFinanceSK', {
       builtAt: new Date(Date.now() + 60_000).toISOString(),
       fullBuild: false,
       succeeded: true,
     });
-    expect(buildFreshness(dir, 'AslFinanceSK', [written]).status).toBe('incremental');
+    expect(buildFreshness(dir, 'ContosoFinanceSK', [written]).status).toBe('incremental');
 
-    recordBuild(dir, 'AslFinanceSK', {
+    recordBuild(dir, 'ContosoFinanceSK', {
       builtAt: new Date(Date.now() + 60_000).toISOString(),
       fullBuild: true,
       succeeded: true,
     });
-    expect(buildFreshness(dir, 'AslFinanceSK', [written]).status).toBe('full');
+    expect(buildFreshness(dir, 'ContosoFinanceSK', [written]).status).toBe('full');
   });
 
   it('calls a FAILED build never, not full — succeeded is the flag that counts', () => {
-    recordBuild(dir, 'AslFinanceSK', {
+    recordBuild(dir, 'ContosoFinanceSK', {
       builtAt: new Date().toISOString(),
       fullBuild: true,
       succeeded: false,
     });
 
-    expect(buildFreshness(dir, 'AslFinanceSK').status).toBe('never');
+    expect(buildFreshness(dir, 'ContosoFinanceSK').status).toBe('never');
   });
 
   it('carries the same message describeBuildFreshness prints', () => {
-    expect(buildFreshness(dir, 'AslFinanceSK').message).toBe(describeBuildFreshness(dir, 'AslFinanceSK'));
+    expect(buildFreshness(dir, 'ContosoFinanceSK').message).toBe(describeBuildFreshness(dir, 'ContosoFinanceSK'));
   });
 });
 
 describe('describeBuildFreshness', () => {
   it('says nothing has compiled the model when no build was ever recorded', () => {
-    const note = describeBuildFreshness(dir, 'AslFinanceSK');
+    const note = describeBuildFreshness(dir, 'ContosoFinanceSK');
 
     expect(note).toContain('Not compiled');
     expect(note).toContain('SYS10028');
@@ -82,63 +82,63 @@ describe('describeBuildFreshness', () => {
   });
 
   it('treats a failed build as no build', () => {
-    recordBuild(dir, 'AslFinanceSK', {
+    recordBuild(dir, 'ContosoFinanceSK', {
       builtAt: new Date().toISOString(),
       fullBuild: true,
       succeeded: false,
     });
 
-    expect(describeBuildFreshness(dir, 'AslFinanceSK')).toContain('Not compiled');
+    expect(describeBuildFreshness(dir, 'ContosoFinanceSK')).toContain('Not compiled');
   });
 
   it('flags a green build that predates the objects it is being credited for', () => {
-    recordBuild(dir, 'AslFinanceSK', {
+    recordBuild(dir, 'ContosoFinanceSK', {
       builtAt: new Date(Date.now() - 60_000).toISOString(),
       fullBuild: true,
       succeeded: true,
     });
-    const written = touch('AslFinSK_QualityTier.xml');
+    const written = touch('ConSK_QualityTier.xml');
 
-    expect(describeBuildFreshness(dir, 'AslFinanceSK', [written])).toContain('Stale');
+    expect(describeBuildFreshness(dir, 'ContosoFinanceSK', [written])).toContain('Stale');
   });
 
   it('confirms a full build that came after the last write', () => {
-    const written = touch('AslFinSK_QualityTier.xml');
-    recordBuild(dir, 'AslFinanceSK', {
+    const written = touch('ConSK_QualityTier.xml');
+    recordBuild(dir, 'ContosoFinanceSK', {
       builtAt: new Date(Date.now() + 60_000).toISOString(),
       fullBuild: true,
       succeeded: true,
     });
 
-    expect(describeBuildFreshness(dir, 'AslFinanceSK', [written])).toContain('✅ Compiled');
+    expect(describeBuildFreshness(dir, 'ContosoFinanceSK', [written])).toContain('✅ Compiled');
   });
 
   it('keeps the incremental caveat — a green incremental is not proof the model compiles', () => {
-    const written = touch('AslFinSK_QualityTier.xml');
-    recordBuild(dir, 'AslFinanceSK', {
+    const written = touch('ConSK_QualityTier.xml');
+    recordBuild(dir, 'ContosoFinanceSK', {
       builtAt: new Date(Date.now() + 60_000).toISOString(),
       fullBuild: false,
       succeeded: true,
     });
 
-    expect(describeBuildFreshness(dir, 'AslFinanceSK', [written])).toContain('INCREMENTAL');
+    expect(describeBuildFreshness(dir, 'ContosoFinanceSK', [written])).toContain('INCREMENTAL');
   });
 
   it('keeps models apart', () => {
-    recordBuild(dir, 'AslFinanceSK', {
+    recordBuild(dir, 'ContosoFinanceSK', {
       builtAt: new Date().toISOString(),
       fullBuild: true,
       succeeded: true,
     });
 
-    expect(describeBuildFreshness(dir, 'AslFinanceCZ')).toContain('Not compiled');
-    expect(readBuildRecord(dir, 'AslFinanceSK')?.fullBuild).toBe(true);
+    expect(describeBuildFreshness(dir, 'ContosoFinanceCZ')).toContain('Not compiled');
+    expect(readBuildRecord(dir, 'ContosoFinanceSK')?.fullBuild).toBe(true);
   });
 
   it('survives an unreadable marker rather than throwing into the caller', () => {
     fs.writeFileSync(path.join(dir, '.last-build.json'), '{ this is not json');
 
-    expect(() => describeBuildFreshness(dir, 'AslFinanceSK')).not.toThrow();
-    expect(readBuildRecord(dir, 'AslFinanceSK')).toBeUndefined();
+    expect(() => describeBuildFreshness(dir, 'ContosoFinanceSK')).not.toThrow();
+    expect(readBuildRecord(dir, 'ContosoFinanceSK')).toBeUndefined();
   });
 });

@@ -17,8 +17,8 @@ import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 
 /** A wrapper that fetches its own row again. */
-const SHIPPED = `[ExtensionOf(tableStr(AslFinCore_TaxTransReportChangeLog))]
-final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
+const SHIPPED = `[ExtensionOf(tableStr(ConCore_TaxTransReportChangeLog))]
+final class ConCore_TaxTransReportChangeLogConSK_Extension
 {
     public boolean validateWrite()
     {
@@ -26,16 +26,16 @@ final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
 
         if (ret)
         {
-            AslFinCore_TaxTransReportChangeLog oldRecord;
+            ConCore_TaxTransReportChangeLog oldRecord;
 
-            select firstonly AslFinSK_QualityTier from oldRecord
+            select firstonly ConSK_QualityTier from oldRecord
                 where oldRecord.RecId == this.RecId;
 
-            if (oldRecord.RecId && this.AslFinSK_QualityTier < oldRecord.AslFinSK_QualityTier)
+            if (oldRecord.RecId && this.ConSK_QualityTier < oldRecord.ConSK_QualityTier)
             {
-                ret = checkFailed(strFmt("@AslFinSK:QualityTierDowngradeNotAllowed",
-                    enum2str(oldRecord.AslFinSK_QualityTier),
-                    enum2str(this.AslFinSK_QualityTier)));
+                ret = checkFailed(strFmt("@ConSK:QualityTierDowngradeNotAllowed",
+                    enum2str(oldRecord.ConSK_QualityTier),
+                    enum2str(this.ConSK_QualityTier)));
             }
         }
 
@@ -44,8 +44,8 @@ final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
 }`;
 
 /** The same guard written against the pre-image. */
-const WITH_ORIG = `[ExtensionOf(tableStr(AslFinCore_TaxTransReportChangeLog))]
-final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
+const WITH_ORIG = `[ExtensionOf(tableStr(ConCore_TaxTransReportChangeLog))]
+final class ConCore_TaxTransReportChangeLogConSK_Extension
 {
     public boolean validateWrite()
     {
@@ -53,11 +53,11 @@ final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
 
         if (ret
             && this.RecId
-            && this.AslFinSK_QualityTier < this.orig().AslFinSK_QualityTier)
+            && this.ConSK_QualityTier < this.orig().ConSK_QualityTier)
         {
-            ret = checkFailed(strFmt(literalStr("@AslFinSK:QualityTierDowngradeNotAllowed"),
-                enum2str(this.orig().AslFinSK_QualityTier),
-                enum2str(this.AslFinSK_QualityTier)));
+            ret = checkFailed(strFmt(literalStr("@ConSK:QualityTierDowngradeNotAllowed"),
+                enum2str(this.orig().ConSK_QualityTier),
+                enum2str(this.ConSK_QualityTier)));
         }
 
         return ret;
@@ -82,9 +82,9 @@ describe('COC006 — the record is already in hand', () => {
 
   it('flags the same fetch spelled as a static find', () => {
     const viaFind = SHIPPED.replace(
-      `select firstonly AslFinSK_QualityTier from oldRecord
+      `select firstonly ConSK_QualityTier from oldRecord
                 where oldRecord.RecId == this.RecId;`,
-      'oldRecord = AslFinCore_TaxTransReportChangeLog::findRecId(this.RecId);',
+      'oldRecord = ConCore_TaxTransReportChangeLog::findRecId(this.RecId);',
     );
     const found = coc006(viaFind);
     expect(found).toHaveLength(1);
@@ -189,7 +189,7 @@ describe('prepare(mode="change") on a table method the index cannot hold', () =>
         name: 'prepare_change',
         arguments: {
           goal: 'Block a QualityTier downgrade on write',
-          objectName: 'AslFinCore_TaxTransReportChangeLog',
+          objectName: 'ConCore_TaxTransReportChangeLog',
           objectType,
           methodName,
         },
@@ -235,9 +235,9 @@ describe('get_method(include="signature") on an inherited table method', () => {
       get: vi.fn(() =>
         sql.includes('file_path, model, name, type')
           ? {
-              file_path: 'K:/AosService/.../AslFinCore_TaxTransReportChangeLog.xml',
-              model: 'AslFinanceCore',
-              name: 'AslFinCore_TaxTransReportChangeLog',
+              file_path: 'K:/AosService/.../ConCore_TaxTransReportChangeLog.xml',
+              model: 'ContosoFinanceCore',
+              name: 'ConCore_TaxTransReportChangeLog',
               type: 'table',
             }
           : undefined,
@@ -260,7 +260,7 @@ describe('get_method(include="signature") on an inherited table method', () => {
       method: 'tools/call',
       params: {
         name: 'get_method_signature',
-        arguments: { className: 'AslFinCore_TaxTransReportChangeLog', methodName },
+        arguments: { className: 'ConCore_TaxTransReportChangeLog', methodName },
       },
     };
     return (await getMethodSignatureTool(request, context())) as any;

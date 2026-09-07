@@ -278,6 +278,11 @@ async function readObject(ref: ObjectRef, context: XppServerContext, allowTypeCo
   if (options?.include === 'xml') {
     const xml = await readObjectXml(objectType, name, {
       modelName: options.modelName as string | undefined,
+      // Without this the lookup only ever sees the CONFIGURED model's folder, so
+      // every read of a Microsoft or other-model object came back as "pass
+      // options.modelName" — a round trip for a fact this same tool prints in
+      // every other include mode.
+      index: context.symbolIndex,
       startLine: options.startLine as number | undefined,
       endLine: options.endLine as number | undefined,
       maxChars: options.maxChars as number | undefined,

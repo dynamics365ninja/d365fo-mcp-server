@@ -28,6 +28,65 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+_Nothing released yet._
+
+---
+
+## [1.17.3] — 2026-09-07
+
+### Fixed
+- **The first `get_workspace_info` of a session took 337 s and printed
+  nothing.** Measured live on 2026-09-07, and 356 s / 424 s on two earlier cold
+  starts; the same call warm is 0.2 s. Three independent causes, all fixed:
+  - The prefix inference behind the `Prefix :` line seeked on the wrong index.
+    `parent_name IS NULL` reads like an equality and `ANALYZE` prices it as one
+    (~13 rows per value), but NULL is every top-level object of every model —
+    180,664 of 1,188,748 rows on a production index, against 274 for the model
+    being asked about. The term now carries the unary `+` that strips its index
+    affinity, so the seek is on `idx_symbols_model`: 454 ms to 1 ms warm, and
+    cold the difference between minutes of random reads over a 2.5 GB file and
+    none. The sample of regular objects is also capped at 60 (extensions stay
+    first and uncapped): inference needs four of them and decides on 60 %
+    coverage, so reading 400 answered a question 60 settle.
+  - `get_workspace_info` skipped the `dbReady` wait, and with it the 55 s
+    ceiling every other tool has. The exemption rode on `LOCAL_TOOLS`, which
+    answers a question about *locality* — can this run away from the `K:` drive
+    — and was read as "needs no index"; this tool reads the index twice. It now
+    waits, and says "still loading, retry" instead of hanging. So does
+    `update_symbol_index`, which writes THROUGH the context's symbol index and
+    before the swap was reindexing the in-memory stub and reporting success.
+  - Nothing could be printed while it worked. In stdio mode `console.log` is
+    filtered down to error-bearing lines, and the `LOG_FILE` mirror sits on
+    stderr, so every startup progress line was dropped from both — a five-minute
+    hang left a log holding a start banner and nothing else. Those lines are now
+    kept in `LOG_FILE`, timestamped, while the client's pane stays clean, and an
+    in-flight tool call re-announces itself every 15 s so a slow call is
+    distinguishable from a stuck one (and, for clients that honour progress
+    notifications, its request timeout is reset).
+- **`get_object_info(include="xml")` could not read another model's object.**
+  It resolved the file through the configured model's folder layout and nothing
+  else, so a Microsoft class — or any other custom model's — came back as "no
+  file on disk, pass `options.modelName`", a whole round trip for a fact the
+  same tool prints in every other include mode (`**Model:** Foundation`). The
+  lookup now falls back to the symbol index, which knows every model, resolves
+  the rows that store a path relative to a packages root, and checks each
+  candidate on disk so a stale index row stays a clean "not found". The message
+  names the models that DO hold the object: told only to pass `modelName`, an
+  agent guessed `"Application Foundation"` before `"Foundation"` — three calls
+  for one file.
+- **"Call again for the verdict" could never be carried out.** Both background
+  scans behind `get_workspace_info` (index freshness, recently edited objects)
+  cached their result for 30 s and then fell back to "still running", so an
+  agent re-asking any later than that got the identical line — observed as three
+  calls 105 s apart with byte-identical output. `pending` is now said only until
+  the first scan completes; after that the last result is served and the refresh
+  runs behind the answer. A `fresh` verdict drawn from an aged scan says how old
+  it is; `stale` does not need the caveat, since files only ever get newer.
+
+---
+
+## [1.17.2] — 2026-09-04
+
 ### Changed
 - **Workspace detection prints only conflicts.** The four-line
   `Auto-detection successful` block (ProjectPath / ModelName / SolutionPath /
