@@ -92,7 +92,7 @@ function rowKey(r: { labelId: string; labelFileId: string; model: string }): str
  * the 2026-08-07 demo; `action="search"` never did, and search is the call an
  * agent makes BEFORE it reuses a label. Benchmark run d79f62a3 (2026-08-17) took
  * all three labels it needed from one search — the enum's, the field's and the
- * error message's — all reported as resolvable [AslFinanceSK] hits, none of them
+ * error message's — all reported as resolvable [ContosoFinanceSK] hits, none of them
  * on disk. `xppc` does not check labels, so the first build passed; the run paid
  * a second build, a second BP check and ~12 AIU to find out.
  *

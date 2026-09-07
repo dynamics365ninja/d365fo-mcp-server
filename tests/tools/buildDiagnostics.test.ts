@@ -18,16 +18,16 @@ import {
 import { runRules } from '../../src/tools/analysis/validateXpp';
 
 /** Real xppc log shapes. Only the first of these five used to be recognised. */
-const LOG = `AslFinanceSK compilation completed.
+const LOG = `ContosoFinanceSK compilation completed.
 Elapsed time: 00:00:21
 
 --- xppc compiler diagnostics ---
 ==================================
-Compile Warning: Class Method dynamics://Class/LogisticsPostalAddressAslFinSK_Extension/Method/aslFinSK_makeStreet: [(7,5),(50,6)]: The 'Server'  keyword has been deprecated, please remove it from the method definition.
-Metadata Warning: AxTableExtension/SalesOrderHeaderV2Staging.AslFinSKExtension: Referenced object 'SalesOrderHeaderV2Staging' is marked as obsolete.
-FormPatternValidation Warning: AxFormExtension/ProjInvoiceJournalV2.AslFinSKExtension/Design/Controls/TabHeading/Overview: 'AxFormExtension/…/Overview' has not specified a pattern. Please apply one of the available patterns.
-Metadata Error: AxFormExtension/AslFinCore_TaxTransReportChangeLog.AslFinSKExtension/Design/Controls/Identification/Identification_AslFinSK_QualityTier: Duplicate control name.
-FormPatternValidation Error: AxFormExtension/AslFinCore_TaxTransReportChangeLog.AslFinSKExtension/Design/Controls/Identification: does not conform to pattern SimpleList.
+Compile Warning: Class Method dynamics://Class/LogisticsPostalAddressConSK_Extension/Method/conSK_makeStreet: [(7,5),(50,6)]: The 'Server'  keyword has been deprecated, please remove it from the method definition.
+Metadata Warning: AxTableExtension/SalesOrderHeaderV2Staging.ConSKExtension: Referenced object 'SalesOrderHeaderV2Staging' is marked as obsolete.
+FormPatternValidation Warning: AxFormExtension/ProjInvoiceJournalV2.ConSKExtension/Design/Controls/TabHeading/Overview: 'AxFormExtension/…/Overview' has not specified a pattern. Please apply one of the available patterns.
+Metadata Error: AxFormExtension/ConCore_TaxTransReportChangeLog.ConSKExtension/Design/Controls/Identification/Identification_ConSK_QualityTier: Duplicate control name.
+FormPatternValidation Error: AxFormExtension/ConCore_TaxTransReportChangeLog.ConSKExtension/Design/Controls/Identification: does not conform to pattern SimpleList.
 ==================================
 Errors: 2
 Warnings: 3
@@ -45,14 +45,14 @@ describe('xppc diagnostics — the whole severity family, not five literals', ()
   it('locates the object and the member from the path form', () => {
     const dup = diags.find(d => d.message === 'Duplicate control name.');
     expect(dup?.model).toBe('AxFormExtension');
-    expect(dup?.object).toBe('AslFinCore_TaxTransReportChangeLog.AslFinSKExtension');
-    expect(dup?.member).toContain('Identification_AslFinSK_QualityTier');
+    expect(dup?.object).toBe('ConCore_TaxTransReportChangeLog.ConSKExtension');
+    expect(dup?.member).toContain('Identification_ConSK_QualityTier');
   });
 
   it('still parses the dynamics:// form with line and column', () => {
     const dep = diags.find(d => d.message.includes('Server'));
     expect(dep?.severity).toBe('warning');
-    expect(dep?.object).toBe('LogisticsPostalAddressAslFinSK_Extension');
+    expect(dep?.object).toBe('LogisticsPostalAddressConSK_Extension');
     expect(dep?.line).toBe(7);
     expect(dep?.column).toBe(5);
   });
@@ -109,18 +109,18 @@ describe('BP005 spans the whole call, not one line', () => {
   const bp005 = (code: string) => runRules(code, 'xpp').filter(v => v.rule === 'BP005');
 
   it('flags a wrapped strFmt that a per-line scan reported clean', () => {
-    const code = `[ExtensionOf(tableStr(AslFinCore_TaxTransReportChangeLog))]
-final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
+    const code = `[ExtensionOf(tableStr(ConCore_TaxTransReportChangeLog))]
+final class ConCore_TaxTransReportChangeLogConSK_Extension
 {
     public boolean validateWrite()
     {
         boolean ret = next validateWrite();
 
-        if (ret && this.AslFinSK_QualityTier < this.orig().AslFinSK_QualityTier)
+        if (ret && this.ConSK_QualityTier < this.orig().ConSK_QualityTier)
         {
-            ret = checkFailed(strFmt("@AslFinSK:QualityTierDowngradeNotAllowed",
-                enum2Symbol(enumNum(AslFinSK_QualityTier), enum2int(this.orig().AslFinSK_QualityTier)),
-                enum2Symbol(enumNum(AslFinSK_QualityTier), enum2int(this.AslFinSK_QualityTier))));
+            ret = checkFailed(strFmt("@ConSK:QualityTierDowngradeNotAllowed",
+                enum2Symbol(enumNum(ConSK_QualityTier), enum2int(this.orig().ConSK_QualityTier)),
+                enum2Symbol(enumNum(ConSK_QualityTier), enum2int(this.ConSK_QualityTier))));
         }
 
         return ret;
@@ -163,9 +163,9 @@ describe('FN001 — fixed-arity built-ins', () => {
   const fn001 = (code: string) => runRules(code, 'xpp').filter(v => v.rule === 'FN001');
 
   it('flags the 2-argument enum2Str that failed the build', () => {
-    const code = `ret = checkFailed(strFmt("@AslFinSK:QualityTierDowngradeError",
-                enum2Str(enumNum(AslFinSK_QualityTier), this.orig().AslFinSK_QualityTier),
-                enum2Str(enumNum(AslFinSK_QualityTier), this.AslFinSK_QualityTier)));`;
+    const code = `ret = checkFailed(strFmt("@ConSK:QualityTierDowngradeError",
+                enum2Str(enumNum(ConSK_QualityTier), this.orig().ConSK_QualityTier),
+                enum2Str(enumNum(ConSK_QualityTier), this.ConSK_QualityTier)));`;
     const found = fn001(code);
     expect(found).toHaveLength(2);
     expect(found.map(v => v.line)).toEqual([2, 3]);

@@ -33,11 +33,11 @@ const SHARED_SOLUTION_PROJECTS = [
   { projectPath: 'K:\\solutions\\Contoso\\Two\\Two.rnrproj', modelName: 'ContosoCore', solutionPath: 'K:\\solutions\\Contoso' },
 ];
 
-/** Several models under one scan root — K:\repos\ASL holds 31 of them. */
+/** Several models under one scan root — K:\repos\Contoso holds 31 of them. */
 const MANY_MODEL_PROJECTS = [
-  { projectPath: 'K:\\solutions\\Audit\\Audit.rnrproj', modelName: 'AslAuditReports', solutionPath: 'K:\\solutions\\Audit' },
-  { projectPath: 'K:\\solutions\\Bank\\Bank.rnrproj', modelName: 'AslBankCommunication', solutionPath: 'K:\\solutions\\Bank' },
-  { projectPath: 'K:\\solutions\\Bank2\\Bank2.rnrproj', modelName: 'AslBankCommunication', solutionPath: 'K:\\solutions\\Bank2' },
+  { projectPath: 'K:\\solutions\\Audit\\Audit.rnrproj', modelName: 'ContosoAuditReports', solutionPath: 'K:\\solutions\\Audit' },
+  { projectPath: 'K:\\solutions\\Bank\\Bank.rnrproj', modelName: 'ContosoBankCommunication', solutionPath: 'K:\\solutions\\Bank' },
+  { projectPath: 'K:\\solutions\\Bank2\\Bank2.rnrproj', modelName: 'ContosoBankCommunication', solutionPath: 'K:\\solutions\\Bank2' },
 ];
 
 const SINGLE_PROJECT = [
@@ -185,7 +185,7 @@ describe('D365FO_SOLUTIONS_PATH fallback — multi-project models', () => {
     expect(said).toMatch(/picked by scan order/);
     // ...and the pick itself still stands: withholding the model would break
     // detection for every workspace whose only source is this scan.
-    expect(mgr.getModelName()).toBe('AslAuditReports');
+    expect(mgr.getModelName()).toBe('ContosoAuditReports');
   });
 
   it('still auto-selects the project when only one is found for the model', async () => {

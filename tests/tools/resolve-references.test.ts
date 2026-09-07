@@ -703,9 +703,9 @@ describe('label placeholders vs strFmt arguments', () => {
     db: { prepare: () => ({ get: () => undefined, all: () => [] }) },
     getLabelById: (labelId: string) =>
       TEXTS[labelId]
-        ? [{ labelId, labelFileId: 'AslFinSK', language: 'en-US', text: TEXTS[labelId] }]
+        ? [{ labelId, labelFileId: 'ConSK', language: 'en-US', text: TEXTS[labelId] }]
         : [],
-    getLabelFileIds: () => [{ labelFileId: 'AslFinSK' }],
+    getLabelFileIds: () => [{ labelFileId: 'ConSK' }],
   };
 
   const check = (code: string) =>
@@ -714,41 +714,41 @@ describe('label placeholders vs strFmt arguments', () => {
     );
 
   it('flags a placeholder label used without strFmt', () => {
-    const found = check('ret = checkFailed(literalStr("@AslFinSK:Downgrade"));');
+    const found = check('ret = checkFailed(literalStr("@ConSK:Downgrade"));');
     expect(found).toHaveLength(1);
     expect(found[0].severity).toBe('error');
     expect(found[0].detail).toContain('must be wrapped');
   });
 
   it('flags arguments passed to a label that has no placeholders', () => {
-    const found = check('ret = checkFailed(strFmt("@AslFinSK:Plain", enum2str(a), enum2str(b)));');
+    const found = check('ret = checkFailed(strFmt("@ConSK:Plain", enum2str(a), enum2str(b)));');
     expect(found).toHaveLength(1);
     expect(found[0].detail).toContain('discarded');
   });
 
   it('flags an argument-count mismatch', () => {
-    const found = check('ret = checkFailed(strFmt("@AslFinSK:Downgrade", enum2str(a)));');
+    const found = check('ret = checkFailed(strFmt("@ConSK:Downgrade", enum2str(a)));');
     expect(found[0].detail).toContain('takes 2 argument(s), strFmt supplies 1');
   });
 
   it('accepts the matching call, wrapped and across lines', () => {
-    expect(check(`ret = checkFailed(strFmt("@AslFinSK:Downgrade",
+    expect(check(`ret = checkFailed(strFmt("@ConSK:Downgrade",
         enum2str(this.orig().Tier),
         enum2str(this.Tier)));`)).toHaveLength(0);
   });
 
   it('accepts a plain label used bare, and sees through literalStr', () => {
-    expect(check('ret = checkFailed("@AslFinSK:Plain");')).toHaveLength(0);
-    expect(check('ret = checkFailed(strFmt(literalStr("@AslFinSK:Downgrade"), a, b));')).toHaveLength(0);
+    expect(check('ret = checkFailed("@ConSK:Plain");')).toHaveLength(0);
+    expect(check('ret = checkFailed(strFmt(literalStr("@ConSK:Downgrade"), a, b));')).toHaveLength(0);
   });
 
   it('says nothing when the index has no text for the label', () => {
     const noText: ResolverDeps = {
       ...textDeps,
-      getLabelById: (labelId: string) => [{ labelId, labelFileId: 'AslFinSK' }],
+      getLabelById: (labelId: string) => [{ labelId, labelFileId: 'ConSK' }],
     };
     expect(
-      resolveXppReferences('ret = checkFailed("@AslFinSK:Downgrade");', noText)
+      resolveXppReferences('ret = checkFailed("@ConSK:Downgrade");', noText)
         .violations.filter(v => v.kind === 'label-placeholder-mismatch'),
     ).toHaveLength(0);
   });

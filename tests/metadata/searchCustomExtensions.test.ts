@@ -45,8 +45,8 @@ beforeAll(() => {
   // A literal-underscore name and a no-underscore one, both in scope. Only the first
   // contains the literal text "e_Extension"; both match the LIKE pattern '%e_Extension%'
   // when '_' is left as a wildcard.
-  sym('AslTable_Extension', 'class-extension', 'CustomFin');
-  sym('AslTableXExtension', 'class-extension', 'CustomFin');
+  sym('ConTable_Extension', 'class-extension', 'CustomFin');
+  sym('ConTableXExtension', 'class-extension', 'CustomFin');
 
   // Microsoft rows. `validateWriteExtension` is the exact shape that leaked into the
   // production run's results: a method whose own name ends in "Extension".
@@ -120,8 +120,8 @@ describe('searchCustomExtensions', () => {
 
   it('escapes LIKE metacharacters in the query', () => {
     // Unescaped, '_' is a single-character wildcard: '%e_Extension%' also matches
-    // AslTableXExtension. Only AslTable_Extension contains the text the caller typed.
+    // ConTableXExtension. Only ConTable_Extension contains the text the caller typed.
     expect(index.searchCustomExtensions('e_Extension').map(h => h.name))
-      .toEqual(['AslTable_Extension']);
+      .toEqual(['ConTable_Extension']);
   });
 });

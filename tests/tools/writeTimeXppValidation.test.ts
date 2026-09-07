@@ -15,8 +15,8 @@ import { preflightReplaceCode, renderChangedLines } from '../../src/tools/write/
 import { lookupErrorFix, d365foErrorHelpTool } from '../../src/tools/knowledge/d365foErrorHelp';
 
 /** A CoC wrapper as an agent actually wrote it. */
-const SHIPPED_COC = `[ExtensionOf(tableStr(AslFinCore_TaxTransReportChangeLog))]
-final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
+const SHIPPED_COC = `[ExtensionOf(tableStr(ConCore_TaxTransReportChangeLog))]
+final class ConCore_TaxTransReportChangeLogConSK_Extension
 {
     /// <summary>
     /// Prevents the <c>QualityTier</c> value from being downgraded on write.
@@ -25,9 +25,9 @@ final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
     {
         boolean ret = next validateWrite();
 
-        if (ret && this.AslFinSK_QualityTier < this.orig().AslFinSK_QualityTier)
+        if (ret && this.ConSK_QualityTier < this.orig().ConSK_QualityTier)
         {
-            this.checkFailed(literalStr("@AslFinSK:QualityTierDowngradeNotAllowed"));
+            this.checkFailed(literalStr("@ConSK:QualityTierDowngradeNotAllowed"));
             ret = false;
         }
 
@@ -37,9 +37,9 @@ final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
 
 /** The compiler error it produced. */
 const BUILD_ERROR =
-  "ClassDoesNotContainMethod: Table 'AslFinCore_TaxTransReportChangeLog' does not contain a " +
+  "ClassDoesNotContainMethod: Table 'ConCore_TaxTransReportChangeLog' does not contain a " +
   "definition for method 'checkFailed' and no extension method 'checkFailed' accepting a first " +
-  "argument of type 'AslFinCore_TaxTransReportChangeLog' is found on any extension class.";
+  "argument of type 'ConCore_TaxTransReportChangeLog' is found on any extension class.";
 
 describe('COC005 — Global functions are not members of a table buffer', () => {
   const coc005 = (code: string) => runRules(code, 'xpp').filter(v => v.rule === 'COC005');
@@ -105,16 +105,16 @@ describe('inline validation on the write itself', () => {
     const snippet = `    public boolean validateWrite()
     {
         boolean ret = next validateWrite();
-        this.checkFailed(literalStr("@AslFinSK:Nope"));
+        this.checkFailed(literalStr("@ConSK:Nope"));
         return ret;
     }`;
     const declarationXml = `<?xml version="1.0" encoding="utf-8"?>
 <AxClass>
-  <Name>AslFinCore_TaxTransReportChangeLogAslFinSK_Extension</Name>
+  <Name>ConCore_TaxTransReportChangeLogConSK_Extension</Name>
   <SourceCode>
     <Declaration><![CDATA[
-[ExtensionOf(tableStr(AslFinCore_TaxTransReportChangeLog))]
-final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
+[ExtensionOf(tableStr(ConCore_TaxTransReportChangeLog))]
+final class ConCore_TaxTransReportChangeLogConSK_Extension
 {
 }
 ]]></Declaration>
@@ -134,32 +134,32 @@ final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
    * longer exists anywhere — and the fix for it is a no-op.
    */
   it('lints the source as renamed by the create, not as the caller typed it', () => {
-    const asSent = `[ExtensionOf(tableStr(AslFinCore_TaxTransReportChangeLog))]
-final class AslFinCore_TaxTransReportChangeLog_AslFinSKExtension
+    const asSent = `[ExtensionOf(tableStr(ConCore_TaxTransReportChangeLog))]
+final class ConCore_TaxTransReportChangeLog_ConSKExtension
 {
     public boolean validateWrite()
     {
         return next validateWrite();
     }
 }`;
-    const finalName = 'AslFinCore_TaxTransReportChangeLogAslFinSK_Extension';
+    const finalName = 'ConCore_TaxTransReportChangeLogConSK_Extension';
 
     // The name the caller typed genuinely violates COC003 …
     expect(validateWrittenXpp(asSent)).toContain('COC003');
     // … and the create fixes it while writing, so the note must be silent.
     const written = sourceAsWritten(asSent, finalName)!;
     expect(written).toContain(`final class ${finalName}`);
-    expect(written).not.toContain('_AslFinSKExtension\n');
+    expect(written).not.toContain('_ConSKExtension\n');
     expect(validateWrittenXpp(written)).toBe('');
   });
 
   it('still reports a violation the rename does not fix', () => {
     // Renaming must not become a way to launder real findings.
     const withBadCall = SHIPPED_COC.replace(
-      'AslFinCore_TaxTransReportChangeLogAslFinSK_Extension',
-      'AslFinCore_TaxTransReportChangeLog_AslFinSKExtension',
+      'ConCore_TaxTransReportChangeLogConSK_Extension',
+      'ConCore_TaxTransReportChangeLog_ConSKExtension',
     );
-    const written = sourceAsWritten(withBadCall, 'AslFinCore_TaxTransReportChangeLogAslFinSK_Extension')!;
+    const written = sourceAsWritten(withBadCall, 'ConCore_TaxTransReportChangeLogConSK_Extension')!;
     expect(validateWrittenXpp(written)).toContain('COC005');
   });
 
@@ -187,9 +187,9 @@ describe('replace-code preflight', () => {
   /** The method source the edits below were issued against. */
   const FILE = `        boolean ret = next validateWrite();
 
-        if (ret && this.AslFinSK_QualityTier < this.orig().AslFinSK_QualityTier)
+        if (ret && this.ConSK_QualityTier < this.orig().ConSK_QualityTier)
         {
-            this.checkFailed(literalStr("@AslFinSK:QualityTierDowngradeNotAllowed"));
+            this.checkFailed(literalStr("@ConSK:QualityTierDowngradeNotAllowed"));
             ret = false;
         }`;
 
@@ -201,7 +201,7 @@ describe('replace-code preflight', () => {
   });
 
   it('refuses an oldCode that matches more than once, naming the lines', () => {
-    const twice = `${FILE}\n        this.checkFailed(literalStr("@AslFinSK:Other"));`;
+    const twice = `${FILE}\n        this.checkFailed(literalStr("@ConSK:Other"));`;
     const verdict = preflightReplaceCode(twice, 'this.checkFailed', 'checkFailed');
     expect(verdict?.kind).toBe('refuse');
     expect(verdict?.message).toContain('matches 2 times');
@@ -282,8 +282,8 @@ describe('the shipped CoC message', () => {
   // next is unconditional, checkFailed is unqualified, the label takes %1/%2, and
   // enum2str resolves each value's <Label> in the session language. Nothing left
   // to say — BP005 used to flag this very message and send the agent to DictEnum.
-  const SHIPPED = `[ExtensionOf(tableStr(AslFinCore_TaxTransReportChangeLog))]
-final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
+  const SHIPPED = `[ExtensionOf(tableStr(ConCore_TaxTransReportChangeLog))]
+final class ConCore_TaxTransReportChangeLogConSK_Extension
 {
     public boolean validateWrite()
     {
@@ -291,11 +291,11 @@ final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
 
         if (ret && this.RecId)
         {
-            AslFinSK_QualityTier orig = this.orig().AslFinSK_QualityTier;
+            ConSK_QualityTier orig = this.orig().ConSK_QualityTier;
 
-            if (enum2int(this.AslFinSK_QualityTier) < enum2int(orig))
+            if (enum2int(this.ConSK_QualityTier) < enum2int(orig))
             {
-                ret = checkFailed(strFmt("@AslFinSK:QualityTierDowngradeError", enum2str(orig), enum2str(this.AslFinSK_QualityTier)));
+                ret = checkFailed(strFmt("@ConSK:QualityTierDowngradeError", enum2str(orig), enum2str(this.ConSK_QualityTier)));
             }
         }
 
@@ -311,15 +311,15 @@ final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
     // Correct too, and the only option when the enum type is not known until
     // runtime — just not something to rewrite working code into.
     expect(validateWrittenXpp(SHIPPED.replace(
-      'enum2str(orig), enum2str(this.AslFinSK_QualityTier)',
-      'dictEnum.value2Label(enum2int(orig)), dictEnum.value2Label(enum2int(this.AslFinSK_QualityTier))',
+      'enum2str(orig), enum2str(this.ConSK_QualityTier)',
+      'dictEnum.value2Label(enum2int(orig)), dictEnum.value2Label(enum2int(this.ConSK_QualityTier))',
     ))).toBe('');
   });
 
   it('reports BP005 when the SYMBOL is what reaches the message', () => {
     const note = validateWrittenXpp(SHIPPED.replace(
-      'enum2str(orig), enum2str(this.AslFinSK_QualityTier)',
-      'dictEnum.value2Symbol(enum2int(orig)), dictEnum.value2Symbol(enum2int(this.AslFinSK_QualityTier))',
+      'enum2str(orig), enum2str(this.ConSK_QualityTier)',
+      'dictEnum.value2Symbol(enum2int(orig)), dictEnum.value2Symbol(enum2int(this.ConSK_QualityTier))',
     ));
     expect(note).toContain('BP005');
     expect(note).toContain('never translated');

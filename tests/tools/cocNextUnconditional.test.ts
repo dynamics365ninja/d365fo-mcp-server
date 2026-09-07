@@ -12,8 +12,8 @@ import { describe, it, expect } from 'vitest';
 import { runRules } from '../../src/tools/analysis/validateXpp';
 
 const coc = (body: string): string =>
-  `[ExtensionOf(tableStr(AslFinCore_TaxTransReportChangeLog))]
-final class AslFinCore_TaxTransReportChangeLogAslFinSK_Extension
+  `[ExtensionOf(tableStr(ConCore_TaxTransReportChangeLog))]
+final class ConCore_TaxTransReportChangeLogConSK_Extension
 {
 ${body}
 }`;
@@ -25,14 +25,14 @@ const rules = (code: string): string[] =>
 
 describe('COC004 — next must be unconditional', () => {
   it('flags the exact shape run f2e7b71a shipped', () => {
-    // Verbatim from AxClass/AslFinCore_TaxTransReportChangeLogAslFinSK_Extension.xml.
+    // Verbatim from AxClass/ConCore_TaxTransReportChangeLogConSK_Extension.xml.
     const code = coc(`    public boolean validateWrite()
     {
         boolean ret = true;
 
-        if (enum2int(this.AslFinSK_QualityTier) < enum2int(this.orig().AslFinSK_QualityTier))
+        if (enum2int(this.ConSK_QualityTier) < enum2int(this.orig().ConSK_QualityTier))
         {
-            ret = checkFailed("@AslFinSK:QualityTierDowngradeNotAllowed");
+            ret = checkFailed("@ConSK:QualityTierDowngradeNotAllowed");
         }
 
         if (ret)
@@ -55,9 +55,9 @@ describe('COC004 — next must be unconditional', () => {
 
         ret = next validateWrite();
 
-        if (ret && enum2int(this.AslFinSK_QualityTier) < enum2int(this.orig().AslFinSK_QualityTier))
+        if (ret && enum2int(this.ConSK_QualityTier) < enum2int(this.orig().ConSK_QualityTier))
         {
-            ret = checkFailed("@AslFinSK:QualityTierDowngradeNotAllowed");
+            ret = checkFailed("@ConSK:QualityTierDowngradeNotAllowed");
         }
 
         return ret;
@@ -126,7 +126,7 @@ describe('COC004 — next must be unconditional', () => {
         boolean ret = next validateWrite();
         if (!ret)
         {
-            ret = checkFailed(strFmt("@AslFinSK:Downgrade", enum2Symbol(enumNum(AslFinSK_QualityTier), enum2int(this.orig().AslFinSK_QualityTier))));
+            ret = checkFailed(strFmt("@ConSK:Downgrade", enum2Symbol(enumNum(ConSK_QualityTier), enum2int(this.orig().ConSK_QualityTier))));
         }
         return ret;
     }`);
@@ -143,7 +143,7 @@ describe('COC004 — next must be unconditional', () => {
         boolean ret = next validateWrite();
         if (!ret)
         {
-            ret = checkFailed(strFmt("@AslFinSK:Downgrade", enum2str(this.orig().AslFinSK_QualityTier)));
+            ret = checkFailed(strFmt("@ConSK:Downgrade", enum2str(this.orig().ConSK_QualityTier)));
         }
         return ret;
     }`);
@@ -155,7 +155,7 @@ describe('COC004 — next must be unconditional', () => {
     const code = coc(`    public boolean validateWrite()
     {
         boolean ret = next validateWrite();
-        str key = enum2Symbol(enumNum(AslFinSK_QualityTier), enum2int(this.AslFinSK_QualityTier));
+        str key = enum2Symbol(enumNum(ConSK_QualityTier), enum2int(this.ConSK_QualityTier));
         return ret;
     }`);
 

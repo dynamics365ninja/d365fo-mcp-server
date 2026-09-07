@@ -315,7 +315,7 @@ describe('compareSysTestDataAccess', () => {
     setting('DataAccess.Database', 'AxDB'),
     setting('DataAccess.SqlUser', 'axdbadmin'),
     setting('DataAccess.SqlPwd', 'x'.repeat(828)),
-    setting('DataAccess.DbServer', 'D365ASLDEV2-1'),
+    setting('DataAccess.DbServer', 'D365DEVBOX-1'),
   ]);
 
   /** Serve the runner config, the AOS config, or ENOENT for anything else. */

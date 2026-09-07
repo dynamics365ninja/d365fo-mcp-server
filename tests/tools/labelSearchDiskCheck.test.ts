@@ -2,7 +2,7 @@
  * `labels(action="search")` must not recommend a label that is not on disk.
  *
  * Benchmark run d79f62a3 (2026-08-17): one search returned three
- * `[AslFinanceSK]` labels with exactly the wording the task needed — the enum's,
+ * `[ContosoFinanceSK]` labels with exactly the wording the task needed — the enum's,
  * the field's and the `%1`/`%2` error message. All three were leftovers of a
  * rolled-back session: present in the symbol index, absent from the .label.txt.
  * The agent wrote all three into the enum, the field and the X++; `xppc` does

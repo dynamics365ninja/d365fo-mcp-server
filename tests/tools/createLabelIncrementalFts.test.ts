@@ -26,11 +26,11 @@ afterEach(() => index.close());
 
 const entry = (labelId: string, text: string, language = 'en-US') => ({
   labelId,
-  labelFileId: 'AslFinSK',
-  model: 'AslFinanceSK',
+  labelFileId: 'ConSK',
+  model: 'ContosoFinanceSK',
   language,
   text,
-  filePath: `K:/pkg/AslFinanceSK/AslFinSK.${language}.label.txt`,
+  filePath: `K:/pkg/ContosoFinanceSK/ConSK.${language}.label.txt`,
 });
 
 /** Only a MATCH query is answered from the index — labels_fts is external-content. */

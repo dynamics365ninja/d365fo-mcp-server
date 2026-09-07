@@ -328,7 +328,7 @@ describe('unknown distinctive tokens', () => {
 
   it('names several unknowns and counts the rest', async () => {
     const text = getText(await xppKnowledgeTool(
-      req({ topic: 'aslFooOne aslFooTwo aslFooThree aslFooFour enum' }),
+      req({ topic: 'conFooOne conFooTwo conFooThree conFooFour enum' }),
     ));
     expect(text).toContain('are not documented by name');
     expect(text).toContain('(and 1 more)');

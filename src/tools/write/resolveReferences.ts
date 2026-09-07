@@ -506,7 +506,7 @@ function extensionAddedFields(deps: ResolverDeps, tableName: string): string[] {
 }
 
 /**
- * `AslFinSK_QualityTier` → `qualitytier`. A member added to another model's
+ * `ConSK_QualityTier` → `qualitytier`. A member added to another model's
  * object carries that model's prefix (applyExtensionMemberPrefix mints it), so
  * the name in the agent's X++ and the name on disk routinely differ by exactly
  * this token.

@@ -188,16 +188,16 @@ describe('d365fo_file(action="modify") with operations[]', () => {
   it('unwraps a per-entry `params` the way the single-operation form does', async () => {
     await d365foFileTool(call({
       objectType: 'table-extension',
-      objectName: 'AslFinCore_TaxTransReportChangeLog.AslFinSKExtension',
+      objectName: 'ConCore_TaxTransReportChangeLog.ConSKExtension',
       operations: [
-        { operation: 'modify-field', params: { fieldName: 'AslFinSK_QualityTier', fieldLabel: '@AslFinSK:QualityTierField' } },
-        { operation: 'add-field-to-field-group', params: { fieldName: 'AslFinSK_QualityTier', fieldGroupName: 'Identification', extendBaseFieldGroup: true } },
+        { operation: 'modify-field', params: { fieldName: 'ConSK_QualityTier', fieldLabel: '@ConSK:QualityTierField' } },
+        { operation: 'add-field-to-field-group', params: { fieldName: 'ConSK_QualityTier', fieldGroupName: 'Identification', extendBaseFieldGroup: true } },
       ],
     }), ctx);
 
     const [first, second] = forwarded();
-    expect(first.fieldName).toBe('AslFinSK_QualityTier');
-    expect(first.fieldLabel).toBe('@AslFinSK:QualityTierField');
+    expect(first.fieldName).toBe('ConSK_QualityTier');
+    expect(first.fieldLabel).toBe('@ConSK:QualityTierField');
     expect(first.params).toBeUndefined();
     expect(second.fieldGroupName).toBe('Identification');
     expect(second.extendBaseFieldGroup).toBe(true);
