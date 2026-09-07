@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { createProgressReporter } from '../../src/utils/progressReporter';
+import { createProgressReporter, startProgressHeartbeat } from '../../src/utils/progressReporter';
 
 function fakeServer() {
   return { sendLoggingMessage: vi.fn().mockResolvedValue(undefined) };
@@ -71,5 +71,41 @@ describe('createProgressReporter', () => {
     await expect(report('working', 12)).resolves.toBeUndefined();
     expect(sendNotification).toHaveBeenCalledTimes(1);
     expect(server.sendLoggingMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('startProgressHeartbeat', () => {
+  it('says nothing before the first tick, so a fast tool is unchanged', () => {
+    vi.useFakeTimers();
+    try {
+      const report = vi.fn().mockResolvedValue(undefined);
+      const stop = startProgressHeartbeat(report, '⚙️ Reading workspace configuration', 15_000);
+      vi.advanceTimersByTime(14_000);
+      stop();
+
+      expect(report).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reports elapsed seconds, monotonically, until it is stopped', () => {
+    vi.useFakeTimers();
+    try {
+      const report = vi.fn().mockResolvedValue(undefined);
+      const stop = startProgressHeartbeat(report, '⚙️ Reading workspace configuration', 15_000);
+      vi.advanceTimersByTime(45_000);
+      stop();
+      vi.advanceTimersByTime(60_000);
+
+      expect(report).toHaveBeenCalledTimes(3);
+      expect(report.mock.calls.map(c => c[1])).toEqual([15, 30, 45]);
+      // MCP requires the progress value to increase across notifications for one
+      // request; elapsed seconds is the only monotone quantity a tool with no known
+      // total has.
+      expect(report.mock.calls[2][0]).toContain('45s');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

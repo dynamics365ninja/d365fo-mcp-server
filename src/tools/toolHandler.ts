@@ -3,7 +3,7 @@ import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { XppServerContext } from '../types/context.js';
 import { getConfigManager } from '../utils/configManager.js';
 import {
-  SERVER_MODE, LOCAL_TOOLS, TOOL_PROFILE,
+  SERVER_MODE, LOCAL_TOOLS, DB_BACKED_LOCAL_TOOLS, TOOL_PROFILE,
   isToolAllowedInMode, isToolInProfile,
 } from '../server/serverMode.js';
 import { BRIDGE_BACKED_TOOLS, awaitBridgeReady } from '../bridge/bridgeReadiness.js';
@@ -56,7 +56,7 @@ import { capToolResponse } from './responseCaps.js';
  */
 const WRITE_CAPABLE_TOOLS = new Set(['d365fo_file', 'labels']);
 import { buildProgressMessage } from '../utils/toolProgressMessage.js';
-import { createProgressReporter } from '../utils/progressReporter.js';
+import { createProgressReporter, startProgressHeartbeat } from '../utils/progressReporter.js';
 
 
 /**
@@ -125,6 +125,9 @@ function extractWorkspaceFromMeta(meta: any): string | null {
  */
 const DB_FREE_TOOLS = new Set(['get_knowledge']);
 
+/** Tools that drive the progress reporter themselves, and must not be doubled up on. */
+const SELF_REPORTING_TOOLS = new Set(['build_d365fo_project']);
+
 export function registerToolHandler(server: Server, context: XppServerContext): void {
   startMetricsLogging();
 
@@ -154,8 +157,13 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
     // ctx.dbReady resolves once the real symbol database is loaded; await it so
     // tools use the real index instead of silently returning empty results.
     // LOCAL_TOOLS need no DB (filesystem/in-memory config only) and skip the
-    // wait; so do DB_FREE_TOOLS, whose answer is in-repo static data.
-    if (context.dbReady && !LOCAL_TOOLS.has(toolName) && !DB_FREE_TOOLS.has(toolName)) {
+    // wait — except DB_BACKED_LOCAL_TOOLS, which are local AND read the index, and
+    // whose exemption cost them the 55 s ceiling too. DB_FREE_TOOLS also skip it,
+    // their answer being in-repo static data.
+    const skipsDbWait =
+      (LOCAL_TOOLS.has(toolName) && !DB_BACKED_LOCAL_TOOLS.has(toolName)) ||
+      DB_FREE_TOOLS.has(toolName);
+    if (context.dbReady && !skipsDbWait) {
       const t0 = Date.now();
       // Race dbReady against a 55-second timeout so VS Code's ~60 s client
       // timeout doesn't silently cancel the request. If the DB is still loading
@@ -310,6 +318,11 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
       // transport writes in call order, so the notification still precedes the result.
       void reportProgress(progressMsg, 0);
 
+      // …and then nothing, for however long the tool takes — see startProgressHeartbeat.
+      const stopHeartbeat = SELF_REPORTING_TOOLS.has(toolName)
+        ? null
+        : startProgressHeartbeat(reportProgress, progressMsg);
+
       return (async () => { switch (toolName) {
       case 'search':
         return searchUnifiedTool(request, context);
@@ -383,7 +396,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
           ],
           isError: true,
         };
-    } })();
+    } })().finally(() => stopHeartbeat?.());
     }));
     } catch (err) {
       // Safety net: convert any thrown error into a tool result with isError:true

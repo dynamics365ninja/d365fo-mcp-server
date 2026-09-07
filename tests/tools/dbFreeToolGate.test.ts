@@ -13,7 +13,7 @@
  * means answering it wrong.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { registerToolHandler } from '../../src/tools/toolHandler';
 import type { XppServerContext } from '../../src/types/context';
@@ -75,5 +75,47 @@ describe('dbReady gate', () => {
     const pending = call(handler, 'search', { query: 'DbGateProbeXyz', type: 'table' });
 
     expect(await within(pending, 150)).toBe('pending');
+  });
+
+  /**
+   * The exemption used to be "in LOCAL_TOOLS", which answers a question about
+   * LOCALITY — can this run away from the K:\ drive — and was read as "needs no
+   * index". get_workspace_info reads the index twice (the model's prefix, the
+   * last-indexed timestamp), so it belonged on the waiting side; exempt, it also
+   * had no 55 s ceiling, and on 2026-09-07 the first call of a session sat for
+   * 337.5 s with no answer and no way to fail. See DB_BACKED_LOCAL_TOOLS.
+   */
+  it('answers get_workspace_info with the retry message instead of never answering', async () => {
+    // Not "is it still pending after 150 ms" — this tool is slow enough on its own
+    // for that to pass either way. What the gate buys is a BOUND: the 55 s ceiling
+    // and a message saying what to do, in place of a call that could only hang.
+    vi.useFakeTimers();
+    try {
+      const handler = buildHandler();
+      const pending = call(handler, 'get_workspace_info', {});
+      await vi.advanceTimersByTimeAsync(56_000);
+      const result = await pending;
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('still loading the X++ symbol database');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('makes update_symbol_index wait — before the swap it would write to the stub', async () => {
+    const handler = buildHandler();
+    const pending = call(handler, 'update_symbol_index', { filePath: 'K:\\nowhere\\Probe.xml' });
+
+    expect(await within(pending, 150)).toBe('pending');
+  });
+
+  it('leaves the tools that only touch the filesystem exempt', async () => {
+    const handler = buildHandler();
+    // verify_d365fo_project needs no index at all; making it wait for a database
+    // it never reads is the same mistake in the other direction.
+    const result = await call(handler, 'verify_d365fo_project', { projectPath: 'K:\\nowhere\\None.rnrproj' });
+
+    expect(result.content[0].text).not.toContain('still loading the X++ symbol database');
   });
 });
