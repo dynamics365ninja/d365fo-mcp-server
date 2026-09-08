@@ -6,8 +6,8 @@ Security fixes are released for the latest minor version on npm (`d365fo-mcp`). 
 
 | Version | Supported |
 |---------|-----------|
-| 1.10.x  | ✅ |
-| < 1.10  | ❌ |
+| 1.17.x  | ✅ |
+| < 1.17  | ❌ |
 
 ## Reporting a vulnerability
 
@@ -33,6 +33,16 @@ Helpful to include:
 | Fix released | 90 days, sooner for actively exploitable issues |
 
 We request a CVE from the GitHub CNA for anything we assess as valid, and publish the advisory once the fix ships. You will be credited under the name or handle you choose unless you ask otherwise.
+
+## Published advisories
+
+| Advisory | Affected | Fixed in | CVE |
+|----------|----------|----------|-----|
+| [GHSA-8764-fh3m-wf7g](https://github.com/dynamics365ninja/d365fo-mcp-server/security/advisories/GHSA-8764-fh3m-wf7g) — the documented Azure deploy path produced an unauthenticated public MCP endpoint | `<= 1.10.1` | **1.11.0** (2026-08-13) | requested, not yet assigned |
+
+If you are on `1.10.1` or older with an HTTP deployment, upgrade. The advisory
+originally named 1.10.2 as the fixed version; that version was never published —
+the release shipped as 1.11.0, and the advisory was corrected on 2026-09-08.
 
 ## Threat model
 

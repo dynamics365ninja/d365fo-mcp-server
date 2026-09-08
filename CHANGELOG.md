@@ -1581,6 +1581,42 @@ notes, so the entries below name what changed and why it mattered, not every com
 
 ## [1.11.0] — 2026-08-13
 
+### Security
+- **GHSA-8764-fh3m-wf7g — the documented Azure deploy path produced an
+  unauthenticated public MCP endpoint.** The one-click template declared `apiKey`
+  with `defaultValue: ""`, which flows into the App Service `API_KEY` setting.
+  Empty makes `apiKeyAuth` a pass-through and the server bound `0.0.0.0`, so
+  following the deploy steps as written served the whole read surface —
+  including the `source_snippet` fields carrying the customer's own X++ — to
+  anonymous callers. The hostname is not obscure either: it derives from the
+  resource group name (`d365fo-mcp-server-<customer>.azurewebsites.net`) and
+  appears in Certificate Transparency logs. Reported by Lucas Weber (CyberSec42)
+  under coordinated disclosure; fixed in #897. `apiKey` became a required
+  template parameter with `@minLength(32)`, `resolveBindHost()` now defaults the
+  bind to `127.0.0.1` until `API_KEY` or `ALLOW_UNAUTHENTICATED` is set, and
+  `authStartupError()` refuses to start when the resolved host is not loopback
+  and nothing authenticates it.
+
+  Affects **`<= 1.10.1`**. The advisory first named **1.10.2** as the patched
+  version, and that version was never published — `package.json` on `main`
+  carried it through the fix window, but the release shipped as **1.11.0**
+  (npm, 2026-08-13). Anyone acting on the advisory was pointed at a version they
+  could not install; corrected in the advisory on 2026-09-08. CVE requested, not
+  yet assigned.
+
+### Breaking
+- **An HTTP server with no `API_KEY` binds `127.0.0.1` instead of `0.0.0.0`.** A
+  keyless deployment that relied on being reachable from the network must set
+  `API_KEY`, or `ALLOW_UNAUTHENTICATED=true` where authentication is enforced
+  upstream (Easy Auth, Private Endpoint, authenticating proxy). Setting `HOST` to
+  a public interface with neither is refused at startup. `NODE_ENV` is no longer
+  read for this decision: the first guard fired only on `NODE_ENV=production`,
+  which the Bicep template sets but the `.azure-pipelines/` deploy onto a
+  hand-created App Service does not — leaving that path exactly as exposed as
+  the one reported, with the guard silent throughout. Local development got
+  quieter rather than louder: `npm start` with no key binds loopback and needs no
+  new variable to do it.
+
 ### Changed
 - `EXTENSION_PREFIX_SOURCE` is now the config key **`naming.prefixSource`**
   (`model` | `config`), asked in the advanced pass of the `naming` section
