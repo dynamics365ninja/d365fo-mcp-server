@@ -73,26 +73,61 @@ namespace D365MetadataBridge.Services
             return (objectType, objectName, segment, segmentName);
         }
 
+        // DYNAMICSXREFDB [References].Kind values.
+        //
+        // These were DECODED EMPIRICALLY (2026-09-09) by sampling source/target path pairs per
+        // value across three live xref databases spanning two platform versions (10.0.2645.99,
+        // 10.0.2645.111, 10.0.2428.205). The mapping was identical in all three.
+        //
+        // The previous comment here claimed "1=Read/Reference, 2=DerivedFrom/Extends". Both
+        // halves were wrong, and the second one was costly: Kind 2 is the GENERIC type
+        // reference — 18.3M of the 28M rows — so every `EcoResDescription desc;` declaration and
+        // every `NoYes::Yes` read was being reported as "extends". A where-used on /Enums/NoYes
+        // came back 500-for-500 "extends", which nothing can extend. Extends is Kind 4.
+        private const byte KindCall = 1;        // method call:        Foo/Methods/a -> Bar/Methods/b
+        private const byte KindTypeRef = 2;     // names a type:       ... -> /Edts/Counter
+        private const byte KindImplements = 3;  // class -> interface: AbsNettingMarkTransMgr -> INettingMarkTrans
+        private const byte KindExtends = 4;     // class -> base:      _Performance -> RunBaseBatch
+        private const byte KindDelegate = 6;    // ... -> /Property/IsDelegate
+        private const byte KindAttribute = 7;   // ... -> /Classes/HookableAttribute
+        private const byte KindTag = 9;         // ... -> /Tags/<tag>
+        private const byte KindOverride = 10;   // super():            Foo/Methods/pack -> Base/Methods/pack
+
         /// <summary>
-        /// Categorize a reference based on the xref Kind value and path context.
-        /// Kind: 1=Read/Reference, 2=DerivedFrom/Extends, 3+ = other
+        /// Last slash-separated segment of an xref path — the member name for a
+        /// "/Container/Owner/Methods/name" path. Null when the path has no segments.
+        /// </summary>
+        private static string? LeafSegment(string path)
+        {
+            var parts = path.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length > 0 ? parts[parts.Length - 1] : null;
+        }
+
+        /// <summary>
+        /// Categorize a reference from its xref Kind, refining the generic type-reference
+        /// kind by what the target actually is. See the Kind constants above for how the
+        /// values were established.
         /// </summary>
         private static string CategorizeReference(byte? kind, string sourcePath, string targetPath)
         {
-            if (kind == 2) return "extends";
-
-            // Check if source is referencing a field
-            if (targetPath.Contains("/Fields/")) return "field-access";
-
-            // Check if source path suggests instantiation (heuristic: method referencing a class, not a method)
-            var (_, _, targetSeg, _) = ParsePath(targetPath);
-            if (targetSeg == null || targetSeg == "")
+            switch (kind)
             {
-                // Target is a class/table itself (not a method/field) — could be type-reference or instantiation
-                return "type-reference";
+                case KindCall: return "call";
+                case KindImplements: return "implements";
+                case KindExtends: return "extends";
+                case KindDelegate: return "delegate-declaration";
+                case KindAttribute: return "attribute";
+                case KindTag: return "tag";
+                case KindOverride: return "override";
             }
 
-            if (targetSeg == "Methods") return "call";
+            // Kind 2 (and anything unrecognised): the source line names the target. Say what
+            // kind of naming it is from the target's shape.
+            if (targetPath.Contains("/Fields/")) return "field-access";
+
+            var (_, _, targetSeg, _) = ParsePath(targetPath);
+            if (targetSeg == "Methods") return "method-reference";
+            if (string.IsNullOrEmpty(targetSeg)) return "type-reference";
 
             return "reference";
         }
@@ -140,14 +175,28 @@ namespace D365MetadataBridge.Services
             }
             else
             {
-                // Try common AOT path prefixes
-                pathVariants.Add($"/Tables/{objectPath}");
-                pathVariants.Add($"/Classes/{objectPath}");
-                pathVariants.Add($"/Enums/{objectPath}");
-                pathVariants.Add($"/Views/{objectPath}");
-                pathVariants.Add($"/DataEntityViews/{objectPath}");
-                pathVariants.Add($"/Queries/{objectPath}");
-                pathVariants.Add($"/Forms/{objectPath}");
+                // Bare name — we do not know which AOT type it is, so try every container
+                // that can be the TARGET of a reference. All of these were verified against a
+                // live DYNAMICSXREFDB: the target convention is plural + leading slash, even
+                // though SOURCE paths for declarative metadata use the singular, slash-free
+                // form ("EdtString/Foo?HelpText") that parseLabelSource() on the TS side
+                // handles. In particular an EDT is "/Edts/<name>" — NOT "/EdtString/<name>":
+                // the concrete subtype appears only in source paths.
+                //
+                // Edts/Maps/Reports/MenuItem* were missing here, so a where-used on any of
+                // them returned zero rows and the TS caller silently degraded to its
+                // name-based index scan. For an EDT that is close to useless, because an
+                // EDT's real usages are table fields and form control properties — metadata,
+                // not X++ text.
+                foreach (var c in new[]
+                {
+                    "Tables", "Classes", "Enums", "Views", "DataEntityViews", "Queries", "Forms",
+                    "Edts", "Maps", "Reports",
+                    "MenuItemDisplays", "MenuItemActions", "MenuItemOutputs",
+                })
+                {
+                    pathVariants.Add($"/{c}/{objectPath}");
+                }
             }
 
             // Also add sub-paths (methods, fields) so we catch method-level references.
@@ -247,13 +296,97 @@ namespace D365MetadataBridge.Services
         // ============================================================
 
         /// <summary>
-        /// Find classes that extend (CoC) a given base class. Enriched: returns
-        /// which specific methods each extension class wraps via CoC, by querying
-        /// the Names table for method-level paths under each extension class.
+        /// The attribute a Chain of Command class carries. Stored under this exact path — it is
+        /// "ExtensionOf", NOT "ExtensionOfAttribute" like most other attribute names in Names.
+        /// </summary>
+        private const string ExtensionOfAttributePath = "/Classes/ExtensionOf";
+
+        /// <summary>
+        /// Containers a CoC class extension can be based on. [ExtensionOf] accepts
+        /// classStr/tableStr/formStr/viewStr/mapStr/dataEntityViewStr/queryStr, so the base is
+        /// by no means always a class — the caller passes a bare name and we resolve which.
+        /// </summary>
+        private static readonly string[] CocBaseContainers =
+            { "Classes", "Tables", "Forms", "Views", "Maps", "DataEntityViews", "Queries" };
+
+        /// <summary>
+        /// The extended artifact from one [ExtensionOf] declaration: the terminal element of the
+        /// prefix chain the intrinsic's arguments produce.
+        ///
+        /// Two details that are load-bearing:
+        ///  * Comparison is case-INSENSITIVE. The xref stores the same element under inconsistent
+        ///    casing — "/Forms/PurchTable/DataSources/purchLine" alongside
+        ///    "/Forms/PurchTable/DataSources/PurchLine/DataFields/PriceUnit" — so an ordinal
+        ///    StartsWith fails to see the chain and returns the ANCESTOR. That was 3 wrong answers
+        ///    in 4,696 before this was fixed. The database collation is CI_AS, so SQL already
+        ///    matches this way and the two layers must agree.
+        ///  * Targets are bounded to the ExtensionOf attribute's own argument window. 52 declarations
+        ///    share their line with a second attribute, and that attribute's arguments are references
+        ///    on the same line. On the corpus measured, none of them changed an answer (the
+        ///    co-attribute either takes no metadata argument or names the same element), so this is
+        ///    insurance rather than a live fix — but it is what makes those 52 safe by design.
+        ///
+        /// Returns null when the declaration produced no usable target.
+        /// </summary>
+        private static string? ResolveExtendedElement(List<(string target, int kind, int col)> refs, int extCol)
+        {
+            // The next attribute to the right closes ExtensionOf's argument window.
+            var limit = int.MaxValue;
+            foreach (var (target, kind, col) in refs)
+                if (kind == KindAttribute && target != ExtensionOfAttributePath && col > extCol && col < limit)
+                    limit = col;
+
+            var scoped = new List<string>();
+            foreach (var (target, kind, col) in refs)
+                if (kind == KindTypeRef && col > extCol && col < limit && !scoped.Contains(target))
+                    scoped.Add(target);
+
+            if (scoped.Count == 0) return null;
+
+            // Maximum of the prefix order: the one nothing else extends.
+            foreach (var candidate in scoped)
+            {
+                var isPrefixOfAnother = false;
+                foreach (var other in scoped)
+                {
+                    if (ReferenceEquals(other, candidate)) continue;
+                    if (other.StartsWith(candidate + "/", StringComparison.OrdinalIgnoreCase)) { isPrefixOfAnother = true; break; }
+                }
+                if (!isPrefixOfAnother) return candidate;
+            }
+
+            // Not a chain — shouldn't happen (zero cases in 4,696), so prefer the deepest rather
+            // than silently returning an ancestor.
+            scoped.Sort((a, b) => b.Length.CompareTo(a.Length));
+            return scoped[0];
+        }
+
+        /// <summary>
+        /// True when <paramref name="element"/> IS the requested object, or is nested inside it
+        /// (a form's data source, control or data field). Nested hits are kept deliberately: an
+        /// agent about to wrap SalesLine.active on a form needs to see it is already wrapped. The
+        /// caller groups them by element so they are never pooled with the parent's own count.
+        /// </summary>
+        private static bool IsRequestedOrNested(string element, string baseName)
+        {
+            foreach (var container in CocBaseContainers)
+            {
+                var basePath = $"/{container}/{baseName}";
+                if (string.Equals(element, basePath, StringComparison.OrdinalIgnoreCase)) return true;
+                if (element.StartsWith(basePath + "/", StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Find the Chain of Command extension classes of a given base object, together with
+        /// the base methods each one wraps. The base may be a class, table, form, view, map,
+        /// data entity or query — [ExtensionOf] accepts all of them.
         /// </summary>
         public object FindExtensionClasses(string baseClassName)
         {
-            var extensionClassNames = new Dictionary<string, string?>(); // className → module
+            // className → (module, the element the class actually extends)
+            var extensionClassNames = new Dictionary<string, (string? module, string element)>();
 
             try
             {
@@ -261,29 +394,88 @@ namespace D365MetadataBridge.Services
                 {
                     conn.Open();
 
-                    // Step 1: Find extension classes via xref (Kind=2 DerivedFrom + naming convention)
-                    var sql = @"
-                        SELECT DISTINCT src.Path, m.Module
-                        FROM [References] r
-                        JOIN [Names] src ON r.SourceId = src.Id
-                        JOIN [Names] tgt ON r.TargetId = tgt.Id
-                        LEFT JOIN [Modules] m ON src.ModuleId = m.Id
-                        WHERE (
-                            tgt.Path LIKE @TargetClass
-                            OR tgt.Path LIKE @TargetClassMethod
+                    // Step 1 — identify genuine [ExtensionOf] classes and READ what each extends.
+                    //
+                    // History: this accepted `r.Kind = 2 OR src.Path LIKE '%_Extension%'`, believing
+                    // Kind 2 meant DerivedFrom. It does not (see the Kind constants above) — it is
+                    // the generic type reference, so every class that merely MENTIONED the base was
+                    // reported as extending it. On SalesFormLetter: 259 reported against 9 real.
+                    //
+                    // How the extended element is recovered. `ExtensionOf` takes ONE string
+                    // (`public void new(str name)`); the multiplicity comes from the INTRINSIC that
+                    // produces it. While resolving e.g. formDataFieldStr(Form, DataSource, Field)
+                    // the compiler emits one Kind 2 reference per metadata level it names, and those
+                    // levels are nested by construction:
+                    //     /Forms/VendOpenTrans
+                    //     /Forms/VendOpenTrans/DataSources/TaxWithholdTrans
+                    //     /Forms/VendOpenTrans/DataSources/TaxWithholdTrans/DataFields/TaxReimbursement_IT
+                    // So the targets form a PREFIX CHAIN and the extended artifact is its terminal
+                    // element — the one that is not a proper prefix of any other. That is a maximum
+                    // of a partial order, not a "longest string" guess, and it was checked rather
+                    // than assumed: across all 4,696 ExtensionOf classes in a live xref DB the set
+                    // is a single chain every time (zero ambiguous). Measured element shapes:
+                    // /Classes/* 2633, /Tables/* 828, /Forms/* 696, /Forms/*/DataSources/* 241,
+                    // /DataEntityViews/* 170, /Forms/*/Controls/* 77,
+                    // /Forms/*/DataSources/*/DataFields/* 41, /Maps/* 6, /Views/* 4.
+                    //
+                    // Reading the element (rather than matching any declaration-level reference)
+                    // is what keeps a table CoC apart from a form CoC of the same name, and it drops
+                    // classes that name the base for some OTHER reason — e.g.
+                    // SalesCopyingTAMDeduction_Extension extends /Classes/SalesCopying but also
+                    // references /Tables/SalesTable from a different attribute on another line.
+                    //
+                    // Candidate classes are those naming the requested object anywhere in their
+                    // ExtensionOf declaration; the element test below then decides. `LIKE base + '/%'`
+                    // admits nested elements (a form's data sources, controls and data fields), which
+                    // the caller groups and labels separately.
+                    var whereTargets = new List<string>();
+                    var sqlParams = new List<(string name, string value)>();
+                    for (int i = 0; i < CocBaseContainers.Length; i++)
+                    {
+                        whereTargets.Add($"cand.Path = @T{i} OR cand.Path LIKE @P{i}");
+                        sqlParams.Add(($"@T{i}", $"/{CocBaseContainers[i]}/{baseClassName}"));
+                        // Escape LIKE metacharacters in the caller-supplied name.
+                        var esc = baseClassName.Replace("[", "[[]").Replace("%", "[%]").Replace("_", "[_]");
+                        sqlParams.Add(($"@P{i}", $"/{CocBaseContainers[i]}/{esc}/%"));
+                    }
+
+                    // Returns every Kind 2 target on each candidate's ExtensionOf line, plus the
+                    // columns needed to bound them to that attribute's own arguments. The chain is
+                    // resolved in C# because SQL cannot express "maximum of the prefix order"
+                    // cheaply, and the set per class is tiny (1-3 rows).
+                    var sql = $@"
+                        WITH extLine AS (
+                            SELECT DISTINCT ra.SourceId, ra.Line, ra.[Column] AS ExtCol
+                            FROM [References] ra
+                            JOIN [Names] att ON att.Id = ra.TargetId
+                            WHERE ra.Kind = {KindAttribute} AND att.Path = @ExtensionOfAttr
+                        ),
+                        candidates AS (
+                            SELECT DISTINCT e.SourceId, e.Line, e.ExtCol
+                            FROM extLine e
+                            JOIN [References] rc ON rc.SourceId = e.SourceId AND rc.Line = e.Line AND rc.Kind = {KindTypeRef}
+                            JOIN [Names] cand ON cand.Id = rc.TargetId
+                            WHERE {string.Join(" OR ", whereTargets.Select(w => $"({w})"))}
                         )
-                        AND (
-                            r.Kind = 2
-                            OR src.Path LIKE @ExtensionPattern
-                        )
-                        AND src.Path LIKE '/Classes/%'
+                        SELECT src.Path, m.Module, tgt.Path, r.Kind, r.[Column]
+                        FROM candidates c
+                        JOIN [Names] src ON src.Id = c.SourceId
+                        LEFT JOIN [Modules] m ON m.Id = src.ModuleId
+                        JOIN [References] r ON r.SourceId = c.SourceId AND r.Line = c.Line
+                                           AND r.Kind IN ({KindTypeRef}, {KindAttribute})
+                        JOIN [Names] tgt ON tgt.Id = r.TargetId
+                        WHERE c.ExtCol = (SELECT MIN(c2.ExtCol) FROM candidates c2 WHERE c2.SourceId = c.SourceId)
                         ORDER BY src.Path";
+
+                    // class → (module, extCol, [(target, kind, column)])
+                    var raw = new Dictionary<string, (string? module, int extCol, List<(string target, int kind, int col)> refs)>();
 
                     using (var cmd = new SqlCommand(sql, conn))
                     {
-                        cmd.Parameters.AddWithValue("@TargetClass", $"/Classes/{baseClassName}");
-                        cmd.Parameters.AddWithValue("@TargetClassMethod", $"/Classes/{baseClassName}/%");
-                        cmd.Parameters.AddWithValue("@ExtensionPattern", "%_Extension%");
+                        foreach (var (name, value) in sqlParams)
+                            cmd.Parameters.AddWithValue(name, value);
+                        cmd.Parameters.AddWithValue("@ExtensionOfAttr", ExtensionOfAttributePath);
+                        cmd.CommandTimeout = 60;
 
                         using (var reader = cmd.ExecuteReader())
                         {
@@ -293,51 +485,82 @@ namespace D365MetadataBridge.Services
                                 var parts = path.Split('/');
                                 var className = parts.Length >= 3 ? parts[2] : path;
                                 var module = reader.IsDBNull(1) ? null : reader.GetString(1);
+                                var target = reader.GetString(2);
+                                var kind = reader.IsDBNull(3) ? 0 : reader.GetByte(3);
+                                var col = reader.IsDBNull(4) ? 0 : (int)reader.GetInt16(4);
 
-                                if (!extensionClassNames.ContainsKey(className))
-                                    extensionClassNames[className] = module;
+                                if (!raw.TryGetValue(className, out var entry))
+                                {
+                                    entry = (module, int.MaxValue, new List<(string, int, int)>());
+                                    raw[className] = entry;
+                                }
+                                entry.refs.Add((target, kind, col));
+                                // The ExtensionOf attribute's own column anchors the argument window.
+                                if (kind == KindAttribute && target == ExtensionOfAttributePath && col < entry.extCol)
+                                    entry = (entry.module, col, entry.refs);
+                                raw[className] = entry;
                             }
                         }
                     }
 
-                    // Step 2: For each extension class, find which methods reference the base class methods
-                    // This identifies which methods are actually wrapped via CoC
+                    foreach (var kv in raw)
+                    {
+                        var element = ResolveExtendedElement(kv.Value.refs, kv.Value.extCol);
+                        if (element == null) continue;
+                        // Keep only classes whose ELEMENT is the requested object or nested inside
+                        // it. This is what discards a class that named the base incidentally.
+                        if (!IsRequestedOrNested(element, baseClassName)) continue;
+                        extensionClassNames[kv.Key] = (kv.Value.module, element);
+                    }
+
+                    // Step 2 — which base methods each extension actually WRAPS.
+                    //
+                    // A CoC wrap shows up as a Kind 1 (call) from the extension's method to the
+                    // base method OF THE SAME NAME — that call is the `next`. The previous query
+                    // filtered on neither the kind nor the name, so it collected every base
+                    // method the class happened to call: that is why non-extensions came back
+                    // claiming to wrap "construct, update", which were merely the calls they made.
                     var results = new List<ExtensionClassDetailModel>();
 
                     foreach (var kvp in extensionClassNames)
                     {
                         var extClassName = kvp.Key;
-                        var module = kvp.Value;
+                        var (module, element) = kvp.Value;
 
-                        // Query: find method-level Names entries under this extension class
-                        // that reference methods of the base class
-                        var methodSql = @"
-                            SELECT DISTINCT tgt.Path
+                        var methodSql = $@"
+                            SELECT DISTINCT src.Path, tgt.Path
                             FROM [References] r
                             JOIN [Names] src ON r.SourceId = src.Id
                             JOIN [Names] tgt ON r.TargetId = tgt.Id
                             WHERE src.Path LIKE @ExtClassMethods
-                            AND tgt.Path LIKE @BaseClassMethods";
+                              AND tgt.Path LIKE @BaseClassMethods
+                              AND r.Kind = {KindCall}";
 
                         var wrappedMethods = new List<string>();
 
                         using (var cmd2 = new SqlCommand(methodSql, conn))
                         {
                             cmd2.Parameters.AddWithValue("@ExtClassMethods", $"/Classes/{extClassName}/Methods/%");
-                            cmd2.Parameters.AddWithValue("@BaseClassMethods", $"/Classes/{baseClassName}/Methods/%");
+                            // Anchored to the EXTENDED ELEMENT, not to the requested object. That is
+                            // the whole payoff of reading the element: a form CoC wraps a method on
+                            // one specific data source ("/Forms/SalesTable/DataSources/SalesLine/
+                            // Methods/active"), and the SalesTable form has NINE data sources with an
+                            // `active` method. Scoping to the base and matching leaf names alone could
+                            // not tell them apart; scoping to the element makes the question exact.
+                            cmd2.Parameters.AddWithValue("@BaseClassMethods", $"{element}/Methods/%");
+                            cmd2.CommandTimeout = 60;
 
                             using (var reader2 = cmd2.ExecuteReader())
                             {
                                 while (reader2.Read())
                                 {
-                                    var tgtPath = reader2.GetString(0);
-                                    var tgtParts = tgtPath.Split('/');
-                                    if (tgtParts.Length >= 5)
-                                    {
-                                        var methodName = tgtParts[4];
-                                        if (!wrappedMethods.Contains(methodName))
-                                            wrappedMethods.Add(methodName);
-                                    }
+                                    // Same leaf name on both sides = the `next` call.
+                                    var srcLeaf = LeafSegment(reader2.GetString(0));
+                                    var tgtLeaf = LeafSegment(reader2.GetString(1));
+                                    if (srcLeaf == null || tgtLeaf == null) continue;
+                                    if (!string.Equals(srcLeaf, tgtLeaf, StringComparison.OrdinalIgnoreCase)) continue;
+                                    if (!wrappedMethods.Contains(tgtLeaf))
+                                        wrappedMethods.Add(tgtLeaf);
                                 }
                             }
                         }
@@ -346,9 +569,19 @@ namespace D365MetadataBridge.Services
                         {
                             ClassName = extClassName,
                             Module = module,
+                            ExtendedElement = element,
                             WrappedMethods = wrappedMethods,
                         });
                     }
+
+                    // Ordered so the caller's grouping is stable and the requested object's own
+                    // extensions lead, with nested elements (data sources, controls, data fields)
+                    // following in path order.
+                    results.Sort((a, b) =>
+                    {
+                        var byElement = string.Compare(a.ExtendedElement, b.ExtendedElement, StringComparison.OrdinalIgnoreCase);
+                        return byElement != 0 ? byElement : string.Compare(a.ClassName, b.ClassName, StringComparison.OrdinalIgnoreCase);
+                    });
 
                     return new
                     {

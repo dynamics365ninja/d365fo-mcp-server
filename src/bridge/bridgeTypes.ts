@@ -691,6 +691,13 @@ export interface BridgeExtensionClassEntry {
   className: string;
   path?: string;
   module?: string;
+  /**
+   * AOT path this class actually extends, read from its [ExtensionOf] declaration —
+   * "/Tables/SalesTable", "/Forms/SalesTable/DataSources/SalesLine", etc. Needed because a
+   * name can belong to several objects at once: "SalesTable" is both a table and a form,
+   * and the form's data sources, controls and data fields are extended separately again.
+   */
+  extendedElement?: string;
   /** Methods that the extension class wraps via CoC */
   wrappedMethods?: string[];
 }
