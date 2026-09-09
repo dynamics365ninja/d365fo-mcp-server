@@ -86,6 +86,67 @@ function buildScopedEmptyResult(displayName: string, bridgeTargets: string[]): {
   return { content: [{ type: 'text', text: out }] };
 }
 
+/**
+ * targetTypes the name-based fallback can actually search for. The tool schema
+ * advertises five more (edt, form, query, view, report) that have no branch in
+ * the scan below, so asking for one ran NO query at all and reported
+ * "Total References Found: 0" — a confident zero that meant "never searched".
+ * Those are answered by describeUnsearchableType() instead.
+ */
+const FALLBACK_SEARCHABLE_TYPES = new Set(['method', 'class', 'table', 'field', 'enum', 'all']);
+
+/**
+ * Why the xref bridge did not answer, as a clause for the "_Source:_" line.
+ * Every fallback used to be labelled "xref bridge unavailable", including the
+ * common case where the bridge was up and healthy and simply had no rows for the
+ * target — which reads as an outage and sends the reader off diagnosing one that
+ * isn't happening. That mislabel cost a real investigation: an EDT where-used
+ * returned this text while the bridge was serving 161 label references fine.
+ */
+function bridgeFallbackReason(status: 'empty' | 'error' | 'unavailable'): string {
+  switch (status) {
+    case 'empty': return 'the cross-reference database returned no rows for this target';
+    case 'error': return 'the cross-reference query failed';
+    case 'unavailable': return 'the cross-reference bridge is unavailable in this server mode';
+  }
+}
+
+/**
+ * Answer for a targetType the name-based fallback cannot serve. Returning the
+ * scan's empty result here would be a lie by omission: the scan reads only X++
+ * method bodies (and only each method's first ten indexed lines), while an EDT,
+ * form, query, view or report is referenced mostly from declarative metadata —
+ * table fields, control properties, dataset bindings — that the text index does
+ * not contain. So there is no number to report, only that fact.
+ */
+function describeUnsearchableType(
+  targetName: string,
+  targetType: string,
+  status: 'empty' | 'error' | 'unavailable',
+): { content: Array<{ type: 'text'; text: string }> } {
+  const suggestion = targetName.startsWith('/') ? null : ({
+    edt: `/Edts/${targetName}`, report: `/Reports/${targetName}`,
+    form: `/Forms/${targetName}`, query: `/Queries/${targetName}`, view: `/Views/${targetName}`,
+  } as Record<string, string>)[targetType];
+
+  let out = `# References to \`${targetName}\`\n\n`;
+  out += `**Target Type:** ${targetType}\n`;
+  out += `**Result:** inconclusive — this is NOT a count of zero\n\n`;
+  out += `A \`${targetType}\` where-used needs the cross-reference database (DYNAMICSXREFDB), `;
+  out += `and ${bridgeFallbackReason(status)}.\n\n`;
+  out += `The name-based index fallback cannot stand in for it here: it scans only X++ method `;
+  out += `bodies, and only the first ten lines of each, whereas a ${targetType} is referenced `;
+  out += `mostly from declarative metadata that is not in the text index at all. Running it would `;
+  out += `have produced a number with no relationship to the real answer.\n\n`;
+  out += `**What to do:**\n`;
+  out += `- Re-run once the xref bridge is available (full server mode with a UDE/local xref DB)\n`;
+  if (suggestion) {
+    out += `- Or pass the explicit AOT path as \`targetName\`: \`${suggestion}\`\n`;
+  }
+  out += `- Confirm the name with \`search\`/\`get_object_info\` — a misspelling is indistinguishable from a miss\n`;
+  return { content: [{ type: 'text', text: out }] };
+}
+
 interface Reference {
   file: string;
   model: string;
@@ -184,6 +245,13 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
       return buildScopedEmptyResult(targetName, bridgeTargets);
     }
 
+    // The scan below has no branch for edt/form/query/view/report, so for those a
+    // "0" would mean "not searched" rather than "not found". Say that outright
+    // instead of running a scan that structurally cannot see their usages.
+    if (targetType && !FALLBACK_SEARCHABLE_TYPES.has(targetType)) {
+      return describeUnsearchableType(targetName, targetType, bridgeOutcome.status);
+    }
+
     // FTS fallback (xref bridge unavailable) — name-based heuristic, cannot scope
     // a method to its declaring type; match on the bare member name.
     const ftsName = isAotPath
@@ -243,7 +311,7 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
       output += `**Target Type:** ${targetType}\n`;
     }
     output += `**Scope:** ${scope}\n`;
-    output += `_Source: name-based index scan (xref bridge unavailable) — heuristic; not scoped to a declaring type._\n`;
+    output += `_Source: name-based index scan — ${bridgeFallbackReason(bridgeOutcome.status)}; heuristic, not scoped to a declaring type._\n`;
     if (intraTypeRefs.length > 0) {
       output += `_${intraTypeRefs.length} of these came from reading the declaring type's source directly — ` +
         `the index only previews a method's first 10 lines, so calls below that are invisible to the scan above._\n`;
@@ -273,7 +341,7 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
       // agent read `Total References Found: 0 … Symbol might be unused` for a
       // method with two real call sites, and acted on it.
       output += `No references found for \`${targetName}\` — **this is not evidence that it is unused.**\n\n`;
-      output += `⚠️ With the xref bridge down, call sites are matched against each method's indexed ` +
+      output += `⚠️ Because ${bridgeFallbackReason(bridgeOutcome.status)}, call sites are matched against each method's indexed ` +
         `\`source_snippet\`, which holds only its FIRST TEN LINES. A call on line 11 or later of its ` +
         `caller cannot be seen from here, and long methods are exactly where calls hide. The declaring ` +
         `type's own source was read directly and had none either, which is the strongest statement ` +
