@@ -2990,20 +2990,81 @@ function formatCocExtensions(r: BridgeExtensionClassResult, methodNameFilter?: s
     );
   }
 
-  out += `Found ${filtered.length} extension class(es)${methodNameFilter ? ` wrapping "${methodNameFilter}"` : ''}:\n\n`;
-  const seen = new Set<string>();
+  // Dedupe by class name ONCE, before anything is counted. A class carries a single
+  // [ExtensionOf] and the bridge keys its results by class name, so a duplicate cannot
+  // reach here today — but the count and the list it introduces have to agree whatever
+  // arrives, and skipping an entry inside the render loop after the heading above it had
+  // already counted that entry is exactly how the two come apart.
+  const byClassName = new Map<string, (typeof filtered)[number]>();
   for (const ext of filtered) {
-    if (seen.has(ext.className)) continue;
-    seen.add(ext.className);
-    out += `- **${ext.className}**`;
-    if (ext.module) out += ` (${ext.module})`;
-    if (ext.wrappedMethods && ext.wrappedMethods.length > 0) {
-      out += `\n    Wraps methods: ${ext.wrappedMethods.join(', ')}`;
-      out += `\n    Uses 'next' keyword: ✓`;
+    if (!byClassName.has(ext.className)) byClassName.set(ext.className, ext);
+  }
+  const unique = [...byClassName.values()];
+
+  out += `Found ${unique.length} extension class(es)${methodNameFilter ? ` wrapping "${methodNameFilter}"` : ''}:\n\n`;
+
+  // Grouped by the element each class actually extends, never pooled into one list. A name can
+  // denote several objects at once — "SalesTable" is a table (14 extensions) AND a form (17),
+  // and the form's data sources, controls and data fields are each extended separately again
+  // (31 more across 12 elements). Reporting "49 extensions of SalesTable" told an agent about
+  // to write a table CoC that 34 form extensions were its concern, and hid which of the form's
+  // NINE data sources with an `active` method was already wrapped.
+  const groups = new Map<string, typeof unique>();
+  for (const ext of unique) {
+    const key = ext.extendedElement ?? '';
+    const bucket = groups.get(key) ?? [];
+    bucket.push(ext);
+    groups.set(key, bucket);
+  }
+
+  for (const [element, exts] of groups) {
+    // Elements sort with the requested object first and its nested members after (the bridge
+    // orders by path); the heading names the element so the reader never has to infer it.
+    if (element) out += `### ${describeXrefElement(element)} — ${exts.length}\n\n`;
+    for (const ext of exts) {
+      out += `- **${ext.className}**`;
+      if (ext.module) out += ` (${ext.module})`;
+      if (ext.wrappedMethods && ext.wrappedMethods.length > 0) {
+        // Deliberately no `Uses 'next' keyword: ✓` line on THIS path, unlike the index /
+        // filesystem path in findCocExtensions.ts. That one earns it — fsExtensionScanner
+        // builds cocMethods by testing each method body against /\bnext\s+\w/i — whereas
+        // here the claim was printed unconditionally for anything with a non-empty
+        // wrappedMethods, and nothing had read a line of source. It therefore asserted a
+        // `next` in classes that contained none, back when wrappedMethods was every base
+        // method the class called. The list is now the same-named base-method call that IS
+        // the `next`, but that is inferred from xref shape rather than seen, so the list
+        // stands on its own instead of carrying a tick it cannot back.
+        out += `\n    Wraps methods: ${ext.wrappedMethods.join(', ')}`;
+      }
+      out += `\n`;
     }
     out += `\n`;
   }
   return out;
+}
+
+/**
+ * Human-readable name for an xref element path, for the CoC grouping headings.
+ *   /Tables/SalesTable                                  -> Table SalesTable
+ *   /Forms/SalesTable                                   -> Form SalesTable
+ *   /Forms/SalesTable/DataSources/SalesLine             -> Form SalesTable › DataSource SalesLine
+ *   /Forms/X/DataSources/Y/DataFields/Z                 -> Form X › DataSource Y › DataField Z
+ * Falls back to the raw path for any shape not seen in the corpus, so a new [ExtensionOf]
+ * intrinsic degrades to something still readable rather than being mislabelled.
+ */
+function describeXrefElement(path: string): string {
+  const parts = path.split('/').filter(Boolean);
+  if (parts.length < 2) return path;
+  const singular: Record<string, string> = {
+    Classes: 'Class', Tables: 'Table', Forms: 'Form', Views: 'View', Maps: 'Map',
+    Queries: 'Query', DataEntityViews: 'Data entity',
+    DataSources: 'DataSource', Controls: 'Control', DataFields: 'DataField',
+  };
+  const segs: string[] = [];
+  for (let i = 0; i + 1 < parts.length; i += 2) {
+    segs.push(`${singular[parts[i]] ?? parts[i]} ${parts[i + 1]}`);
+  }
+  return segs.join(' › ');
 }
 
 // FIND EVENT HANDLERS via XREF (Phase 6)

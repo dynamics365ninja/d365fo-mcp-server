@@ -696,6 +696,19 @@ namespace D365MetadataBridge.Models
         [JsonPropertyName("module")]
         public string? Module { get; set; }
 
+        /// <summary>
+        /// The AOT path this class actually extends, read from its [ExtensionOf] declaration —
+        /// e.g. "/Tables/SalesTable", "/Forms/SalesTable/DataSources/SalesLine",
+        /// "/Forms/VendOpenTrans/DataSources/TaxWithholdTrans/DataFields/TaxReimbursement_IT".
+        ///
+        /// Without this the caller cannot tell a table CoC from a form CoC when both objects
+        /// share a name: asking about "SalesTable" legitimately matches 14 extensions of the
+        /// TABLE and 34 of the FORM and the elements below it, which must never be pooled into
+        /// one count.
+        /// </summary>
+        [JsonPropertyName("extendedElement")]
+        public string ExtendedElement { get; set; } = "";
+
         /// <summary>Methods that the extension class wraps via CoC (next calls)</summary>
         [JsonPropertyName("wrappedMethods")]
         public List<string> WrappedMethods { get; set; } = new List<string>();
