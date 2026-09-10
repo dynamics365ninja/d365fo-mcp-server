@@ -2990,7 +2990,18 @@ function formatCocExtensions(r: BridgeExtensionClassResult, methodNameFilter?: s
     );
   }
 
-  out += `Found ${filtered.length} extension class(es)${methodNameFilter ? ` wrapping "${methodNameFilter}"` : ''}:\n\n`;
+  // Dedupe by class name ONCE, before anything is counted. A class carries a single
+  // [ExtensionOf] and the bridge keys its results by class name, so a duplicate cannot
+  // reach here today — but the count and the list it introduces have to agree whatever
+  // arrives, and skipping an entry inside the render loop after the heading above it had
+  // already counted that entry is exactly how the two come apart.
+  const byClassName = new Map<string, (typeof filtered)[number]>();
+  for (const ext of filtered) {
+    if (!byClassName.has(ext.className)) byClassName.set(ext.className, ext);
+  }
+  const unique = [...byClassName.values()];
+
+  out += `Found ${unique.length} extension class(es)${methodNameFilter ? ` wrapping "${methodNameFilter}"` : ''}:\n\n`;
 
   // Grouped by the element each class actually extends, never pooled into one list. A name can
   // denote several objects at once — "SalesTable" is a table (14 extensions) AND a form (17),
@@ -2998,22 +3009,19 @@ function formatCocExtensions(r: BridgeExtensionClassResult, methodNameFilter?: s
   // (31 more across 12 elements). Reporting "49 extensions of SalesTable" told an agent about
   // to write a table CoC that 34 form extensions were its concern, and hid which of the form's
   // NINE data sources with an `active` method was already wrapped.
-  const groups = new Map<string, typeof filtered>();
-  for (const ext of filtered) {
+  const groups = new Map<string, typeof unique>();
+  for (const ext of unique) {
     const key = ext.extendedElement ?? '';
     const bucket = groups.get(key) ?? [];
     bucket.push(ext);
     groups.set(key, bucket);
   }
 
-  const seen = new Set<string>();
   for (const [element, exts] of groups) {
     // Elements sort with the requested object first and its nested members after (the bridge
     // orders by path); the heading names the element so the reader never has to infer it.
     if (element) out += `### ${describeXrefElement(element)} — ${exts.length}\n\n`;
     for (const ext of exts) {
-      if (seen.has(ext.className)) continue;
-      seen.add(ext.className);
       out += `- **${ext.className}**`;
       if (ext.module) out += ` (${ext.module})`;
       if (ext.wrappedMethods && ext.wrappedMethods.length > 0) {

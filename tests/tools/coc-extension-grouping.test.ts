@@ -113,6 +113,27 @@ describe('CoC extensions — grouping by extended element', () => {
     expect(text).toContain('SomethingNew Foo › Parts Bar');
   });
 
+  it('never prints a count it does not then list', async () => {
+    // The dedupe used to run per item INSIDE the render loop, after the heading above it
+    // had already counted that item — so a repeated class name inflated both the "Found N"
+    // line and its group heading above the lines actually printed. Counting a deduped list
+    // is what keeps the two in step; nothing else in the output depends on the duplicate.
+    const withDupes = [
+      SALESTABLE_EXTENSIONS[0],
+      SALESTABLE_EXTENSIONS[0], // same className, same element
+      SALESTABLE_EXTENSIONS[2],
+    ] as typeof SALESTABLE_EXTENSIONS;
+    const text = await render(cocBridge(withDupes));
+
+    expect(text).toContain('Found 2 extension class(es)');
+    expect(text).toContain('Table SalesTable — 1');
+    expect(text).toContain('Form SalesTable — 1');
+    // The bullet is emitted once, and every counted class has one.
+    const bullets = text.match(/^- \*\*/gm) ?? [];
+    expect(bullets).toHaveLength(2);
+    expect(text.match(/GUPSalesTable_Extension/g) ?? []).toHaveLength(1);
+  });
+
   it('renders without headings when the bridge sends no element (older binary)', async () => {
     const text = await render(cocBridge([
       { className: 'Legacy_Extension', module: 'X', wrappedMethods: ['run'] },

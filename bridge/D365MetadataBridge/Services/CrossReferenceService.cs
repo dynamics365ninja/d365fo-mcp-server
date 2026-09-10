@@ -94,6 +94,24 @@ namespace D365MetadataBridge.Services
         private const byte KindOverride = 10;   // super():            Foo/Methods/pack -> Base/Methods/pack
 
         /// <summary>
+        /// Escape the LIKE metacharacters in a literal that is being CONCATENATED into a LIKE
+        /// pattern. Parameterising the pattern stops SQL injection but not this: inside a LIKE,
+        /// "_" still means "any single character".
+        ///
+        /// That matters here because the D365 CoC naming convention is "&lt;Base&gt;_Extension",
+        /// so essentially every class name this service handles contains an underscore, and an
+        /// unescaped "/Classes/Foo_Extension/Methods/%" also matches "/Classes/FooXExtension/…".
+        /// A census of this xref DB found no name pair that actually collides that way, so this
+        /// is closing a latent hole rather than a live miscount — but the patterns are built from
+        /// class names and element paths, and nothing stops the next model from shipping the pair.
+        ///
+        /// "[" must be replaced FIRST, or it would go on to escape the brackets introduced by the
+        /// other two replacements.
+        /// </summary>
+        private static string EscapeLike(string literal) =>
+            literal.Replace("[", "[[]").Replace("%", "[%]").Replace("_", "[_]");
+
+        /// <summary>
         /// Last slash-separated segment of an xref path — the member name for a
         /// "/Container/Owner/Methods/name" path. Null when the path has no segments.
         /// </summary>
@@ -207,7 +225,10 @@ namespace D365MetadataBridge.Services
             {
                 foreach (var p in pathVariants)
                 {
-                    extraPaths.Add(p + "/%"); // LIKE pattern for children
+                    // LIKE pattern for children. Only this derived copy is escaped — the
+                    // variants themselves go into an IN (...) equality list, where "_" is
+                    // an ordinary character and escaping it would stop them matching.
+                    extraPaths.Add(EscapeLike(p) + "/%");
                 }
             }
 
@@ -433,10 +454,9 @@ namespace D365MetadataBridge.Services
                     for (int i = 0; i < CocBaseContainers.Length; i++)
                     {
                         whereTargets.Add($"cand.Path = @T{i} OR cand.Path LIKE @P{i}");
+                        // @T is an equality test and takes the name as-is; only @P is a LIKE pattern.
                         sqlParams.Add(($"@T{i}", $"/{CocBaseContainers[i]}/{baseClassName}"));
-                        // Escape LIKE metacharacters in the caller-supplied name.
-                        var esc = baseClassName.Replace("[", "[[]").Replace("%", "[%]").Replace("_", "[_]");
-                        sqlParams.Add(($"@P{i}", $"/{CocBaseContainers[i]}/{esc}/%"));
+                        sqlParams.Add(($"@P{i}", $"/{CocBaseContainers[i]}/{EscapeLike(baseClassName)}/%"));
                     }
 
                     // Returns every Kind 2 target on each candidate's ExtensionOf line, plus the
@@ -540,14 +560,17 @@ namespace D365MetadataBridge.Services
 
                         using (var cmd2 = new SqlCommand(methodSql, conn))
                         {
-                            cmd2.Parameters.AddWithValue("@ExtClassMethods", $"/Classes/{extClassName}/Methods/%");
+                            // Both patterns are escaped: "_Extension" is the CoC naming convention, so
+                            // extClassName almost always carries an underscore, and an element path
+                            // can too ("/Forms/…/DataFields/TaxReimbursement_IT").
+                            cmd2.Parameters.AddWithValue("@ExtClassMethods", $"/Classes/{EscapeLike(extClassName)}/Methods/%");
                             // Anchored to the EXTENDED ELEMENT, not to the requested object. That is
                             // the whole payoff of reading the element: a form CoC wraps a method on
                             // one specific data source ("/Forms/SalesTable/DataSources/SalesLine/
                             // Methods/active"), and the SalesTable form has NINE data sources with an
                             // `active` method. Scoping to the base and matching leaf names alone could
                             // not tell them apart; scoping to the element makes the question exact.
-                            cmd2.Parameters.AddWithValue("@BaseClassMethods", $"{element}/Methods/%");
+                            cmd2.Parameters.AddWithValue("@BaseClassMethods", $"{EscapeLike(element)}/Methods/%");
                             cmd2.CommandTimeout = 60;
 
                             using (var reader2 = cmd2.ExecuteReader())
@@ -642,10 +665,14 @@ namespace D365MetadataBridge.Services
 
                     using (var cmd = new SqlCommand(sql, conn))
                     {
-                        cmd.Parameters.AddWithValue("@TargetTable", $"/Tables/{targetName}");
-                        cmd.Parameters.AddWithValue("@TargetTablePath", $"/Tables/{targetName}/%");
-                        cmd.Parameters.AddWithValue("@TargetClass", $"/Classes/{targetName}");
-                        cmd.Parameters.AddWithValue("@TargetClassPath", $"/Classes/{targetName}/%");
+                        // All four are compared with LIKE (see the WHERE above), so all four
+                        // are escaped — including the two with no trailing wildcard, where an
+                        // unescaped "_" would still match any single character.
+                        var escTarget = EscapeLike(targetName);
+                        cmd.Parameters.AddWithValue("@TargetTable", $"/Tables/{escTarget}");
+                        cmd.Parameters.AddWithValue("@TargetTablePath", $"/Tables/{escTarget}/%");
+                        cmd.Parameters.AddWithValue("@TargetClass", $"/Classes/{escTarget}");
+                        cmd.Parameters.AddWithValue("@TargetClassPath", $"/Classes/{escTarget}/%");
 
                         using (var reader = cmd.ExecuteReader())
                         {
@@ -758,10 +785,12 @@ namespace D365MetadataBridge.Services
             }
             else
             {
+                // The "/%" children are LIKE patterns and get escaped; the bare paths are
+                // dispatched to "=" below, where "_" is an ordinary character.
                 pathVariants.Add($"/Classes/{apiName}");
-                pathVariants.Add($"/Classes/{apiName}/%");
+                pathVariants.Add($"/Classes/{EscapeLike(apiName)}/%");
                 pathVariants.Add($"/Tables/{apiName}");
-                pathVariants.Add($"/Tables/{apiName}/%");
+                pathVariants.Add($"/Tables/{EscapeLike(apiName)}/%");
             }
 
             // Build WHERE clause
