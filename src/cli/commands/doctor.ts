@@ -397,23 +397,23 @@ export function checkPrefixResolution(
 
 /**
  * The object names doctor infers a prefix from. Read straight out of the symbol
- * index — the same rows the server's inference reads (SymbolIndex.getModelObjectNames)
- * — and empty whenever there is no index to read, which is not a prefix problem.
+ * index through the very function the server's inference uses, and empty
+ * whenever there is no index to read, which is not a prefix problem.
+ *
+ * Sharing the implementation is not tidiness. The copy that used to live here
+ * had drifted to a query the planner answers with the parent_name index — 483 s
+ * cold on a production database — so `d365fo-mcp doctor`, which is what a user
+ * runs precisely BECAUSE the server looks stuck, hung in the same place for the
+ * same reason, and sampled different rows than the server it was diagnosing.
  */
 async function modelObjectNames(dbPath: string, modelName: string): Promise<string[]> {
   if (!fs.existsSync(dbPath)) return [];
   try {
     const { default: Database } = await import('../../database/sqlite.js');
+    const { readModelObjectNames } = await import('../../metadata/symbolIndex.js');
     const db = new Database(dbPath, { readonly: true });
     try {
-      const rows = db.prepare(
-        `SELECT name FROM symbols
-         WHERE model = ?
-           AND parent_name IS NULL
-           AND type NOT IN ('method', 'field')
-         LIMIT 400`
-      ).all(modelName) as Array<{ name: string }>;
-      return rows.map(r => r.name);
+      return readModelObjectNames(db, modelName);
     } finally {
       db.close();
     }

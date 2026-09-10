@@ -30,6 +30,10 @@ import { setInitializeParams } from './utils/stdioSessionInfo.js';
 import { setModelObjectNameSource } from './utils/modelPrefixInference.js';
 import { trackBridgeStartup } from './bridge/bridgeReadiness.js';
 import { startLoopLagMonitor } from './utils/loopLag.js';
+import { warmPackagesRoots } from './utils/packagesRoot.js';
+import {
+  startupIndexBegan, setStartupIndexProgress, clearStartupIndexProgress,
+} from './utils/startupProgress.js';
 import { createShutdownCoordinator } from './utils/gracefulShutdown.js';
 import { box, kv, sectionTitle, statusLine, spread, c, glyph, sanitize, supportsUnicode, log, shortPath, startupWarnings } from './utils/terminalUi.js';
 import * as fs from 'fs/promises';
@@ -373,6 +377,9 @@ async function initializeServices() {
         // Single pass over all requested models — the FTS index is rebuilt once at the
         // end of the call, so looping per model would repeat a full-table rebuild.
         log.detail(`indexing ${modelNames.join(', ')}` + glyph.ellipsis);
+        // Published so the "still loading" answer every symbol-backed tool gets
+        // meanwhile can say which model the build is on — see startupProgress.
+        startupIndexBegan();
         try {
           if (canIndexOffThread(DB_PATH, LABELS_DB_PATH)) {
             // On a worker thread: the build is synchronous end to end, and inline
@@ -386,15 +393,22 @@ async function initializeServices() {
               metadataPath: METADATA_PATH,
               modelNames,
               output: process.stderr,
+              onProgress: setStartupIndexProgress,
             });
             log.detail(`indexed in ${(elapsedMs / 1000).toFixed(1)}s on a worker thread`);
           } else {
-            await symbolIndex.indexMetadataDirectory(METADATA_PATH, modelNames);
+            await symbolIndex.indexMetadataDirectory(METADATA_PATH, modelNames, {
+              onProgress: setStartupIndexProgress,
+            });
           }
           log.ok(`Indexed ${symbolIndex.getSymbolCount().toLocaleString('en-US')} symbols from ${modelNames.length} model(s)`);
         } catch (error) {
           log.warn(`Metadata indexing failed — starting with empty index: ${error}`);
           log.detail('run `npm run index-metadata` to build the database');
+        } finally {
+          // On the failure path too: a phase left behind would have the next
+          // "still loading" answer citing a model whose build died minutes ago.
+          clearStartupIndexProgress();
         }
       }
     } else {
@@ -565,6 +579,14 @@ async function main() {
   // stub, or the replacement built after a corrupt-DB recovery.
   onShutdown('symbol index', () => serverState.symbolIndex?.close?.());
   shutdownCoordinator.registerSignalHandlers({ stdio: isStdioMode });
+
+  // Start the AosService drive scan now, off the event loop, in both transports.
+  // Every path that needs a packages path reads a cache, and whoever fills it
+  // pays for the probes — on a machine with a disconnected mapped network drive
+  // that bill is an SMB timeout. Paid here it lands on the libuv threadpool
+  // before the first request; left to the first synchronous caller it is paid on
+  // the event loop, and the server answers nothing at all until it clears.
+  void warmPackagesRoots();
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Stdin sniffer: capture the `initialize` request params for get_workspace_info.

@@ -9,7 +9,7 @@
  * keeps the main thread serving; WAL mode lets this write proceed alongside the
  * main thread's readers.
  *
- * Spawned by XppSymbolIndex.ensureFilePathIndexes() and posts a single message:
+ * Spawned by XppSymbolIndex.ensureDeferredIndexes() and posts a single message:
  *   { ok: true, elapsedMs } | { ok: false, error }
  *
  * The connection is NOT read-only (unlike symbolCountsWorker) — this one writes.

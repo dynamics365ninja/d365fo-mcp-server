@@ -57,6 +57,7 @@ import { capToolResponse } from './responseCaps.js';
 const WRITE_CAPABLE_TOOLS = new Set(['d365fo_file', 'labels']);
 import { buildProgressMessage } from '../utils/toolProgressMessage.js';
 import { createProgressReporter, startProgressHeartbeat } from '../utils/progressReporter.js';
+import { describeDbWait } from '../utils/startupProgress.js';
 
 
 /**
@@ -186,11 +187,11 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         if (dbWaitTimer !== undefined) clearTimeout(dbWaitTimer);
       }
       if (result === 'timeout') {
+        // Wording lives in startupProgress: on a first start the build behind
+        // this refusal runs for tens of minutes, and the answer has to say which
+        // model it has reached or every retry reads identically.
         return {
-          content: [{
-            type: 'text',
-            text: `⏳ The MCP server is still loading the X++ symbol database (30–90 s on a normal start; a first start that indexes metadata can take several minutes). Please retry the request in a few seconds.`,
-          }],
+          content: [{ type: 'text', text: describeDbWait(toolName) }],
           isError: true,
         };
       }

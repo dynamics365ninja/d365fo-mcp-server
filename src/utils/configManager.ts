@@ -11,7 +11,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { autoDetectD365Project, detectD365Project, scanAllD365Projects, extractModelNameFromProject, detectGitBranch, isMicrosoftDemoModel, distinctCustomModels, type D365ProjectInfo } from './workspaceDetector.js';
 import { registerCustomModel, getCustomModels } from './modelClassifier.js';
 import { XppConfigProvider, type XppEnvironmentConfig } from './xppConfigProvider.js';
-import { FALLBACK_PACKAGES_ROOT, findPackagesRoot } from './packagesRoot.js';
+import { FALLBACK_PACKAGES_ROOT, findPackagesRoot, warmPackagesRoots } from './packagesRoot.js';
 import { debugLog } from './logger.js';
 import {
   recordDetectionSuccess, reportUnresolvedDetection, resetWorkspaceDetectionStatus,
@@ -841,6 +841,13 @@ class ConfigManager {
    */
   async ensureLoaded(): Promise<void> {
     await this.load();
+
+    // Settle the drive scan HERE, where waiting is free, rather than inside the
+    // synchronous getPackagePath() further down the same request. Both end up
+    // at the same cached answer; the difference is that a disconnected mapped
+    // drive costs its SMB timeout on the threadpool instead of on the event
+    // loop. Resolves immediately once warm, which it is after the first call.
+    await warmPackagesRoots();
 
     // Register the explicitly-configured custom models exactly once. The target
     // model resolved from configuration (D365FO_MODEL_NAME env var or a modelName

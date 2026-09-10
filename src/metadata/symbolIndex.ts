@@ -85,7 +85,7 @@ export interface XppSymbolIndexOptions {
   backgroundIndexBuilds?: boolean;
   /**
    * Skip the file_path index builds during construction; the caller runs
-   * ensureFilePathIndexes() itself once its bulk load is done (default false).
+   * ensureDeferredIndexes() itself once its bulk load is done (default false).
    *
    * Building them up front makes a bulk load maintain two extra B-trees per row,
    * and on a full rebuild the work is thrown away by clear() anyway.
@@ -93,6 +93,126 @@ export interface XppSymbolIndexOptions {
   deferFilePathIndexes?: boolean;
   /** Byte size at which a DB is "large" enough to hand its index build to a worker. */
   largeDbThresholdBytes?: number;
+}
+
+/**
+ * Where an index build has got to, for a caller that has to tell someone.
+ *
+ * Coarse on purpose: the phases are the three things that take minutes, and a
+ * per-file counter would post thousands of messages to say what "model 7 of 32"
+ * already says.
+ */
+export interface IndexProgress {
+  /** `scanning` sizes the models, `indexing` walks one, `fts` rebuilds the index. */
+  phase: 'scanning' | 'indexing' | 'fts';
+  /** The model being indexed; absent in the phases that are not per-model. */
+  model?: string;
+  /** 1-based position of `model` in the build order. */
+  modelIndex?: number;
+  modelCount: number;
+}
+
+/**
+ * How many regular (non-extension) object names the prefix sample may draw.
+ *
+ * inferPrefixFromObjectNames needs MIN_SAMPLE (4) of them and decides on a 60 %
+ * coverage threshold, so a few dozen settle the question as well as a few hundred
+ * — and this is the band that costs, since a model's extensions are counted in
+ * tens while its classes and tables run to thousands.
+ */
+export const REGULAR_NAME_SAMPLE = 60;
+
+/** The little of a database handle this read needs, so a CLI can pass its own. */
+export interface ModelNameReadDb {
+  prepare(sql: string): { all(...params: unknown[]): unknown[] };
+}
+
+/**
+ * Top-level object names belonging to one model — the evidence from which a
+ * model's naming prefix is inferred (see utils/modelPrefixInference.ts).
+ *
+ * Module-level and db-injected rather than a method, because `doctor` reads the
+ * same evidence over its own read-only connection. It used to do that with its
+ * own copy of the query, and the copy drifted: it kept the plain
+ * `parent_name IS NULL`, missed both bands, and asked for 400 names — so the
+ * command a user runs BECAUSE the server seems stuck took the same eight
+ * minutes, and inferred its prefix from a different sample than the server it
+ * was diagnosing. One implementation is the fix for both.
+ *
+ * Deliberately narrow and bounded: only `name`, capped at `limit`. Reading whole
+ * rows here would pull source snippets across the wire and turn a 450 ms lookup
+ * into a slow one.
+ *
+ * Extension objects are included on purpose — a dot-notation extension states the
+ * model's infix outright — but `parent_name IS NULL` had been quietly excluding
+ * them, because an extension ELEMENT is stored as a child of the base object it
+ * extends. On ContosoFinanceSK that hid 34 of 36: the model spells its extensions
+ * "…ConSKExtension" 35 times and "…ConSkExtension" once, yet inference saw
+ * two names, one of each, fell under the 60 % threshold and derived "ConSk"
+ * from the regular token instead — flattening the "SK" country code. This server
+ * then WROTE a ConSk extension, which became one of the two visible names, so
+ * the wrong answer was feeding itself. Members ('method', 'field') are excluded by
+ * type, which is what this clause was reaching for.
+ *
+ * The sample is drawn in two BANDS rather than as one `LIMIT` over the union,
+ * because a model with more names than `limit` otherwise lets SQLite decide which
+ * ones inference sees — no ORDER BY means no defined subset, and inference is
+ * threshold-based (MIN_COVERAGE 60 %), so a skewed sample can flip the answer.
+ * The bands also protect the signal: extensions are rare and state the infix
+ * outright, regular objects are many and carry the leading token, and
+ * inferPrefixFromObjectNames needs BOTH — a single window ordered any way at all
+ * would let the larger band crowd the other one out entirely. Each band is capped
+ * at half the budget, gives back what it does not use, and is ordered (type, name)
+ * so the same model always yields the same sample — a silent, self-reinforcing
+ * failure otherwise, since this server writes names with the inferred prefix and
+ * those names become evidence for the next inference.
+ *
+ * The regular band is capped well below its share of the budget
+ * (REGULAR_NAME_SAMPLE), because it is the expensive half and the cheap half
+ * carries most of the signal: extensions state the infix outright, while regular
+ * objects only have to clear MIN_SAMPLE (4) and MIN_COVERAGE (60 %) for the
+ * leading token. Reading 400 of them to settle a 4-name question was paid on the
+ * first call of every session. They cannot be dropped altogether — the underscore
+ * form ("ConSK_" vs "ConSK") appears in no extension name, so only a regular
+ * object can decide it.
+ */
+export function readModelObjectNames(db: ModelNameReadDb, model: string, limit = 400): string[] {
+  if (!model) return [];
+  if (limit <= 0) return [];
+
+  const band = (extensions: boolean, cap: number): string[] => {
+    if (cap <= 0) return [];
+    const rows = db
+      .prepare(
+        // Unary + on parent_name, for the same reason as searchCustomExtensions'
+        // `+type IN (…)`: written plainly, `parent_name IS NULL` makes the planner
+        // choose idx_symbols_parent_name, whose ANALYZE stats claim ~13 rows per
+        // value. NULL is not one value — it is every top-level object of every
+        // model, 180,664 of the 1,188,748 rows on the production DB, against 274
+        // for the one model being asked about. Measured on that DB: 483 s cold and
+        // 632 ms warm on the parent_name plan, against 17 ms on the model plan —
+        // the difference between a first call that looks like a hung server and
+        // one that answers. EXPLAIN QUERY PLAN must keep reporting
+        // `SEARCH symbols USING INDEX idx_symbols_model`.
+        `SELECT name FROM symbols
+           WHERE model = ?
+             AND type ${extensions ? 'LIKE' : 'NOT LIKE'} '%-extension'
+             ${extensions ? '' : 'AND +parent_name IS NULL'}
+             AND type NOT IN ('method', 'field')
+           ORDER BY type, name
+           LIMIT ?`
+      )
+      .all(model, cap) as Array<{ name: string }>;
+    return rows.map(r => r.name);
+  };
+
+  // Extensions first so their (smaller) band can hand its leftover budget to the
+  // regular one; the reverse would let a large model spend the whole budget on
+  // regular objects before the infix evidence is ever read.
+  const half = Math.max(1, Math.ceil(limit / 2));
+  const extensionNames = band(true, half);
+  const regularNames = band(false, Math.min(REGULAR_NAME_SAMPLE, limit - extensionNames.length));
+  return [...extensionNames, ...regularNames];
 }
 
 export class XppSymbolIndex {
@@ -119,7 +239,7 @@ export class XppSymbolIndex {
   // Symbol-count scans are expensive (full index scan of 1M+ rows, 30-60 s
   // cold) — memoize the result and compute it off-thread (see getSymbolCounts).
   private dbPath: string;
-  // Needed alongside dbPath so ensureFilePathIndexes() can size the labels DB
+  // Needed alongside dbPath so ensureDeferredIndexes() can size the labels DB
   // and hand its path to the background index builder.
   private labelsDbPath: string = ':memory:';
   private symbolCountsCache: SymbolCounts | null = null;
@@ -133,7 +253,7 @@ export class XppSymbolIndex {
   // Per-connection prepared-statement cache.  Prepared statements are bound to
   // their originating connection and cannot be shared across connections.
   private perConnStmtCache = new WeakMap<Database, Map<string, Statement>>();
-  // See XppSymbolIndexOptions. Held as fields so ensureFilePathIndexes() reads the
+  // See XppSymbolIndexOptions. Held as fields so ensureDeferredIndexes() reads the
   // same answer whether it runs from the constructor or from a build script later.
   private backgroundIndexBuilds: boolean;
   private deferFilePathIndexes: boolean;
@@ -471,8 +591,7 @@ export class XppSymbolIndex {
       CREATE INDEX IF NOT EXISTS idx_symbols_type ON symbols(type);
       CREATE INDEX IF NOT EXISTS idx_symbols_model ON symbols(model);
       CREATE INDEX IF NOT EXISTS idx_symbols_pattern_type ON symbols(pattern_type);
-      CREATE INDEX IF NOT EXISTS idx_symbols_parent_name ON symbols(parent_name);
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_symbols_unique 
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_symbols_unique
         ON symbols(name, type, COALESCE(parent_name, ''), model);
       
       -- Composite indexes for common query patterns (major speed boost)
@@ -485,6 +604,29 @@ export class XppSymbolIndex {
       -- Index for extends_class lookups (CoC extension discovery)
       CREATE INDEX IF NOT EXISTS idx_extends_class ON symbols(extends_class) WHERE extends_class IS NOT NULL;
     `);
+
+    // idx_symbols_parent_name ON symbols(parent_name) is DROPPED, not created.
+    //
+    // It earned no query and cost several. Every legitimate lookup of a member
+    // by its owner goes through a partial index — verified on the production DB
+    // (1,188,748 rows), where `parent_name = ?`, `parent_name = ? AND type = ?`
+    // and `type = ? AND parent_name = ?` all plan on idx_parent_type_name
+    // (covering) or idx_type_parent. The ONE shape that chose the bare index was
+    // `parent_name IS NULL`, which is the shape it must never serve: NULL is not
+    // a value here, it is the marker on every top-level object of every model —
+    // 180,664 rows against the 274 of the model actually being asked about — yet
+    // ANALYZE prices the term like an equality (~13 rows) and the planner takes
+    // it. That misprice is what made a first `get_workspace_info` take 483 s.
+    //
+    // 1.17.3 defused the known instance with a unary `+`. This removes the
+    // loaded gun: with no index on the column, no future query can be captured
+    // by it. The `+` guards stay where they are — they cost nothing, they
+    // document the hazard, and they still hold on a database built before this.
+    //
+    // Cheap to apply: DROP INDEX frees the index's pages without reading the
+    // table, so an existing database pays no scan for the migration. Runs on the
+    // writer only — read-pool connections are opened readonly and never come here.
+    this.db.exec(`DROP INDEX IF EXISTS idx_symbols_parent_name;`);
 
     // Create code_patterns table for pattern analysis
     this.db.exec(`
@@ -854,7 +996,7 @@ export class XppSymbolIndex {
     `);
 
     if (!this.deferFilePathIndexes) {
-      this.ensureFilePathIndexes();
+      this.ensureDeferredIndexes();
     }
   }
 
@@ -865,7 +1007,7 @@ export class XppSymbolIndex {
    * `idx_labels_unique` is NOT in here — it enforces the dedupe that
    * INSERT OR REPLACE relies on and has to stay live through the load.
    *
-   * The two file_path entries are also created on demand by ensureFilePathIndexes()
+   * The two file_path entries are also created on demand by ensureDeferredIndexes()
    * (which adds the large-DB worker dispatch that startup needs); this list is the
    * single definition of their SQL so the two paths cannot drift apart.
    */
@@ -892,7 +1034,7 @@ export class XppSymbolIndex {
     },
   ];
 
-  /** The subset created at schema-init time; the file_path_id index is left to ensureFilePathIndexes(). */
+  /** The subset created at schema-init time; the file_path_id index is left to ensureDeferredIndexes(). */
   private static readonly LABEL_SECONDARY_INDEX_SQL = XppSymbolIndex.LABEL_SECONDARY_INDEXES
     .filter(i => i.name !== 'idx_labels_file_path_id')
     .map(i => i.sql)
@@ -906,7 +1048,7 @@ export class XppSymbolIndex {
    * a ~130-character absolute path. Measured on a 400 K-row / 150-model reproduction
    * of this exact write path: 17.2 s with the indexes live versus 10.6 s dropping
    * these seven and rebuilding them at the end (the insert itself, 14.9 s → 4.4 s).
-   * This is the same trade the symbols side already makes in ensureFilePathIndexes().
+   * This is the same trade the symbols side already makes in ensureDeferredIndexes().
    *
    * Build-time only. Do NOT call this on a server that is answering queries — label
    * search degrades to a full scan until createLabelSecondaryIndexes() finishes.
@@ -942,28 +1084,41 @@ export class XppSymbolIndex {
   }
 
   /**
-   * Index `symbols.file_path` and `labels.file_path`.
+   * The indexes built AFTER the schema exists rather than with it.
    *
-   * Both are the lookup key of removeSymbolsByFile()/removeLabelsByFile(), which
-   * every update_symbol_index, undo_last_modification and resync runs first.
-   * Unindexed, each of those calls scans the entire table — measured on the 2 GB
-   * production DB at 319 s (the SELECT of object names) + 173 s (the DELETE) for
-   * indexing a SINGLE new object, versus 0 ms once the index exists. That is why
-   * indexing one freshly created object cost as much as a rebuild.
+   * Deliberately not part of the CREATE INDEX block above, and all for one
+   * reason: building any of these over an already-populated production table
+   * takes seconds to minutes, node:sqlite is synchronous, and inline on the main
+   * thread that is the whole of startup — the failure mode that makes MCP
+   * clients time out and kill the server. So each is instant on an empty or
+   * small database (a fresh build, the test suite, :memory:) and handed to a
+   * worker thread on a large existing one, where until it lands the queries
+   * concerned simply stay as slow as they already were.
    *
-   * Deliberately not part of the CREATE INDEX block above. node:sqlite is
-   * synchronous, and building this index over an already-populated production
-   * table takes ~8 s, so doing it inline would block the event loop for the whole
-   * of startup — the failure mode that makes MCP clients time out and kill the
-   * server. On an empty or small DB (a fresh build, the test suite, :memory:) the
-   * build is instant and runs here; on a large existing DB it is handed to a
-   * worker thread, and until it finishes those deletes simply stay as slow as
-   * they are today.
+   * What is deferred, and why each earns its bytes:
+   *
+   *  • `symbols.file_path` / `labels.file_path` (+ their NOCASE twins) are the
+   *    lookup key of removeSymbolsByFile()/removeLabelsByFile(), which every
+   *    update_symbol_index, undo_last_modification and resync runs first.
+   *    Unindexed, each of those scans the entire table — measured on the 2 GB
+   *    production DB at 319 s (the SELECT of object names) + 173 s (the DELETE)
+   *    for indexing a SINGLE new object, versus 0 ms once the index exists.
+   *
+   *  • `idx_model_type_name` covers the model prefix sample
+   *    (readModelObjectNames), which every session runs on its first call that
+   *    names an object. Without it the plan seeks idx_symbols_model and then
+   *    reads the table row by row, and because the query is
+   *    `ORDER BY type, name LIMIT n` it must pass over EVERY row of the model
+   *    before the limit can apply — measured on the production DB at 9.2 s cold
+   *    and 2.4 s warm for a large model. Ordered (model, type, name) the seek
+   *    walks in the order asked for and stops at the limit, and with parent_name
+   *    carried as the fourth column nothing touches the table at all: 152 ms to
+   *    0.2 ms on a 480k-row fixture, with the temp B-tree gone from the plan.
    *
    * Public because build scripts defer it (see XppSymbolIndexOptions) and run it
    * themselves after their bulk load, with the worker dispatch turned off.
    */
-  ensureFilePathIndexes(): void {
+  ensureDeferredIndexes(): void {
     const missing = (db: Database, indexName: string): boolean =>
       !db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?`).get(indexName);
 
@@ -986,6 +1141,17 @@ export class XppSymbolIndex {
         dbFile: this.dbPath,
         name: 'idx_symbols_file_path',
         sql: 'CREATE INDEX IF NOT EXISTS idx_symbols_file_path ON symbols(file_path);',
+      });
+    }
+    if (missing(this.db, 'idx_model_type_name')) {
+      work.push({
+        db: this.db,
+        dbFile: this.dbPath,
+        name: 'idx_model_type_name',
+        // parent_name last, and present only to make the index cover the query:
+        // the sample filters on it (`+parent_name IS NULL`) but never orders or
+        // seeks by it, so it earns nothing as a leading column.
+        sql: 'CREATE INDEX IF NOT EXISTS idx_model_type_name ON symbols(model, type, name, parent_name);',
       });
     }
     if (missing(this.labelsDb, 'idx_labels_file_path_id')) {
@@ -1033,7 +1199,7 @@ export class XppSymbolIndex {
    *
    * The worker opens its OWN write connection to the same file, so this is only
    * legal while the database stays in WAL mode and no one takes an EXCLUSIVE lock
-   * on it for the duration — both guaranteed by the caller (ensureFilePathIndexes
+   * on it for the duration — both guaranteed by the caller (ensureDeferredIndexes
    * checks the journal mode, and build scripts opt out of workers entirely).
    *
    * Best-effort: a failure leaves the index absent, which is exactly the state
@@ -1399,102 +1565,13 @@ export class XppSymbolIndex {
    * it case-SENSITIVE against a Windows filesystem that is not: `k:\aosservice\…`
    * from a tool argument never matched `K:\AosService\…` as stored by the indexer,
    * so the delete reported 0 rows and every stale symbol stayed searchable. See
-   * ensureFilePathIndexes for the NOCASE index that keeps this lookup off a scan.
+   * ensureDeferredIndexes for the NOCASE index that keeps this lookup off a scan.
    *
    * Returns the names of top-level objects that were removed (for cache invalidation).
    */
-  /**
-   * How many regular (non-extension) object names the prefix sample may draw.
-   *
-   * inferPrefixFromObjectNames needs MIN_SAMPLE (4) of them and decides on a 60 %
-   * coverage threshold, so a few dozen settle the question as well as a few hundred
-   * — and this is the band that costs, since a model's extensions are counted in
-   * tens while its classes and tables run to thousands.
-   */
-  private static readonly REGULAR_NAME_SAMPLE = 60;
-
-  /**
-   * Top-level object names belonging to one model — the evidence from which a
-   * model's naming prefix is inferred (see utils/modelPrefixInference.ts).
-   *
-   * Deliberately narrow and bounded: only `name`, capped at `limit`. Reading whole
-   * rows here would pull source snippets across the wire and turn a 450 ms lookup
-   * into a slow one.
-   *
-   * Extension objects are included on purpose — a dot-notation extension states the
-   * model's infix outright — but `parent_name IS NULL` had been quietly excluding
-   * them, because an extension ELEMENT is stored as a child of the base object it
-   * extends. On ContosoFinanceSK that hid 34 of 36: the model spells its extensions
-   * "…ConSKExtension" 35 times and "…ConSkExtension" once, yet inference saw
-   * two names, one of each, fell under the 60 % threshold and derived "ConSk"
-   * from the regular token instead — flattening the "SK" country code. This server
-   * then WROTE a ConSk extension, which became one of the two visible names, so
-   * the wrong answer was feeding itself. Members ('method', 'field') are excluded by
-   * type, which is what this clause was reaching for.
-   *
-   * The sample is drawn in two BANDS rather than as one `LIMIT` over the union,
-   * because a model with more names than `limit` otherwise lets SQLite decide which
-   * ones inference sees — no ORDER BY means no defined subset, and inference is
-   * threshold-based (MIN_COVERAGE 60 %), so a skewed sample can flip the answer.
-   * The bands also protect the signal: extensions are rare and state the infix
-   * outright, regular objects are many and carry the leading token, and
-   * inferPrefixFromObjectNames needs BOTH — a single window ordered any way at all
-   * would let the larger band crowd the other one out entirely. Each band is capped
-   * at half the budget, gives back what it does not use, and is ordered (type, name)
-   * so the same model always yields the same sample — a silent, self-reinforcing
-   * failure otherwise, since this server writes names with the inferred prefix and
-   * those names become evidence for the next inference.
-   *
-   * The regular band is capped well below its share of the budget
-   * (REGULAR_NAME_SAMPLE), because it is the expensive half and the cheap half
-   * carries most of the signal: extensions state the infix outright, while regular
-   * objects only have to clear MIN_SAMPLE (4) and MIN_COVERAGE (60 %) for the
-   * leading token. Reading 400 of them to settle a 4-name question was paid on the
-   * first call of every session. They cannot be dropped altogether — the underscore
-   * form ("ConSK_" vs "ConSK") appears in no extension name, so only a regular
-   * object can decide it.
-   */
+  /** See {@link readModelObjectNames} — this is the server's handle on it. */
   getModelObjectNames(model: string, limit = 400): string[] {
-    if (!model) return [];
-    if (limit <= 0) return [];
-    const db = this.getReadDb();
-
-    const band = (extensions: boolean, cap: number): string[] => {
-      if (cap <= 0) return [];
-      const rows = db
-        .prepare(
-          // Unary + on parent_name, for the same reason as searchCustomExtensions'
-          // `+type IN (…)`: written plainly, `parent_name IS NULL` makes the planner
-          // choose idx_symbols_parent_name, whose ANALYZE stats claim ~13 rows per
-          // value. NULL is not one value — it is every top-level object of every
-          // model, 180,664 of the 1,188,748 rows on the production DB, against 274
-          // for the one model being asked about. Measured warm: 454 ms on the
-          // parent_name plan, 1 ms on the model plan; cold it is the difference
-          // between a 5-minute first get_workspace_info and an instant one.
-          // EXPLAIN QUERY PLAN must keep reporting
-          // `SEARCH symbols USING INDEX idx_symbols_model`.
-          `SELECT name FROM symbols
-           WHERE model = ?
-             AND type ${extensions ? 'LIKE' : 'NOT LIKE'} '%-extension'
-             ${extensions ? '' : 'AND +parent_name IS NULL'}
-             AND type NOT IN ('method', 'field')
-           ORDER BY type, name
-           LIMIT ?`
-        )
-        .all(model, cap) as Array<{ name: string }>;
-      return rows.map(r => r.name);
-    };
-
-    // Extensions first so their (smaller) band can hand its leftover budget to the
-    // regular one; the reverse would let a large model spend the whole budget on
-    // regular objects before the infix evidence is ever read.
-    const half = Math.max(1, Math.ceil(limit / 2));
-    const extensionNames = band(true, half);
-    const regularNames = band(
-      false,
-      Math.min(XppSymbolIndex.REGULAR_NAME_SAMPLE, limit - extensionNames.length),
-    );
-    return [...extensionNames, ...regularNames];
+    return readModelObjectNames(this.getReadDb(), model, limit);
   }
 
   removeSymbolsByFile(filePath: string): { deletedCount: number; objectNames: string[] } {
@@ -2139,8 +2216,12 @@ export class XppSymbolIndex {
   async indexMetadataDirectory(
     metadataPath: string,
     modelNames?: string | string[],
-    opts?: { ftsStrategy?: 'rebuild' | 'incremental' },
+    opts?: { ftsStrategy?: 'rebuild' | 'incremental'; onProgress?: (p: IndexProgress) => void },
   ): Promise<void> {
+    // Never let a progress listener's own failure abort an index build.
+    const report = (p: IndexProgress): void => {
+      try { opts?.onProgress?.(p); } catch { /* reporting is never load-bearing */ }
+    };
     const skipFts = process.env.SKIP_FTS === 'true';
     const resumable = process.env.RESUME === 'true';
     // Incremental FTS only makes sense for a scoped pass; an unscoped one touches
@@ -2157,6 +2238,7 @@ export class XppSymbolIndex {
     let models = allModels;
     if (allModels.length > 1) {
       log.detail(`Scanning ${allModels.length} model(s) to determine build order...`);
+      report({ phase: 'scanning', modelCount: allModels.length });
       models = this.sortModelsBySize(metadataPath, allModels);
       log.detail(`Build order determined (largest model first: ${models[0] ?? '—'})`);
     }
@@ -2206,6 +2288,7 @@ export class XppSymbolIndex {
       const progressPercent = ((modelIndex / models.length) * 100).toFixed(0);
 
       // Show which model is being processed RIGHT NOW (before the slow transaction)
+      report({ phase: 'indexing', model, modelIndex, modelCount: models.length });
       if (isCI()) {
         log.detail(`[${progressPercent}%] indexing ${model}...`);
       } else {
@@ -2369,6 +2452,7 @@ export class XppSymbolIndex {
       log.ok(`Indexed ${models.length} model(s) in ${duration}s`);
     } else {
       // Rebuild FTS index from scratch (much faster than per-insert triggers)
+      report({ phase: 'fts', modelCount: models.length });
       const ftsStartTime = Date.now();
       this.db.exec("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild');");
       const ftsDuration = ((Date.now() - ftsStartTime) / 1000).toFixed(1);

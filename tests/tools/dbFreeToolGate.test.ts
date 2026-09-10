@@ -16,6 +16,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { registerToolHandler } from '../../src/tools/toolHandler';
+import {
+  setStartupIndexProgress, clearStartupIndexProgress,
+} from '../../src/utils/startupProgress';
 import type { XppServerContext } from '../../src/types/context';
 
 type CallHandler = (request: any, extra: any) => Promise<any>;
@@ -99,6 +102,36 @@ describe('dbReady gate', () => {
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('still loading the X++ symbol database');
     } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /**
+   * The refusal above is correct but, on a first start, uninformative: the build
+   * behind it runs for tens of minutes and the sentence was byte-identical on
+   * every retry, so nothing separated a build that was progressing from a dead
+   * server. When a build IS in flight the wait names the model it has reached.
+   */
+  it('says which model the first-start index build has reached', async () => {
+    vi.useFakeTimers();
+    setStartupIndexProgress(
+      { phase: 'indexing', model: 'ApplicationSuite', modelIndex: 3, modelCount: 32 },
+      Date.now(),
+    );
+    try {
+      const handler = buildHandler();
+      const pending = call(handler, 'search', { query: 'CustTable' });
+      await vi.advanceTimersByTimeAsync(56_000);
+      const result = await pending;
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('ApplicationSuite');
+      expect(result.content[0].text).toContain('model 3 of 32');
+      // The generic wording is REPLACED, not appended to — two answers to the
+      // same question, one of them vaguer, is what this case exists to prevent.
+      expect(result.content[0].text).not.toContain('30–90 s on a normal start');
+    } finally {
+      clearStartupIndexProgress();
       vi.useRealTimers();
     }
   });

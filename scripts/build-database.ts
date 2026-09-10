@@ -397,7 +397,7 @@ async function buildDatabase() {
   console.log('');
   log.step('Building file_path indexes...');
   const filePathIdxStart = Date.now();
-  symbolIndex.ensureFilePathIndexes();
+  symbolIndex.ensureDeferredIndexes();
   log.ok(`file_path indexes built in ${((Date.now() - filePathIdxStart) / 1000).toFixed(2)}s`);
 
   if (SKIP_FTS) {
