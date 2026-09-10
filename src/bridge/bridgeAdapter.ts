@@ -3012,23 +3012,23 @@ function formatCocExtensions(r: BridgeExtensionClassResult, methodNameFilter?: s
     // orders by path); the heading names the element so the reader never has to infer it.
     if (element) out += `### ${describeXrefElement(element)} — ${exts.length}\n\n`;
     for (const ext of exts) {
-    if (seen.has(ext.className)) continue;
-    seen.add(ext.className);
-    out += `- **${ext.className}**`;
-    if (ext.module) out += ` (${ext.module})`;
-    if (ext.wrappedMethods && ext.wrappedMethods.length > 0) {
-      // Deliberately no `Uses 'next' keyword: ✓` line on THIS path, unlike the index /
-      // filesystem path in findCocExtensions.ts. That one earns it — fsExtensionScanner
-      // builds cocMethods by testing each method body against /\bnext\s+\w/i — whereas
-      // here the claim was printed unconditionally for anything with a non-empty
-      // wrappedMethods, and nothing had read a line of source. It therefore asserted a
-      // `next` in classes that contained none, back when wrappedMethods was every base
-      // method the class called. The list is now the same-named base-method call that IS
-      // the `next`, but that is inferred from xref shape rather than seen, so the list
-      // stands on its own instead of carrying a tick it cannot back.
-      out += `\n    Wraps methods: ${ext.wrappedMethods.join(', ')}`;
-    }
-    out += `\n`;
+      if (seen.has(ext.className)) continue;
+      seen.add(ext.className);
+      out += `- **${ext.className}**`;
+      if (ext.module) out += ` (${ext.module})`;
+      if (ext.wrappedMethods && ext.wrappedMethods.length > 0) {
+        // Deliberately no `Uses 'next' keyword: ✓` line on THIS path, unlike the index /
+        // filesystem path in findCocExtensions.ts. That one earns it — fsExtensionScanner
+        // builds cocMethods by testing each method body against /\bnext\s+\w/i — whereas
+        // here the claim was printed unconditionally for anything with a non-empty
+        // wrappedMethods, and nothing had read a line of source. It therefore asserted a
+        // `next` in classes that contained none, back when wrappedMethods was every base
+        // method the class called. The list is now the same-named base-method call that IS
+        // the `next`, but that is inferred from xref shape rather than seen, so the list
+        // stands on its own instead of carrying a tick it cannot back.
+        out += `\n    Wraps methods: ${ext.wrappedMethods.join(', ')}`;
+      }
+      out += `\n`;
     }
     out += `\n`;
   }

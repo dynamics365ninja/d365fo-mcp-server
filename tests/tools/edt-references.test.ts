@@ -46,6 +46,16 @@ function bridgeWithNoRows(): BridgeClient {
   } as unknown as BridgeClient;
 }
 
+/** Bridge that is up but whose query fails — an outcome of 'error', never 'empty'. */
+function bridgeThatThrows(): BridgeClient {
+  return {
+    isReady: true,
+    metadataAvailable: true,
+    xrefAvailable: true,
+    findReferences: vi.fn(async () => { throw new Error('SQL timeout'); }),
+  } as unknown as BridgeClient;
+}
+
 /** Bridge that is not in play at all (serverless mode / no xref DB configured). */
 function bridgeUnavailable(): BridgeClient {
   return { isReady: true, metadataAvailable: true, xrefAvailable: false } as unknown as BridgeClient;
@@ -150,6 +160,50 @@ describe('find_references — why the fallback was used', () => {
 
     const text = await runTool({ targetName: 'SomeName', targetType: 'class' }, bridge);
     expect(text).toContain('cross-reference query failed');
+  });
+});
+
+// ─── an unsearchable type when the bridge DID answer ──────────────────────────
+
+describe('find_references — unsearchable targetType, bridge answered with no rows', () => {
+  // The two halves of this fix met here and disagreed. Adding /Edts/ (etc.) to the
+  // C# container list is what makes a bare EDT name reach the rows that exist —
+  // so once it does, a bridge 'empty' for these types is a real zero, and
+  // tryBridgeReferences only ever returns 'empty' when every query ran cleanly.
+  // The unsearchable-type message called it "inconclusive" anyway, and told the
+  // reader to "re-run once the xref bridge is available" while the bridge was the
+  // thing that had just answered them.
+  for (const targetType of ['edt', 'form', 'query', 'view', 'report']) {
+    it(`reports an authoritative zero for targetType="${targetType}"`, async () => {
+      const text = await runTool({ targetName: 'EcoResDescription', targetType }, bridgeWithNoRows());
+
+      expect(text).toContain('**Total References Found:** 0');
+      expect(text).toContain('C# bridge (DYNAMICSXREFDB)');
+      expect(text).not.toContain('inconclusive');
+      expect(text).not.toContain('NOT a count of zero');
+      // The advice that made the old text actively wrong in this exact case.
+      expect(text).not.toContain('Re-run once the xref bridge is available');
+      // Re-running the bare name as an explicit path queries a strict subset of
+      // what just ran, so offering it here would be noise.
+      expect(text).not.toContain('Or pass the explicit AOT path');
+    });
+  }
+
+  it('still keeps the "not necessarily unused" caveat on the zero', async () => {
+    const text = await runTool({ targetName: 'EcoResDescription', targetType: 'edt' }, bridgeWithNoRows());
+    expect(text).toContain('Before concluding it is unused');
+    expect(text).toContain('misspelling is indistinguishable');
+  });
+
+  it('still refuses to give a number when the bridge could not answer', async () => {
+    // The distinction the whole branch rests on: 'unavailable'/'error' keep the
+    // inconclusive wording, so this must not have become a blanket zero.
+    for (const bridge of [bridgeUnavailable(), bridgeThatThrows()]) {
+      const text = await runTool({ targetName: 'EcoResDescription', targetType: 'edt' }, bridge);
+      expect(text).toContain('inconclusive');
+      expect(text).not.toContain('**Total References Found:** 0');
+      expect(text).toContain('Re-run once the xref bridge is available');
+    }
   });
 });
 

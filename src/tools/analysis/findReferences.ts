@@ -118,12 +118,44 @@ function bridgeFallbackReason(status: 'empty' | 'error' | 'unavailable'): string
  * form, query, view or report is referenced mostly from declarative metadata —
  * table fields, control properties, dataset bindings — that the text index does
  * not contain. So there is no number to report, only that fact.
+ *
+ * Unless the bridge answered. See the 'empty' branch.
  */
 function describeUnsearchableType(
   targetName: string,
   targetType: string,
   status: 'empty' | 'error' | 'unavailable',
 ): { content: Array<{ type: 'text'; text: string }> } {
+  // 'empty' is a real zero, not a missing answer. tryBridgeReferences returns it
+  // only when every candidate query ran and none of them errored — anything else
+  // is 'error' — so the count is as authoritative as a non-zero one, and the label
+  // path above already reports its own 'empty' that way.
+  //
+  // It is authoritative for these five types specifically BECAUSE of the container
+  // fix in this change: a bare name now expands to /Edts/, /Forms/, /Queries/,
+  // /Views/ and /Reports/, so the query reaches the rows that exist instead of
+  // matching nothing by construction. Calling that "inconclusive" would put back
+  // the defect this function was written to remove, one layer down — and the text
+  // did worse than hedge, telling the reader to "re-run once the xref bridge is
+  // available" at the moment the bridge had finished answering them.
+  if (status === 'empty') {
+    let out = `# References to \`${targetName}\`\n\n`;
+    out += `**Target Type:** ${targetType}\n`;
+    out += `**Total References Found:** 0\n`;
+    out += `_Source: C# bridge (DYNAMICSXREFDB)_\n\n`;
+    out += `The cross-reference database was queried and matched no rows. For a \`${targetType}\` `;
+    out += `that is the entire answer: its usages live in declarative metadata (table fields, form `;
+    out += `control properties, dataset bindings) that only the xref DB records, so no other source `;
+    out += `here could add to it.\n\n`;
+    out += `Before concluding it is unused, confirm the name is written exactly as stored — a `;
+    out += `misspelling is indistinguishable from a genuine miss. Check it with \`search\`/\`get_object_info\`.\n`;
+    return { content: [{ type: 'text', text: out }] };
+  }
+
+  // 'error'/'unavailable': no query ran, so there is no number — only that fact.
+  // The explicit AOT path is worth suggesting only here. On 'empty' it would be
+  // noise: the bare name already expanded to that same path and a strict subset
+  // of what was just queried, so re-running it cannot change the answer.
   const suggestion = targetName.startsWith('/') ? null : ({
     edt: `/Edts/${targetName}`, report: `/Reports/${targetName}`,
     form: `/Forms/${targetName}`, query: `/Queries/${targetName}`, view: `/Views/${targetName}`,
