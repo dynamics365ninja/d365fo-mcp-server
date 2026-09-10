@@ -28,7 +28,85 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
-_Nothing released yet._
+### Fixed
+- **`doctor` kept its own copy of the query that hung the server, and the copy
+  was the unfixed one.** 1.17.3 put the unary `+` on the prefix sample's
+  `parent_name IS NULL` so the planner seeks `idx_symbols_model`; `doctor` read
+  the same evidence through a duplicate of the query that never got the fix, so
+  the command a user runs *because* the server looks stuck took the same eight
+  minutes — and, missing the two-band split as well, inferred the prefix from a
+  different sample than the server it was diagnosing. Measured on a production
+  database (1,188,748 rows, 2.5 GB) with a cold file cache: **483 s** on the
+  plain plan, 632 ms warm, 17 ms on the model plan. Both now call one
+  `readModelObjectNames`, and a test EXPLAINs the SQL that function actually
+  issues rather than a copy written in the test, which is what let the two drift
+  apart in the first place. A sweep of the other nine `parent_name IS NULL`
+  queries found no third instance: every one of them carries a selective
+  equality (`name`, `type`, `file_path`) that outranks the parent_name index.
+- **The drive scan no longer blocks the event loop.** C:, K:, J: and I: are
+  probed unconditionally — deliberately, since skipping one hides the packages
+  root on it — but `statSync` on a disconnected mapped network drive freezes the
+  thread it runs on for the SMB timeout, and on the main thread that is every
+  request, every log line and every heartbeat. The scan now runs on
+  `fs.promises` (`warmPackagesRoots`), started at server startup in both
+  transports and awaited by `ConfigManager.ensureLoaded()`, which every request
+  passes through before it reaches a synchronous getter. Same letters, same
+  budget, same ranking — the stall just lands on the libuv threadpool instead.
+  Probes stay sequential on purpose: the pool has four threads, and several dead
+  drives probed at once would occupy all of them. The synchronous scan remains
+  as the fallback for the CLI and for anything that beats the warm-up.
+
+### Changed
+- **`idx_symbols_parent_name` is dropped, and the prefix sample gets a covering
+  index.** Two schema changes that between them retire the defect above rather
+  than patch it again.
+
+  The bare index on `parent_name` earned no query and cost several. Verified on
+  the production database before removing it: every legitimate member lookup —
+  `parent_name = ?`, `parent_name = ? AND type = ?`, `type = ? AND parent_name = ?`
+  — already planned on `idx_parent_type_name` (covering) or `idx_type_parent`.
+  The one shape that chose the bare index was `parent_name IS NULL`, which is
+  the shape it must never serve. 1.17.3 defused the known instance with a unary
+  `+`; dropping the index means no future query can be captured by it, whether
+  or not whoever writes it knows to add the guard. The `+` guards stay: they
+  cost nothing, they document the hazard, and they still hold on a database
+  built before this.
+
+  `idx_model_type_name ON symbols(model, type, name, parent_name)` covers the
+  sample outright. Without it the plan seeks `idx_symbols_model` and then reads
+  the table row by row, and since the query is `ORDER BY type, name LIMIT n` it
+  had to pass over EVERY row of the model before the limit could apply — so a
+  large model cost 9.2 s cold and 2.4 s warm even on the *right* index. Ordered
+  (model, type, name) the seek walks in the order asked for and stops at the
+  limit, and with `parent_name` carried as a fourth column nothing touches the
+  table at all.
+
+  Measured end to end on a copy of the production database (2,386 MB,
+  1,188,748 rows): the prefix read for a large model goes **1,143 ms → 0.2 ms**,
+  and the plan loses its `USE TEMP B-TREE FOR ORDER BY`. `ANALYZE` is
+  deliberately not run afterwards — verified with zero `sqlite_stat1` rows for
+  the new index, the planner still chooses it, because a covering index that
+  also satisfies the ORDER BY wins structurally rather than statistically.
+
+  Migration costs, also measured on that copy: the `DROP` is **139 ms** and
+  frees its pages without reading the table, so it runs inline at open. The
+  `CREATE` is **53 s**, which is precisely why it does not: it joins the
+  existing deferred-index mechanism (`ensureFilePathIndexes` → renamed
+  `ensureDeferredIndexes`), inline on a small or empty database and on a worker
+  thread on a large existing one. Building it on the main thread would have
+  recreated the very startup freeze this release removes. Net file size
+  2,386 → 2,402 MB: the dropped index frees most of what the new one takes.
+- **"Still loading" says what it is loading.** A first start with an empty
+  database indexes the whole packages directory before `dbReady` resolves —
+  tens of minutes on a real install — and every symbol-backed tool in that
+  window got a sentence that was byte-identical on the first retry and the
+  twentieth, so nothing distinguished a build that was progressing from a server
+  that had died. `indexMetadataDirectory` now reports its phase, the startup
+  worker forwards it, and the wait answers with the model being read and its
+  position in the build order ("model 3 of 32, 6 min in"). Deliberately no
+  percentage: models are indexed largest-first and differ by two orders of
+  magnitude in size, so a percentage drawn from the count would be a confident
+  lie — the honest signal is that the count keeps moving.
 
 ---
 

@@ -374,11 +374,14 @@ function findSimilarObjects(
     // Split CamelCase into tokens and search for the most specific ones
     const tokens = baseName.split(/(?=[A-Z])/).filter(t => t.length >= 4);
     const needle = tokens.length > 0 ? tokens[tokens.length - 1] : baseName;
-    // INDEXED BY: without it the planner picks idx_symbols_parent_name for
-    // `parent_name IS NULL` and fetches every top-level row (4.6 min cold on a
-    // production DB, blocking the event loop until the MCP client kills the
-    // server). idx_type_name evaluates the LIKE against the index, so only
-    // name matches ever touch the table (~10 ms).
+    // INDEXED BY: this used to be load-bearing. Without it the planner picked
+    // idx_symbols_parent_name for `parent_name IS NULL` and fetched every
+    // top-level row — 4.6 min cold on a production DB, blocking the event loop
+    // until the MCP client killed the server. That index no longer exists (see
+    // the DROP in symbolIndex.ts), so the hazard it guarded against is gone; the
+    // hint stays because it still states the intended plan outright, and
+    // idx_type_name evaluates the LIKE against the index so only name matches
+    // ever touch the table (~10 ms).
     const rows = db.prepare(
       `SELECT name, model FROM symbols INDEXED BY idx_type_name
        WHERE type = ? AND name LIKE ? AND parent_name IS NULL

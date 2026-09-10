@@ -27,6 +27,7 @@
  */
 
 import * as fs from 'fs';
+import * as fsp from 'fs/promises';
 import * as path from 'path';
 
 /**
@@ -128,12 +129,43 @@ const realIo: ProbeIo = {
   },
 };
 
-/** Higher scores sort first. */
-function plausibility(root: string, io: ProbeIo): number {
-  const entries = io.readDir(root);
+/** Filesystem seam for the off-the-loop scan. Mirrors {@link ProbeIo}, promised. */
+export interface AsyncProbeIo {
+  platform: NodeJS.Platform;
+  isDirectory(target: string): Promise<boolean>;
+  readDir(target: string): Promise<string[]>;
+}
+
+const realAsyncIo: AsyncProbeIo = {
+  // Read through, for the same reason realIo does — see the note there.
+  get platform(): NodeJS.Platform {
+    return process.platform;
+  },
+  async isDirectory(target: string): Promise<boolean> {
+    try {
+      return (await fsp.stat(target)).isDirectory();
+    } catch {
+      return false;
+    }
+  },
+  async readDir(target: string): Promise<string[]> {
+    try {
+      return await fsp.readdir(target);
+    } catch {
+      return [];
+    }
+  },
+};
+
+/** Higher scores sort first. Pure, so both scans rank a directory the same way. */
+function scoreEntries(entries: string[]): number {
   if (entries.length === 0) return 0;                                          // exists but empty
   if (entries.some(e => e.toLowerCase() === 'bin')) return 2;                  // real packages root
   return 1;                                                                    // populated, no bin
+}
+
+function plausibility(root: string, io: ProbeIo): number {
+  return scoreEntries(io.readDir(root));
 }
 
 /**
@@ -148,26 +180,66 @@ export interface ScanOptions {
   drives?: string;
 }
 
+/**
+ * The parts of the scan that do not touch the filesystem, shared by the
+ * synchronous scan and its async twin so the two can never disagree about
+ * which letters get probed or how the hits are ranked. Only the probe itself
+ * differs between them — everything around it lives here.
+ */
+interface ScanPlan {
+  letters: string[];
+  pinned: boolean;
+  budgetMs: number;
+  clock: () => number;
+  report: DriveScanReport;
+}
+
+function planScan(opts: ScanOptions): ScanPlan {
+  const { letters, pinned } = driveLettersToProbe(opts.drives ?? process.env.D365FO_SCAN_DRIVES);
+  return {
+    letters,
+    pinned,
+    budgetMs: opts.budgetMs ?? DRIVE_SCAN_BUDGET_MS,
+    clock: opts.clock ?? Date.now,
+    report: { probed: [], skipped: [], slow: [], pinned },
+  };
+}
+
+/**
+ * True when this letter is not worth probing any more. The preferred letters
+ * and a pinned set are ALWAYS probed, however long the scan has already taken:
+ * skipping one because an earlier drive stalled would hide the packages root
+ * on it, which is a wrong answer rather than a slow one.
+ */
+function outOfBudget(plan: ScanPlan, preferred: number, start: number): boolean {
+  return !plan.pinned && preferred === -1 && plan.clock() - start > plan.budgetMs;
+}
+
+function rootOf(letter: string): string {
+  return `${letter}:\\AosService\\PackagesLocalDirectory`;
+}
+
+function rankHits(hits: { root: string; score: number; rank: number }[]): string[] {
+  return hits
+    .sort((a, b) => b.score - a.score || a.rank - b.rank || a.root.localeCompare(b.root))
+    .map(hit => hit.root);
+}
+
 export function scanPackagesRoots(io: ProbeIo = realIo, opts: ScanOptions = {}): string[] {
   if (io.platform !== 'win32') return [];
 
-  const clock = opts.clock ?? Date.now;
-  const budgetMs = opts.budgetMs ?? DRIVE_SCAN_BUDGET_MS;
-  const { letters, pinned } = driveLettersToProbe(opts.drives ?? process.env.D365FO_SCAN_DRIVES);
-  const report: DriveScanReport = { probed: [], skipped: [], slow: [], pinned };
-
+  const plan = planScan(opts);
+  const { clock, report } = plan;
   const hits: { root: string; score: number; rank: number }[] = [];
   const start = clock();
-  for (const letter of letters) {
+  for (const letter of plan.letters) {
     const preferred = PREFERRED_DRIVES.indexOf(letter);
-    // The preferred letters and a pinned set are always probed; everything
-    // else only while the scan is still inside its budget.
-    if (!pinned && preferred === -1 && clock() - start > budgetMs) {
+    if (outOfBudget(plan, preferred, start)) {
       report.skipped.push(letter);
       continue;
     }
     const t0 = clock();
-    const root = `${letter}:\\AosService\\PackagesLocalDirectory`;
+    const root = rootOf(letter);
     const hit = io.isDirectory(`${letter}:\\`) && io.isDirectory(root);
     const ms = clock() - t0;
     report.probed.push(letter);
@@ -181,14 +253,102 @@ export function scanPackagesRoots(io: ProbeIo = realIo, opts: ScanOptions = {}):
   }
   lastReport = report;
 
-  return hits
-    .sort((a, b) => b.score - a.score || a.rank - b.rank || a.root.localeCompare(b.root))
-    .map(hit => hit.root);
+  return rankHits(hits);
+}
+
+/**
+ * The same scan with `fs.promises` instead of `fs.*Sync`.
+ *
+ * Identical letters, identical budget, identical ranking — the ONLY difference
+ * is where the stall lands. `statSync` on a disconnected mapped network drive
+ * blocks the thread it runs on, and on the main thread that is the event loop:
+ * the server stops answering, stops logging and stops sending heartbeats, which
+ * is indistinguishable from a crash (this is what a 1.17.2 first call looked
+ * like). The promise form hands the same stat to the libuv threadpool, so the
+ * drive still costs its SMB timeout but nothing else waits for it.
+ *
+ * Probes run one at a time on purpose: the threadpool has four threads by
+ * default, and several dead drives probed at once would occupy all of them and
+ * stall every other file operation in the process instead.
+ */
+export async function scanPackagesRootsAsync(
+  io: AsyncProbeIo = realAsyncIo,
+  opts: ScanOptions = {},
+): Promise<string[]> {
+  if (io.platform !== 'win32') return [];
+
+  const plan = planScan(opts);
+  const { clock, report } = plan;
+  const hits: { root: string; score: number; rank: number }[] = [];
+  const start = clock();
+  for (const letter of plan.letters) {
+    const preferred = PREFERRED_DRIVES.indexOf(letter);
+    if (outOfBudget(plan, preferred, start)) {
+      report.skipped.push(letter);
+      continue;
+    }
+    const t0 = clock();
+    const root = rootOf(letter);
+    const hit = (await io.isDirectory(`${letter}:\\`)) && (await io.isDirectory(root));
+    const ms = clock() - t0;
+    report.probed.push(letter);
+    if (ms >= SLOW_PROBE_MS) report.slow.push({ letter, ms });
+    if (!hit) continue;
+    const entries = await io.readDir(root);
+    hits.push({
+      root,
+      score: scoreEntries(entries),
+      rank: preferred === -1 ? PREFERRED_DRIVES.length : preferred,
+    });
+  }
+  lastReport = report;
+
+  return rankHits(hits);
 }
 
 let cached: string[] | null = null;
+let warming: Promise<string[]> | null = null;
+/** Bumped by resetPackagesRootCache so an in-flight warm-up cannot outlive it. */
+let cacheGeneration = 0;
 
-/** Cached {@link scanPackagesRoots}. */
+/**
+ * Run the scan off the event loop and cache it, so every later synchronous
+ * caller is answered from memory instead of probing drives itself.
+ *
+ * Started as early as the server has a startup sequence and awaited by
+ * `ConfigManager.ensureLoaded()`, which every request path passes through
+ * before it reaches a synchronous getter. Idempotent: concurrent callers share
+ * the one in-flight scan, and a warm cache resolves immediately.
+ */
+export function warmPackagesRoots(): Promise<string[]> {
+  if (cached !== null) return Promise.resolve(cached);
+  if (warming) return warming;
+  // The generation guard makes a reset actually take: clearing `warming` alone
+  // would leave the in-flight scan free to write its (now stale) answer into
+  // the cache after the reset — in a test run, one case's fake drives landing
+  // in the next case's scan.
+  const generation = cacheGeneration;
+  warming = scanPackagesRootsAsync()
+    .catch(() => [] as string[])
+    .then(roots => {
+      if (generation === cacheGeneration) {
+        cached = roots;
+        warming = null;
+      }
+      return roots;
+    });
+  return warming;
+}
+
+/**
+ * Cached {@link scanPackagesRoots}.
+ *
+ * Falls back to the synchronous scan only when nothing has warmed the cache
+ * yet — a CLI command, or a request that beat the warm-up started at startup.
+ * That path can still block on a dead drive; it is kept because the alternative
+ * (answering "no packages root" while the warm-up is in flight) would make
+ * every one of this function's callers wrong instead of slow.
+ */
 export function packagesRoots(): string[] {
   if (cached === null) cached = scanPackagesRoots();
   return cached;
@@ -345,4 +505,6 @@ export function isAotSourcePath(filePath: string | null | undefined): filePath i
 export function resetPackagesRootCache(): void {
   cached = null;
   lastReport = null;
+  warming = null;
+  cacheGeneration++;
 }

@@ -75,7 +75,7 @@ describe('file_path index build mode', () => {
     expect(hasIndex(idx.db, 'idx_symbols_file_path')).toBe(false);
     expect(idx.hasPendingIndexBuilds()).toBe(false);
 
-    idx.ensureFilePathIndexes();
+    idx.ensureDeferredIndexes();
 
     expect(hasIndex(idx.db, 'idx_symbols_file_path')).toBe(true);
     expect(hasIndex(idx.labelsDb, 'idx_labels_file_path_id')).toBe(true);
@@ -92,11 +92,50 @@ describe('file_path index build mode', () => {
     idx.labelsDb.pragma('journal_mode = MEMORY');
     idx.labelsDb.pragma('locking_mode = EXCLUSIVE');
 
-    idx.ensureFilePathIndexes();
+    idx.ensureDeferredIndexes();
 
     expect(hasIndex(idx.db, 'idx_symbols_file_path')).toBe(true);
     expect(hasIndex(idx.labelsDb, 'idx_labels_file_path_id')).toBe(true);
     expect(idx.hasPendingIndexBuilds()).toBe(false);
+  });
+
+  /**
+   * idx_model_type_name covers the model prefix sample, which every session runs
+   * on its first call that names an object. It belongs on exactly the same
+   * footing as the file_path indexes: worth having, far too slow to build inline
+   * over a populated production table — building it there on the main thread
+   * would recreate the very startup freeze it exists to remove.
+   */
+  it('defers the prefix covering index on the same terms as the file_path ones', () => {
+    const large = tempIndex({ largeDbThresholdBytes: 0 });
+    expect(hasIndex(large.db, 'idx_model_type_name')).toBe(false);
+    expect(large.hasPendingIndexBuilds()).toBe(true);
+
+    const small = tempIndex({});
+    expect(hasIndex(small.db, 'idx_model_type_name')).toBe(true);
+    expect(small.hasPendingIndexBuilds()).toBe(false);
+  });
+
+  it('drops the parent_name index on an existing database, without a scan', () => {
+    // The migration for everyone already carrying a 2.5 GB database. DROP INDEX
+    // frees the index's pages without reading the table, so it is safe to do
+    // inline at open — unlike a CREATE, which is why the covering index above is
+    // deferred and this is not.
+    const idx = tempIndex({});
+    idx.db.exec('CREATE INDEX IF NOT EXISTS idx_symbols_parent_name ON symbols(parent_name)');
+    expect(hasIndex(idx.db, 'idx_symbols_parent_name')).toBe(true);
+
+    // Re-opening the same file is what a user's next server start does.
+    const dbFile = (idx as any).dbPath as string;
+    const labelsFile = (idx as any).labelsDbPath as string;
+    idx.close();
+    const reopened = new XppSymbolIndex(dbFile, labelsFile, {});
+    opened.push(reopened);
+
+    expect(hasIndex(reopened.db, 'idx_symbols_parent_name')).toBe(false);
+    // The partial indexes that carry the real member lookups are untouched.
+    expect(hasIndex(reopened.db, 'idx_parent_type_name')).toBe(true);
+    expect(hasIndex(reopened.db, 'idx_type_parent')).toBe(true);
   });
 
   it('keeps the small-database default: inline, no worker, no flags needed', () => {
@@ -124,7 +163,7 @@ describe('build scripts and the EXCLUSIVE lock', () => {
       // And it must actually build the indexes it deferred, or the production DB
       // ships without them and every single-object re-index scans the whole table.
       expect(src).toContain('deferFilePathIndexes: true');
-      expect(src).toContain('ensureFilePathIndexes()');
+      expect(src).toContain('ensureDeferredIndexes()');
 
       // Order matters: the opt-out is a constructor argument, so it has to appear
       // before the pragma that would otherwise race the worker it prevents.

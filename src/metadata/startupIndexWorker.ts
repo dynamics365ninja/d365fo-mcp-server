@@ -16,13 +16,19 @@
  * transaction commits.
  *
  * Spawned by indexMetadataOffThread() (startupIndexing.ts) and posts:
- *   { type: 'done', elapsedMs, symbolCount } | { type: 'error', error }
+ *   { type: 'progress', progress } | { type: 'done', elapsedMs, symbolCount }
+ *   | { type: 'error', error }
+ *
+ * The progress messages exist because the parent has to answer "still loading"
+ * to every symbol-backed tool for as long as this runs, and on a first start
+ * that is tens of minutes. Without them the answer cannot say how far along the
+ * build is, which leaves a user unable to tell a long build from a dead one.
  *
  * Bundled by build:scripts beside the other workers (tests/packaging/workerBundles).
  */
 
 import { parentPort, workerData } from 'node:worker_threads';
-import { XppSymbolIndex } from './symbolIndex.js';
+import { XppSymbolIndex, type IndexProgress } from './symbolIndex.js';
 
 export interface StartupIndexWorkerData {
   dbPath: string;
@@ -32,6 +38,7 @@ export interface StartupIndexWorkerData {
 }
 
 export type StartupIndexMessage =
+  | { type: 'progress'; progress: IndexProgress }
   | { type: 'done'; elapsedMs: number; symbolCount: number }
   | { type: 'error'; error: string };
 
@@ -43,7 +50,10 @@ async function run(): Promise<void> {
   // second worker per file-path index buys nothing and complicates shutdown.
   const index = new XppSymbolIndex(data.dbPath, data.labelsDbPath, { backgroundIndexBuilds: false });
   try {
-    await index.indexMetadataDirectory(data.metadataPath, data.modelNames);
+    await index.indexMetadataDirectory(data.metadataPath, data.modelNames, {
+      onProgress: progress =>
+        parentPort!.postMessage({ type: 'progress', progress } satisfies StartupIndexMessage),
+    });
     const symbolCount = index.getSymbolCount();
     parentPort!.postMessage({ type: 'done', elapsedMs: Date.now() - started, symbolCount } satisfies StartupIndexMessage);
   } finally {

@@ -157,7 +157,7 @@ async function buildFts(): Promise<void> {
   // ── file_path indexes: deferred past the load, built inline on the writer ──
   console.log('\n🔑 Building file_path indexes...');
   const filePathIdxStart = Date.now();
-  symbolIndex.ensureFilePathIndexes();
+  symbolIndex.ensureDeferredIndexes();
   console.log(`   ✅ Done in ${((Date.now() - filePathIdxStart) / 1000).toFixed(2)}s`);
 
   // ── Finalize: convert to WAL mode for production ───────────────────────────

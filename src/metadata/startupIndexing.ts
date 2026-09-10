@@ -12,6 +12,7 @@
 
 import { Worker } from 'node:worker_threads';
 import type { StartupIndexMessage, StartupIndexWorkerData } from './startupIndexWorker.js';
+import type { IndexProgress } from './symbolIndex.js';
 
 export interface StartupIndexOptions extends StartupIndexWorkerData {
   /** Injected in tests; the real one resolves next to the compiled worker. */
@@ -23,6 +24,8 @@ export interface StartupIndexOptions extends StartupIndexWorkerData {
    * from the parent's, which is sized for serving, not for indexing.
    */
   maxOldGenerationSizeMb?: number;
+  /** Called as the build moves between models and phases. */
+  onProgress?: (p: IndexProgress) => void;
 }
 
 export interface StartupIndexResult {
@@ -71,7 +74,9 @@ export function indexMetadataOffThread(opts: StartupIndexOptions): Promise<Start
     worker.stderr.pipe(output, { end: false });
 
     worker.on('message', (msg: StartupIndexMessage) => {
-      if (msg.type === 'done') {
+      if (msg.type === 'progress') {
+        try { opts.onProgress?.(msg.progress); } catch { /* never let a listener kill the build */ }
+      } else if (msg.type === 'done') {
         settle(() => resolve({ elapsedMs: msg.elapsedMs, symbolCount: msg.symbolCount }));
         void worker.terminate();
       } else if (msg.type === 'error') {
