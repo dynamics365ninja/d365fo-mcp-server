@@ -28,6 +28,14 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+## [1.17.4] — 2026-09-10
+
+### Dependencies
+- Routine bump of direct dependencies within their existing semver ranges:
+  `@clack/prompts` 1.7.0 → 1.8.0, `@types/node` 26.4.1 → 26.5.1, `zod` 4.5.4 →
+  4.6.1, plus the transitive updates `npm install` pulled in alongside them
+  (`package-lock.json` only — no `package.json` range changed).
+
 ### Fixed
 - **`doctor` kept its own copy of the query that hung the server, and the copy
   was the unfixed one.** 1.17.3 put the unary `+` on the prefix sample's
