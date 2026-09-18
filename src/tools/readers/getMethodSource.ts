@@ -3,6 +3,9 @@
  * Returns the full X++ source code of a method.
  *
  * PRIMARY: C# bridge (IMetadataProvider) — 100% reliable, always available on VM.
+ * Then the object's XML off disk, then the body stored in the symbol index —
+ * the last of which is the only one reachable from an Azure read-only
+ * deployment, where there is neither a bridge nor a PackagesLocalDirectory.
  * SQLite "did you mean?" kept only on error path.
  */
 
@@ -13,6 +16,7 @@ import type { XppMetadataParser } from '../../metadata/xmlParser.js';
 import { tryBridgeMethodSource } from '../../bridge/bridgeAdapter.js';
 import { canonicalSymbolName } from '../../utils/symbolLookup.js';
 import { inheritedOwnerCandidates } from '../../utils/inheritanceChain.js';
+import { readIndexedMethodSource, obsoleteWarning } from '../../utils/indexedMethodSource.js';
 
 const GetMethodSourceArgsSchema = z.object({
   className: z.string().describe('Name of the class containing the method'),
@@ -44,13 +48,20 @@ export async function getMethodSourceTool(request: CallToolRequest, context: Xpp
     const xmlResult = await tryXmlMethodSource(context, className, methodName);
     if (xmlResult) return xmlResult;
 
-    // Inherited methods: both readers above see declared members only, so a
+    // Fallback: the body stored in the symbol index. Both readers above need the
+    // Windows VM — the bridge is a .NET Framework process and the XML path reads
+    // PackagesLocalDirectory — so on an Azure read-only deployment neither can
+    // ever answer, and this is the only layer that can.
+    const indexResult = tryIndexMethodSource(context, className, methodName);
+    if (indexResult) return indexResult;
+
+    // Inherited methods: all three readers above see declared members only, so a
     // class that inherits the method rather than declaring it would report a
     // false "not found". Retry against the declaring ancestor.
     const inherited = await tryInheritedMethodSource(context, className, methodName);
     if (inherited) return inherited;
 
-    // Bridge and XML both unavailable — try fuzzy name suggestions from SQLite
+    // Nothing could resolve the body — try fuzzy name suggestions from SQLite
     let hint = '';
     try {
       const db = context.symbolIndex.getReadDb();
@@ -134,6 +145,11 @@ async function tryInheritedMethodSource(
 
     const fromXml = await tryXmlMethodSource(context, ancestor, methodName);
     if (fromXml) return annotateInherited(fromXml, className, ancestor, methodName);
+
+    // Same reason as the declared-member path: on Azure the two above cannot
+    // answer, so without this an inherited method stays unreadable there.
+    const fromIndex = tryIndexMethodSource(context, ancestor, methodName);
+    if (fromIndex) return annotateInherited(fromIndex, className, ancestor, methodName);
   }
   return null;
 }
@@ -160,6 +176,38 @@ function annotateInherited(
     ? `${first.text}\n${note}`
     : `${first.text.slice(0, nl + 1)}${note}${first.text.slice(nl + 1)}`;
   return { ...result, content: [{ ...first, text }, ...rest] };
+}
+
+/**
+ * Try the symbol index for a method body.
+ *
+ * Synchronous by nature (node:sqlite) and a single indexed probe, so it costs
+ * nothing worth guarding with a timeout the way the XML parse above is.
+ * `className` has already been canonicalized by resolveClassName, which keeps
+ * the query on idx_parent_type_name.
+ */
+function tryIndexMethodSource(
+  context: XppServerContext,
+  className: string,
+  methodName: string,
+): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } | null {
+  let db: any;
+  try {
+    db = context.symbolIndex.getReadDb();
+  } catch {
+    return null; // DB not available
+  }
+
+  const method = readIndexedMethodSource(db, className, methodName);
+  if (!method) return null;
+
+  // `method.name` is the AOT's own spelling — same reason as the XML path (#691).
+  const text =
+    `## ${className}.${method.name}\n\n` +
+    `_Source: symbol index (bridge and metadata files unavailable)_\n` +
+    obsoleteWarning(method.source) +
+    `\n\`\`\`xpp\n${method.source}\n\`\`\``;
+  return { content: [{ type: 'text', text }] };
 }
 
 /**
@@ -205,13 +253,6 @@ async function tryXmlMethodSource(
     );
     if (!method?.source) return null;
 
-    // Detect [SysObsolete] / [Obsolete]
-    const obsoleteMatch = method.source.match(/\[\s*SysObsolete\s*\(\s*['"]([^'"]*)['"]/i)
-      ?? method.source.match(/\[\s*Obsolete\s*\(\s*['"]([^'"]*)['"]/i);
-    const obsoleteWarning = obsoleteMatch
-      ? `\n\n> ⚠️ **This method is marked obsolete.** Do NOT generate calls to it.\n> Replacement hint from the attribute: _"${obsoleteMatch[1]}"_\n> Read the hint above and use the stated replacement instead.`
-      : '';
-
     // `method.name` is the AOT's own spelling; the find above is
     // case-insensitive, so echoing `methodName` would print the caller's casing
     // for a member that doesn't exist under it (#691). The bridge path already
@@ -219,7 +260,7 @@ async function tryXmlMethodSource(
     const text =
       `## ${className}.${method.name}\n\n` +
       `_Source: XML file parsing (bridge unavailable)_\n` +
-      obsoleteWarning +
+      obsoleteWarning(method.source) +
       `\n\`\`\`xpp\n${method.source}\n\`\`\``;
     return { content: [{ type: 'text', text }] };
   } catch (e) {

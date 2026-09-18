@@ -10,6 +10,7 @@ import type { XppServerContext } from '../../types/context.js';
 import { buildObjectTypeMismatchMessage, detectObjectTypeInDb } from '../../utils/metadataResolver.js';
 import { tryBridgeReferences } from '../../bridge/bridgeAdapter.js';
 import * as fs from 'fs';
+import { readIndexedMethodSources } from '../../utils/indexedMethodSource.js';
 
 const FindReferencesArgsSchema = z.object({
   // "name" is accepted as an alias for "targetName"
@@ -460,7 +461,7 @@ function ftsMethodSearch(db: any, term: string, limit: number, extraColumns?: st
   const ftsQuery = `${cols} : "${safe}"`;
   try {
     const stmt = db.prepare(`
-      SELECT s.name, s.parent_name, s.file_path, s.model, s.source_snippet
+      SELECT s.name, s.parent_name, s.file_path, s.model, s.source_snippet, s.source
       FROM symbols s
       WHERE s.type = 'method'
         AND s.id IN (SELECT rowid FROM symbols_fts WHERE symbols_fts MATCH ?)
@@ -470,6 +471,25 @@ function ftsMethodSearch(db: any, term: string, limit: number, extraColumns?: st
   } catch {
     return [];
   }
+}
+
+/**
+ * The text a matched row's context is extracted from: the whole indexed body,
+ * falling back to the ten-line preview.
+ *
+ * The FTS index covers `source_snippet`, not `source`, so what this can and
+ * cannot FIND is unchanged — a caller whose first ten lines never mention the
+ * name is still invisible, and fixing that means indexing `source` into
+ * symbols_fts, which is a schema change and a re-index, not this.
+ *
+ * What it changes is what happens AFTER a match. The extractors were handed the
+ * same ten lines FTS matched on, so a method that mentions the name in its
+ * preview (a declaration, a comment, an early call) but makes the call being
+ * reported further down yielded no context and was silently dropped from the
+ * results — a row FTS had correctly matched, discarded at the rendering step.
+ */
+function bodyOf(row: { source?: string | null; source_snippet?: string | null }): string {
+  return row.source || row.source_snippet || '';
 }
 
 /**
@@ -509,15 +529,25 @@ function scanDeclaringTypeSource(symbolIndex: any, methodName: string, limit: nu
       .all(methodName) as Array<{ parent_name: string; file_path: string }>;
 
     for (const owner of owners) {
-      let source: string;
+      let source: string | undefined;
       try {
         const stat = fs.statSync(owner.file_path);
         // An AOT class file is source; anything enormous is not worth the read.
-        if (!stat.isFile() || stat.size > 8_000_000) continue;
-        source = fs.readFileSync(owner.file_path, 'utf-8');
-      } catch {
-        continue;
+        if (stat.isFile() && stat.size <= 8_000_000) {
+          source = fs.readFileSync(owner.file_path, 'utf-8');
+        }
+      } catch { /* not reachable from here — try the index below */ }
+
+      // The file is a Windows-VM path, so on Azure the read above can never
+      // succeed and this recovery returned nothing at all. The same bodies are
+      // in the index; concatenating the owner's methods gives the scan below
+      // the same text to walk, minus the declarative XML around it.
+      if (source === undefined) {
+        const bodies = readIndexedMethodSources(db, owner.parent_name);
+        if (bodies.size === 0) continue;
+        source = [...bodies.values()].map(m => m.source).join('\n');
       }
+
       const lines = source.split('\n');
       for (let i = 0; i < lines.length && found.length < limit; i++) {
         // `this.m(` and `Type::m(` are calls; `m(` alone would match the
@@ -546,7 +576,11 @@ function findMethodReferences(symbolIndex: any, methodName: string, _scope: stri
   const rows = ftsMethodSearch(rdb, methodName, limit * 3, 'signature');
 
   for (const row of rows) {
-    const context = extractMethodCallContext(row.source_snippet, methodName);
+    // Match on the preview, render from the whole body. FTS can only find a
+    // method whose FIRST TEN LINES mention the name, but once it has, the call
+    // being reported is often further down — and extracting context from the
+    // preview then returned nothing, dropping a row FTS had correctly matched.
+    const context = extractMethodCallContext(bodyOf(row), methodName);
     if (context) {
       references.push({
         file: row.file_path,
@@ -612,7 +646,7 @@ function findClassReferences(symbolIndex: any, className: string, _scope: string
   // FTS5: search for className in source_snippet; extractInstantiationContext filters for 'new ClassName('
   const instRows = ftsMethodSearch(rdb, className, limit);
   for (const row of instRows) {
-    const context = extractInstantiationContext(row.source_snippet, className);
+    const context = extractInstantiationContext(bodyOf(row), className);
     if (context) {
       references.push({
         file: row.file_path,
@@ -631,7 +665,7 @@ function findClassReferences(symbolIndex: any, className: string, _scope: string
   for (const row of typeRefRows) {
     const caller = row.parent_name ? `${row.parent_name}.${row.name}` : row.name;
     if (existingCallers.has(caller)) continue; // skip duplicates
-    const context = extractTableReferenceContext(row.source_snippet, className);
+    const context = extractTableReferenceContext(bodyOf(row), className);
     if (context) {
       references.push({
         file: row.file_path,
@@ -654,7 +688,7 @@ function findTableReferences(symbolIndex: any, tableName: string, _scope: string
   const rows = ftsMethodSearch(rdb, tableName, limit);
 
   for (const row of rows) {
-    const context = extractTableReferenceContext(row.source_snippet, tableName);
+    const context = extractTableReferenceContext(bodyOf(row), tableName);
     if (context) {
       references.push({
         file: row.file_path,
@@ -676,7 +710,7 @@ function findFieldReferences(symbolIndex: any, fieldName: string, _scope: string
   const rows = ftsMethodSearch(rdb, fieldName, limit);
 
   for (const row of rows) {
-    const context = extractFieldAccessContext(row.source_snippet, fieldName);
+    const context = extractFieldAccessContext(bodyOf(row), fieldName);
     if (context) {
       references.push({
         file: row.file_path,
@@ -698,7 +732,7 @@ function findEnumReferences(symbolIndex: any, enumName: string, _scope: string, 
   const rows = ftsMethodSearch(rdb, enumName, limit);
 
   for (const row of rows) {
-    const context = extractEnumReferenceContext(row.source_snippet, enumName);
+    const context = extractEnumReferenceContext(bodyOf(row), enumName);
     if (context) {
       references.push({
         file: row.file_path,

@@ -9,9 +9,13 @@ import type { XppServerContext } from '../../types/context.js';
 import { validateWorkspacePath } from '../../workspace/workspaceUtils.js';
 import { buildObjectTypeMismatchMessage } from '../../utils/metadataResolver.js';
 import { tryBridgeClass } from '../../bridge/bridgeAdapter.js';
-import { COMPACT_METHODS_HINT, SOURCE_UNAVAILABLE_HINT, fullBodyHint } from '../../utils/methodBodyHint.js';
+import { COMPACT_METHODS_HINT, SOURCE_UNAVAILABLE_HINT, INDEXED_BODIES_HINT, fullBodyHint } from '../../utils/methodBodyHint.js';
+import { readIndexedMethodSources } from '../../utils/indexedMethodSource.js';
 
 const METHOD_PAGE_SIZE = 15;
+
+/** Ceiling on one method body inside a class LISTING (both render paths). */
+const BODY_PREVIEW_CHARS = 200;
 
 const ClassInfoArgsSchema = z.object({
   className: z.string().describe('Name of the X++ class'),
@@ -147,7 +151,7 @@ export async function classInfoTool(request: CallToolRequest, context: XppServer
         
         // include="signature" returns the signature INSTEAD of the body, so the
         // old text here named the one value that cannot answer "full body".
-        output += `\`\`\`xpp\n${method.source.substring(0, 200)}${method.source.length > 200 ? `\n// ... (${fullBodyHint(method.name)})` : ''}\n\`\`\`\n\n`;
+        output += `\`\`\`xpp\n${method.source.substring(0, BODY_PREVIEW_CHARS)}${method.source.length > BODY_PREVIEW_CHARS ? `\n// ... (${fullBodyHint(method.name)})` : ''}\n\`\`\`\n\n`;
       }
     }
 
@@ -173,6 +177,21 @@ export async function classInfoTool(request: CallToolRequest, context: XppServer
       ],
       isError: true,
     };
+  }
+}
+
+/**
+ * Indexed bodies for one owner, or an empty map when the DB cannot be opened.
+ *
+ * `getReadDb()` throws on its own (the helper's internal guard only covers the
+ * query), and this renderer is the LAST fallback — throwing here would turn a
+ * degraded-but-useful listing into an error.
+ */
+function readIndexedBodies(symbolIndex: any, className: string) {
+  try {
+    return readIndexedMethodSources(symbolIndex.getReadDb(), className);
+  } catch {
+    return new Map();
   }
 }
 
@@ -211,10 +230,28 @@ async function buildDbOnlyResponse(
   const paged = methods.slice(methodOffset, methodOffset + METHOD_PAGE_SIZE);
   const hasMore = methodOffset + METHOD_PAGE_SIZE < totalMethods;
 
+  // Bodies only when they were asked for and the file could not supply them.
+  // 'compact' means the caller never wanted bodies, so the index is not
+  // consulted at all and the response stays the cheap one-line-per-method view.
+  const bodies = reason === 'source-unavailable'
+    ? readIndexedBodies(symbolIndex, className)
+    : new Map();
+
   output += `## Methods (${totalMethods} total, showing ${methodOffset + 1}–${Math.min(methodOffset + METHOD_PAGE_SIZE, totalMethods)})\n\n`;
   for (const m of paged) {
     const sig = m.signature || m.name;
-    output += `- \`${sig}\`\n`;
+    const body = bodies.get(m.name.toLowerCase());
+    if (!body) {
+      output += `- \`${sig}\`\n`;
+      continue;
+    }
+    // Truncated to the same BODY_PREVIEW_CHARS as the on-disk path above, for
+    // the same reason: a listing of 15 method bodies is a payload, not a read.
+    // The largest single body in a production index is 175k characters.
+    const preview = body.source.length > BODY_PREVIEW_CHARS
+      ? `${body.source.slice(0, BODY_PREVIEW_CHARS)}\n// ... (${fullBodyHint(body.name)})`
+      : body.source;
+    output += `### ${body.name}\n\n\`\`\`xpp\n${preview}\n\`\`\`\n\n`;
   }
   if (hasMore) {
     output += `\n> ⚠️ ${totalMethods - methodOffset - METHOD_PAGE_SIZE} more — call with \`methodOffset: ${methodOffset + METHOD_PAGE_SIZE}\`\n`;
@@ -225,9 +262,12 @@ async function buildDbOnlyResponse(
   // no longer published in ListTools. An agent following it either got no body
   // or called a name it could not see. Same wording as the bridge path now, so
   // the two never disagree about the escape hatch.
-  output += totalMethods > 0
-    ? `\n${reason === 'compact' ? COMPACT_METHODS_HINT : SOURCE_UNAVAILABLE_HINT}\n`
-    : '';
+  // Three outcomes, not two: bodies were never asked for, they were asked for
+  // and the index supplied them, or they were asked for and nothing could.
+  const hint = reason === 'compact'
+    ? COMPACT_METHODS_HINT
+    : bodies.size > 0 ? INDEXED_BODIES_HINT : SOURCE_UNAVAILABLE_HINT;
+  output += totalMethods > 0 ? `\n${hint}\n` : '';
 
   return { content: [{ type: 'text', text: output }] };
 }

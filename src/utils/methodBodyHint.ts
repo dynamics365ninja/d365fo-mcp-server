@@ -28,6 +28,20 @@ export const COMPACT_METHODS_HINT =
 export const SOURCE_UNAVAILABLE_HINT =
   '> 💡 Signatures only — the source file could not be read (no D365FO install here, or the parse timed out). `options:{"method":"<name>","include":"source"}` may still resolve a single method.';
 
+/**
+ * Bodies WERE requested, the source file could not be read, and the symbol
+ * index supplied them instead — the Azure read-only case, where there is
+ * neither a bridge nor a PackagesLocalDirectory to fall back to.
+ *
+ * Distinct from SOURCE_UNAVAILABLE_HINT because the caller is looking at real
+ * bodies, and distinct from COMPACT_METHODS_HINT because `compact:false` is
+ * already what they passed. It says where the code came from (a pipeline-built
+ * snapshot, so it can lag the live model) and how to get one body in full,
+ * since the listing truncates exactly as the on-disk path does.
+ */
+export const INDEXED_BODIES_HINT =
+  '> 💡 Bodies from the symbol index — the metadata files are not reachable here, so this reflects the last indexed build. Truncated in this listing; `options:{"method":"<name>","include":"source"}` for one in full.';
+
 /** How to ask for the rest of a body that was truncated in a listing. */
 export function fullBodyHint(methodName: string): string {
   return `options:{"method":"${methodName}","include":"source"} for the full body`;
