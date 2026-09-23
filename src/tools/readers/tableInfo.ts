@@ -14,6 +14,7 @@ import type { XppServerContext } from '../../types/context.js';
 import { findD365FileOnDisk } from '../../utils/objectFileLookup.js';
 import { tryBridgeTable } from '../../bridge/bridgeAdapter.js';
 import { bridgeUnavailableNote } from '../../utils/indexedXmlLookup.js';
+import { indexedEdtStringSize, INDEXED_SIZE_CAVEAT } from './edtInfo.js';
 import { pageFields, fieldsHeading, fieldsFooter, TABLE_FIELD_PAGE_SIZE } from '../../utils/payloadBudget.js';
 
 const TableInfoArgsSchema = z.object({
@@ -134,6 +135,22 @@ export async function tableInfoTool(request: CallToolRequest, context: XppServer
 }
 
 /**
+ * The length of an indexed field, rendered as a suffix, or '' when the index cannot say.
+ *
+ * A field row stores its EDT, not its length, so without the bridge "how long is
+ * DirPartyTable.Name" used to come back as a bare type name and the length was a guess. The
+ * length lives on the EDT chain in `edt_metadata`. A field typed with a primitive or an enum
+ * finds no EDT row there and gets no suffix.
+ */
+function indexedFieldSize(db: any, edtName: string): string {
+  const size = indexedEdtStringSize(db, edtName);
+  if (!size) return '';
+  const shown = size.value === '-1' ? '-1 (memo, unlimited)' : size.value;
+  const from = size.declaredBy.toLowerCase() === edtName.toLowerCase() ? '' : `, inherited from ${size.declaredBy}`;
+  return ` (String Size ${shown}${from})`;
+}
+
+/**
  * Serve table info entirely from the pre-indexed symbol database.
  * Returns null when the table is not present in the index; caller then falls through
  * to disk parsing.
@@ -184,10 +201,14 @@ function buildTableResponseFromDb(
   if (tableSym.model) out += `**Model:** ${tableSym.model}\n`;
   const fieldPage = pageFields(fields, fieldsOffset, fieldFilter);
   out += `\n## ${fieldsHeading(fieldPage)}\n\n`;
+  let sizesShown = false;
   for (const f of fieldPage.visible) {
-    out += `- **${f.name}**${f.signature ? `: ${f.signature}` : ''}\n`;
+    const size = f.signature ? indexedFieldSize(rdb, f.signature) : '';
+    if (size) sizesShown = true;
+    out += `- **${f.name}**${f.signature ? `: ${f.signature}${size}` : ''}\n`;
   }
   out += fieldsFooter(fieldPage);
+  if (sizesShown) out += `\n> ℹ️ ${INDEXED_SIZE_CAVEAT}\n`;
   out += `\n## Methods (${totalMethods} total${totalMethods > METHOD_PAGE ? `, showing ${methodOffset + 1}–${Math.min(methodOffset + METHOD_PAGE, totalMethods)}` : ''})\n\n`;
   for (const m of paged) {
     out += `- \`${m.signature || m.name}\`\n`;

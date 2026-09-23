@@ -1636,7 +1636,7 @@ export class XppSymbolIndex {
   private sanitizeFtsQuery(query: string): string {
     const trimmed = query.trim();
     if (!trimmed) return '""';
-    
+
     // Minimal stop words - only the most common query keywords
     const stopWords = new Set([
       // Common query verbs (Czech)
@@ -1658,19 +1658,48 @@ export class XppSymbolIndex {
     // to the phrase-search fallback would behave differently for it.
     const withoutStopWords = allTokens.filter(t => !stopWords.has(t));
     const tokens = withoutStopWords.length > 0 ? withoutStopWords : allTokens;
-    
+
     // If no tokens remain after filtering, use original query in quotes
     if (tokens.length === 0) {
       return `{name type parent_name signature description tags} : "${trimmed}"`;
     }
-    
+
     // Create FTS query with prefix matching
     const baseQuery = tokens.map(t => `"${t}"*`).join(' ');
-    
+
     // Column-set filter: FTS5 searches only these columns, skipping source_snippet
     // and inline_comments. This is valid FTS5 syntax and uses the same index.
     return `{name type parent_name signature description tags} : ${baseQuery}`;
   }
+
+  /**
+   * ORDER BY for a symbols_fts search: bm25, but a FIELD row is scored without its
+   * signature column.
+   *
+   * A field's signature is its EDT (188 126 of 222 104 extracted table fields carry one),
+   * and a field is very often named after its EDT. Such a row matches the EDT's name in two
+   * columns and outscores everything that matches it once: on the ApplicationPlatform +
+   * Directory + Foundation index `CustName` returned 20 fields called CustName out of 20,
+   * and every EDT and method was pushed out. Fields that matched ONLY on the signature
+   * were never the problem -- none reached a top-20 window in the queries measured.
+   *
+   * Weight 0 on the signature scores a field exactly as it was scored when the signature
+   * held a bare base type, which no query matched. The row still matches, so "fields typed
+   * X" stays findable -- a signature-only field scores 0 and sorts after every real hit.
+   *
+   * TABLE fields only. A view or data-entity field has always carried the data field it maps
+   * to as its signature, and its ranking is not what changed: applied to every field, the
+   * rule pushed AssetTransCDREntity.AmountMST and six others out of the `AmountMST` window
+   * they had always been in. Tables and views share one AOT namespace, so the parent's own
+   * row says which it is. Every other kind of row keeps the default weights.
+   *
+   * Column order is symbols_fts's: name, type, parent_name, signature, description, tags,
+   * source_snippet, inline_comments.
+   */
+  private static readonly FTS_ORDER_BY =
+    `ORDER BY CASE WHEN s.type = 'field' AND EXISTS (` +
+    `SELECT 1 FROM symbols t WHERE t.name = s.parent_name AND t.type = 'table'` +
+    `) THEN bm25(symbols_fts, 1, 1, 1, 0, 1, 1, 1, 1) ELSE rank END`;
 
   /**
    * Search symbols by query with full-text search
@@ -1702,7 +1731,7 @@ export class XppSymbolIndex {
       sql += ` AND s.type IN (${types.map(() => '?').join(',')})`;  
       params.push(...types);
     }
-    sql += ` ORDER BY rank LIMIT ?`;
+    sql += ` ${XppSymbolIndex.FTS_ORDER_BY} LIMIT ?`;
     params.push(limit);
 
     const db = this.getReadDb();
@@ -2620,14 +2649,18 @@ export class XppSymbolIndex {
         // Mine property distribution for data-driven BP rules (standard models only)
         this.recordTablePropertyStats(tableData, model);
 
-        // Add field symbols
+        // Add field symbols. The signature is the field's EDT/EnumType, falling back to the
+        // base type only when it has neither -- the same value update_symbol_index writes.
+        // Storing the bare base type here threw the EDT away, and with it the only route to
+        // the field's length when the bridge is absent: DirPartyTable.Name indexed as
+        // "String" instead of DirPartyName (160).
         if (tableData.fields && Array.isArray(tableData.fields)) {
           for (const field of tableData.fields) {
             this.addSymbol({
               name: field.name,
               type: 'field',
               parentName: tableData.name,
-              signature: field.type,
+              signature: field.extendedDataType || field.enumType || field.type,
               filePath: sourceFilePath,
               model,
             });
@@ -3820,7 +3853,7 @@ export class XppSymbolIndex {
       sql += ` AND s.type IN (${types.map(() => '?').join(',')})`;
       params.push(...types);
     }
-    sql += ` ORDER BY rank LIMIT ?`;
+    sql += ` ${XppSymbolIndex.FTS_ORDER_BY} LIMIT ?`;
     params.push(limit);
 
     try {

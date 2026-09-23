@@ -153,11 +153,13 @@ function getEdtFromIndex(symbolIndex: any, edtName: string, modelName?: string) 
     const shown = size.value === '-1' ? '-1 (memo, unlimited)' : size.value;
     out += `| String Size | ${shown}${from} |\n`;
   }
+  const sizeCaveat = size ? `\nℹ️ ${INDEXED_SIZE_CAVEAT}\n` : '';
   if (row.database_string_size) out += `| Database String Size | ${row.database_string_size} |\n`;
   if (row.display_length) out += `| Display Length | ${row.display_length} |\n`;
   if (row.label) out += `| Label | ${row.label} |\n`;
   out += `\nℹ️ Indexed metadata only — properties the extractor does not store ` +
-    `(HelpText, FormHelp, ConfigurationKey, Alignment…) are absent here, not absent from the EDT.\n`;
+    `(HelpText, FormHelp, ConfigurationKey, Alignment…) are absent here, not absent from the EDT.\n` +
+    sizeCaveat;
 
   return { content: [{ type: 'text', text: out }] };
 }
@@ -189,12 +191,61 @@ function resolveIndexedStringSize(
   if (row.string_size) return { value: String(row.string_size) };
 
   const seen = new Set<string>([String(row.edt_name ?? '').toLowerCase()]);
-  for (const ancestor of walkEdtChain(db, row.extends, { seen })) {
-    if (ancestor.string_size) {
-      return { value: String(ancestor.string_size), inheritedFrom: ancestor.edt_name };
-    }
+  const hit = indexedEdtStringSize(db, row.extends, seen);
+  return hit ? { value: hit.value, inheritedFrom: hit.declaredBy } : null;
+}
+
+/**
+ * The string size `edtName` has according to the symbol index: its own when `edt_metadata`
+ * stores one, otherwise the nearest `extends` ancestor's -- with the EDT that declares it.
+ * Null when nothing on the chain stores a size (a non-string EDT, or one the index lacks).
+ *
+ * This is the only way to answer "how long is this field" without the bridge: the index keeps
+ * a field's EDT, not its length, and a derived EDT usually declares no size of its own
+ * (CustName declares none and is DirPartyName's 160). Same limitation as
+ * {@link resolveIndexedStringSize}: a declared size that the platform overrides is reported
+ * as declared.
+ */
+export function indexedEdtStringSize(
+  db: any,
+  edtName: string | undefined | null,
+  seen?: Set<string>,
+): { value: string; declaredBy: string } | null {
+  const start = edtName ? canonicalEdtName(db, edtName) : edtName;
+  for (const row of walkEdtChain(db, start, { seen })) {
+    if (row.string_size) return { value: String(row.string_size), declaredBy: row.edt_name };
   }
   return null;
+}
+
+/**
+ * What an index-derived string size does not account for. The index stores no size for an
+ * EDT extension, and an extension may change StringSize -- so the number is the base
+ * metadata's, and a model that extends the EDT can make it larger.
+ */
+export const INDEXED_SIZE_CAVEAT =
+  'String sizes come from the symbol index and do NOT include EDT extensions, which can ' +
+  'change StringSize — check get_object_info(objectType="edt-extension") before relying on one.';
+
+/** A field's base type, stored as its signature when it has no EDT or enum -- never an EDT. */
+const FIELD_BASE_TYPES = new Set([
+  'string', 'integer', 'int64', 'real', 'date', 'utcdatetime', 'enum', 'container', 'guid', 'time',
+]);
+
+/**
+ * `name` as `edt_metadata` spells it. X++ is case-insensitive, so a field may name its EDT
+ * in a casing the EDT's own file does not use, and the exact `edt_name = ?` probe would miss
+ * and silently report no size. The case-insensitive lookup is only paid when the exact probe
+ * misses and the name is not a base type or another exact-case object (an enum, typically).
+ */
+function canonicalEdtName(db: any, name: string): string {
+  if (probeEdtRow(db, name) || FIELD_BASE_TYPES.has(name.toLowerCase())) return name;
+  try {
+    if (db.prepare(`SELECT 1 FROM symbols WHERE name = ? LIMIT 1`).get(name)) return name;
+  } catch {
+    return name;
+  }
+  return canonicalSymbolName(db, name, ['edt']) ?? name;
 }
 
 /**

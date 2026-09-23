@@ -108,6 +108,34 @@ those are called out explicitly below.
   is written and the reply names the existing bindings, so an accidental
   duplicate of a template stub is visible without being refused. **Requires a rebuilt bridge binary**; the reporting fix
   above is TypeScript and takes effect without one.
+- **A table field's length is available without the bridge.** The full index
+  build stored a field's bare base type as its signature and dropped the EDT the
+  extracted metadata carried, so `DirPartyTable.Name` indexed as `String`
+  rather than `DirPartyName`. `update_symbol_index` already stored the EDT, so
+  the same column meant different things depending on which path last wrote the
+  table. On a deployment with no bridge, `get_object_info(table)` therefore could
+  not give a field's length at all, and an agent asked for it had to guess. The full
+  build now stores the EDT (or enum type, or the base type when a field has
+  neither), the same as the incremental path. The index-only table reader
+  resolves each field's size through the EDT chain in `edt_metadata`:
+  `Name: DirPartyName (String Size 160)`, and for a derived EDT that declares
+  no size of its own, `(String Size 160, inherited from DirPartyName)`.
+  The EDT is found whatever casing the field spells it in, and the output says
+  the size leaves EDT extensions out — the index stores none, and an extension
+  can change `StringSize`. Consumers that read the signature as an EDT —
+  relation generation, table patterns, find-method parameter types, "fields
+  typed as X" — now get one on a full index too. **Takes effect only after a
+  full index rebuild.**
+- **`search` ranking is unchanged by the above.** `search` full-text-matches
+  the signature, and a table field is very often named after its EDT, so such a
+  field would have matched the EDT's name twice and outscored everything that
+  matches it once: on an ApplicationPlatform + Directory + Foundation index,
+  `CustName` returned 20 fields called CustName out of 20 and lost every EDT and
+  method. Table fields are now scored without their signature, which is exactly
+  how they scored when it held a base type; view and data-entity fields, whose
+  signature was never an EDT, keep theirs. Across 12 common EDT-name queries the
+  top 20 is identical to the previous index's. It costs 10–60 ms per search on a
+  full index (warm cache), for the per-row table check and the second bm25.
 - **The naming check no longer warns about the canonical extension-class name.**
   `CustTableBku_Extension` is exactly what the prefix style produces and what the
   write path returns untouched, yet the check answered "Extension name does not
