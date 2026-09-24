@@ -28,6 +28,9 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+## [1.18.0] — 2026-09-24
+
+
 ### Added
 - **Extension classes can follow their own naming style.** `EXTENSION_NAMING_STYLE`
   drove two independent decisions — the token of an element extension
@@ -165,17 +168,15 @@ those are called out explicitly below.
   sat behind was kept, so the infix landed one character late. It is now
   `CustTableCtso_Extension`, the spelling every name of this shape in
   PackagesLocalDirectory uses.
-
-### Dependencies
-- Routine lockfile refresh within the existing semver ranges: `@clack/prompts`
-  1.8.0 → 1.8.1, `@biomejs/biome` 2.5.12 → 2.5.14, `@types/node` 26.5.1 →
-  26.6.1, `zod` 4.6.1 → 4.6.5, `hono` 4.13.7 → 4.13.8, plus transitive updates
-  (`package-lock.json` only). `@clack/prompts` 1.8.1 now types a cancelled
-  prompt as `typeof CANCEL_SYMBOL` instead of `symbol`, which broke the
-  type-check of every CLI prompt; the CLI's `ensure()` helper now strips any
-  symbol from the result type. No runtime change.
-
-### Fixed
+- **A full build shipped runtime metadata for code that no longer existed**
+  (#1026). xppc's metadata write-back does not reliably refresh an existing
+  `XppMetadata` tree: a class whose field was removed compiled to IL without it,
+  while its `XppMetadata` — and so the binary `.md` manifest serialized from it —
+  still declared it, under a green build. `build_d365fo_project(fullBuild: true)`
+  now clears the model's compiler-metadata tree before compiling, so the
+  write-back is unconditional; a failed delete warns (the `.md` may then not
+  match the code) rather than failing the build. The incremental counterpart is
+  the next entry.
 - **An incremental build still shipped runtime metadata for code that no longer
   existed.** xppc's metadata write-back rewrites an element's
   `XppMetadata` file when the element gains something, but never when it loses
@@ -191,6 +192,23 @@ those are called out explicitly below.
   xppc on a UDE box: removed fields and deleted classes disappear from the
   metadata and the `.md`, unchanged elements are untouched, and the scan takes
   ~0.3 s for a 4,400-element package.
+- **Writing a descriptor no longer invents a class or a missing project entry**
+  (#1030). A file in no `Ax*` folder was classified as a class by the symbol
+  indexer — every descriptor write added a phantom CLASS named after the model,
+  which `search` returned as an exact match — and the inline write verification
+  reported a missing `.rnrproj` entry for an invented `AxClass\<Model>`. Such
+  files are no longer indexed (a re-index cleans up earlier phantoms), and the
+  membership check is skipped for any type with no `Ax*` folder.
+
+### Dependencies
+- Routine lockfile refreshes within the existing semver ranges (no
+  `package.json` range changed): `@modelcontextprotocol/sdk` 1.30.0 → 1.30.1,
+  `@clack/prompts` 1.8.0 → 1.8.1, `zod` 4.6.1 → 4.6.5, `hono` 4.13.7 → 4.13.9,
+  `@biomejs/biome` 2.5.12 → 2.5.14, `@types/node` 26.5.1 → 26.6.2, `tsx`
+  4.23.13 → 4.23.15, plus transitive updates (`rolldown` 1.2.8 → 1.2.10, …).
+  `@clack/prompts` 1.8.1 now types a cancelled prompt as `typeof CANCEL_SYMBOL`
+  instead of `symbol`, which broke the type-check of every CLI prompt; the CLI's
+  `ensure()` helper now strips any symbol from the result type. No runtime change.
 
 ## [1.17.4] — 2026-09-10
 
