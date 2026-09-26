@@ -1448,9 +1448,9 @@ export interface EdtResolutionContext {
  * The EDT a field of this exact name already carries in the TARGET model — the
  * strongest signal there is: same name, same model, same concept.
  *
- * The index stores a field's PRIMITIVE in `symbols.signature`, not its EDT, so
- * the EDT is read from the owning table's XML. Best-effort: an unreadable file
- * just means "no answer".
+ * The EDT is read from the owning table's XML rather than `symbols.signature`:
+ * an index built before the full build stored the EDT there holds the field's
+ * PRIMITIVE instead. Best-effort: an unreadable file just means "no answer".
  */
 export function lookupModelFieldEdt(
   fieldName: string,

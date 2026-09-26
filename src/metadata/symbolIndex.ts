@@ -1636,7 +1636,7 @@ export class XppSymbolIndex {
   private sanitizeFtsQuery(query: string): string {
     const trimmed = query.trim();
     if (!trimmed) return '""';
-    
+
     // Minimal stop words - only the most common query keywords
     const stopWords = new Set([
       // Common query verbs (Czech)
@@ -1658,18 +1658,79 @@ export class XppSymbolIndex {
     // to the phrase-search fallback would behave differently for it.
     const withoutStopWords = allTokens.filter(t => !stopWords.has(t));
     const tokens = withoutStopWords.length > 0 ? withoutStopWords : allTokens;
-    
+
     // If no tokens remain after filtering, use original query in quotes
     if (tokens.length === 0) {
       return `{name type parent_name signature description tags} : "${trimmed}"`;
     }
-    
+
     // Create FTS query with prefix matching
     const baseQuery = tokens.map(t => `"${t}"*`).join(' ');
-    
+
     // Column-set filter: FTS5 searches only these columns, skipping source_snippet
     // and inline_comments. This is valid FTS5 syntax and uses the same index.
     return `{name type parent_name signature description tags} : ${baseQuery}`;
+  }
+
+  /**
+   * ORDER BY for a symbols_fts search: bm25, but a FIELD row is scored without its
+   * signature column.
+   *
+   * A field's signature is its EDT (188 126 of 222 104 extracted table fields carry one),
+   * and a field is very often named after its EDT. Such a row matches the EDT's name in two
+   * columns and outscores everything that matches it once: on the ApplicationPlatform +
+   * Directory + Foundation index `CustName` returned 20 fields called CustName out of 20,
+   * and every EDT and method was pushed out. Fields that matched ONLY on the signature
+   * were never the problem -- none reached a top-20 window in the queries measured.
+   *
+   * Weight 0 on the signature scores a field exactly as it was scored when the signature
+   * held a bare base type, which no query matched. The row still matches, so "fields typed
+   * X" stays findable -- a signature-only field scores 0 and sorts after every real hit.
+   *
+   * TABLE fields only. A view or data-entity field has always carried the data field it maps
+   * to as its signature, and its ranking is not what changed: applied to every field, the
+   * rule pushed AssetTransCDREntity.AmountMST and six others out of the `AmountMST` window
+   * they had always been in. Tables and views share one AOT namespace, so the parent's own
+   * row says which it is. Every other kind of row keeps the default weights.
+   *
+   * Column order is symbols_fts's: name, type, parent_name, signature, description, tags,
+   * source_snippet, inline_comments.
+   *
+   * The score is SELECTED, not sorted on: see {@link topByFtsScore} for why the query itself
+   * stays `ORDER BY rank`.
+   */
+  private static readonly FTS_SCORE_COLUMNS =
+    `, rank AS fts_rank, CASE WHEN s.type = 'field' AND EXISTS (` +
+    `SELECT 1 FROM symbols t WHERE t.name = s.parent_name AND t.type = 'table'` +
+    `) THEN bm25(symbols_fts, 1, 1, 1, 0, 1, 1, 1, 1) ELSE rank END AS fts_score`;
+
+  /**
+   * The `limit` best rows by `fts_score`, read from a statement that streams them in
+   * `ORDER BY rank` order.
+   *
+   * Sorting on the score expression directly was 2-3x slower on a full index (`Trans`:
+   * 172 ms -> 499 ms): only a bare `ORDER BY rank` is sorted inside FTS5, anything else
+   * makes SQLite join every match to `symbols` and sort them itself. Streaming keeps FTS5's
+   * sort and stops early, and the result is exactly the score order: bm25 is negative,
+   * lower is better, and dropping the signature weight can only raise a row's score, so
+   * fts_score >= fts_rank. Once a row's rank is worse than the limit-th best score, no later
+   * row -- whose score is at least its rank, which is at least this one's -- can enter.
+   * Ties keep stream order.
+   */
+  private static topByFtsScore<T extends { fts_rank: number; fts_score: number }>(
+    rows: Iterable<T>,
+    limit: number,
+  ): T[] {
+    const top: T[] = [];
+    if (limit <= 0) return top;
+    for (const row of rows) {
+      if (top.length >= limit && row.fts_rank > top[top.length - 1].fts_score) break;
+      let i = top.length;
+      while (i > 0 && top[i - 1].fts_score > row.fts_score) i--;
+      top.splice(i, 0, row);
+      if (top.length > limit) top.pop();
+    }
+    return top;
   }
 
   /**
@@ -1693,6 +1754,7 @@ export class XppSymbolIndex {
     // PERFORMANCE: Select only essential columns, not s.* (avoids loading large text fields)
     let sql = `
       SELECT s.id, s.name, s.type, s.parent_name, s.signature, s.file_path, s.model, s.description
+        ${XppSymbolIndex.FTS_SCORE_COLUMNS}
       FROM symbols_fts fts
       JOIN symbols s ON s.id = fts.rowid
       WHERE symbols_fts MATCH ?
@@ -1702,13 +1764,13 @@ export class XppSymbolIndex {
       sql += ` AND s.type IN (${types.map(() => '?').join(',')})`;  
       params.push(...types);
     }
-    sql += ` ORDER BY rank LIMIT ?`;
-    params.push(limit);
+    sql += ` ORDER BY rank`;
 
     const db = this.getReadDb();
     try {
       const stmt = this.getReadStmt(db, cacheKey, () => sql);
-      const rows = (stmt.all(...params) as any[]).map(row => this.rowToSymbol(row));
+      const rows = XppSymbolIndex.topByFtsScore(stmt.iterate(...params) as Iterable<any>, limit)
+        .map(row => this.rowToSymbol(row));
       // FTS5's default tokenizer treats each name as one indivisible token and only
       // matches token PREFIXES, so a mid-token substring query (e.g. "CategoryPropert"
       // against "ProcurementProductCategoryPropertyEntity") is a syntactically valid
@@ -2620,14 +2682,18 @@ export class XppSymbolIndex {
         // Mine property distribution for data-driven BP rules (standard models only)
         this.recordTablePropertyStats(tableData, model);
 
-        // Add field symbols
+        // Add field symbols. The signature is the field's EDT/EnumType, falling back to the
+        // base type only when it has neither -- the same value update_symbol_index writes.
+        // Storing the bare base type here threw the EDT away, and with it the only route to
+        // the field's length when the bridge is absent: DirPartyTable.Name indexed as
+        // "String" instead of DirPartyName (160).
         if (tableData.fields && Array.isArray(tableData.fields)) {
           for (const field of tableData.fields) {
             this.addSymbol({
               name: field.name,
               type: 'field',
               parentName: tableData.name,
-              signature: field.type,
+              signature: field.extendedDataType || field.enumType || field.type,
               filePath: sourceFilePath,
               model,
             });
@@ -3810,6 +3876,7 @@ export class XppSymbolIndex {
 
     let sql = `
       SELECT s.id, s.name, s.type, s.parent_name, s.signature, s.file_path, s.model, s.description
+        ${XppSymbolIndex.FTS_SCORE_COLUMNS}
       FROM symbols_fts fts
       JOIN symbols s ON s.id = fts.rowid
       WHERE symbols_fts MATCH ?
@@ -3820,12 +3887,12 @@ export class XppSymbolIndex {
       sql += ` AND s.type IN (${types.map(() => '?').join(',')})`;
       params.push(...types);
     }
-    sql += ` ORDER BY rank LIMIT ?`;
-    params.push(limit);
+    sql += ` ORDER BY rank`;
 
     try {
       const stmt = db.prepare(sql);
-      return (stmt.all(...params) as any[]).map(row => this.rowToSymbol(row));
+      return XppSymbolIndex.topByFtsScore(stmt.iterate(...params) as Iterable<any>, limit)
+        .map(row => this.rowToSymbol(row));
     } catch {
       // FTS5 syntax error (query contains *, ", (, ), -) → LIKE fallback, still model-scoped.
       const escapeLikePattern = (value: string): string =>

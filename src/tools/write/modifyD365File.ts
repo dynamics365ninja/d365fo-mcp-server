@@ -4569,9 +4569,10 @@ function resolveFieldEdt(tableName: string, fieldName: string, db: any): string 
       `SELECT signature FROM symbols WHERE type = 'field' AND parent_name = ? AND name = ? COLLATE NOCASE LIMIT 1`
     ).get(canonical, fieldName) as { signature: string | null } | undefined;
     const sig = row?.signature?.trim();
-    // The index stores the field's BASE TYPE (e.g. "String"), not its EDT. A base-type
-    // keyword is not a usable X++ parameter type, so treat it as unresolved — the caller
-    // then falls back to the field name, which is conventionally the EDT.
+    // The signature is the field's EDT/EnumType, but it is a BASE TYPE (e.g. "String") for
+    // a field that has neither, and for every field in an index built before the full build
+    // stored the EDT. A base-type keyword is not a usable X++ parameter type, so treat it as
+    // unresolved — the caller then falls back to the field name, which is conventionally the EDT.
     if (!sig || isMetadataBaseTypeKeyword(sig)) return null;
     return sig;
   } catch {
