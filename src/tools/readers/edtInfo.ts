@@ -11,6 +11,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
 import { tryBridgeEdt } from '../../bridge/bridgeAdapter.js';
 import { canonicalSymbolName, lookupSymbolNocase } from '../../utils/symbolLookup.js';
+import { normalizeFieldBaseType } from '../../utils/axFieldTypes.js';
 
 const GetEdtInfoArgsSchema = z.object({
   edtName: z.string().describe('Name of the Extended Data Type (EDT)'),
@@ -227,19 +228,16 @@ export const INDEXED_SIZE_CAVEAT =
   'String sizes come from the symbol index and do NOT include EDT extensions, which can ' +
   'change StringSize — check get_object_info(objectType="edt-extension") before relying on one.';
 
-/** A field's base type, stored as its signature when it has no EDT or enum -- never an EDT. */
-const FIELD_BASE_TYPES = new Set([
-  'string', 'integer', 'int64', 'real', 'date', 'utcdatetime', 'enum', 'container', 'guid', 'time',
-]);
-
 /**
  * `name` as `edt_metadata` spells it. X++ is case-insensitive, so a field may name its EDT
  * in a casing the EDT's own file does not use, and the exact `edt_name = ?` probe would miss
  * and silently report no size. The case-insensitive lookup is only paid when the exact probe
  * misses and the name is not a base type or another exact-case object (an enum, typically).
+ * Base types go through normalizeFieldBaseType because the extractor writes the i:type
+ * suffix -- `Int` for AxTableFieldInt, not `Integer` -- and a hand-kept list missed it.
  */
 function canonicalEdtName(db: any, name: string): string {
-  if (probeEdtRow(db, name) || FIELD_BASE_TYPES.has(name.toLowerCase())) return name;
+  if (probeEdtRow(db, name) || normalizeFieldBaseType(name)) return name;
   try {
     if (db.prepare(`SELECT 1 FROM symbols WHERE name = ? LIMIT 1`).get(name)) return name;
   } catch {

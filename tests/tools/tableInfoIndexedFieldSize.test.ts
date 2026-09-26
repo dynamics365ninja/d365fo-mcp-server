@@ -139,8 +139,57 @@ describe('search: a table field typed with an EDT does not crowd out the EDT', (
     expect(hits(50).filter(h => h.startsWith('field:DemoReportTmp'))).toHaveLength(12);
   });
 
+  it('returns exactly what sorting on the score in SQL returns, at every window size', () => {
+    // searchSymbols streams in ORDER BY rank order and stops early rather than sorting on
+    // the score expression (2-3x slower on a full index). It must not change the answer.
+    const sorted = index.getReadDb().prepare(
+      `SELECT s.name, s.type, s.parent_name FROM symbols_fts fts JOIN symbols s ON s.id = fts.rowid
+       WHERE symbols_fts MATCH ?
+       ORDER BY CASE WHEN s.type = 'field' AND EXISTS (
+         SELECT 1 FROM symbols t WHERE t.name = s.parent_name AND t.type = 'table'
+       ) THEN bm25(symbols_fts, 1, 1, 1, 0, 1, 1, 1, 1) ELSE rank END, s.id`,
+    ).all('{name type parent_name signature description tags} : "CustName"*') as any[];
+    const expected = sorted.map(r => `${r.type}:${r.parent_name ?? ''}.${r.name}`);
+    for (const limit of [1, 3, 5, 13, 50]) {
+      expect(hits(limit)).toEqual(expected.slice(0, limit));
+    }
+  });
+
   it('leaves a view field scored on its signature, as it always was', () => {
     const h = hits(50);
     expect(h.indexOf('field:DemoCustView.CustName')).toBeLessThan(h.indexOf('edt:.CustName'));
+  });
+});
+
+describe('search: streaming top-N by score', () => {
+  const topByFtsScore = (XppSymbolIndex as any).topByFtsScore as (
+    rows: Array<{ fts_rank: number; fts_score: number }>, limit: number,
+  ) => Array<{ fts_rank: number; fts_score: number }>;
+
+  it('keeps reading past a row that scores worse than the window until the rank rules out the rest', () => {
+    // Rows arrive in rank order. The third is a table field whose EDT match inflated its
+    // rank: its score is poor, but the fourth row's rank still beats the window's worst
+    // score, so it belongs in the answer. Stopping on the third row's SCORE would drop it.
+    const rows = [
+      { fts_rank: -10, fts_score: -9 },
+      { fts_rank: -9.5, fts_score: -8 },
+      { fts_rank: -8.5, fts_score: -1 },
+      { fts_rank: -8.4, fts_score: -8.4 },
+      { fts_rank: -7, fts_score: -7 },
+    ];
+    expect(topByFtsScore(rows, 2).map(r => r.fts_score)).toEqual([-9, -8.4]);
+  });
+
+  it('stops once no later row can enter', () => {
+    let read = 0;
+    function* rows() {
+      for (const r of [-10, -9, -8, -7, -6]) { read++; yield { fts_rank: r, fts_score: r }; }
+    }
+    expect(topByFtsScore(rows() as any, 2).map(r => r.fts_score)).toEqual([-10, -9]);
+    expect(read).toBe(3);
+  });
+
+  it('returns nothing for a zero window', () => {
+    expect(topByFtsScore([{ fts_rank: -1, fts_score: -1 }], 0)).toEqual([]);
   });
 });

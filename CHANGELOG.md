@@ -134,8 +134,11 @@ those are called out explicitly below.
   method. Table fields are now scored without their signature, which is exactly
   how they scored when it held a base type; view and data-entity fields, whose
   signature was never an EDT, keep theirs. Across 12 common EDT-name queries the
-  top 20 is identical to the previous index's. It costs 10–60 ms per search on a
-  full index (warm cache), for the per-row table check and the second bm25.
+  top 20 is identical to the previous index's. The query still sorts by FTS5's own
+  `rank` and re-scores the streamed rows, stopping as soon as no later row can enter
+  the window: sorting on the score expression in SQL gave the same answer but made a
+  broad query 2–3× slower on a full index (`Trans` 172 → 499 ms). Streamed, it costs
+  0–45 ms (`Trans` 189 ms, `Name` 64 → 107 ms, warm cache).
 - **The naming check no longer warns about the canonical extension-class name.**
   `CustTableBku_Extension` is exactly what the prefix style produces and what the
   write path returns untouched, yet the check answered "Extension name does not

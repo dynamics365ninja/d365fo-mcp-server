@@ -1695,11 +1695,43 @@ export class XppSymbolIndex {
    *
    * Column order is symbols_fts's: name, type, parent_name, signature, description, tags,
    * source_snippet, inline_comments.
+   *
+   * The score is SELECTED, not sorted on: see {@link topByFtsScore} for why the query itself
+   * stays `ORDER BY rank`.
    */
-  private static readonly FTS_ORDER_BY =
-    `ORDER BY CASE WHEN s.type = 'field' AND EXISTS (` +
+  private static readonly FTS_SCORE_COLUMNS =
+    `, rank AS fts_rank, CASE WHEN s.type = 'field' AND EXISTS (` +
     `SELECT 1 FROM symbols t WHERE t.name = s.parent_name AND t.type = 'table'` +
-    `) THEN bm25(symbols_fts, 1, 1, 1, 0, 1, 1, 1, 1) ELSE rank END`;
+    `) THEN bm25(symbols_fts, 1, 1, 1, 0, 1, 1, 1, 1) ELSE rank END AS fts_score`;
+
+  /**
+   * The `limit` best rows by `fts_score`, read from a statement that streams them in
+   * `ORDER BY rank` order.
+   *
+   * Sorting on the score expression directly was 2-3x slower on a full index (`Trans`:
+   * 172 ms -> 499 ms): only a bare `ORDER BY rank` is sorted inside FTS5, anything else
+   * makes SQLite join every match to `symbols` and sort them itself. Streaming keeps FTS5's
+   * sort and stops early, and the result is exactly the score order: bm25 is negative,
+   * lower is better, and dropping the signature weight can only raise a row's score, so
+   * fts_score >= fts_rank. Once a row's rank is worse than the limit-th best score, no later
+   * row -- whose score is at least its rank, which is at least this one's -- can enter.
+   * Ties keep stream order.
+   */
+  private static topByFtsScore<T extends { fts_rank: number; fts_score: number }>(
+    rows: Iterable<T>,
+    limit: number,
+  ): T[] {
+    const top: T[] = [];
+    if (limit <= 0) return top;
+    for (const row of rows) {
+      if (top.length >= limit && row.fts_rank > top[top.length - 1].fts_score) break;
+      let i = top.length;
+      while (i > 0 && top[i - 1].fts_score > row.fts_score) i--;
+      top.splice(i, 0, row);
+      if (top.length > limit) top.pop();
+    }
+    return top;
+  }
 
   /**
    * Search symbols by query with full-text search
@@ -1722,6 +1754,7 @@ export class XppSymbolIndex {
     // PERFORMANCE: Select only essential columns, not s.* (avoids loading large text fields)
     let sql = `
       SELECT s.id, s.name, s.type, s.parent_name, s.signature, s.file_path, s.model, s.description
+        ${XppSymbolIndex.FTS_SCORE_COLUMNS}
       FROM symbols_fts fts
       JOIN symbols s ON s.id = fts.rowid
       WHERE symbols_fts MATCH ?
@@ -1731,13 +1764,13 @@ export class XppSymbolIndex {
       sql += ` AND s.type IN (${types.map(() => '?').join(',')})`;  
       params.push(...types);
     }
-    sql += ` ${XppSymbolIndex.FTS_ORDER_BY} LIMIT ?`;
-    params.push(limit);
+    sql += ` ORDER BY rank`;
 
     const db = this.getReadDb();
     try {
       const stmt = this.getReadStmt(db, cacheKey, () => sql);
-      const rows = (stmt.all(...params) as any[]).map(row => this.rowToSymbol(row));
+      const rows = XppSymbolIndex.topByFtsScore(stmt.iterate(...params) as Iterable<any>, limit)
+        .map(row => this.rowToSymbol(row));
       // FTS5's default tokenizer treats each name as one indivisible token and only
       // matches token PREFIXES, so a mid-token substring query (e.g. "CategoryPropert"
       // against "ProcurementProductCategoryPropertyEntity") is a syntactically valid
@@ -3843,6 +3876,7 @@ export class XppSymbolIndex {
 
     let sql = `
       SELECT s.id, s.name, s.type, s.parent_name, s.signature, s.file_path, s.model, s.description
+        ${XppSymbolIndex.FTS_SCORE_COLUMNS}
       FROM symbols_fts fts
       JOIN symbols s ON s.id = fts.rowid
       WHERE symbols_fts MATCH ?
@@ -3853,12 +3887,12 @@ export class XppSymbolIndex {
       sql += ` AND s.type IN (${types.map(() => '?').join(',')})`;
       params.push(...types);
     }
-    sql += ` ${XppSymbolIndex.FTS_ORDER_BY} LIMIT ?`;
-    params.push(limit);
+    sql += ` ORDER BY rank`;
 
     try {
       const stmt = db.prepare(sql);
-      return (stmt.all(...params) as any[]).map(row => this.rowToSymbol(row));
+      return XppSymbolIndex.topByFtsScore(stmt.iterate(...params) as Iterable<any>, limit)
+        .map(row => this.rowToSymbol(row));
     } catch {
       // FTS5 syntax error (query contains *, ", (, ), -) → LIKE fallback, still model-scoped.
       const escapeLikePattern = (value: string): string =>
