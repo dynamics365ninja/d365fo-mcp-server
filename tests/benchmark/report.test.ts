@@ -7,7 +7,7 @@ import { DEFAULT_CREDITS } from '../../src/benchmark/credits.js';
 import { renderHtml } from '../../src/benchmark/report/html.js';
 import { renderMarkdown } from '../../src/benchmark/report/markdown.js';
 import { buildReportModel } from '../../src/benchmark/report/model.js';
-import { dumbbellChart, lineChart, niceTicks, dateTicks } from '../../src/benchmark/report/svg.js';
+import { divergingBars, dumbbellChart, lineChart, niceTicks, dateTicks } from '../../src/benchmark/report/svg.js';
 import type { BenchmarkRun, PromptSpec } from '../../src/benchmark/types.js';
 
 let seq = 0;
@@ -54,6 +54,19 @@ describe('buildReportModel', () => {
     expect(p1.trends.durationMs.length).toBe(4);
   });
 
+  it('leads with the MCP effect per model, and over time where a day has both cells', () => {
+    const p1 = model.prompts[0];
+    expect(p1.modelEffects.map(r => r.model)).toEqual(['claude-opus-5-5', 'claude-sonnet-5-5']);
+    expect(Math.round(p1.modelEffects[1].deltas.durationMs!.deltaPct)).toBe(-50);
+    expect(Math.round(p1.modelEffects[1].deltas.outputTokens!.deltaPct)).toBe(-67);
+    // sonnet ran both cells on 2026-10-01, opus on 2026-10-05: one point each.
+    expect(p1.effectTrends.durationMs.map(s => [s.model, s.points.length])).toEqual([['claude-opus-5-5', 1], ['claude-sonnet-5-5', 1]]);
+    expect(Math.round(p1.effectTrends.durationMs[1].points[0].value)).toBe(-50);
+    // Across prompts: p2 has one cell only, so the overview equals p1's effects.
+    expect(model.overviewEffects.map(r => r.model)).toEqual(['claude-opus-5-5', 'claude-sonnet-5-5']);
+    expect(model.overviewEffects[1].deltas.durationMs!.prompts).toBe(1);
+  });
+
   it('assigns colour slots per model across the whole report', () => {
     expect([...model.slots.keys()]).toEqual(['claude-opus-5-5', 'claude-sonnet-5-5', 'gpt-x']);
     expect(model.hosts).toEqual(['claude-code', 'copilot-chat']);
@@ -96,8 +109,11 @@ describe('renderHtml', () => {
 
   it('draws a dumbbell per headline metric and small multiples over time, faceted per host', () => {
     const p1 = html.slice(html.indexOf('<section class="prompt" data-prompt="p1"'), html.indexOf('<section class="prompt" data-prompt="p2"'));
+    expect((p1.match(/<svg class="chart diverging"/g) ?? []).length).toBe(5); // time, out tokens, AIC, turns, checks
     expect((p1.match(/<svg class="chart dumbbell"/g) ?? []).length).toBe(5); // 4 headline + score, one host
-    expect((p1.match(/<svg class="chart lines"/g) ?? []).length).toBe(8); // 4 metrics × with/without
+    expect((p1.match(/<svg class="chart lines"/g) ?? []).length).toBe(8 + 5); // 4 absolute metrics × with/without + 5 effect trends
+    expect(p1).toContain('<details class="more">');
+    expect(p1.indexOf('chart diverging')).toBeLessThan(p1.indexOf('chart dumbbell'));
     const mixed = renderHtml(buildReportModel([...runs, run({ host: 'copilot-chat', model: 'gpt-x', aic: { value: 1, source: 'host' } })], specs, { credits: DEFAULT_CREDITS }));
     const p1mixed = mixed.slice(mixed.indexOf('<section class="prompt" data-prompt="p1"'), mixed.indexOf('<section class="prompt" data-prompt="p2"'));
     expect((p1mixed.match(/<svg class="chart dumbbell"/g) ?? []).length).toBe(10); // × 2 hosts
@@ -124,6 +140,8 @@ describe('renderMarkdown', () => {
   it('prints the overview and per-prompt tables with the same medians', () => {
     const md = renderMarkdown(buildReportModel(runs, specs, { credits: DEFAULT_CREDITS, now: new Date('2026-10-07T12:00:00Z') }));
     expect(md).toContain('# D365FO MCP benchmark');
+    expect(md).toContain('## MCP effect per model, all prompts');
+    expect(md).toMatch(/\| claude-sonnet-5-5 \| claude-code \| −50 % \| −67 % \| −60 % \|/);
     expect(md).toContain('| model | host | MCP | runs | prompts | completed |');
     expect(md).toMatch(/\| claude-sonnet-5-5 \| yes \| 1 \| 100 % \| 10 s \| 200 \| 10\.00 \|/);
     expect(md).toContain('With MCP vs without (medians):');
@@ -175,6 +193,30 @@ describe('svg primitives', () => {
     expect(svg).toContain('class="dot clipped s0"');
     expect(svg).toContain('900 s (above the axis)');
     expect((svg.match(/<circle class="dot s0"/g) ?? []).length).toBe(1);
+  });
+
+  it('draws diverging bars from a zero baseline, coloured by polarity with a signed label', () => {
+    const svg = divergingBars({
+      rows: [
+        { label: 'sonnet', value: -48, good: true, tip: 'sonnet: 2 s vs 4 s' },
+        { label: 'opus', value: 12, good: false, tip: 'opus: worse' },
+        { label: 'haiku', value: null, good: null, tip: '' },
+      ],
+      title: 't', format: v => `${v} %`,
+    });
+    expect(svg).toContain('class="bar good"');
+    expect(svg).toContain('class="bar bad"');
+    expect(svg).toContain('▼ -48 %');
+    expect(svg).toContain('▲ 12 %');
+    expect(svg).toContain('needs both cells');
+    expect(svg).toContain('class="axis zero"');
+  });
+
+  it('draws a zero line when the axis goes negative', () => {
+    const t0 = Date.UTC(2026, 9, 1);
+    const svg = lineChart({ series: [{ name: 'a', slot: 0, points: [{ t: t0, v: -20 }], dots: [] }], title: 'x', format: String, tDomain: [t0, t0 + 1], yMax: 50, yMin: -50 });
+    expect(svg).toContain('class="axis zero"');
+    expect(svg).toMatch(/>-[246]0</); // negative ticks are labelled
   });
 
   it('renders a line per series with ≥2 points and a dot per raw run', () => {

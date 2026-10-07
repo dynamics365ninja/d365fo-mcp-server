@@ -8,9 +8,19 @@
  * dumbbell, never a second categorical colour; deltas carry a glyph as well as
  * a colour; every chart has a table under it.
  */
-import { HEADLINE_METRICS, METRICS, METRIC_BY_KEY, formatDeltaPct, formatMetric, type McpEffect, type MetricKey } from '../aggregate.js';
+import {
+  EFFECT_METRICS,
+  HEADLINE_METRICS,
+  METRICS,
+  METRIC_BY_KEY,
+  formatDeltaPct,
+  formatMetric,
+  type McpEffect,
+  type MetricKey,
+  type ModelEffectRow,
+} from '../aggregate.js';
 import type { Kpi, PromptSection, ReportModel } from './model.js';
-import { dumbbellChart, esc, legend, lineChart, type DumbbellRow, type LineSeries } from './svg.js';
+import { divergingBars, dumbbellChart, esc, legend, lineChart, type DivergingRow, type DumbbellRow, type LineSeries } from './svg.js';
 
 const CSS = `
 :root {
@@ -20,7 +30,7 @@ const CSS = `
   --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
   --series-5: #e87ba4; --series-6: #008300; --series-7: #4a3aa7; --series-8: #e34948; --series-other: #898781;
   --from: #86b6ef; --to: #2a78d6;
-  --good: #006300; --bad: #d03b3b; --warn-bg: #fff6e0;
+  --good: #006300; --bad: #d03b3b; --good-mark: #0ca30c; --bad-mark: #d03b3b; --warn-bg: #fff6e0;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -29,7 +39,7 @@ const CSS = `
     --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
     --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
     --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767;
-    --from: #86b6ef; --to: #3987e5; --good: #0ca30c; --bad: #e66767; --warn-bg: #2a2410;
+    --from: #86b6ef; --to: #3987e5; --good: #0ca30c; --bad: #e66767; --good-mark: #0ca30c; --bad-mark: #d03b3b; --warn-bg: #2a2410;
   }
 }
 :root[data-theme="dark"] {
@@ -38,7 +48,7 @@ const CSS = `
   --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
   --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
   --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767;
-  --from: #86b6ef; --to: #3987e5; --good: #0ca30c; --bad: #e66767; --warn-bg: #2a2410;
+  --from: #86b6ef; --to: #3987e5; --good: #0ca30c; --bad: #e66767; --good-mark: #0ca30c; --bad-mark: #d03b3b; --warn-bg: #2a2410;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--page); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
@@ -77,6 +87,13 @@ svg .dot { stroke: var(--surface); stroke-width: 2; cursor: default; }
 svg .dot:hover, svg .dot:focus { stroke: var(--text); outline: none; }
 svg .dot.from { fill: var(--from); } svg .dot.to { fill: var(--to); }
 svg .dot.clipped { stroke-width: 1.5; }
+svg .bar.good { fill: var(--good-mark); } svg .bar.bad { fill: var(--bad-mark); } svg .bar.neutral { fill: var(--axis); }
+svg .bar:hover, svg .bar:focus { opacity: .85; outline: none; }
+svg .axis.zero { stroke: var(--muted); }
+.grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+details.more > summary { font-weight: 600; color: var(--text-2); padding: 10px 0; }
+details.more[open] > summary { margin-bottom: 8px; }
+.lede { color: var(--text-2); margin: 0 0 8px; }
 svg .line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 svg .crosshair { stroke: var(--axis); stroke-width: 1; pointer-events: none; }
 .s0 { stroke: var(--series-1); fill: var(--series-1); } .s1 { stroke: var(--series-2); fill: var(--series-2); }
@@ -323,6 +340,74 @@ function trends(p: PromptSection, slots: Map<string, number>): string {
   return blocks.join('');
 }
 
+const pct = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(Math.abs(v) >= 10 ? 0 : 1)} %`;
+
+/**
+ * The headline: one small multiple per metric, one bar per model, the bar
+ * being "with MCP relative to without". Reads left to right as a scorecard.
+ */
+function effectBars(rows: ModelEffectRow[], hosts: string[], scope: string): string {
+  if (rows.length === 0) {
+    return '<p class="tagline">No model has runs both with and without MCP yet — the comparison needs both cells.</p>';
+  }
+  const metrics = EFFECT_METRICS.filter(k => rows.some(r => r.deltas[k]));
+  // The host joins the row label only when the ROWS span more than one host —
+  // a Copilot session that never has both cells must not stamp every row.
+  const rowHosts = new Set(rows.map(r => r.host));
+  const label = (r: ModelEffectRow) => (rowHosts.size > 1 || (hosts.length > 1 && !rows.length) ? `${r.model} · ${r.host}` : r.model);
+  // One shared extent per scorecard so the bars are comparable across the panels.
+  const extent = Math.max(...rows.flatMap(r => metrics.map(k => Math.abs(r.deltas[k]?.deltaPct ?? 0))), 10);
+  const panels = metrics.map(k => {
+    const def = METRIC_BY_KEY[k];
+    const bars: DivergingRow[] = rows.map(r => {
+      const d = r.deltas[k];
+      if (!d) return { label: label(r), value: null, good: null, tip: '' };
+      const good = d.deltaPct === 0 ? null : def.better === 'lower' ? d.deltaPct < 0 : d.deltaPct > 0;
+      const tip = `${r.model}: ${def.format(d.withMcp)} with MCP vs ${def.format(d.withoutMcp)} without (${d.nWith} + ${d.nWithout} runs${d.prompts > 1 ? `, ${d.prompts} prompts` : ''})`;
+      return { label: label(r), value: d.deltaPct, good, tip };
+    });
+    return `<figure class="card"><figcaption>${esc(def.label)}<small>${def.better === 'lower' ? 'less is better' : 'more is better'}</small></figcaption>${divergingBars({ rows: bars, title: `MCP effect on ${def.label}, ${scope}`, format: pct, extent })}</figure>`;
+  });
+  return `<div class="grid3">${panels.join('')}</div>
+  <p class="tagline">Bar = with MCP relative to without, median per model${scope === 'all prompts' ? ', then median over prompts' : ''}. ▼ green = better with MCP, ▲ red = worse.</p>`;
+}
+
+/** The MCP effect over time: one line per model, zero = no difference. */
+function effectTrends(p: PromptSection, slots: Map<string, number>): string {
+  const blocks = EFFECT_METRICS.map(metric => {
+    const def = METRIC_BY_KEY[metric];
+    const all = p.effectTrends[metric];
+    if (all.length === 0) return '';
+    const tAll = all.flatMap(s => s.points.map(r => r.t));
+    const vAll = all.flatMap(s => s.points.map(r => r.value));
+    const seriesHosts = new Set(all.map(s => s.host));
+    const series: LineSeries[] = all.map(s => ({
+      name: seriesHosts.size > 1 ? `${s.model} · ${s.host}` : s.model,
+      slot: slots.get(s.model) ?? 8,
+      points: s.points.map(pt => ({ t: pt.t, v: pt.value })),
+      dots: s.points.map(pt => ({ t: pt.t, v: pt.value })),
+    }));
+    // A delta cannot go below −100 %, and above +200 % one bad day (a timeout
+    // against 30-second runs) would flatten every other line; such a day is
+    // drawn clipped at the top edge with its value in the tooltip.
+    const maxAbs = Math.max(...vAll.map(Math.abs), 10);
+    const svg = lineChart({
+      series,
+      title: `MCP effect on ${def.label} over time`,
+      format: pct,
+      tDomain: [Math.min(...tAll), Math.max(...tAll)],
+      yMax: Math.min(maxAbs, 200),
+      yMin: -Math.min(maxAbs, 100),
+      width: 640,
+      height: 220,
+    });
+    const models = [...new Set(all.map(s => s.model))].sort().map(model => ({ name: model, slot: slots.get(model) ?? 8 }));
+    return `<figure class="card"><figcaption>${esc(def.label)}<small>with MCP vs without, per day · ${def.better === 'lower' ? 'below zero is better' : 'above zero is better'}</small></figcaption>${svg}${legend(models)}</figure>`;
+  }).filter(Boolean);
+  if (blocks.length === 0) return '<p class="tagline">No day has both cells for a model yet — run both variants on the same day to get a point.</p>';
+  return `<div class="grid2">${blocks.join('')}</div>`;
+}
+
 function promptSection(p: PromptSection, m: ReportModel): string {
   const promptText = p.spec ? `<details><summary>Prompt text</summary><pre class="prompt">${esc(p.spec.prompt)}</pre></details>` : '<p class="tagline">Prompt text not in the catalogue (eval/benchmark/prompts/).</p>';
   const drift = p.hashDrift
@@ -334,15 +419,21 @@ function promptSection(p: PromptSection, m: ReportModel): string {
   ${drift}
   ${promptText}
   ${kpiRow(p.kpis)}
-  <h3>With MCP vs without</h3>
-  ${dumbbells(p)}
-  <h3>Over time</h3>
-  ${trends(p, m.slots)}
-  <h3>Numbers</h3>
-  <div class="card">${statsTable(p)}</div>
-  <h3>MCP effect</h3>
-  <div class="card">${effectsTable(p)}</div>
-  <details><summary>All ${p.runs.length} runs</summary><div class="card">${runsTable(p)}</div></details>
+  <h3>MCP effect per model</h3>
+  ${effectBars(p.modelEffects, p.hosts, p.promptId)}
+  <h3>MCP effect over time</h3>
+  ${effectTrends(p, m.slots)}
+  <details class="more"><summary>Details — absolute values, trends, tables, every run</summary>
+    <h3>With MCP vs without, medians</h3>
+    ${dumbbells(p)}
+    <h3>Over time, absolute</h3>
+    ${trends(p, m.slots)}
+    <h3>Numbers</h3>
+    <div class="card">${statsTable(p)}</div>
+    <h3>MCP effect, table</h3>
+    <div class="card">${effectsTable(p)}</div>
+    <details><summary>All ${p.runs.length} runs</summary><div class="card">${runsTable(p)}</div></details>
+  </details>
 </section>`;
 }
 
@@ -367,8 +458,9 @@ export function renderHtml(m: ReportModel): string {
   const body = m.runsTotal === 0
     ? '<div class="card empty">No runs match. Record one with <code>d365fo-mcp benchmark run</code> or <code>benchmark ingest</code>.</div>'
     : `${kpiRow(m.overviewKpis)}
-  <h3>All prompts, medians per model</h3>
-  <div class="card">${overviewTable(m)}</div>
+  <h3>MCP effect per model, all prompts</h3>
+  ${effectBars(m.overviewEffects, m.hosts, 'all prompts')}
+  <details class="more"><summary>All prompts, medians per model</summary><div class="card">${overviewTable(m)}</div></details>
   ${m.prompts.map(p => promptSection(p, m)).join('\n')}`;
   return `<!doctype html>
 <html lang="en">

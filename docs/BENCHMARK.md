@@ -84,20 +84,26 @@ One self-contained HTML file (works from disk, light/dark) and a markdown twin.
 Filters are command-line flags — `--prompt`, `--host`, `--model`, `--label`,
 `--since`, `--until` — and the page has a prompt switcher.
 
-Per prompt:
+The page leads with the difference, not the absolute values. At the top, for
+all prompts, and again inside every prompt:
 
-- **KPI tiles** — runs, fastest and cheapest cell, and the MCP effect (median
-  of per-model deltas) on time, AIC, output tokens and checks.
-- **With MCP vs without** — one dumbbell per metric: a row per model, the
-  without-MCP median at the light end, the with-MCP median at the dark end.
-- **Over time** — per metric, two panels (with / without) sharing one scale,
-  one line per model through the daily median, dots for single runs. This is
-  the "where are the models going" view: a new release of the server moves the
-  with-MCP panel; a new model version moves both.
-- **Numbers** — the medians, p90 run time, completion rate and AIC source per
-  cell; the MCP-effect table with ▼/▲ glyphs; every run in a collapsible table.
+- **MCP effect per model** — one small panel per metric (run time, output
+  tokens, AIC, round trips, checks), one bar per model: *with MCP relative to
+  without*, as a signed percentage from a zero baseline. Green ▼ = better with
+  MCP, red ▲ = worse. Across prompts the bar is the median of the per-prompt
+  effects, so a prompt with many repeats does not outvote one with few.
+- **MCP effect over time** — per metric, one line per model: for every day
+  that has both cells, the relative difference of the two daily medians. Zero
+  is "no difference". A new release of the server moves these lines; a new
+  model version moves the absolute values but not necessarily the effect.
+- **KPI tiles** — runs, fastest and cheapest cell, and the MCP effect summarised
+  over models.
 
-An overview across prompts sits at the top. `--json` prints the data instead.
+Everything else is one click away under **Details**: dumbbells of the absolute
+medians (without → with, per model), absolute trends with / without side by
+side (faceted per host — an editor session and a headless run are not one
+scale), the stats table (medians, p90, completion rate, AIC source), the
+MCP-effect table and every run. `--json` prints the data instead.
 
 ## Adding a prompt
 

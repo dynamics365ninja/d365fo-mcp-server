@@ -269,3 +269,104 @@ export function formatDeltaPct(delta: number | null): string {
   const sign = delta > 0 ? '+' : delta < 0 ? '−' : '±';
   return `${sign}${Math.abs(delta).toFixed(Math.abs(delta) >= 10 ? 0 : 1)} %`;
 }
+
+// ---------------------------------------------------------------- the MCP effect, per model
+
+export interface EffectSeries {
+  model: string;
+  host: string;
+  /** One point per UTC day on which the model has BOTH cells: (median with − median without) / median without, in %. */
+  points: Array<SeriesPoint & { withMcp: number; withoutMcp: number }>;
+}
+
+/**
+ * The MCP effect over time, per model: for every day that has runs with AND
+ * without MCP, the relative difference of the two daily medians. Days with
+ * only one cell contribute nothing — a delta needs both sides measured under
+ * the same conditions.
+ */
+export function effectSeries(runs: BenchmarkRun[], metric: MetricKey): EffectSeries[] {
+  const def = METRIC_BY_KEY[metric];
+  const byModel = new Map<string, Map<number, { with: SeriesPoint[]; without: SeriesPoint[] }>>();
+  for (const r of runs) {
+    const v = def.of(r);
+    if (v === null) continue;
+    const k = `${r.host}\u0000${r.model}`;
+    const t = Date.parse(r.timestamp);
+    const day = Math.floor(t / DAY_MS) * DAY_MS;
+    const days = byModel.get(k) ?? new Map();
+    const cell = days.get(day) ?? { with: [], without: [] };
+    (r.mcp ? cell.with : cell.without).push({ t, value: v, runIds: [r.runId] });
+    days.set(day, cell);
+    byModel.set(k, days);
+  }
+  const out: EffectSeries[] = [];
+  for (const [k, days] of byModel) {
+    const [host, model] = k.split('\u0000');
+    const points: EffectSeries['points'] = [];
+    for (const [, cell] of [...days.entries()].sort((a, b) => a[0] - b[0])) {
+      if (cell.with.length === 0 || cell.without.length === 0) continue;
+      const w = quantile(cell.with.map(p => p.value).sort((a, b) => a - b), 0.5);
+      const wo = quantile(cell.without.map(p => p.value).sort((a, b) => a - b), 0.5);
+      if (wo === 0) continue;
+      const all = [...cell.with, ...cell.without];
+      points.push({
+        t: all.reduce((s, p) => s + p.t, 0) / all.length,
+        value: ((w - wo) / wo) * 100,
+        runIds: all.flatMap(p => p.runIds),
+        withMcp: w,
+        withoutMcp: wo,
+      });
+    }
+    if (points.length > 0) out.push({ model, host, points });
+  }
+  return out.sort((a, b) => a.model.localeCompare(b.model) || a.host.localeCompare(b.host));
+}
+
+export interface ModelEffectRow {
+  model: string;
+  host: string;
+  /** Per metric: the delta in %, and the medians behind it. Null when the model lacks one of the cells for that metric. */
+  deltas: Record<MetricKey, { deltaPct: number; withMcp: number; withoutMcp: number; nWith: number; nWithout: number; prompts: number } | null>;
+}
+
+/**
+ * One row per model: the MCP effect per metric. Within a prompt this is the
+ * effect itself; across prompts it is the median of the per-prompt effects, so
+ * a prompt with many repeats does not outvote one with few.
+ */
+export function modelEffectRows(effects: McpEffect[]): ModelEffectRow[] {
+  const byModel = new Map<string, McpEffect[]>();
+  for (const e of effects) {
+    const k = `${e.host}\u0000${e.model}`;
+    const b = byModel.get(k);
+    if (b) b.push(e); else byModel.set(k, [e]);
+  }
+  const rows: ModelEffectRow[] = [];
+  for (const [k, list] of byModel) {
+    const [host, model] = k.split('\u0000');
+    const deltas = Object.fromEntries(
+      METRICS.map(m => {
+        const mine = list.filter(e => e.metric === m.key && e.deltaPct !== null);
+        if (mine.length === 0) return [m.key, null];
+        const med = (xs: number[]) => quantile([...xs].sort((a, b) => a - b), 0.5);
+        return [
+          m.key,
+          {
+            deltaPct: med(mine.map(e => e.deltaPct!)),
+            withMcp: med(mine.map(e => e.withMcp)),
+            withoutMcp: med(mine.map(e => e.withoutMcp)),
+            nWith: mine.reduce((s, e) => s + e.nWith, 0),
+            nWithout: mine.reduce((s, e) => s + e.nWithout, 0),
+            prompts: new Set(mine.map(e => e.promptId)).size,
+          },
+        ];
+      }),
+    ) as ModelEffectRow['deltas'];
+    rows.push({ model, host, deltas });
+  }
+  return rows.sort((a, b) => a.model.localeCompare(b.model) || a.host.localeCompare(b.host));
+}
+
+/** Metrics the headline "MCP effect per model" view shows, in order. */
+export const EFFECT_METRICS: MetricKey[] = ['durationMs', 'outputTokens', 'aic', 'requests', 'score'];

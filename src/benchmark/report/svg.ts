@@ -139,8 +139,12 @@ export interface LineChartOptions {
   height?: number;
   /** Shared x domain across small multiples. */
   tDomain: [number, number];
-  /** Shared y max across small multiples (0-based axis). Dots above it are drawn clipped at the top edge. */
+  /** Shared y max across small multiples. Dots above it are drawn clipped at the top edge. */
   yMax: number;
+  /** Axis floor; default 0. A negative floor gets an emphasised zero line (for a chart of deltas). */
+  yMin?: number;
+  /** Format for the y ticks when it differs from the value format (e.g. a signed percentage). */
+  tickFormat?: (v: number) => string;
 }
 
 function fmtDate(t: number): string {
@@ -173,23 +177,28 @@ export function lineChart(o: LineChartOptions): string {
   const plotH = height - padT - padB;
   const [t0, t1raw] = o.tDomain;
   const t1 = t1raw > t0 ? t1raw : t0 + 24 * 3600 * 1000;
-  const ticks = niceTicks(0, o.yMax);
+  const floor = Math.min(0, o.yMin ?? 0);
+  const ticks = niceTicks(floor, o.yMax);
   const yMax = ticks[ticks.length - 1] || 1;
+  const yMin = ticks[0];
+  const span = yMax - yMin || 1;
   const x = (t: number) => padL + ((t - t0) / (t1 - t0)) * plotW;
-  const y = (v: number) => padT + plotH - (Math.min(v, yMax) / yMax) * plotH;
+  const y = (v: number) => padT + plotH - ((Math.max(yMin, Math.min(v, yMax)) - yMin) / span) * plotH;
+  const tickFmt = o.tickFormat ?? o.format;
 
   const parts: string[] = [];
   parts.push(`<svg class="chart lines" viewBox="0 0 ${width} ${height}" width="100%" role="img" aria-label="${esc(o.title)}" data-plot="${padL},${padT},${plotW},${plotH}" data-t0="${t0}" data-t1="${t1}">`);
   parts.push(`<title>${esc(o.title)}</title>`);
   for (const tick of ticks) {
-    parts.push(`<line class="grid" x1="${padL}" y1="${y(tick).toFixed(1)}" x2="${padL + plotW}" y2="${y(tick).toFixed(1)}"/>`);
-    parts.push(`<text class="tick" x="${padL - 8}" y="${(y(tick) + 4).toFixed(1)}" text-anchor="end">${esc(o.format(tick))}</text>`);
+    const zero = tick === 0 && yMin < 0;
+    parts.push(`<line class="${zero ? 'axis zero' : 'grid'}" x1="${padL}" y1="${y(tick).toFixed(1)}" x2="${padL + plotW}" y2="${y(tick).toFixed(1)}"/>`);
+    parts.push(`<text class="tick" x="${padL - 8}" y="${(y(tick) + 4).toFixed(1)}" text-anchor="end">${esc(tickFmt(tick))}</text>`);
   }
   for (const t of dateTicks(t0, t1)) {
     if (t < t0 - 1 || t > t1 + 1) continue;
     parts.push(`<text class="tick" x="${x(t).toFixed(1)}" y="${height - 8}" text-anchor="middle">${esc(fmtDate(t).slice(5))}</text>`);
   }
-  parts.push(`<line class="axis" x1="${padL}" y1="${padT + plotH}" x2="${padL + plotW}" y2="${padT + plotH}"/>`);
+  if (yMin >= 0) parts.push(`<line class="axis" x1="${padL}" y1="${padT + plotH}" x2="${padL + plotW}" y2="${padT + plotH}"/>`);
   for (const s of o.series) {
     const cls = `s${s.slot}`;
     if (s.points.length > 1) {
@@ -221,4 +230,80 @@ export function legend(items: Array<{ name: string; slot: number }>): string {
   return `<ul class="legend">${items
     .map(i => `<li><span class="key s${i.slot}"></span>${esc(i.name)}</li>`)
     .join('')}</ul>`;
+}
+
+export interface DivergingRow {
+  label: string;
+  /** Signed value; null = no comparison possible for this row. */
+  value: number | null;
+  /** Whether this value is an improvement — decides good/bad colouring. */
+  good: boolean | null;
+  tip: string;
+}
+
+export interface DivergingOptions {
+  rows: DivergingRow[];
+  title: string;
+  format: (v: number) => string;
+  width?: number;
+  /** Shared symmetric axis extent (abs); defaults to the rows' own max. */
+  extent?: number;
+}
+
+/**
+ * Horizontal bars growing from a zero baseline, one per model: the chart for
+ * "how much does MCP change this metric for each model". Colour carries ONLY
+ * polarity (better / worse, the status pair), the label carries the sign too,
+ * and the model name is the row — identity never rides on hue here.
+ * Marks: 14 px thick, 4 px rounded data end, square at the baseline.
+ */
+export function divergingBars(o: DivergingOptions): string {
+  const width = o.width ?? 420;
+  const padR = 70, padL = 70;
+  const plotX = LABEL_COL - 40;
+  const plotW = width - plotX - padR - padL + 70;
+  const values = o.rows.map(r => r.value).filter((v): v is number => v !== null && Number.isFinite(v));
+  const extent = Math.max(o.extent ?? 0, ...values.map(Math.abs), 1);
+  const ticks = niceTicks(-extent, extent, 4);
+  const lim = Math.max(Math.abs(ticks[0]), Math.abs(ticks[ticks.length - 1])) || 1;
+  const x0 = plotX + plotW / 2;
+  const x = (v: number) => x0 + (Math.max(-lim, Math.min(lim, v)) / lim) * (plotW / 2);
+  const top = 8;
+  const barH = 14;
+  const plotH = o.rows.length * ROW_H;
+  const height = top + plotH + 30;
+
+  const parts: string[] = [];
+  parts.push(`<svg class="chart diverging" viewBox="0 0 ${width} ${height}" width="100%" role="img" aria-label="${esc(o.title)}">`);
+  parts.push(`<title>${esc(o.title)}</title>`);
+  for (const t of ticks) {
+    if (Math.abs(t) > lim) continue;
+    const gx = x(t);
+    parts.push(`<line class="${t === 0 ? 'axis zero' : 'grid'}" x1="${gx.toFixed(1)}" y1="${top}" x2="${gx.toFixed(1)}" y2="${top + plotH}"/>`);
+    parts.push(`<text class="tick" x="${gx.toFixed(1)}" y="${top + plotH + 16}" text-anchor="middle">${esc(o.format(t))}</text>`);
+  }
+  o.rows.forEach((row, i) => {
+    const cy = top + i * ROW_H + ROW_H / 2;
+    parts.push(`<text class="label" x="${plotX - 10}" y="${cy + 4}" text-anchor="end">${esc(row.label)}</text>`);
+    if (row.value === null || !Number.isFinite(row.value)) {
+      parts.push(`<text class="muted" x="${(x0 + 8).toFixed(1)}" y="${cy + 4}">needs both cells</text>`);
+      return;
+    }
+    const v = row.value;
+    const xe = x(v);
+    const left = Math.min(x0, xe);
+    const w = Math.max(Math.abs(xe - x0), 1);
+    const r = 4;
+    // Rounded at the data end only: path instead of rect so the baseline side stays square.
+    const d = v >= 0
+      ? `M${x0.toFixed(1)} ${(cy - barH / 2).toFixed(1)} h${(w - r).toFixed(1)} a${r} ${r} 0 0 1 ${r} ${r} v${barH - 2 * r} a${r} ${r} 0 0 1 -${r} ${r} h-${(w - r).toFixed(1)} Z`
+      : `M${x0.toFixed(1)} ${(cy - barH / 2).toFixed(1)} h-${(w - r).toFixed(1)} a${r} ${r} 0 0 0 -${r} ${r} v${barH - 2 * r} a${r} ${r} 0 0 0 ${r} ${r} h${(w - r).toFixed(1)} Z`;
+    const cls = row.good === null ? 'neutral' : row.good ? 'good' : 'bad';
+    parts.push(`<path class="bar ${cls}" d="${d}" tabindex="0" data-tip="${esc(row.tip)}"><title>${esc(row.tip)}</title></path>`);
+    const lx = v >= 0 ? left + w + 6 : left - 6;
+    const glyph = row.good === null ? '' : row.good ? '▼ ' : '▲ ';
+    parts.push(`<text class="value" x="${lx.toFixed(1)}" y="${cy + 4}" text-anchor="${v >= 0 ? 'start' : 'end'}">${esc(glyph + o.format(v))}</text>`);
+  });
+  parts.push('</svg>');
+  return parts.join('');
 }

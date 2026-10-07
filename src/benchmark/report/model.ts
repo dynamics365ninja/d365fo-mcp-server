@@ -2,19 +2,24 @@
  * The report as data — everything the HTML and the markdown print, computed once.
  */
 import {
+  EFFECT_METRICS,
   HEADLINE_METRICS,
   METRICS,
   METRIC_BY_KEY,
+  type EffectSeries,
   type GroupSummary,
   type McpEffect,
   type MetricKey,
+  type ModelEffectRow,
   type Stats,
   type TimeSeries,
   assignModelSlots,
+  effectSeries,
   formatDeltaPct,
   formatMetric,
   groupRuns,
   mcpEffects,
+  modelEffectRows,
   quantile,
   stats,
   timeSeries,
@@ -54,7 +59,11 @@ export interface PromptSection {
   groups: GroupSummary[];
   effects: McpEffect[];
   kpis: Kpi[];
-  /** Series per headline metric, for the small multiples. */
+  /** The headline: one row per model, the MCP effect per metric. */
+  modelEffects: ModelEffectRow[];
+  /** The MCP effect over time per model, per headline metric. */
+  effectTrends: Record<MetricKey, EffectSeries[]>;
+  /** Absolute series per headline metric, for the detailed small multiples. */
   trends: Record<MetricKey, TimeSeries[]>;
   hosts: string[];
 }
@@ -72,6 +81,8 @@ export interface ReportModel {
   hosts: string[];
   span: { from: string; to: string } | null;
   overviewKpis: Kpi[];
+  /** Per model across all prompts: the median of the per-prompt MCP effects. */
+  overviewEffects: ModelEffectRow[];
   overview: OverviewRow[];
   prompts: PromptSection[];
 }
@@ -185,6 +196,7 @@ export function buildReportModel(runs: BenchmarkRun[], specs: PromptSpec[], opts
     const hashes = [...new Set(prs.map(r => r.promptHash))];
     const currentHash = spec ? promptHash(spec.prompt) : null;
     const trends = Object.fromEntries(HEADLINE_METRICS.map(m => [m, timeSeries(prs, m)])) as Record<MetricKey, TimeSeries[]>;
+    const effectTrends = Object.fromEntries(EFFECT_METRICS.map(m => [m, effectSeries(prs, m)])) as Record<MetricKey, EffectSeries[]>;
     return {
       promptId,
       title: spec?.title ?? promptId,
@@ -197,6 +209,8 @@ export function buildReportModel(runs: BenchmarkRun[], specs: PromptSpec[], opts
       groups,
       effects,
       kpis: promptKpis(groups, effects, prs, sectionHosts),
+      modelEffects: modelEffectRows(effects),
+      effectTrends,
       trends,
       hosts: sectionHosts,
     };
@@ -247,6 +261,7 @@ export function buildReportModel(runs: BenchmarkRun[], specs: PromptSpec[], opts
     hosts,
     span: sortedAll.length ? { from: sortedAll[0].timestamp, to: sortedAll[sortedAll.length - 1].timestamp } : null,
     overviewKpis,
+    overviewEffects: modelEffectRows(allEffects),
     overview,
     prompts,
   };

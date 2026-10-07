@@ -35,10 +35,12 @@ those are called out explicitly below.
   counts are captured; `--strict-mcp-config` so the plain cells really have no
   server), `benchmark ingest <main.jsonl>` records a Copilot Chat session through
   the same reader `session` uses, and `benchmark report` renders one
-  self-contained HTML page (+ markdown twin): per prompt, dumbbells of the
-  with-vs-without medians for run time, output tokens, AI Credits and round
-  trips, small-multiple trend lines per model over time, and the tables behind
-  every chart. Records live in `eval/benchmark/runs/` and are committed; the
+  self-contained HTML page (+ markdown twin) that leads with the difference:
+  per model, the MCP effect on run time, output tokens, AI Credits, round
+  trips and checks as signed bars from a zero baseline, and the same effect
+  over time as one line per model; the absolute medians (dumbbells), absolute
+  trends and the tables behind every chart sit under a collapsed Details.
+  Records live in `eval/benchmark/runs/` and are committed; the
   prompt catalogue is `eval/benchmark/prompts/` (three starter prompts with
   regex checks); AIC pricing is `eval/benchmark/credits.json`, and every credit
   figure carries whether the host billed it or it was derived. Guide:

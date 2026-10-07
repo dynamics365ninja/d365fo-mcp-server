@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   assignModelSlots,
+  effectSeries,
+  modelEffectRows,
   formatDeltaPct,
   formatMetric,
   groupRuns,
@@ -125,6 +127,38 @@ describe('timeSeries', () => {
   it('skips runs that do not carry the metric', () => {
     expect(timeSeries([run({ aic: null })], 'aic')).toEqual([]);
     expect(timeSeries([run({ score: null })], 'score')).toEqual([]);
+  });
+});
+
+describe('effectSeries / modelEffectRows', () => {
+  it('yields a delta only for days that have both cells, from the daily medians', () => {
+    const series = effectSeries([
+      run({ timestamp: '2026-10-01T08:00:00Z', mcp: true, durationMs: 10000 }),
+      run({ timestamp: '2026-10-01T09:00:00Z', mcp: true, durationMs: 14000 }),
+      run({ timestamp: '2026-10-01T10:00:00Z', mcp: false, durationMs: 24000 }),
+      run({ timestamp: '2026-10-02T10:00:00Z', mcp: true, durationMs: 1 }), // no without-cell that day
+      run({ timestamp: '2026-10-03T10:00:00Z', mcp: true, durationMs: 30000, model: 'opus' }),
+      run({ timestamp: '2026-10-03T11:00:00Z', mcp: false, durationMs: 20000, model: 'opus' }),
+    ], 'durationMs');
+    expect(series.map(s => [s.model, s.points.length])).toEqual([['opus', 1], ['sonnet', 1]]);
+    expect(series[1].points[0].value).toBeCloseTo(-50, 6); // median(10k,14k)=12k vs 24k
+    expect(series[1].points[0].runIds).toHaveLength(3);
+    expect(series[0].points[0].value).toBeCloseTo(50, 6);
+  });
+
+  it('folds per-prompt effects into one row per model with the median delta', () => {
+    const rows = modelEffectRows(mcpEffects(groupRuns([
+      run({ promptId: 'a', mcp: true, durationMs: 10 }), run({ promptId: 'a', mcp: false, durationMs: 20 }),
+      run({ promptId: 'b', mcp: true, durationMs: 30 }), run({ promptId: 'b', mcp: false, durationMs: 20 }),
+      run({ promptId: 'c', mcp: true, durationMs: 15 }), run({ promptId: 'c', mcp: false, durationMs: 20 }),
+      run({ promptId: 'a', mcp: true, durationMs: 5, model: 'opus' }),
+    ])));
+    expect(rows.map(r => r.model)).toEqual(['sonnet']); // opus has no without-cell anywhere
+    const d = rows[0].deltas.durationMs!;
+    expect(d.deltaPct).toBeCloseTo(-25, 6); // median of −50, +50, −25
+    expect(d.prompts).toBe(3);
+    expect(d.nWith).toBe(3);
+    expect(rows[0].deltas.score).not.toBeNull();
   });
 });
 

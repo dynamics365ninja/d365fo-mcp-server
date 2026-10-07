@@ -2,7 +2,7 @@
  * Markdown twin of the HTML report — the tables, for a PR description or a
  * release note. Same numbers, same medians, no charts.
  */
-import { formatDeltaPct, formatMetric, type MetricKey } from '../aggregate.js';
+import { EFFECT_METRICS, METRIC_BY_KEY, formatDeltaPct, formatMetric, type MetricKey, type ModelEffectRow } from '../aggregate.js';
 import type { ReportModel } from './model.js';
 
 const COLS: Array<[MetricKey, string]> = [
@@ -19,6 +19,13 @@ function table(header: string[], rows: string[][]): string {
   return [line(header), line(header.map(() => '---')), ...rows.map(line)].join('\n');
 }
 
+function effectTable(rows: ModelEffectRow[], multiHost: boolean): string {
+  return table(
+    ['model', ...(multiHost ? ['host'] : []), ...EFFECT_METRICS.map(k => `Δ ${METRIC_BY_KEY[k].shortLabel}`)],
+    rows.map(r => [r.model, ...(multiHost ? [r.host] : []), ...EFFECT_METRICS.map(k => formatDeltaPct(r.deltas[k]?.deltaPct ?? null))]),
+  );
+}
+
 export function renderMarkdown(m: ReportModel): string {
   const out: string[] = [];
   out.push(`# ${m.title}`);
@@ -29,7 +36,13 @@ export function renderMarkdown(m: ReportModel): string {
   out.push('');
   for (const k of m.overviewKpis) out.push(`- **${k.label}:** ${k.value}${k.sub ? ` — ${k.sub}` : ''}`);
   out.push('');
-  out.push('## All prompts');
+  out.push('## MCP effect per model, all prompts');
+  out.push('');
+  out.push(m.overviewEffects.length ? effectTable(m.overviewEffects, m.hosts.length > 1) : '_no model has both cells yet_');
+  out.push('');
+  out.push('With MCP relative to without; median per model, then median over prompts. Lower is better for every column except checks.');
+  out.push('');
+  out.push('## All prompts, medians');
   out.push('');
   out.push(table(
     ['model', 'host', 'MCP', 'runs', 'prompts', 'completed', ...COLS.map(c => c[1])],
