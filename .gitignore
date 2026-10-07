@@ -114,3 +114,7 @@ config/d365fo-mcp-eval.json
 # is the repo root, so it lands here. Holds a copy of the tracked
 # .github/copilot-instructions.md plus a README with this machine's absolute paths.
 copilot-setup/
+
+# Benchmark reports are derived from eval/benchmark/runs/*.json — regenerate with
+# `d365fo-mcp benchmark report`; only the records are committed.
+eval/benchmark/reports/

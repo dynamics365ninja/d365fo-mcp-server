@@ -1,0 +1,11 @@
+{
+  "id": "grounding-custtable-accountnum",
+  "title": "Grounding: CustTable.AccountNum facts",
+  "prompt": "You are working in a Dynamics 365 Finance & Operations X++ code base. Answer precisely and briefly, as a senior X++ developer would, and state where each fact comes from (metadata lookup, or your own knowledge).\n\n1. Which Extended Data Type (EDT) does the field CustTable.AccountNum use?\n2. Which index on CustTable is its primary index, and which fields does that index contain?\n3. Name two standard tables that have a relation to CustTable through the AccountNum field.\n\nDo not guess. If you cannot verify a fact, say so explicitly instead of inventing one.",
+  "tags": ["grounding", "read-only", "L0"],
+  "expects": {
+    "mustMatch": ["CustAccount", "AccountIdx"],
+    "mustNotMatch": []
+  },
+  "notes": "Read-only prompt. With the MCP server the model can look the facts up (get_object_info); without it, it answers from training data. Compares grounding accuracy and the cost of getting it."
+}

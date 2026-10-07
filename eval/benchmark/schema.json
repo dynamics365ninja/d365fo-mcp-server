@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/dynamics365ninja/d365fo-mcp-server/eval/benchmark/schema.json",
+  "title": "Benchmark run record",
+  "description": "One record per (prompt, host, model, with/without MCP, moment). Written by `d365fo-mcp benchmark run` and `benchmark ingest`; read by `benchmark report`. Mirrors BenchmarkRun in src/benchmark/types.ts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "runId", "timestamp", "promptId", "promptHash", "host", "model", "mcp", "durationMs", "requests", "toolCalls", "inputTokens", "cachedTokens", "outputTokens", "outcome"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "runId": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "promptId": { "type": "string" },
+    "promptHash": { "type": "string", "description": "First 12 hex of sha256 over the prompt text — an edited prompt is a different experiment." },
+    "host": { "type": "string", "description": "claude-code | copilot-chat | another reader's id." },
+    "model": { "type": "string" },
+    "modelRequested": { "type": ["string", "null"] },
+    "mcp": { "type": "boolean" },
+    "mcpServers": { "type": "array", "items": { "type": "string" } },
+    "serverVersion": { "type": ["string", "null"] },
+    "serverGitSha": { "type": ["string", "null"] },
+    "label": { "type": ["string", "null"] },
+    "durationMs": { "type": "number", "minimum": 0 },
+    "apiMs": { "type": ["number", "null"] },
+    "requests": { "type": "integer", "minimum": 0 },
+    "toolCalls": { "type": "integer", "minimum": 0 },
+    "mcpToolCalls": { "type": "integer", "minimum": 0 },
+    "tools": { "type": "object", "additionalProperties": { "type": "integer" } },
+    "inputTokens": { "type": "integer", "minimum": 0 },
+    "cachedTokens": { "type": "integer", "minimum": 0 },
+    "outputTokens": { "type": "integer", "minimum": 0 },
+    "hostCost": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["value", "unit"],
+      "properties": { "value": { "type": "number" }, "unit": { "type": "string" } }
+    },
+    "aic": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["value", "source"],
+      "properties": {
+        "value": { "type": "number" },
+        "source": { "type": "string", "enum": ["host", "host-cost", "rates"] },
+        "rates": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "cached": { "type": "number" }, "uncached": { "type": "number" }, "output": { "type": "number" } }
+        }
+      }
+    },
+    "outcome": { "type": "string", "enum": ["completed", "error", "timeout", "max_turns", "budget_exceeded"] },
+    "score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "passed"],
+        "properties": { "name": { "type": "string" }, "passed": { "type": "boolean" } }
+      }
+    },
+    "resultChars": { "type": ["integer", "null"] },
+    "resultExcerpt": { "type": ["string", "null"] },
+    "notes": { "type": ["string", "null"] },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "sessionId": { "type": ["string", "null"] }, "logPath": { "type": ["string", "null"] } }
+    }
+  }
+}

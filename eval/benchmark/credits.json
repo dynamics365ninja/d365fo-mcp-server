@@ -1,0 +1,7 @@
+{
+  "$comment": "AI Credits (AIC) pricing for the benchmark report. Read by src/benchmark/credits.ts over its built-in defaults; a field left out keeps the default. GitHub Copilot bills in AI Credits computed from token consumption at each model's listed API rate and its debug log records the figure per request, so a Copilot run needs nothing from here. A Claude Code run reports USD and is converted with creditsPerUsd. modelRates (USD per million tokens: cached / uncached input, output) are used only when a host records tokens but no cost; entries here are tried before the built-in table, so a refitted rate wins. To refit a model from a real Copilot session: npm run cli -- session <main.jsonl> --json  → fit.rates.",
+  "unit": "AIC",
+  "creditUnits": ["AIC", "AIU"],
+  "creditsPerUsd": 100,
+  "modelRates": []
+}

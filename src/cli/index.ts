@@ -13,12 +13,14 @@
  *   d365fo-mcp config [section] change settings after setup
  *   d365fo-mcp doctor           environment & installation health check
  *   d365fo-mcp session <log>    round-trip cost analysis of an agent session
+ *   d365fo-mcp benchmark …      model × MCP benchmark: run, ingest, report (docs/BENCHMARK.md)
  *   d365fo-mcp start [name]     run the root server or an instance
  *   d365fo-mcp update [--yes]   git pull + npm install + build (+ bridge/index)
  *   d365fo-mcp index [name]     rebuild the metadata index (--all: all instances)
  *   d365fo-mcp instance …       add | list | run | rebuild | upgrade
  */
 import { Command } from 'commander';
+import { registerBenchmarkCommands } from './commands/benchmark.js';
 import { configCommand } from './commands/config.js';
 import { connectCommand } from './commands/connect.js';
 import { doctorCommand } from './commands/doctor.js';
@@ -72,6 +74,8 @@ program.command('session')
   .option('--top <n>', 'rows of the per-tool table to print (default 10)')
   .description('Round-trip cost analysis of an agent session: fitted rates, attribution, wasted round trips')
   .action((log: string | undefined, opts: { json?: boolean; format?: string; top?: string }) => sessionCommand(log, opts));
+
+registerBenchmarkCommands(program);
 
 program.command('start')
   .argument('[instance]', "instance name, or 'root' for the repo-level .env")

@@ -28,6 +28,22 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Added
+- **`d365fo-mcp benchmark` — model × MCP benchmark with a graphical report.**
+  `benchmark run <prompt|all>` drives a matrix of models × {with MCP, without
+  MCP} × repeats through headless `claude -p` (stream-json, so per-tool call
+  counts are captured; `--strict-mcp-config` so the plain cells really have no
+  server), `benchmark ingest <main.jsonl>` records a Copilot Chat session through
+  the same reader `session` uses, and `benchmark report` renders one
+  self-contained HTML page (+ markdown twin): per prompt, dumbbells of the
+  with-vs-without medians for run time, output tokens, AI Credits and round
+  trips, small-multiple trend lines per model over time, and the tables behind
+  every chart. Records live in `eval/benchmark/runs/` and are committed; the
+  prompt catalogue is `eval/benchmark/prompts/` (three starter prompts with
+  regex checks); AIC pricing is `eval/benchmark/credits.json`, and every credit
+  figure carries whether the host billed it or it was derived. Guide:
+  [docs/BENCHMARK.md](docs/BENCHMARK.md).
+
 ### Fixed
 - **Creates into a model whose package has a different name reported failure
   (#1086).** The C# bridge built the reported path as `{Model}\{Model}\Ax…`, so

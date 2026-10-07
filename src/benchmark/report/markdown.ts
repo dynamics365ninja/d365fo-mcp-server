@@ -1,0 +1,80 @@
+/**
+ * Markdown twin of the HTML report — the tables, for a PR description or a
+ * release note. Same numbers, same medians, no charts.
+ */
+import { formatDeltaPct, formatMetric, type MetricKey } from '../aggregate.js';
+import type { ReportModel } from './model.js';
+
+const COLS: Array<[MetricKey, string]> = [
+  ['durationMs', 'time (med)'],
+  ['outputTokens', 'out tokens'],
+  ['aic', 'AIC'],
+  ['requests', 'turns'],
+  ['toolCalls', 'tool calls'],
+  ['score', 'checks'],
+];
+
+function table(header: string[], rows: string[][]): string {
+  const line = (cells: string[]) => `| ${cells.join(' | ')} |`;
+  return [line(header), line(header.map(() => '---')), ...rows.map(line)].join('\n');
+}
+
+export function renderMarkdown(m: ReportModel): string {
+  const out: string[] = [];
+  out.push(`# ${m.title}`);
+  out.push('');
+  out.push(`Generated ${m.generatedAt.slice(0, 16).replace('T', ' ')} UTC · ${m.runsTotal} runs` +
+    (m.span ? ` · ${m.span.from.slice(0, 10)} → ${m.span.to.slice(0, 10)}` : '') +
+    (m.filters.length ? ` · filters: ${m.filters.join(', ')}` : ''));
+  out.push('');
+  for (const k of m.overviewKpis) out.push(`- **${k.label}:** ${k.value}${k.sub ? ` — ${k.sub}` : ''}`);
+  out.push('');
+  out.push('## All prompts');
+  out.push('');
+  out.push(table(
+    ['model', 'host', 'MCP', 'runs', 'prompts', 'completed', ...COLS.map(c => c[1])],
+    m.overview.map(r => [
+      r.model, r.host, r.mcp ? 'yes' : 'no', String(r.n), String(r.prompts), `${Math.round(r.completionRate * 100)} %`,
+      ...COLS.map(([k]) => formatMetric(k, r.medians[k]?.median ?? null)),
+    ]),
+  ));
+  for (const p of m.prompts) {
+    out.push('');
+    out.push(`## ${p.title}`);
+    out.push('');
+    out.push(`\`${p.promptId}\`${p.tags.length ? ` · ${p.tags.join(', ')}` : ''} · ${p.runs.length} runs` +
+      (p.hashDrift ? ' · ⚠ prompt text changed since some runs' : ''));
+    out.push('');
+    for (const k of p.kpis) out.push(`- **${k.label}:** ${k.value}${k.sub ? ` — ${k.sub}` : ''}`);
+    out.push('');
+    out.push(table(
+      ['model', ...(p.hosts.length > 1 ? ['host'] : []), 'MCP', 'runs', 'completed', ...COLS.map(c => c[1]), 'time p90'],
+      p.groups.map(g => [
+        g.model, ...(p.hosts.length > 1 ? [g.host] : []), g.mcp ? 'yes' : 'no', String(g.n), `${Math.round(g.completionRate * 100)} %`,
+        ...COLS.map(([k]) => formatMetric(k, g.metrics[k]?.median ?? null)),
+        formatMetric('durationMs', g.metrics.durationMs?.p90 ?? null),
+      ]),
+    ));
+    if (p.effects.length) {
+      out.push('');
+      out.push('With MCP vs without (medians):');
+      out.push('');
+      const models = [...new Set(p.effects.map(e => `${e.model}\u0000${e.host}`))];
+      out.push(table(
+        ['model', ...(p.hosts.length > 1 ? ['host'] : []), 'Δ time', 'Δ out tokens', 'Δ AIC', 'Δ turns', 'Δ checks'],
+        models.map(key => {
+          const [model, host] = key.split('\u0000');
+          const d = (k: MetricKey) => formatDeltaPct(p.effects.find(e => e.model === model && e.host === host && e.metric === k)?.deltaPct ?? null);
+          return [model, ...(p.hosts.length > 1 ? [host] : []), d('durationMs'), d('outputTokens'), d('aic'), d('requests'), d('score')];
+        }),
+      ));
+    }
+  }
+  out.push('');
+  out.push('## How AIC was obtained');
+  out.push('');
+  for (const n of m.creditsNotes) out.push(`- ${n}`);
+  if (m.creditsNotes.length === 0) out.push('- no priced runs');
+  out.push('');
+  return out.join('\n');
+}

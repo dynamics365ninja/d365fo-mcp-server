@@ -55,6 +55,7 @@
     "select-config": "tsx src/cli/index.ts config --xpp-config",
     "test-stdio": "tsx scripts/test-stdio.ts",
     "db-maintenance": "node --import tsx/esm scripts/db-maintenance.mjs",
+    "benchmark": "tsx src/cli/index.ts benchmark",
     "eval:score": "tsx src/eval/oracle/cli.ts",
     "eval:clusters": "tsx src/eval/improver/cli.ts",
     "eval:report": "tsx src/eval/improver/reportCli.ts",
