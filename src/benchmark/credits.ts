@@ -20,7 +20,7 @@
  */
 import * as fs from 'node:fs';
 import type { AicSource, CreditsConfig, ModelRates } from './types.js';
-import { readJsonLenient } from '../eval/improver/corpusIO.js';
+import { readJsonLenient } from '../utils/jsonRecords.js';
 
 const TOKENS_PER_MTOK = 1e6;
 

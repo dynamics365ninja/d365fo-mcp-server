@@ -16,7 +16,7 @@ import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { CheckResult, PromptSpec } from './types.js';
-import { readJsonLenient } from '../eval/improver/corpusIO.js';
+import { readJsonLenient } from '../utils/jsonRecords.js';
 
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 

@@ -10,7 +10,7 @@ import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { BENCHMARK_SCHEMA_VERSION, type BenchmarkRun } from './types.js';
-import { loadJsonRecords } from '../eval/improver/corpusIO.js';
+import { loadJsonRecords } from '../utils/jsonRecords.js';
 
 export interface BenchmarkPaths {
   root: string;
