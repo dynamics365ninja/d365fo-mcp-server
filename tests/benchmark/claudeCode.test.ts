@@ -10,6 +10,7 @@ import {
   buildClaudeArgs,
   mcpServerNames,
   parseStreamJson,
+  quoteForCmd,
   runClaudeCode,
   toBenchmarkRun,
   type ClaudeCodeOptions,
@@ -87,6 +88,16 @@ describe('buildClaudeArgs', () => {
     expect(args[args.indexOf('--append-system-prompt-file') + 1]).toBe('/x/sys.md');
     const bare = buildClaudeArgs(baseOptions());
     for (const flag of ['--max-turns', '--max-budget-usd', '--effort', '--tools', '--append-system-prompt-file']) expect(bare).not.toContain(flag);
+  });
+});
+
+describe('quoteForCmd', () => {
+  it('quotes anything cmd.exe would interpret, passes plain arguments through, refuses a double quote', () => {
+    expect(quoteForCmd('sonnet')).toBe('sonnet');
+    expect(quoteForCmd('C:\\bench out\\mcp.json')).toBe('"C:\\bench out\\mcp.json"');
+    expect(quoteForCmd('C:\\x&calc.exe')).toBe('"C:\\x&calc.exe"');
+    expect(quoteForCmd('')).toBe('""');
+    expect(() => quoteForCmd('a"b')).toThrow(/double quote/);
   });
 });
 

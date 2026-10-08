@@ -334,11 +334,17 @@ function describeFilters(f: RunFilter): string[] {
   return out;
 }
 
+/**
+ * `explorer.exe <file>` on Windows, never `cmd /c start`: cmd re-parses its
+ * whole command line, so a `&` in a user-chosen --out path would run a second
+ * command (CodeQL js/shell-command-injection-from-environment). explorer, open
+ * and xdg-open all receive the path as one argv entry with no shell in between.
+ */
 function openInBrowser(file: string): void {
   const [bin, args] = process.platform === 'win32'
-    ? ['cmd', ['/c', 'start', '', file]]
+    ? ['explorer.exe', [file]]
     : process.platform === 'darwin' ? ['open', [file]] : ['xdg-open', [file]];
-  execFile(bin, args, () => { /* best effort */ });
+  execFile(bin, args, { windowsHide: true }, () => { /* best effort */ });
 }
 
 export async function benchmarkReportCommand(opts: ReportOptions): Promise<void> {

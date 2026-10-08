@@ -169,6 +169,20 @@ export type ProcessRunner = (
 ) => Promise<ProcessResult>;
 
 /**
+ * Quote one argument for the Windows shell the .cmd shim forces on us.
+ *
+ * cmd.exe re-parses the joined command line, so every argument that carries a
+ * character cmd gives meaning to — not just whitespace — goes in double quotes,
+ * inside which `&|<>^` are literal. A double quote inside an argument cannot
+ * be made safe for both cmd and the C runtime behind it, and no model id, path
+ * or tool name legitimately contains one, so it is refused outright.
+ */
+export function quoteForCmd(arg: string): string {
+  if (arg.includes('"')) throw new Error(`Argument contains a double quote, which cannot be passed safely through cmd.exe: ${arg}`);
+  return arg === '' || /[\s&|<>^()%!]/.test(arg) ? `"${arg}"` : arg;
+}
+
+/**
  * Spawn the CLI. CLAUDECODE / CLAUDE_CODE_ENTRYPOINT are unset so a benchmark
  * started from inside a Claude Code session is not refused as a nested one.
  */
@@ -179,7 +193,7 @@ export const spawnProcess: ProcessRunner = (bin, args, io) =>
     delete env.CLAUDECODE;
     delete env.CLAUDE_CODE_ENTRYPOINT;
     const win = process.platform === 'win32';
-    const child = spawn(bin, win ? args.map(a => (/\s/.test(a) ? `"${a}"` : a)) : args, {
+    const child = spawn(bin, win ? args.map(quoteForCmd) : args, {
       cwd: io.cwd,
       env,
       shell: win,
