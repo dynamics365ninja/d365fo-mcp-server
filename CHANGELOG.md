@@ -47,7 +47,7 @@ those are called out explicitly below.
   [docs/BENCHMARK.md](docs/BENCHMARK.md).
   Prompts that write AOT objects run against a **sandbox package**
   (`--sandbox …\PackagesLocalDirectory\fm-mcp`): the package is snapshotted
-  after a clean baseline build, every cell may edit nothing but it (`Edit(./**)`
+  after a clean baseline build, every cell may edit nothing but it (an absolute `Edit(//k/…/fm-mcp/**)` rule
   in `dontAsk` mode, standard metadata readable through `--add-dir`), is scored
   on the files it wrote (`expects.files`) and an xppc full build, and is
   restored byte for byte afterwards — with the symbol-index rows its writes

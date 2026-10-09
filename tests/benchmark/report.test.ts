@@ -136,6 +136,62 @@ describe('renderHtml', () => {
   });
 });
 
+describe('verdict: valid output and rework', () => {
+  // Three runs per side, sandbox-shaped: build, quality, rework.
+  const sandboxRuns: BenchmarkRun[] = [
+    ...[0, 1, 2].map(i => run({
+      promptId: 'ref', mcp: true, durationMs: 300000, aic: { value: 80, source: 'host-cost' }, timestamp: `2026-10-09T1${i}:00:00.000Z`,
+      build: { ok: true, errorCount: 0, errors: [], durationMs: 30000 },
+      quality: { xmlInvalid: [], bp: { errors: 0, warnings: 2, findings: [] } },
+      rework: { toolErrors: 1, mcpToolErrors: 1, toolErrorsByTool: {}, buildAttempts: 2, buildFailures: 1, writeOps: 10, rewrites: 0 },
+      checks: [{ name: 'file the table', passed: true }, { name: 'builds clean (xppc)', passed: true }],
+    })),
+    ...[0, 1, 2].map(i => run({
+      promptId: 'ref', mcp: false, durationMs: 200000, aic: { value: 60, source: 'host-cost' }, timestamp: `2026-10-09T1${i}:30:00.000Z`,
+      build: i === 0 ? { ok: true, errorCount: 0, errors: [], durationMs: 30000 }
+        : { ok: false, errorCount: 1, errors: [`Metadata Error: AxEnum/ConX/UseEnumValue: must be No: [(1,${i}),(2,3)]`], durationMs: 30000 },
+      quality: { xmlInvalid: i === 2 ? ['fm-mcp/AxForm/ConX.xml'] : [], bp: i === 0 ? { errors: 1, warnings: 4, findings: ['Error BPErrorLabelIsText Report/ConX'] } : null },
+      rework: { toolErrors: 3, mcpToolErrors: 0, toolErrorsByTool: {}, buildAttempts: 0, buildFailures: 0, writeOps: 12, rewrites: 2 },
+      checks: [{ name: 'file the table', passed: i === 0 }, { name: 'builds clean (xppc)', passed: i === 0 }],
+    })),
+  ];
+  const model = buildReportModel(sandboxRuns, [{ id: 'ref', title: 'Reference 1: something — detail', prompt: 'p', tags: ['reference'] }], { credits: DEFAULT_CREDITS });
+
+  it('judges valid output, pools rework as means and costs as medians', () => {
+    const v = model.versus;
+    expect(v.with!.validRate).toBe(1);
+    // without: one clean build but with a new BP error, one failed build, one failed build + malformed XML → 0 of 3
+    expect(v.without!.validRate).toBe(0);
+    expect(v.without!.buildRate).toBeCloseTo(1 / 3, 6);
+    expect(v.with!.toolErrors).toBe(1);
+    expect(v.without!.rewrites).toBe(2);
+    expect(v.with!.timeMs).toBe(300000);
+    expect(v.without!.bpErrors).toBe(1);
+  });
+
+  it('lists the checks per variant and the recurring errors with positions stripped', () => {
+    const p = model.prompts[0];
+    expect(p.checkRates.find(c => c.name === 'file the table')).toEqual({ name: 'file the table', withRate: 1, withoutRate: 1 / 3 });
+    const top = p.issues.without[0];
+    expect(top).toEqual({ kind: 'build', text: 'Metadata Error: AxEnum/ConX/UseEnumValue: must be No', count: 2 });
+    expect(p.issues.without.map(i => i.kind).sort()).toEqual(['bp', 'build', 'xml']);
+    expect(p.issues.with).toEqual([]);
+  });
+
+  it('opens with a verdict that says it in a sentence, and marks the better side', () => {
+    const html = renderHtml(model);
+    expect(html).toContain('With MCP, 3 of 3 runs delivered valid output, against 0 of 3 without');
+    expect(html).toMatch(/it took 50 % longer, it cost 33 % more/);
+    expect(html.indexOf('class="verdict"')).toBeLessThan(html.indexOf('<section class="prompt"'));
+    expect(html).toContain('class="card vcard reveal lead good"');
+    expect(html).toContain('No build error, malformed file or new BP error in any run.');
+    expect(html).toContain('class="cell c-part"');
+    // Numbers are complete without the script; the script only animates them.
+    expect(html).toMatch(/<span data-to="100" data-dec="0" data-pre="" data-suf=" %">100 %<\/span>/);
+    expect(html).toContain('prefers-reduced-motion: reduce');
+  });
+});
+
 describe('renderMarkdown', () => {
   it('prints the overview and per-prompt tables with the same medians', () => {
     const md = renderMarkdown(buildReportModel(runs, specs, { credits: DEFAULT_CREDITS, now: new Date('2026-10-07T12:00:00Z') }));
@@ -204,7 +260,8 @@ describe('svg primitives', () => {
       ],
       title: 't', format: v => `${v} %`,
     });
-    expect(svg).toContain('class="bar good"');
+    // A bar left of zero carries `neg`, so the page grows it out of the zero line.
+    expect(svg).toContain('class="bar good neg"');
     expect(svg).toContain('class="bar bad"');
     expect(svg).toContain('▼ -48 %');
     expect(svg).toContain('▲ 12 %');

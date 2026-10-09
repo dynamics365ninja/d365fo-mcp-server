@@ -84,6 +84,40 @@
         "errors": { "type": "array", "items": { "type": "string" } },
         "durationMs": { "type": "number", "minimum": 0 }
       }
+    },
+    "rework": {
+      "type": "object",
+      "description": "How much repair the cell needed on the way, from the host's stream: tool errors, failed builds inside the cell, repeated writes to one target.",
+      "additionalProperties": false,
+      "required": ["toolErrors", "mcpToolErrors", "toolErrorsByTool", "buildAttempts", "buildFailures", "writeOps", "rewrites"],
+      "properties": {
+        "toolErrors": { "type": "integer", "minimum": 0 },
+        "mcpToolErrors": { "type": "integer", "minimum": 0 },
+        "toolErrorsByTool": { "type": "object", "additionalProperties": { "type": "integer" } },
+        "buildAttempts": { "type": "integer", "minimum": 0 },
+        "buildFailures": { "type": "integer", "minimum": 0 },
+        "writeOps": { "type": "integer", "minimum": 0 },
+        "rewrites": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "description": "Sandbox runs: validity of what the cell left behind beyond the build — malformed XML files and xppbp findings the clean sandbox did not have.",
+      "additionalProperties": false,
+      "required": ["xmlInvalid", "bp"],
+      "properties": {
+        "xmlInvalid": { "type": "array", "items": { "type": "string" } },
+        "bp": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["errors", "warnings", "findings"],
+          "properties": {
+            "errors": { "type": "integer", "minimum": 0 },
+            "warnings": { "type": "integer", "minimum": 0 },
+            "findings": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
     }
   }
 }

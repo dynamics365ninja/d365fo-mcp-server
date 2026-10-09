@@ -23,6 +23,7 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import type { BuildResult } from './types.js';
 
@@ -193,6 +194,122 @@ export function restoreSandbox(packageDir: string, snapshot: Snapshot, diff: San
     const left = [...after.added, ...after.modified, ...after.deleted].slice(0, 5).join(', ');
     throw new Error(`Sandbox ${packageDir} could not be restored to its snapshot (${left}${after.added.length + after.modified.length + after.deleted.length > 5 ? ', …' : ''}). Stopping: later cells would not start from the same model. The snapshot is kept at ${snapshot.dir}.`);
   }
+}
+
+/**
+ * Authored .xml files that do not parse. A file that is not XML at all builds
+ * as "element not found" somewhere else, if it is noticed; named here it says
+ * which tool wrote broken metadata.
+ */
+export async function malformedXml(packageDir: string, rels: string[]): Promise<string[]> {
+  const { parseStringPromise } = await import('xml2js');
+  const bad: string[] = [];
+  for (const rel of rels.filter(r => r.toLowerCase().endsWith('.xml'))) {
+    try {
+      await parseStringPromise(fs.readFileSync(path.join(packageDir, ...rel.split('/')), 'utf8'));
+    } catch {
+      bad.push(rel);
+    }
+  }
+  return bad;
+}
+
+/** One xppbp run over the module: its detail lines and its own totals. */
+export interface BpRun {
+  ran: boolean;
+  /** `BestPractices Error|Warning: …` lines, trimmed. */
+  lines: string[];
+  errors: number;
+  warnings: number;
+  /** Why it did not run, when it did not. */
+  problem?: string;
+}
+
+export function parseBpOutput(output: string): BpRun {
+  const lines = output.split(/\r?\n/).map(l => l.trim()).filter(l => /^BestPractices\s+(Error|Warning)\s*:/.test(l));
+  const errors = /^Errors:\s*(\d+)/m.exec(output);
+  const warnings = /^Warnings:\s*(\d+)/m.exec(output);
+  if (!errors && !warnings && lines.length === 0) return { ran: false, lines: [], errors: 0, warnings: 0, problem: output.trim().split(/\r?\n/).slice(-2).join(' | ').slice(0, 200) || 'no output' };
+  return { ran: true, lines, errors: errors ? Number(errors[1]) : 0, warnings: warnings ? Number(warnings[1]) : 0 };
+}
+
+/**
+ * Findings the cell introduced: detail lines the clean sandbox did not have.
+ * Counted per severity off the lines, not off xppbp's totals, which include the
+ * fixture's own findings.
+ */
+export function bpDelta(baseline: BpRun | null, run: BpRun): { errors: number; warnings: number; findings: string[] } {
+  const known = new Set(baseline?.lines ?? []);
+  const fresh = run.lines.filter(l => !known.has(l));
+  const findings = fresh.map(l => {
+    const m = /^BestPractices\s+(Error|Warning)\s*:\s*(\S+)\s+dynamics:\/\/([^:]+?)(?::\s*\[[^\]]*\])?:\s*(BP[A-Za-z0-9]+)/.exec(l);
+    return m ? `${m[1]} ${m[4]} ${m[3]}` : l.slice(0, 160);
+  });
+  return {
+    errors: fresh.filter(l => /^BestPractices\s+Error/.test(l)).length,
+    warnings: fresh.filter(l => /^BestPractices\s+Warning/.test(l)).length,
+    findings: findings.slice(0, 15),
+  };
+}
+
+export type BpRunner = (sandbox: SandboxInfo, timeoutMs: number) => Promise<BpRun>;
+
+/** xppbp over the whole sandbox module — the same flag style the server's run_bp_check tries first. */
+export const bpCheckSandbox: BpRunner = (sandbox, timeoutMs) =>
+  new Promise(resolve => {
+    const root = sandbox.packagesRoot;
+    const xppbp = path.join(root, 'bin', 'xppbp.exe');
+    if (!fs.existsSync(xppbp)) {
+      resolve({ ran: false, lines: [], errors: 0, warnings: 0, problem: `xppbp.exe not found at ${xppbp}` });
+      return;
+    }
+    const child = spawn(xppbp, [
+      `-metadata:${root}`,
+      `-module:${sandbox.packageName}`,
+      `-model:${sandbox.model}`,
+      `-compilerMetadata:${root}`,
+      `-packagesRoot:${root}`,
+      '-all',
+    ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '';
+    child.stdout.on('data', (d: Buffer) => { out += d.toString('utf8'); });
+    child.stderr.on('data', (d: Buffer) => { out += d.toString('utf8'); });
+    const timer = setTimeout(() => child.kill(), timeoutMs);
+    child.on('error', err => { clearTimeout(timer); resolve({ ran: false, lines: [], errors: 0, warnings: 0, problem: `xppbp did not start: ${err.message}` }); });
+    child.on('close', () => { clearTimeout(timer); resolve(parseBpOutput(out)); });
+  });
+
+/**
+ * Compile the module's labels into its resources before the build and the BP
+ * check: both resolve @File:Id against the compiled assembly, so a label the
+ * cell just wrote would otherwise read as missing (BPErrorUnknownLabel). The
+ * server's build tool does the same before it calls xppc.
+ */
+export async function compileSandboxLabels(sandbox: SandboxInfo): Promise<string | null> {
+  try {
+    const { compileModelLabels } = await import('../tools/write/compileLabels.js');
+    const r = await compileModelLabels(sandbox.packagesRoot, sandbox.packagesRoot, sandbox.packageName, true);
+    return r.success ? null : r.message;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+}
+
+/** Remove the server build tool's state file for this module (os.tmpdir()/d365build_state_*.json): it outlives the cell. */
+export function clearBuildState(sandbox: SandboxInfo, tmpDir: string = os.tmpdir()): number {
+  let removed = 0;
+  for (const f of fs.readdirSync(tmpDir).filter(n => /^d365build_state_[0-9a-f]+\.json$/i.test(n))) {
+    const file = path.join(tmpDir, f);
+    try {
+      const state = JSON.parse(fs.readFileSync(file, 'utf8')) as { targetModel?: string };
+      const target = String(state.targetModel ?? '').toLowerCase();
+      if (target === sandbox.packageName.toLowerCase() || target === sandbox.model.toLowerCase()) {
+        fs.rmSync(file, { force: true });
+        removed++;
+      }
+    } catch { /* not ours, or being written — leave it */ }
+  }
+  return removed;
 }
 
 /** Lines of an xppc log that make a build fail — the same filter scripts/verify-goldens-build.ts uses. */

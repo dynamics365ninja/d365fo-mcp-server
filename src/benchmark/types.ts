@@ -97,6 +97,32 @@ export interface BenchmarkRun {
   artifacts?: string[];
   /** Sandbox runs only: the xppc full build of the sandbox model after the cell; null when not built. */
   build?: BuildResult | null;
+  /** How much repair the cell needed on the way (from the host's stream; absent for ingested runs). */
+  rework?: ReworkSummary;
+  /** Sandbox runs only: validity of what the cell left behind beyond "it builds". */
+  quality?: QualityResult;
+}
+
+export interface ReworkSummary {
+  /** Tool calls that came back as errors, all tools. */
+  toolErrors: number;
+  /** Of those, calls to an MCP server's tools. */
+  mcpToolErrors: number;
+  toolErrorsByTool: Record<string, number>;
+  buildAttempts: number;
+  /** Builds inside the cell that failed before (or instead of) the last one. */
+  buildFailures: number;
+  /** Write operations (file tools + the server's create/modify). */
+  writeOps: number;
+  /** Writes beyond the first per target — the same object written again to repair it. */
+  rewrites: number;
+}
+
+export interface QualityResult {
+  /** Authored .xml files that are not well-formed XML. */
+  xmlInvalid: string[];
+  /** xppbp over the sandbox module, findings the clean sandbox did not already have. Null when not run. */
+  bp: { errors: number; warnings: number; findings: string[] } | null;
 }
 
 export interface BuildResult {

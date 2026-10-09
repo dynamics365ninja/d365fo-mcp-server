@@ -46,6 +46,53 @@ export interface OverviewRow {
   medians: Record<MetricKey, Stats | null>;
 }
 
+/**
+ * What one variant (with or without MCP) delivered and what it cost — the
+ * verdict's unit. Rates are means (a median of 0/1 outcomes says nothing),
+ * costs are medians as everywhere else, rework counts are means per run.
+ */
+export interface VariantQuality {
+  n: number;
+  /** Runs whose output could be judged (sandbox runs that were built). */
+  judged: number;
+  /** Valid output: builds clean, well-formed XML, no new BP errors (where measured). 0..1. */
+  validRate: number | null;
+  buildRate: number | null;
+  /** Mean checks passed, 0..100. */
+  checksMean: number | null;
+  timeMs: number | null;
+  aic: number | null;
+  turns: number | null;
+  outputTokens: number | null;
+  /** Mean per run, over runs that carry a rework trace. */
+  toolErrors: number | null;
+  mcpToolErrors: number | null;
+  buildFailures: number | null;
+  rewrites: number | null;
+  /** Mean new BP errors / warnings per run, over runs where xppbp ran. */
+  bpErrors: number | null;
+  bpWarnings: number | null;
+}
+
+export interface Versus {
+  with: VariantQuality | null;
+  without: VariantQuality | null;
+}
+
+/** One check's pass rate per variant, for the heat strip. */
+export interface CheckRate {
+  name: string;
+  withRate: number | null;
+  withoutRate: number | null;
+}
+
+/** A failure that recurs: a build error or a BP finding, positions stripped, counted. */
+export interface Issue {
+  kind: 'build' | 'bp' | 'xml';
+  text: string;
+  count: number;
+}
+
 export interface PromptSection {
   promptId: string;
   title: string;
@@ -66,6 +113,10 @@ export interface PromptSection {
   /** Absolute series per headline metric, for the detailed small multiples. */
   trends: Record<MetricKey, TimeSeries[]>;
   hosts: string[];
+  /** With vs without, pooled over models: the section's verdict. */
+  versus: Versus;
+  checkRates: CheckRate[];
+  issues: { with: Issue[]; without: Issue[] };
 }
 
 export interface ReportModel {
@@ -85,6 +136,8 @@ export interface ReportModel {
   overviewEffects: ModelEffectRow[];
   overview: OverviewRow[];
   prompts: PromptSection[];
+  /** With vs without over every run: the page's headline. */
+  versus: Versus;
 }
 
 export interface ReportOptions {
@@ -159,6 +212,82 @@ function promptKpis(groups: GroupSummary[], effects: McpEffect[], runs: Benchmar
   return kpis;
 }
 
+const meanOf = (xs: Array<number | null | undefined>): number | null => {
+  const v = xs.filter((x): x is number => typeof x === 'number' && Number.isFinite(x));
+  return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null;
+};
+
+/** Valid output: built clean, no malformed XML, no new BP errors where xppbp ran. Null when the run was not built. */
+export function isValidOutput(r: BenchmarkRun): boolean | null {
+  if (!r.build && r.build !== null) return null; // not a built sandbox run
+  if (r.build === null) return false; // a workspace run that wrote nothing to build
+  if (!r.build.ok) return false;
+  if (r.quality?.xmlInvalid.length) return false;
+  if (r.quality?.bp && r.quality.bp.errors > 0) return false;
+  return true;
+}
+
+export function variantQuality(runs: BenchmarkRun[]): VariantQuality | null {
+  if (runs.length === 0) return null;
+  const judged = runs.map(isValidOutput).filter((v): v is boolean => v !== null);
+  const built = runs.filter(r => r.build !== undefined);
+  const withRework = runs.filter(r => r.rework);
+  const withBp = runs.filter(r => r.quality?.bp);
+  const med = (xs: Array<number | null>) => medianOf(xs);
+  return {
+    n: runs.length,
+    judged: judged.length,
+    validRate: judged.length ? judged.filter(Boolean).length / judged.length : null,
+    buildRate: built.length ? built.filter(r => r.build?.ok).length / built.length : null,
+    checksMean: meanOf(runs.map(r => (r.score === null ? null : r.score * 100))),
+    timeMs: med(runs.map(r => r.durationMs)),
+    aic: med(runs.map(r => r.aic?.value ?? null)),
+    turns: med(runs.map(r => r.requests)),
+    outputTokens: med(runs.map(r => r.outputTokens)),
+    toolErrors: withRework.length ? meanOf(withRework.map(r => r.rework!.toolErrors)) : null,
+    mcpToolErrors: withRework.length ? meanOf(withRework.map(r => r.rework!.mcpToolErrors)) : null,
+    buildFailures: withRework.length ? meanOf(withRework.map(r => r.rework!.buildFailures)) : null,
+    rewrites: withRework.length ? meanOf(withRework.map(r => r.rework!.rewrites)) : null,
+    bpErrors: withBp.length ? meanOf(withBp.map(r => r.quality!.bp!.errors)) : null,
+    bpWarnings: withBp.length ? meanOf(withBp.map(r => r.quality!.bp!.warnings)) : null,
+  };
+}
+
+function versusOf(runs: BenchmarkRun[]): Versus {
+  return { with: variantQuality(runs.filter(r => r.mcp)), without: variantQuality(runs.filter(r => !r.mcp)) };
+}
+
+function checkRatesOf(runs: BenchmarkRun[]): CheckRate[] {
+  const names: string[] = [];
+  for (const r of runs) for (const c of r.checks) if (!names.includes(c.name)) names.push(c.name);
+  const rate = (rs: BenchmarkRun[], name: string) => {
+    const hits = rs.flatMap(r => r.checks.filter(c => c.name === name));
+    return hits.length ? hits.filter(c => c.passed).length / hits.length : null;
+  };
+  return names.map(name => ({ name, withRate: rate(runs.filter(r => r.mcp), name), withoutRate: rate(runs.filter(r => !r.mcp), name) }));
+}
+
+/** Strip what differs between occurrences of the same error (positions, the severity prefix of a BP line). */
+export function normalizeIssue(text: string): string {
+  return text.replace(/:\s*\[\(\d+,\d+\),\(\d+,\d+\)\]/g, '').replace(/\s+/g, ' ').trim().slice(0, 180);
+}
+
+function issuesOf(runs: BenchmarkRun[]): Issue[] {
+  const counts = new Map<string, Issue>();
+  const add = (kind: Issue['kind'], raw: string) => {
+    const text = normalizeIssue(raw);
+    const key = `${kind}\u0000${text}`;
+    const cur = counts.get(key);
+    if (cur) cur.count++; else counts.set(key, { kind, text, count: 1 });
+  };
+  for (const r of runs) {
+    for (const e of r.build?.errors ?? []) add('build', e);
+    for (const f of r.quality?.bp?.findings ?? []) if (/^Error\b/.test(f)) add('bp', f);
+    for (const x of r.quality?.xmlInvalid ?? []) add('xml', `malformed XML: ${x.split('/').slice(-2).join('/')}`);
+  }
+  return [...counts.values()].sort((a, b) => b.count - a.count || a.text.localeCompare(b.text)).slice(0, 8);
+}
+
 export function buildReportModel(runs: BenchmarkRun[], specs: PromptSpec[], opts: ReportOptions): ReportModel {
   const now = opts.now ?? new Date();
   const specById = new Map(specs.map(s => [s.id, s]));
@@ -186,7 +315,9 @@ export function buildReportModel(runs: BenchmarkRun[], specs: PromptSpec[], opts
     }))
     .sort((a, b) => a.model.localeCompare(b.model) || a.host.localeCompare(b.host) || Number(b.mcp) - Number(a.mcp));
 
-  const promptIds = [...new Set(runs.map(r => r.promptId))].sort();
+  // By title, numerically: "Reference 2" before "Reference 10", and in the order the catalogue names them.
+  const titleOf = (id: string) => specById.get(id)?.title ?? id;
+  const promptIds = [...new Set(runs.map(r => r.promptId))].sort((a, b) => titleOf(a).localeCompare(titleOf(b), 'en', { numeric: true }) || a.localeCompare(b));
   const prompts: PromptSection[] = promptIds.map(promptId => {
     const prs = sortedAll.filter(r => r.promptId === promptId);
     const spec = specById.get(promptId) ?? null;
@@ -213,6 +344,9 @@ export function buildReportModel(runs: BenchmarkRun[], specs: PromptSpec[], opts
       effectTrends,
       trends,
       hosts: sectionHosts,
+      versus: versusOf(prs),
+      checkRates: checkRatesOf(prs),
+      issues: { with: issuesOf(prs.filter(r => r.mcp)), without: issuesOf(prs.filter(r => !r.mcp)) },
     };
   });
 
@@ -264,5 +398,6 @@ export function buildReportModel(runs: BenchmarkRun[], specs: PromptSpec[], opts
     overviewEffects: modelEffectRows(allEffects),
     overview,
     prompts,
+    versus: versusOf(runs),
   };
 }

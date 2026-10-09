@@ -28,6 +28,8 @@ import {
   type BenchmarkOutcome,
   type BuildResult,
   type CheckResult,
+  type QualityResult,
+  type ReworkSummary,
   type BenchmarkRun,
   type CreditsConfig,
   type PromptSpec,
@@ -118,10 +120,61 @@ export interface StreamSummary {
   result: ResultEvent | null;
   /** Lines that were not JSON — a crash trace, a deprecation warning. Kept for the record's notes. */
   stray: string[];
+  /** How the cell got to its result — see {@link ReworkTrace}. */
+  rework: ReworkTrace;
+}
+
+/**
+ * The path to the answer, not just the answer. A server that writes content the
+ * model then has to diagnose and repair does not show up in the final check —
+ * it shows up here: tool calls that came back as errors, builds that failed
+ * before the last one, the same object written again and again.
+ */
+export interface ReworkTrace {
+  /** tool_result blocks flagged is_error (MCP results starting "❌" count too), per tool. */
+  toolErrors: Record<string, number>;
+  /** Build attempts inside the cell: the server's build tool, or a shell command running xppc. */
+  buildAttempts: number;
+  /** Of those, the ones that reported failure. */
+  buildFailures: number;
+  /** Write operations per target (a file for the file tools, objectType:name for the server's). */
+  writes: Record<string, number>;
+}
+
+const isBuildTool = (name: string, input: any): boolean =>
+  /__build_d365fo_project$/.test(name) ||
+  ((name === 'Bash' || name === 'PowerShell') && typeof input?.command === 'string' && /xppc(\.exe)?\b/i.test(input.command));
+
+const BUILD_FAILED = /❌\s*Build|Build FAILED|Build failed|\b[1-9]\d*\s+error\(s\)|Errors:\s*[1-9]|Compile (Fatal )?Error/i;
+
+/** What a write-type tool call writes to, or null when it does not write. */
+function writeTarget(name: string, input: any): string | null {
+  if (!input || typeof input !== 'object') return null;
+  if ((name === 'Write' || name === 'Edit' || name === 'MultiEdit') && typeof input.file_path === 'string') {
+    return `file:${input.file_path.replace(/\\/g, '/').toLowerCase()}`;
+  }
+  if (/__d365fo_file$/.test(name) && ['create', 'modify', 'generate'].includes(input.action)) {
+    const obj = input.objectName ?? input.name ?? input.filePath;
+    return typeof obj === 'string' ? `obj:${String(input.objectType ?? '').toLowerCase()}:${obj.toLowerCase()}` : null;
+  }
+  if (/__generate_object$/.test(name) && typeof input.name === 'string') {
+    return `obj:${String(input.objectType ?? '').toLowerCase()}:${input.name.toLowerCase()}`;
+  }
+  return null;
+}
+
+function resultText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) return content.map(c => (c && typeof c.text === 'string' ? c.text : '')).join('\n');
+  return '';
 }
 
 export function parseStreamJson(text: string): StreamSummary {
-  const summary: StreamSummary = { init: null, toolCalls: {}, assistantMessages: 0, result: null, stray: [] };
+  const summary: StreamSummary = {
+    init: null, toolCalls: {}, assistantMessages: 0, result: null, stray: [],
+    rework: { toolErrors: {}, buildAttempts: 0, buildFailures: 0, writes: {} },
+  };
+  const uses = new Map<string, { name: string; input: any }>();
   for (const line of text.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -149,7 +202,24 @@ export function parseStreamJson(text: string): StreamSummary {
         for (const block of content) {
           if (block && block.type === 'tool_use' && typeof block.name === 'string') {
             summary.toolCalls[block.name] = (summary.toolCalls[block.name] ?? 0) + 1;
+            if (typeof block.id === 'string') uses.set(block.id, { name: block.name, input: block.input });
+            if (isBuildTool(block.name, block.input)) summary.rework.buildAttempts++;
+            const target = writeTarget(block.name, block.input);
+            if (target) summary.rework.writes[target] = (summary.rework.writes[target] ?? 0) + 1;
           }
+        }
+      }
+    } else if (ev.type === 'user') {
+      const content = ev.message?.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (!block || block.type !== 'tool_result' || typeof block.tool_use_id !== 'string') continue;
+          const use = uses.get(block.tool_use_id);
+          if (!use) continue;
+          const body = resultText(block.content);
+          const failed = block.is_error === true || (use.name.startsWith('mcp__') && /^\s*❌/.test(body));
+          if (failed) summary.rework.toolErrors[use.name] = (summary.rework.toolErrors[use.name] ?? 0) + 1;
+          if (isBuildTool(use.name, use.input) && (failed || BUILD_FAILED.test(body))) summary.rework.buildFailures++;
         }
       }
     } else if (ev.type === 'result') {
@@ -257,6 +327,23 @@ export interface RecordContext {
   /** Sandbox runs: what the cell wrote, relative to the sandbox package. */
   artifacts?: string[];
   build?: BuildResult | null;
+  quality?: QualityResult;
+}
+
+/** Fold the stream's rework trace into the record's counts. */
+export function summarizeRework(t: ReworkTrace): ReworkSummary {
+  const toolErrors = Object.values(t.toolErrors).reduce((s, n) => s + n, 0);
+  const mcpToolErrors = Object.entries(t.toolErrors).filter(([n]) => n.startsWith('mcp__')).reduce((s, [, n]) => s + n, 0);
+  const counts = Object.values(t.writes);
+  return {
+    toolErrors,
+    mcpToolErrors,
+    toolErrorsByTool: { ...t.toolErrors },
+    buildAttempts: t.buildAttempts,
+    buildFailures: t.buildFailures,
+    writeOps: counts.reduce((s, n) => s + n, 0),
+    rewrites: counts.reduce((s, n) => s + Math.max(0, n - 1), 0),
+  };
 }
 
 const EXCERPT_CHARS = 400;
@@ -365,5 +452,7 @@ export function toBenchmarkRun(o: ClaudeCodeOutcome, ctx: RecordContext): Benchm
     evidence: { sessionId: r?.session_id ?? null, logPath: null },
     ...(ctx.artifacts !== undefined ? { artifacts: ctx.artifacts } : {}),
     ...(ctx.build !== undefined ? { build: ctx.build } : {}),
+    rework: summarizeRework(o.summary.rework),
+    ...(ctx.quality !== undefined ? { quality: ctx.quality } : {}),
   };
 }

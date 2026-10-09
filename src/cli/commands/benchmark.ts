@@ -55,12 +55,18 @@ import {
 } from '../../benchmark/store.js';
 import {
   authoredChanges,
+  bpCheckSandbox,
+  bpDelta,
   buildSandbox,
+  clearBuildState,
+  compileSandboxLabels,
   describeSandbox,
   diffSandbox,
   isBuildOutput,
+  malformedXml,
   restoreSandbox,
   snapshotSandbox,
+  type BpRun,
   type SandboxInfo,
   type Snapshot,
 } from '../../benchmark/sandbox.js';
@@ -113,6 +119,8 @@ interface RunOptions extends CommonOptions {
   /** false with --no-build. */
   build?: boolean;
   allowDirtyBaseline?: boolean;
+  /** false with --no-bp. */
+  bp?: boolean;
 }
 
 const DEFAULT_MODELS = 'sonnet';
@@ -181,10 +189,29 @@ interface SandboxRun {
   targets: McpServerTarget[];
   /** Scratch folder: the filtered MCP config, the snapshot, the build logs. */
   scratch: string;
+  /** xppbp over the clean sandbox — what a cell is not charged with. */
+  bpBaseline?: BpRun | null;
 }
 
-/** Edit rule a workspace cell gets: the sandbox package (its cwd) and nothing else — verified to hold in dontAsk mode. */
-const SANDBOX_EDIT_RULE = 'Edit(./**)';
+/**
+ * The Edit rule a workspace cell gets: the sandbox package and nothing else.
+ *
+ * ABSOLUTE (`//k/AosService/…/fm-mcp/**`), never `./**`. A relative rule is
+ * resolved against the session's CURRENT directory, and that moves: Claude
+ * Code runs read-only shell commands (`cd …; ls`) without asking even in
+ * dontAsk mode, so a cell that once looked around ApplicationSuite with
+ * `cd` had every later write into the sandbox refused — a whole "without MCP"
+ * cell scored 0 files for a reason that had nothing to do with the model.
+ * Verified on the VM: after a `cd`, `./**` refuses the write and the absolute
+ * rule allows it; the absolute rule still refuses a write outside the package.
+ */
+export function sandboxEditRule(packageDir: string): string {
+  const p = packageDir.replace(/\\/g, '/').replace(/\/+$/, '');
+  const drive = /^([A-Za-z]):\/(.*)$/.exec(p);
+  // Claude Code's absolute form: `//` + the path from the filesystem root; a
+  // Windows drive letter becomes the first segment, lower-case (`//k/…`).
+  return `Edit(//${drive ? `${drive[1].toLowerCase()}/${drive[2]}` : p.replace(/^\/+/, '')}/**)`;
+}
 const SANDBOX_READ_TOOLS = ['Read', 'Glob', 'Grep'];
 const BUILD_TIMEOUT_MS = 20 * 60 * 1000;
 
@@ -280,6 +307,7 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
   const cwd = sandbox ? sandbox.info.packageDir : path.resolve(opts.cwd ?? process.cwd());
   const cells = specs.length * models.length * variants.length * repeat;
   const wantBuild = opts.build !== false;
+  const wantBp = wantBuild && opts.bp !== false;
   const timeoutFor = (spec: PromptSpec) => timeoutS ?? spec.timeoutSeconds ?? DEFAULT_TIMEOUT_S;
 
   p.intro(`d365fo-mcp benchmark run — ${cells} cell${cells === 1 ? '' : 's'}`);
@@ -335,8 +363,10 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
   if (sandbox && !opts.dryRun) {
     try {
       if (wantBuild && writing.some(s => s.workspace?.build)) {
-        p.log.step(`Baseline build of ${sandbox.info.packageName} (xppc, full)…`);
+        p.log.step(`Baseline build of ${sandbox.info.packageName} (labels + xppc, full)…`);
         fs.mkdirSync(sandbox.scratch, { recursive: true });
+        const labelProblem = await compileSandboxLabels(sandbox.info);
+        if (labelProblem) p.log.warn(`Label compilation: ${labelProblem}`);
         const base = await buildSandbox(sandbox.info, path.join(sandbox.scratch, 'baseline-xppc.log'), BUILD_TIMEOUT_MS);
         if (!base.ok) {
           const msg = `The sandbox does not build clean before any cell ran (${base.errorCount} error line(s)):\n   ${base.errors.join('\n   ')}`;
@@ -344,6 +374,14 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
           p.log.warn(msg);
         } else {
           p.log.success(`Baseline clean in ${formatMetric('durationMs', base.durationMs)}`);
+        }
+        if (wantBp) {
+          sandbox.bpBaseline = await bpCheckSandbox(sandbox.info, BUILD_TIMEOUT_MS);
+          if (sandbox.bpBaseline.ran) {
+            p.log.info(`Baseline BP: ${sandbox.bpBaseline.errors} error(s), ${sandbox.bpBaseline.warnings} warning(s) — a cell is charged only with findings beyond these`);
+          } else {
+            p.log.warn(`xppbp did not run (${sandbox.bpBaseline.problem}) — the BP check is skipped for this matrix`);
+          }
         }
       }
       snapshot = snapshotSandbox(sandbox.info.packageDir, path.join(sandbox.scratch, 'snapshot'));
@@ -366,7 +404,7 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
         for (const mcp of variants) {
           const allowedTools = [
             ...(sandbox ? SANDBOX_READ_TOOLS : []),
-            ...(sandbox && spec.workspace ? [SANDBOX_EDIT_RULE] : []),
+            ...(sandbox && spec.workspace ? [sandboxEditRule(sandbox.info.packageDir)] : []),
             ...splitList(opts.allowedTools, ''),
           ];
           const options: ClaudeCodeOptions = {
@@ -395,10 +433,10 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
           const t0 = Date.now();
           const outcome = await runClaudeCode(options);
 
-          let scored: Pick<RecordContext, 'extraChecks' | 'artifacts' | 'build'> = {};
+          let scored: Pick<RecordContext, 'extraChecks' | 'artifacts' | 'build' | 'quality'> = {};
           let moved: string[] = [];
           if (sandbox && snapshot) {
-            const result = await scoreSandboxCell(spec, sandbox, snapshot, wantBuild, `${done + 1}`);
+            const result = await scoreSandboxCell(spec, sandbox, snapshot, wantBuild, wantBp, `${done + 1}`);
             scored = result.scored;
             moved = result.moved;
           }
@@ -420,6 +458,13 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
           // Keep what the cell wrote before the restore wipes it: a check found
           // wrong later (it happened — <Pattern xmlns="">) can then be re-scored.
           if (sandbox && record.artifacts?.length) keepArtifacts(sandbox.info.packageDir, record.artifacts, path.join(bp.root, 'artifacts', record.runId));
+          // The raw stream too (gitignored): a refused write, a tool error or a
+          // wrong turn is diagnosable only from what the host actually emitted.
+          try {
+            const evidence = path.join(bp.root, 'artifacts', record.runId);
+            fs.mkdirSync(evidence, { recursive: true });
+            fs.writeFileSync(path.join(evidence, 'stream.jsonl'), outcome.process.stdout, 'utf8');
+          } catch { /* evidence, not the measurement */ }
           done++;
           if (record.outcome !== 'completed') failed++;
           const line =
@@ -428,7 +473,11 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
             `${record.aic ? ` · ${formatMetric('aic', record.aic.value)} ${credits.unit}` : ''}` +
             `${record.score !== null ? ` · checks ${Math.round(record.score * 100)} %` : ''}` +
             `${record.artifacts ? ` · ${record.artifacts.length} file(s) written` : ''}` +
-            `${record.build ? ` · build ${record.build.ok ? 'clean' : `${record.build.errorCount} error(s)`}` : ''}\n   → ${path.basename(file)}`;
+            `${record.build ? ` · build ${record.build.ok ? 'clean' : `${record.build.errorCount} error(s)`}` : ''}` +
+            `${record.quality?.bp ? ` · BP +${record.quality.bp.errors} err/+${record.quality.bp.warnings} warn` : ''}` +
+            `${record.quality?.xmlInvalid.length ? ` · ${record.quality.xmlInvalid.length} malformed XML` : ''}` +
+            `${record.rework ? ` · rework: ${record.rework.toolErrors} tool error(s) (${record.rework.mcpToolErrors} MCP), ${record.rework.buildFailures}/${record.rework.buildAttempts} builds failed, ${record.rework.rewrites} rewrite(s)` : ''}` +
+            `\n   → ${path.basename(file)}`;
           if (record.outcome === 'completed') p.log.success(line);
           else p.log.warn(`${line}\n   ${record.notes ?? ''}`);
 
@@ -468,8 +517,9 @@ async function scoreSandboxCell(
   sandbox: SandboxRun,
   snapshot: Snapshot,
   wantBuild: boolean,
+  wantBp: boolean,
   cellNo: string,
-): Promise<{ scored: Pick<RecordContext, 'extraChecks' | 'artifacts' | 'build'>; moved: string[] }> {
+): Promise<{ scored: Pick<RecordContext, 'extraChecks' | 'artifacts' | 'build' | 'quality'>; moved: string[] }> {
   const pkg = sandbox.info.packageDir;
   const diff = diffSandbox(pkg, snapshot);
   const artifacts = authoredChanges(diff);
@@ -480,20 +530,37 @@ async function scoreSandboxCell(
     },
   }));
   const extraChecks = evaluateFileChecks(spec, changed);
+  // Validity beyond the build: is what the cell (or the server, on its behalf)
+  // wrote even well-formed XML, and does it pass the best-practice rules the
+  // compiler does not enforce (hardcoded text, missing documentation, …)?
+  const xmlInvalid = spec.workspace ? await malformedXml(pkg, artifacts) : [];
+  if (spec.workspace) extraChecks.push({ name: 'written XML is well-formed', passed: artifacts.length > 0 && xmlInvalid.length === 0 });
   let build: BuildResult | null = null;
+  let bp: { errors: number; warnings: number; findings: string[] } | null = null;
   if (spec.workspace?.build && wantBuild) {
     if (artifacts.length > 0) {
       p.log.info(`   building ${sandbox.info.packageName} with ${artifacts.length} written file(s)…`);
+      await compileSandboxLabels(sandbox.info);
       build = await buildSandbox(sandbox.info, path.join(sandbox.scratch, `cell-${cellNo}-xppc.log`), BUILD_TIMEOUT_MS);
     }
     extraChecks.push({ name: 'builds clean (xppc)', passed: build?.ok === true });
+    if (wantBp && sandbox.bpBaseline?.ran) {
+      // xppbp needs the compiled module; after a failed build its verdict is
+      // partial, so the check fails as "not shown clean" rather than passing.
+      if (build?.ok) {
+        const run = await bpCheckSandbox(sandbox.info, BUILD_TIMEOUT_MS);
+        if (run.ran) bp = bpDelta(sandbox.bpBaseline, run);
+      }
+      extraChecks.push({ name: 'no new best-practice errors (xppbp)', passed: bp !== null && bp.errors === 0 });
+    }
   }
   // Every non-build path that moved, deletions included — the index re-sync list.
   const moved = [...diff.added, ...diff.modified, ...diff.deleted].filter(rel => !isBuildOutput(rel));
   // An answer-only prompt that wrote nothing keeps its record free of sandbox fields.
-  const scored: Pick<RecordContext, 'extraChecks' | 'artifacts' | 'build'> = { extraChecks };
+  const scored: Pick<RecordContext, 'extraChecks' | 'artifacts' | 'build' | 'quality'> = { extraChecks };
   if (spec.workspace || artifacts.length > 0) scored.artifacts = artifacts;
   if (spec.workspace?.build && wantBuild) scored.build = build;
+  if (spec.workspace) scored.quality = { xmlInvalid, bp };
   return { scored, moved };
 }
 
@@ -511,6 +578,9 @@ function keepArtifacts(packageDir: string, artifacts: string[], outDir: string):
 /** Restore the snapshot, then take what the cell put in the servers' indexes back out. */
 async function resetSandbox(sandbox: SandboxRun, snapshot: Snapshot, moved: string[]): Promise<void> {
   restoreSandbox(sandbox.info.packageDir, snapshot);
+  // The server's build tool keeps its last state in the temp folder, keyed by
+  // module — it would outlive the cell and greet the next one.
+  clearBuildState(sandbox.info);
   if (moved.length === 0 || sandbox.targets.length === 0) return;
   const files = moved.map(rel => path.join(sandbox.info.packageDir, ...rel.split('/')));
   for (const target of sandbox.targets) {
@@ -720,6 +790,7 @@ export function registerBenchmarkCommands(program: Command): void {
     .option('--sandbox <packageDir>', 'throwaway D365FO package the write prompts work in; snapshotted, scored and restored around every cell')
     .option('--sandbox-model <name>', 'model folder inside the sandbox package (default: the package name)')
     .option('--no-build', 'skip the xppc build check of prompts that ask for one')
+    .option('--no-bp', 'skip the xppbp best-practice check after a clean build')
     .option('--allow-dirty-baseline', 'run even when the sandbox does not build clean before the first cell')
     .option('--cwd <dir>', 'working directory for claude (default: current directory; the sandbox package with --sandbox)')
     .option('--label <text>', 'tag these runs ("release 1.20", "VM contoso")')

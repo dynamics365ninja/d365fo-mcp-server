@@ -102,13 +102,20 @@ Around the matrix and every cell the runner:
 4. **Snapshots the package** (Descriptor, the model folder, `bin`; a sandbox is
    a few MB and more than 5,000 files is refused) into the temp folder.
 5. **Runs the cell in the package**: cwd is the package, the built-in tools are
-   `Read Glob Grep` plus `Edit(./**)` — in `dontAsk` mode that rule lets the file
-   tools write inside the package and nowhere else (checked on the VM: a write
-   to an `--add-dir` folder is denied) — and `--add-dir <PackagesLocalDirectory>`
-   makes the standard metadata readable, so the plain cell can look up CustTable
-   the way a developer without the server would. Shells are not allowed: a plain
-   cell cannot run xppc, a with-MCP cell builds through the server. That gap is
-   part of what is being measured; add `--allowed-tools PowerShell` to close it.
+   `Read Glob Grep` plus an **absolute** edit rule for the package
+   (`Edit(//k/AosService/PackagesLocalDirectory/fm-mcp/**)`) — in `dontAsk` mode
+   it lets the file tools write inside the package and nowhere else (checked on
+   the VM: a write next to the package is refused) — and
+   `--add-dir <PackagesLocalDirectory>` makes the standard metadata readable, so
+   the plain cell can look up CustTable the way a developer without the server
+   would. The rule must not be relative: `./**` follows the session's current
+   directory, Claude Code runs read-only shell commands such as `cd …; ls`
+   without asking even in `dontAsk` mode, and one such `cd` into ApplicationSuite
+   got every later sandbox write of a plain cell refused (0 files written).
+   Other shell commands are refused: a plain cell cannot run xppc, a with-MCP
+   cell builds through the server. That gap is part of what is being measured;
+   add `--allowed-tools PowerShell` to close it. Every cell's raw stream is kept
+   in `eval/benchmark/artifacts/<runId>/stream.jsonl` (gitignored).
 6. **Scores what the cell wrote**: the package is diffed against the snapshot,
    the added/changed files (build output left out) become the record's
    `artifacts`, each `expects.files` entry is one check, and with

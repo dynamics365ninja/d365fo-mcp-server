@@ -298,7 +298,8 @@ export function divergingBars(o: DivergingOptions): string {
     const d = v >= 0
       ? `M${x0.toFixed(1)} ${(cy - barH / 2).toFixed(1)} h${(w - r).toFixed(1)} a${r} ${r} 0 0 1 ${r} ${r} v${barH - 2 * r} a${r} ${r} 0 0 1 -${r} ${r} h-${(w - r).toFixed(1)} Z`
       : `M${x0.toFixed(1)} ${(cy - barH / 2).toFixed(1)} h-${(w - r).toFixed(1)} a${r} ${r} 0 0 0 -${r} ${r} v${barH - 2 * r} a${r} ${r} 0 0 0 ${r} ${r} h${(w - r).toFixed(1)} Z`;
-    const cls = row.good === null ? 'neutral' : row.good ? 'good' : 'bad';
+    // `neg` lets the page grow a left-pointing bar out of the zero line, not toward it.
+    const cls = `${row.good === null ? 'neutral' : row.good ? 'good' : 'bad'}${v < 0 ? ' neg' : ''}`;
     parts.push(`<path class="bar ${cls}" d="${d}" tabindex="0" data-tip="${esc(row.tip)}"><title>${esc(row.tip)}</title></path>`);
     const lx = v >= 0 ? left + w + 6 : left - 6;
     const glyph = row.good === null ? '' : row.good ? '▼ ' : '▲ ';
