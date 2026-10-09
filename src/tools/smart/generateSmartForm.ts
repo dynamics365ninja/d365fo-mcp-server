@@ -1198,7 +1198,7 @@ export async function handleGenerateSmartForm(
 
   if (effectiveProjectPath) {
     try {
-      const projectManager = new ProjectFileManager();
+      const projectManager = new ProjectFileManager({ withinSolutionRoots: true });
       const wasAdded = await projectManager.addToProject(
         effectiveProjectPath,
         'form',

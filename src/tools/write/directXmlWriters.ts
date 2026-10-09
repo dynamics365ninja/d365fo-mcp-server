@@ -1219,6 +1219,144 @@ export const directXmlAddDataEntityExtensionField = serializedOnFile(async (
   }
 });
 
+/**
+ * add-field on a VIEW: appends an `AxViewFieldBound` to the view's own <Fields>.
+ *
+ * A view field has no EDT of its own — it names a field (`dataField`) of one of the
+ * view's data sources (`dataSource`). The bridge has no view path (its AddField
+ * resolves tables and table extensions only), so this is the only writer.
+ *
+ * Shape measured on the 2,987 shipped views (source XML, not XppMetadata): 28,493
+ * bound fields, every one with a <DataSource>; 25,946 are exactly Name, DataField,
+ * DataSource, and an optional Label (1,325 + 100) sits between Name and DataField.
+ *
+ * `dataSource` is checked against the data sources the view declares in its own
+ * <ViewMetadata> and takes their casing. A view built on an AxQuery declares none
+ * of its own, so there the name cannot be checked here — the build checks it.
+ */
+export const directXmlAddViewField = serializedOnFile(async (
+  filePath: string,
+  fieldName: string,
+  dataField: string,
+  dataSource: string,
+  label?: string,
+): Promise<{ success: boolean; message: string; skipped?: boolean }> => {
+  const rawContent = await fs.readFile(filePath, 'utf-8');
+  const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+  if (!/<AxView\b/.test(content)) {
+    return { success: false, message: `${filePath} is not an AxView — nothing was written.` };
+  }
+
+  const declared = [...content.matchAll(
+    /<AxQuerySimple(?:Root|Embedded|Derived)DataSource>\s*<Name>([^<]+)<\/Name>/g,
+  )].map(m => m[1].trim());
+  let boundTo = dataSource;
+  if (declared.length > 0) {
+    const match = declared.find(d => d.toLowerCase() === dataSource.toLowerCase());
+    if (!match) {
+      return {
+        success: false,
+        message:
+          `View data source '${dataSource}' does not exist — nothing was written. ` +
+          `This view declares: ${declared.join(', ')}. ` +
+          `dataSource names a data source of the view, which is not always its table name.`,
+      };
+    }
+    boundTo = match;
+  }
+
+  // Scoped to this field's own element: a bare <Name> match would also hit the
+  // view's name, its field groups and its data sources.
+  const fieldsBlock = /^\t<Fields>[\s\S]*?^\t<\/Fields>/m.exec(content)?.[0] ?? '';
+  const escapedName = fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const existing = new RegExp(
+    `<AxViewField\\b[^>]*>\\s*<Name>${escapedName}</Name>[\\s\\S]*?</AxViewField>`, 'i',
+  ).exec(fieldsBlock);
+  if (existing) {
+    const has = (tag: string, value: string) => existing[0].toLowerCase().includes(`<${tag}>${value}</${tag}>`.toLowerCase());
+    const same = has('DataField', dataField) && has('DataSource', boundTo);
+    return same
+      ? { success: true, skipped: true, message: `View field '${fieldName}' (${boundTo}.${dataField}) is already there — skipped (idempotent).` }
+      : { success: false, message: `View '${filePath}' already has a field '${fieldName}' with a different binding — nothing was written. Pick another fieldName.` };
+  }
+
+  const element =
+    `\t\t<AxViewField xmlns=""\n\t\t\ti:type="AxViewFieldBound">\n` +
+    `\t\t\t<Name>${fieldName}</Name>\n` +
+    (label ? `\t\t\t<Label>${escapeXml(label)}</Label>\n` : '') +
+    `\t\t\t<DataField>${dataField}</DataField>\n` +
+    `\t\t\t<DataSource>${boundTo}</DataSource>\n` +
+    `\t\t</AxViewField>`;
+
+  const target = findTopLevelCollection(content, 'AxView', 'Fields');
+  if (!target) {
+    return { success: false, message: `${filePath} has no top-level <Fields> collection — nothing was written.` };
+  }
+  const updated = 'selfClosingAt' in target
+    ? `${content.slice(0, target.selfClosingAt[0])}<Fields>\n${element}\n\t</Fields>${content.slice(target.selfClosingAt[1])}`
+    : `${content.slice(0, target.insertAt)}${element}\n\t${content.slice(target.insertAt)}`;
+
+  await writeFileAtomic(filePath, normalizeD365Xml(updated));
+  return {
+    success: true,
+    message:
+      `✅ View field '${fieldName}' bound to ${boundTo}.${dataField} (AxViewFieldBound)` +
+      (declared.length === 0 ? ` — the view is built on a query, so '${boundTo}' was not checked here; the build will.` : '.'),
+  };
+});
+
+/**
+ * Elements that FOLLOW <InsertIfEmpty> in an AxFormDataSource. Measured over the
+ * 21,168 data sources of the shipped forms and form extensions (source XML): every
+ * other child element only ever precedes it, and none appears on both sides.
+ */
+const AFTER_INSERT_IF_EMPTY = [
+  'StartPosition', 'MaxAccessRight', 'ValidTimeStateUpdate', 'ValidTimeStateAutoQuery',
+  'OptionalRecordMode', 'DataSourceLinks', 'DerivedDataSources',
+];
+
+/**
+ * Sets InsertIfEmpty on the form data source `dataSourceName` — after the bridge has
+ * added it, since its AddDataSource takes no such property.
+ *
+ * The 12,798 shipped data sources that carry the element all say No: Yes is the
+ * default and the serializer omits it. So `false` writes `<InsertIfEmpty>No</…>`
+ * before the first element that follows it (AFTER_INSERT_IF_EMPTY), and `true`
+ * removes the element — the file then reads exactly as a defaulted one.
+ */
+export const directXmlSetFormDataSourceInsertIfEmpty = serializedOnFile(async (
+  filePath: string,
+  dataSourceName: string,
+  insertIfEmpty: boolean,
+): Promise<{ success: boolean; message: string }> => {
+  const content = (await fs.readFile(filePath, 'utf-8')).replace(/^﻿/, '').replace(/\r\n/g, '\n');
+  const escaped = dataSourceName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const block = new RegExp(
+    `^(\\t+)<AxFormDataSource xmlns="">\\n\\1\\t<Name>${escaped}</Name>\\n[\\s\\S]*?^\\1</AxFormDataSource>`, 'm',
+  ).exec(content);
+  if (!block) {
+    return { success: false, message: `InsertIfEmpty not set: data source '${dataSourceName}' was not found in ${filePath}.` };
+  }
+  const childIndent = `${block[1]}\t`;
+  const existing = new RegExp(`^${childIndent}<InsertIfEmpty>\\w*</InsertIfEmpty>\\n`, 'm');
+  let updated = block[0].replace(existing, '');
+  if (!insertIfEmpty) {
+    const next = new RegExp(`^${childIndent}<(?:${AFTER_INSERT_IF_EMPTY.join('|')})\\b`, 'm').exec(updated);
+    if (!next) {
+      return { success: false, message: `InsertIfEmpty not set: no insertion point in data source '${dataSourceName}'.` };
+    }
+    updated = `${updated.slice(0, next.index)}${childIndent}<InsertIfEmpty>No</InsertIfEmpty>\n${updated.slice(next.index)}`;
+  }
+  if (updated !== block[0]) {
+    const result = content.slice(0, block.index) + updated + content.slice(block.index + block[0].length);
+    await writeFileAtomic(filePath, normalizeD365Xml(result));
+  }
+  return {
+    success: true,
+    message: insertIfEmpty ? 'InsertIfEmpty left at its default (Yes).' : 'InsertIfEmpty=No set on the data source.',
+  };
+});
+
 /** DeleteAction values accepted by the AxTable serialiser. */
 export const DELETE_ACTION_TYPES = ['None', 'Restricted', 'Cascade', 'CascadeRestricted'] as const;
 

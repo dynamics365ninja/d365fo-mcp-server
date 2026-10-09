@@ -24,6 +24,7 @@ import {
   type Membership,
 } from './projectMembership.js';
 import { getConfigManager } from '../utils/configManager.js';
+import { assertProjectPathAllowed } from '../utils/pathContainment.js';
 
 /**
  * Register a file that is already on disk into the ACTIVE project, whenever the
@@ -105,7 +106,7 @@ export async function registerFileInActiveProject(
       `and no active projectPath is configured to add it to. It will not compile until some project does.`;
   }
   try {
-    const added = await new ProjectFileManager().addToProject(projectPath, objectType, objectName, '');
+    const added = await new ProjectFileManager({ withinSolutionRoots: true }).addToProject(projectPath, objectType, objectName, '');
     if (!added) return '';
     const reload = `Right-click the project → Reload Project if VS is open.`;
     return alsoIn
@@ -208,8 +209,17 @@ export class ProjectFileFinder {
 export class ProjectFileManager {
   private parser: Parser;
   private builder: Builder;
+  private readonly withinSolutionRoots: boolean;
 
-  constructor() {
+  /**
+   * withinSolutionRoots: refuse a project outside the configured solution roots
+   * (assertProjectPathAllowed), the bound d365fo_file(action="project") applies.
+   * Every tool that writes a .rnrproj on a caller's behalf turns it on: create's
+   * addToProject used to write any .rnrproj it was handed while action="project"
+   * refused the same file, so the guard held only for the caller who asked for it.
+   */
+  constructor(options: { withinSolutionRoots?: boolean } = {}) {
+    this.withinSolutionRoots = options.withinSolutionRoots ?? false;
     this.parser = new Parser({
       explicitArray: false,
       mergeAttrs: false,
@@ -219,6 +229,12 @@ export class ProjectFileManager {
       xmldec: { version: '1.0', encoding: 'utf-8' },
       renderOpts: { pretty: true, indent: '  ' },
     });
+  }
+
+  private async assertWithinRoots(projectPath: string): Promise<void> {
+    if (!this.withinSolutionRoots) return;
+    const contained = await assertProjectPathAllowed(projectPath);
+    if (!contained.ok) throw new Error(contained.reason);
   }
 
   /**
@@ -293,6 +309,7 @@ export class ProjectFileManager {
     objectName: string,
     _absoluteXmlPath: string  // kept for API compatibility
   ): Promise<boolean> {
+    await this.assertWithinRoots(projectPath);
     return withFileLock(projectPath, () => this._addToProjectLocked(projectPath, objectType, objectName));
   }
 
@@ -457,6 +474,7 @@ export class ProjectFileManager {
     objectType: string,
     objectName: string,
   ): Promise<boolean> {
+    await this.assertWithinRoots(projectPath);
     return withFileLock(projectPath, () => this._removeFromProjectLocked(projectPath, objectType, objectName));
   }
 
@@ -569,6 +587,7 @@ export class ProjectFileManager {
     labelFileId: string,
     languages: string[],
   ): Promise<string[]> {
+    await this.assertWithinRoots(projectPath);
     return withFileLock(projectPath, () =>
       this._addLabelToProjectLocked(projectPath, labelFileId, languages));
   }

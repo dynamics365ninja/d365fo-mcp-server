@@ -8,16 +8,13 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
 import * as fs from 'fs/promises';
-// Taken from node:fs rather than fs/promises: the value is the same, but the
-// promises namespace is routinely replaced wholesale by test mocks that only
-// stub the functions, and reading .constants off such a mock is a TypeError.
-import { constants as FS_CONSTANTS } from 'fs';
-import { execFile } from 'child_process';
-import util from 'util';
 
 import path from 'path';
 import { parseStringPromise } from '../../utils/xml.js';
 import { sayOncePerSession, resetRepeatedNoteMemory } from '../../utils/repeatedNotes.js';
+import {
+  planRecoverableModification, keptBackupNote, discardBackup, settleFailedModification, type BackupSlot,
+} from './modifyBackup.js';
 import { getConfigManager, extractModelFromFilePath } from '../../utils/configManager.js';
 import { isStandardModel, resolveRegularObjectPrefixToken, resolveObjectPrefix, deriveExtensionInfix } from '../../utils/modelClassifier.js';
 import { normalizeObjectName } from '../../utils/objectNaming.js';
@@ -109,7 +106,7 @@ import {
   directXmlAddDiagnosticSuppression,
   directXmlAddModuleReference,
   directXmlRemoveModuleReference,
-  directXmlEnsureRelationProperties, directXmlModifyControlProperty,
+  directXmlEnsureRelationProperties, directXmlModifyControlProperty, directXmlAddViewField, directXmlSetFormDataSourceInsertIfEmpty,
 } from './directXmlWriters.js';
 import { addReportParameter, refreshReportDataset } from './reportDesignXml.js';
 
@@ -910,6 +907,9 @@ export const ModifyD365FileArgsSchema = z.object({
   linkType: z.string().optional().describe(
     'Optional join/link type when joinSource is set (add-data-source): InnerJoin | OuterJoin | ExistJoin | NotExistJoin | Delayed | Active | Passive.'
   ),
+  insertIfEmpty: z.boolean().optional().describe(
+    'add-data-source on a form/form-extension: false writes <InsertIfEmpty>No</InsertIfEmpty> (no empty record is created when the data source has none). Omitted = platform default (Yes).'
+  ),
 
   // For add-field on data-entity-extension: the mapped field's source binding.
   // fieldName (already defined above) is the entity-facing field name.
@@ -1241,6 +1241,24 @@ export async function modifyD365FileTool(
   request: CallToolRequest,
   context: XppServerContext,
   outcome?: ModifyOutcome,
+) {
+  const backup: BackupSlot = {};
+  const result = await runModify(request, context, outcome, backup);
+  // Every path that returns before the success response — a refusal, a bridge
+  // error, a throw — lands here with the backup still pending.
+  if (backup.pending && !backup.settled) {
+    const note = await settleFailedModification(backup.pending);
+    const first = result.content[0];
+    if (note && first?.type === 'text') first.text += note;
+  }
+  return result;
+}
+
+async function runModify(
+  request: CallToolRequest,
+  context: XppServerContext,
+  outcome: ModifyOutcome | undefined,
+  backup: BackupSlot,
 ) {
   const timer = createPhaseTimer();
   try {
@@ -1778,12 +1796,11 @@ export async function modifyD365FileTool(
       }
     }
 
-    // 3. Create backup of the actual XML file. When the target is NOT inside a
-    //    git work tree, the documented undo path (undo_last_modification →
-    //    git checkout) cannot revert the change — force a backup even with
-    //    createBackup=false so a bad modify is never unrecoverable. Skipped
-    //    outright when the file does not exist yet: there is nothing to back up.
-    const backupNote = targetFileExists ? await ensureRecoverableModification(actualFilePath, createBackup) : '';
+    // 3. Back up the file before the operation runs (planRecoverableModification
+    //    decides whether one is needed). Settled below on success, in
+    //    modifyD365FileTool on failure — a call that changed nothing keeps no copy.
+    //    Skipped outright when the file does not exist yet: nothing to back up.
+    backup.pending = targetFileExists ? await planRecoverableModification(actualFilePath, createBackup) : null;
 
     // 3b. Derive the authoritative object name from the resolved file path.
     //     The caller may pass objectName="RentEquipment" while the file on disk
@@ -2079,6 +2096,41 @@ export async function modifyD365FileTool(
           bridgeResult = await entityAddField(actualFilePath, args as any);
           break;
         }
+        // A view field is an AxViewFieldBound: a field of one of the view's data
+        // sources, with no EDT of its own. Views used to fall through to the table
+        // path below — dataField/dataSource were refused as "data-entity only", and
+        // fieldType reached the bridge, whose AddField resolves tables only.
+        if (objectType === 'view' && args.fieldName) {
+          const dataSource = ((args as any).dataSource as string | undefined)?.trim();
+          const dataField = ((args as any).dataField as string | undefined)?.trim() || args.fieldName;
+          if (!dataSource) {
+            return {
+              content: [{
+                type: 'text',
+                text:
+                  `❌ add-field on a view needs dataSource — nothing was written.\n` +
+                  `A view field has no EDT of its own: it binds fieldName to dataField (default: fieldName) ` +
+                  `on dataSource, one of the view's data sources.` +
+                  (args.fieldType || (args as any).fieldEnumType
+                    ? ` fieldType/fieldEnumType do not apply to a view field.` : '') +
+                  `\n\n${renderOpSpec('add-field')}`,
+              }],
+              isError: true,
+            };
+          }
+          const bad = [args.fieldName, dataField, dataSource].find(v => !/^[A-Za-z_]\w*$/.test(v));
+          if (bad) {
+            return {
+              content: [{ type: 'text', text: `❌ "${bad}" is not a valid AOT name — nothing was written.` }],
+              isError: true,
+            };
+          }
+          bridgeResult = viaXmlFallback(
+            await directXmlAddViewField(actualFilePath, args.fieldName, dataField, dataSource, args.fieldLabel),
+          );
+          break;
+        }
+
         // Everything else is an AxTableField. `required` on add-field is only fieldName
         // (the mapped-field path above has no fieldType at all), so the type-specific half
         // of the contract is enforced here instead of silently falling through to a null
@@ -2969,6 +3021,13 @@ export async function modifyD365FileTool(
             (args as any).joinSource,
             (args as any).linkType,
           );
+          // The bridge's AddDataSource takes no InsertIfEmpty, so it is set on the
+          // file it just wrote. A skip added nothing, so there is nothing to set.
+          const insertIfEmpty = (args as any).insertIfEmpty as boolean | undefined;
+          if (insertIfEmpty !== undefined && bridgeResult?.success && !bridgeResult.skipped) {
+            const set = await directXmlSetFormDataSourceInsertIfEmpty(actualFilePath, (args as any).dataSourceName, insertIfEmpty);
+            bridgeResult = { ...bridgeResult, message: `${bridgeResult.message} ${set.success ? set.message : `⚠️ ${set.message}`}` };
+          }
         }
         break;
       }
@@ -3324,6 +3383,11 @@ export async function modifyD365FileTool(
     // A skip wrote nothing: every trailer below that describes the write would
     // describe one that did not happen (runModifyBatch drops them the same way).
     const wasSkipped = bridgeResult.skipped === true;
+
+    // Settled here, so the failure path in modifyD365FileTool leaves it alone.
+    backup.settled = true;
+    if (backup.pending && wasSkipped) await discardBackup(backup.pending);
+    const backupNote = backup.pending && !wasSkipped ? keptBackupNote(backup.pending) : '';
 
     let addFieldBpNote = '';
     if (!wasSkipped && operation === 'add-field' && (objectType === 'table' || objectType === 'table-extension')) {
@@ -3978,110 +4042,6 @@ async function resolveD365FileByName(
   // Filesystem fallback: handles newly created files not yet in the symbol index,
   // and all types not covered by the symbol DB (edt, report, extensions, security, menu …).
   return findD365FileOnDisk(objectType, objectName, modelName, packagePath);
-}
-
-
-/**
- * Create file backup and verify it was written successfully.
- * Throws if the source file is missing or the copy fails, so callers
- * always know whether a valid backup exists before overwriting.
- * Returns the backup file path.
- *
- * The name carries MILLISECONDS and, if that still collides, a counter. At the old
- * one-second resolution two modifies of the same file inside the same second
- * produced the same backup name, so the second copy overwrote the first with
- * already-modified content — on a target outside git (exactly the case that forces
- * a backup, see ensureRecoverableModification) the original was then unrecoverable.
- * COPYFILE_EXCL is what makes the retry a claim rather than a check: it fails
- * instead of overwriting, so two callers racing on the same name cannot both win.
- *
- * Exported for unit tests.
- */
-export async function createFileBackup(filePath: string): Promise<string> {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').replace(/Z$/, '');
-  const base = `${filePath}.backup-${timestamp}`;
-
-  for (let attempt = 0; ; attempt++) {
-    const backupPath = attempt === 0 ? base : `${base}-${attempt}`;
-    try {
-      await fs.copyFile(filePath, backupPath, FS_CONSTANTS.COPYFILE_EXCL);
-      // Confirm the backup has non-zero size before proceeding
-      const stat = await fs.stat(backupPath);
-      if (stat.size === 0) {
-        throw new Error('Backup file was created but is empty');
-      }
-      return backupPath;
-    } catch (error: any) {
-      if (error?.code === 'EEXIST' && attempt < 100) {
-        continue;
-      }
-      throw new Error(
-        `Failed to create backup at "${backupPath}": ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-  }
-}
-
-const execFileAsync = util.promisify(execFile);
-
-// Directory → inside-git-work-tree result, cached for the process lifetime so
-// repeated modifies don't re-spawn git for the same metadata folder.
-const gitWorkTreeCache = new Map<string, boolean>();
-
-/**
- * Cheap check whether a file lives inside a git work tree — i.e. whether
- * undo_last_modification (git checkout) could revert a change to it.
- * git not installed, timeout, or any other error → treated as "not a repo".
- */
-async function isInsideGitWorkTree(filePath: string): Promise<boolean> {
-  const dir = path.dirname(filePath);
-  const cached = gitWorkTreeCache.get(dir);
-  if (cached !== undefined) return cached;
-  let inside = false;
-  try {
-    const { stdout } = await execFileAsync('git', ['rev-parse', '--is-inside-work-tree'], {
-      cwd: dir,
-      timeout: 5_000,
-      windowsHide: true,
-    });
-    inside = stdout.trim() === 'true';
-  } catch {
-    inside = false;
-  }
-  gitWorkTreeCache.set(dir, inside);
-  return inside;
-}
-
-/**
- * Backup guard for modify operations. Honors an explicit createBackup=true;
- * with createBackup=false it force-enables the backup when the target is not
- * inside a git work tree, because the documented undo path
- * (undo_last_modification → git checkout) only works inside a repo.
- * Returns a note to append to the success response ('' when no forced backup
- * was needed). Exported for unit tests.
- */
-export async function ensureRecoverableModification(
-  actualFilePath: string,
-  createBackup: boolean,
-): Promise<string> {
-  if (createBackup) {
-    await createFileBackup(actualFilePath);
-    return '';
-  }
-  if (await isInsideGitWorkTree(actualFilePath)) {
-    return '';
-  }
-  const backupPath = await createFileBackup(actualFilePath);
-  // Keyed by the MODEL folder (<...>/<Package>/<Model>/Ax<Type>/<file>.xml), not
-  // the file: "this metadata tree is not under git" is a property of the tree, so
-  // once said it is said for every object in it.
-  return sayOncePerSession(
-    'git-backup',
-    path.win32.dirname(path.win32.dirname(actualFilePath)),
-    `\n\nℹ️ Target is not under git — created backup ${backupPath} automatically ` +
-      `(d365fo_file(action="undo") would not work here — it is a git checkout).`,
-    `\n\nℹ️ Backup: ${backupPath}`,
-  );
 }
 
 // ─── Form parent-control auto-resolution ────────────────────────────────────

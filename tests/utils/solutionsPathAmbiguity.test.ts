@@ -200,3 +200,77 @@ describe('D365FO_SOLUTIONS_PATH fallback — multi-project models', () => {
     await expect(mgr.getProjectPath()).resolves.toBe(SINGLE_PROJECT[0].projectPath);
   });
 });
+
+/**
+ * A configured model decides which projects the scan may pick. The scan used to take
+ * the first project in disk order, so a projects folder holding one stray project of
+ * another model — scanned first, and the only one of its model — had THAT project
+ * selected: its model registered as custom and every new object of the configured
+ * model registered into it, which fails that project's build.
+ */
+describe('D365FO_SOLUTIONS_PATH fallback — a configured model', () => {
+  const STRAY = { projectPath: 'K:\\solutions\\0001_Stray\\0001_Stray.rnrproj', modelName: 'ContosoStray', solutionPath: 'K:\\solutions\\0001_Stray' };
+  const CORE_ONE = { projectPath: 'K:\\solutions\\CR-100\\CR-100.rnrproj', modelName: 'ContosoRobotics', solutionPath: 'K:\\solutions\\CR-100' };
+  const CORE_TWO = { projectPath: 'K:\\solutions\\CR-200\\CR-200.rnrproj', modelName: 'ContosoRobotics', solutionPath: 'K:\\solutions\\CR-200' };
+
+  beforeEach(() => { process.env.D365FO_MODEL_NAME = 'ContosoRobotics'; });
+  afterEach(() => { delete process.env.D365FO_MODEL_NAME; });
+
+  it('never selects a stray project of another model that scanned first', async () => {
+    vi.mocked(scanAllD365Projects).mockResolvedValue([STRAY, CORE_ONE, CORE_TWO] as any);
+    const mgr = makeManager();
+
+    await (mgr as any).autoDetectProject();
+
+    expect((mgr as any).autoDetectedProject?.modelName).toBe('ContosoRobotics');
+    await expect(mgr.getProjectPath()).resolves.toBeNull();   // two of the model: none picked
+    expect(mgr.getAmbiguousProjectPaths().sort()).toEqual([CORE_ONE.projectPath, CORE_TWO.projectPath].sort());
+  });
+
+  it('selects the configured model\'s only project, not the one that scanned first', async () => {
+    vi.mocked(scanAllD365Projects).mockResolvedValue([STRAY, CORE_ONE] as any);
+    const mgr = makeManager();
+
+    await (mgr as any).autoDetectProject();
+
+    await expect(mgr.getProjectPath()).resolves.toBe(CORE_ONE.projectPath);
+  });
+
+  it('selects nothing, and says so, when no project builds the configured model', async () => {
+    vi.mocked(scanAllD365Projects).mockResolvedValue([STRAY] as any);
+    const warn = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const mgr = makeManager();
+
+    await (mgr as any).autoDetectProject();
+
+    const said = warn.mock.calls.map(c => c.join(' ')).join('\n');
+    warn.mockRestore();
+    expect((mgr as any).autoDetectedProject).toBeFalsy();
+    await expect(mgr.getProjectPath()).resolves.toBeNull();
+    expect(mgr.getModelName()).toBe('ContosoRobotics');
+    expect(said).toMatch(/No project under D365FO_SOLUTIONS_PATH builds the configured model "ContosoRobotics"/);
+  });
+
+  it('honors a model named in the config file the same way', async () => {
+    delete process.env.D365FO_MODEL_NAME;
+    vi.mocked(scanAllD365Projects).mockResolvedValue([STRAY, CORE_ONE] as any);
+    const mgr = makeManager();
+    (mgr as any).config = { context: { modelName: 'ContosoRobotics' } };
+
+    await (mgr as any).autoDetectProject();
+
+    await expect(mgr.getProjectPath()).resolves.toBe(CORE_ONE.projectPath);
+  });
+
+  it('does not call the pick "by scan order" when the model was configured', async () => {
+    vi.mocked(scanAllD365Projects).mockResolvedValue([STRAY, CORE_ONE] as any);
+    const warn = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const mgr = makeManager();
+
+    await (mgr as any).autoDetectProject();
+
+    const said = warn.mock.calls.map(c => c.join(' ')).join('\n');
+    warn.mockRestore();
+    expect(said).not.toMatch(/picked by scan order/);
+  });
+});

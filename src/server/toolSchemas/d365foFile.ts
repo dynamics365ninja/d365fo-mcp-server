@@ -24,7 +24,7 @@ export const d365foFileTool = {
 • project → VS project + .sln ops via params.operation: create|delete (confirm first)|add-object|remove-object.
 • modify → edit an EXISTING object. APPLIES IMMEDIATELY, no dry-run — confirm with the user first; revert with action="undo". Needs \`operation\`.
 • delete → remove an object's XML from disk AND un-register it from every .rnrproj listing it. IRREVERSIBLE — confirm with the user first.
-• undo → roll back \`filePath\`: git-tracked → git checkout HEAD, which discards ALL uncommitted changes to that file, not just the last edit; untracked → deleted.
+• undo → roll back \`filePath\`: git-tracked → git checkout HEAD, which discards ALL uncommitted changes to that file, not just the last edit; untracked → deleted; outside git → only files created this session.
 • generate → XML as TEXT only, no write (Azure/Linux fallback). Try create first. The rest need Windows.
 📖 Parameters are NOT inlined here: get_knowledge(kind="op-spec", topic="<operation>"|"<objectType>") returns the contract for the one you picked — pass its values nested in \`params\` (modify) / \`properties\` (create), along with any packageName/packagePath/solutionPath/workspacePath override.
 Model + prefix auto-applied.`,

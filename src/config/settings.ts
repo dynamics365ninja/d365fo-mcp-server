@@ -254,7 +254,12 @@ export const SETTINGS: Setting[] = [
       'The scan resolves the MODEL; it does not pick a project when several .rnrproj under it build that model — ' +
       'get_workspace_info then reports `Project : (not selected)` and names them, and anything that registers a ' +
       'file needs an explicit projectName/projectPath. Picking one meant every write landed in whichever project ' +
-      'the scan saw first.',
+      'the scan saw first. With `workspace.modelName` set, only projects of that model are candidates. It is also ' +
+      'the bound on which .rnrproj the server may write: `d365fo_file(action="project")` and the project ' +
+      'registration done by create, modify, labels and generate_object all refuse a project that is not under ' +
+      'this folder, the IDE\'s workspace/solution path, `workspace.solutionPath`, or the folder of ' +
+      '`workspace.projectPath`. A project activated with `get_workspace_info(projectPath=…)` does not extend the ' +
+      'bound — set this to the folder that holds your projects instead.',
     placeholder: 'K:\\repos\\MySolution\\projects',
   },
   {
@@ -264,7 +269,9 @@ export const SETTINGS: Setting[] = [
     tier: 'advanced',
     type: 'path',
     label: 'Pinned .rnrproj file',
-    description: 'Forces one specific project instead of auto-detection. Rarely needed outside CI.',
+    description:
+      'Forces one specific project instead of auto-detection. Rarely needed outside CI. Its folder counts as a ' +
+      'solution root for project writes (see `workspace.solutionsPath`).',
   },
   {
     path: 'workspace.solutionPath',

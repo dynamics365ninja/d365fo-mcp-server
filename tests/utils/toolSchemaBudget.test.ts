@@ -196,7 +196,16 @@ const CHARS_PER_TOKEN = 4;
 // 85 chars under it are what the index/field-group targetTypes need next.
 // They took 63 of them (#1067): the two enum values and the "Table.Name" form in
 // targetType's description. Measured payload after: 45_078.
-const TOTAL_BUDGET = 45_100;
+//
+// Raised 45_100 -> 45_150 for one clause on d365fo_file's undo line: "outside git
+// → only files created this session" (+47 chars). The line said "untracked →
+// deleted", and on a TFVC workspace — every file untracked as far as git can see —
+// an agent read that as "undo deletes any file it is pointed at" and would not use
+// undo at all. The real behaviour (delete a file create made this session, refuse
+// everything else) is the safe one; the description now says so. The safety
+// sentence before it stays verbatim (tests/server/toolFolds.test.ts).
+// Measured payload after: 45_125.
+const TOTAL_BUDGET = 45_150;
 const LARGEST_TOOL_BUDGET = 5_780;
 
 async function getTools(): Promise<Array<{ name: string }>> {

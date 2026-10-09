@@ -255,6 +255,10 @@ export async function handleDeleteD365File(
 
   const unregistered: string[] = [];
   const unregisterFailures: string[] = [];
+  // Not bounded by the solution roots, unlike every adding writer: this only takes
+  // out the include of the file being deleted, from projects that list it. Refusing
+  // would leave that include pointing at nothing, and a project with a dangling
+  // include does not load — a worse state than the write the bound would prevent.
   const projectManager = new ProjectFileManager();
   for (const projectPath of membership.owners) {
     try {

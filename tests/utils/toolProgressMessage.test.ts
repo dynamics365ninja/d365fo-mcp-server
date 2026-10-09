@@ -48,3 +48,29 @@ describe('buildProgressMessage — d365fo_file modify labels', () => {
     expect(msg).not.toContain('"" on');
   });
 });
+
+describe('buildProgressMessage — d365fo_file actions that create nothing', () => {
+  // Each of these used to fall through to the create label.
+  it('undo', () => {
+    expect(buildProgressMessage('d365fo_file', { action: 'undo', filePath: 'K:\\X\\AxView\\CRView.xml' }))
+      .toBe('↩️ Undoing changes to K:\\X\\AxView\\CRView.xml');
+  });
+
+  it('project add-object, with the operation nested in params', () => {
+    const msg = buildProgressMessage('d365fo_file', {
+      action: 'project', objectType: 'view', objectName: 'CRView',
+      params: { operation: 'add-object', objectType: 'view', objectName: 'CRView' },
+    });
+    expect(msg).toBe('🗂️ Project add-object CRView');
+  });
+
+  it('delete', () => {
+    expect(buildProgressMessage('d365fo_file', { action: 'delete', objectType: 'class', objectName: 'CRThing' }))
+      .toBe('🗑️ Deleting class CRThing');
+  });
+
+  it('create keeps its label', () => {
+    expect(buildProgressMessage('d365fo_file', { action: 'create', objectType: 'class', objectName: 'CRThing' }))
+      .toBe('📁 Creating class CRThing');
+  });
+});

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * D365FO File Creator Tool
  * Creates physical XML files in the AOT package structure
  */
@@ -776,7 +776,7 @@ export async function handleCreateD365File(
 
     // If projectPath is available, extract model name from it
     if (projectPathToUse) {
-      const projectManager = new ProjectFileManager();
+      const projectManager = new ProjectFileManager({ withinSolutionRoots: true });
       const extractedModelName = await timer.time('model name from .rnrproj', () =>
         projectManager.extractModelName(projectPathToUse!));
       if (extractedModelName) {
@@ -798,7 +798,7 @@ export async function handleCreateD365File(
       );
       
       if (foundProjectPath) {
-        const projectManager = new ProjectFileManager();
+        const projectManager = new ProjectFileManager({ withinSolutionRoots: true });
         const extractedModelName = await projectManager.extractModelName(
           foundProjectPath
         );
@@ -1565,7 +1565,7 @@ export async function handleCreateD365File(
               if (args.addToProject !== false) {
                 if (projectPathToUse) {
                   try {
-                    const projectManager = new ProjectFileManager();
+                    const projectManager = new ProjectFileManager({ withinSolutionRoots: true });
                     await projectManager.addToProject(
                       projectPathToUse,
                       args.objectType,
@@ -1583,7 +1583,7 @@ export async function handleCreateD365File(
                       actualModelName,
                     );
                     if (detectedPath) {
-                      const projectManager = new ProjectFileManager();
+                      const projectManager = new ProjectFileManager({ withinSolutionRoots: true });
                       await projectManager.addToProject(
                         detectedPath,
                         args.objectType,
@@ -1696,7 +1696,7 @@ export async function handleCreateD365File(
           if (args.addToProject !== false) {
             if (projectPathToUse) {
               try {
-                const projectManager = new ProjectFileManager();
+                const projectManager = new ProjectFileManager({ withinSolutionRoots: true });
                 await projectManager.addToProject(
                   projectPathToUse,
                   args.objectType,
@@ -1715,7 +1715,7 @@ export async function handleCreateD365File(
                   actualModelName,
                 );
                 if (detectedPath) {
-                  const projectManager = new ProjectFileManager();
+                  const projectManager = new ProjectFileManager({ withinSolutionRoots: true });
                   await projectManager.addToProject(
                     detectedPath,
                     args.objectType,
@@ -2144,7 +2144,7 @@ export async function handleCreateD365File(
           const absoluteXmlPath = normalizedFullPath;
 
           // Add to project
-          const projectManager = new ProjectFileManager();
+          const projectManager = new ProjectFileManager({ withinSolutionRoots: true });
           const wasAdded = await timer.time('.rnrproj registration', () => projectManager.addToProject(
             projectPath,
             args.objectType,

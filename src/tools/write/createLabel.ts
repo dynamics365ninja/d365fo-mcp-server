@@ -1138,7 +1138,7 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       }
 
       if (projectPath) {
-        const pfm = new ProjectFileManager();
+        const pfm = new ProjectFileManager({ withinSolutionRoots: true });
         // Collect all languages that have an XML descriptor
         const allLangs = [...new Set([...written, ...existingLanguages])];
         console.error(`[create_label] Adding label to project: ${projectPath} | labelFileId=${labelFileId} | langs=${allLangs.join(',')}`);

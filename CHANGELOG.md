@@ -40,8 +40,61 @@ those are called out explicitly below.
   drops an out-of-order element silently (#979); a property the type never
   carries (MenuItemName on a plain Button) is refused, an empty value removes
   the element, and an ambiguous or unknown control name writes nothing.
+- **`add-field` on a view.** `modify` had no view path: `dataField` + `dataSource`
+  (the natural guess — it is the data-entity shape) was refused as data-entity
+  only, and `fieldType` reached the bridge, whose AddField resolves tables only, so
+  it failed with "Table or table-extension not found" and blamed a same-session
+  create. It now writes an `AxViewFieldBound` — `dataSource` (a data source of the
+  view, case-corrected against the ones the view declares), `dataField` (defaults
+  to `fieldName`), optional `fieldLabel` — in the shape 25,946 of the 28,493
+  shipped bound view fields use. `prepare` and the op-spec describe the view
+  contract instead of the table/entity one.
+- **`add-data-source` takes `insertIfEmpty` on a form or form extension.** The
+  bridge's AddDataSource has no such property, so a new data source always kept
+  the platform default (Yes), while the VS designer writes `<InsertIfEmpty>No` for
+  one — the usual choice for a joined, read-only source. `insertIfEmpty=false`
+  writes it where all 12,798 shipped occurrences sit (every one of them `No`;
+  Yes is never serialized), `true` removes it. The data source's `<Fields>` list
+  stays empty: the designer fills it on save, but Microsoft ships a view data
+  source with an empty one whose controls bind to its fields, so it is not needed.
+
+### Changed
+- **Every `.rnrproj` write is bounded by the configured solution roots.**
+  `d365fo_file(action="project")` refused a project outside them, while
+  `create`'s `addToProject` — and modify, labels and generate_object
+  registration — wrote whatever `.rnrproj` it was given, so `add-object` refused
+  the very project `create` had just registered objects into. They now share the
+  bound; a refused registration is reported and the object is still written.
+  The folder of a configured `workspace.projectPath` / `D365FO_PROJECT_PATH`
+  counts as a root, a project activated with `get_workspace_info(projectPath=…)`
+  does not — set `workspace.solutionsPath` to the folder holding your projects.
+  `delete` still removes its own entry from any project listing it, since a
+  dangling include stops the project loading.
 
 ### Fixed
+- **Modify no longer leaves `.backup-*` files for calls that changed nothing.**
+  Outside git the pre-modify copy was taken before the operation was validated,
+  so every refused call left a copy of an unchanged file beside the AOT source —
+  on a TFVC workspace, a pending add each. The copy is still taken first, and is
+  now removed when the call ends without changing the file (refusal or skip). A
+  file created in the same session gets none (undo deletes it), so `create` with
+  `operations[]` no longer leaves one per operation. `createBackup=true` now
+  names its copy in the response.
+- **`undo` described a non-git workspace wrongly.** The schema said "untracked →
+  deleted" and the forced-backup note said undo "would not work here". Outside git
+  undo deletes a file `create` made in this server session and refuses everything
+  else; both texts now say so.
+- **The solutions-path scan could pick a project of another model.** With no
+  project resolved from the workspace, the `workspace.solutionsPath` scan took
+  the first project in disk order. A projects folder that also held one stray
+  project of another model — scanned first, the only one of its model — had that
+  project selected, its model registered as custom, and every new object of the
+  configured model registered into it, failing that project's build. A configured
+  `modelName` now limits the pick to that model's projects; if the folder holds
+  none, nothing is selected and the server says so.
+- **Wrong headings and progress labels.** `create` with `operations[]` headed its
+  results `d365fo_file(action="modify")`; `undo`, `delete` and `project` calls
+  showed "📁 Creating …" while they ran.
 - **The form element-order check no longer reports an empty element as unknown
   (#1093).** Microsoft's own `CustInvoiceJournal.ApplicationSuite_Extension`
   (ApplicationSuite 10.36) writes an empty `<Items />` on a string control, so

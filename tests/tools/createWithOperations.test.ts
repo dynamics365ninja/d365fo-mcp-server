@@ -57,6 +57,9 @@ describe('d365fo_file(action="create") with operations[]', () => {
     // Both halves of the answer survive.
     expect(text(r)).toContain('created ConMyTable');
     expect(text(r)).toContain('2/2 operation(s) applied');
+    // Headed by the action the caller sent, not the modify it runs through.
+    expect(text(r)).toContain('d365fo_file(action="create") — 2/2');
+    expect(text(r)).not.toContain('action="modify")');
     expect(r.isError).toBeFalsy();
   });
 
