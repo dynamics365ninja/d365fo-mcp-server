@@ -77,9 +77,15 @@ export interface PromptVars {
   packageDir: string;
   /** PackagesLocalDirectory — where the standard application's metadata is. */
   packagesRoot: string;
+  /**
+   * The shell command that builds the sandbox (labels + xppc full build) and
+   * prints the errors. Both variants get it: without it the plain agent cannot
+   * check its work at all and "cheaper" only means "stopped sooner".
+   */
+  buildCommand: string;
 }
 
-const PLACEHOLDER = /\{\{\s*(model|modelDir|packageDir|packagesRoot)\s*\}\}/g;
+const PLACEHOLDER = /\{\{\s*(model|modelDir|packageDir|packagesRoot|buildCommand)\s*\}\}/g;
 
 /**
  * The text a cell actually sends. Without vars (no --sandbox, or a dry run) the

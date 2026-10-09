@@ -1,0 +1,17 @@
+{
+  "id": "daily-credit-limit-trace",
+  "title": "Daily 3: trace the sales credit limit check before extending it — impact analysis, no code",
+  "prompt": "You are a Dynamics 365 Finance & Operations X++ developer. The standard application's metadata (ApplicationSuite, ApplicationPlatform, ApplicationFoundation, …) is under `{{packagesRoot}}` — read it, never change it.\n\nWe are about to add one custom condition to the customer credit limit check for sales orders. Before anyone writes code, trace how the standard application checks the credit limit today. Answer precisely, naming classes and methods exactly as they are in the code:\n1. The class that performs the credit limit check, and the method of it that decides whether the check passes.\n2. The method(s) on the sales order header table that trigger the check.\n3. Where the sales posting framework (confirmation, packing slip, invoice) triggers the check: class and method.\n4. The one method you would wrap with Chain of Command so the extra condition applies to every sales document, and why.\n\nDo not write or change any file. Keep the answer under 400 words.",
+  "tags": ["daily", "discovery", "impact-analysis", "read-only", "L2"],
+  "timeoutSeconds": 900,
+  "expects": {
+    "mustMatch": [
+      "\\bCustCreditLimit\\b",
+      "\\b(checkAgainstCreditLimit|checkCreditLimit)\\b",
+      "\\bSalesFormletterProvider\\b",
+      "\\b(creditMaxOk|mustCheckCreditLimit)\\b",
+      "(CustCreditLimit\\W{1,3}(check|checkGivenBalances)\\b|\\bcheckGivenBalances\\b)"
+    ]
+  },
+  "notes": "Everyday use-case 3 — 'where is this done, and where do I hook in?' (impact analysis before a change). Ground truth from ApplicationSuite/Foundation, 2026-10-09: class CustCreditLimit (construct, check, checkGivenBalances, mustCheckCreditLimit; subclasses CustCreditLimit_SalesTable / _SalesParmTable); SalesTable.checkCreditLimit and SalesTable.checkAgainstCreditLimit (calls CustCreditLimit::construct); SalesFormletterProvider.creditMaxOk (CustCreditLimit::construct) and .mustCheckCreditLimit. Grep finds the names, but only by reading the call chain does an agent get all four parts right."
+}

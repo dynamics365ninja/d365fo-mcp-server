@@ -66,6 +66,16 @@ describe('rework trace from the stream', () => {
     expect(r.rewrites).toBe(2);
   });
 
+  it('counts the sandbox build command both variants get as a build', () => {
+    const cmd = 'node K:/r/scripts/benchmarkSandboxBuild.mjs K:/PLD/fm-mcp';
+    const stream = [
+      assistant(use('a', 'PowerShell', { command: cmd })), user(res('a', 'Build FAILED — 2 error(s) in 14 s:\n  Compile Error: …', true)),
+      assistant(use('b', 'Bash', { command: cmd })), user(res('b', 'Build succeeded in 12 s — 0 errors.')),
+    ].join('\n');
+    const r = summarizeRework(parseStreamJson(stream).rework);
+    expect(r).toMatchObject({ buildAttempts: 2, buildFailures: 1 });
+  });
+
   it('is all zeros for a stream with no tool use', () => {
     expect(summarizeRework(parseStreamJson(ev({ type: 'result', subtype: 'success' })).rework)).toEqual({
       toolErrors: 0, mcpToolErrors: 0, toolErrorsByTool: {}, buildAttempts: 0, buildFailures: 0, writeOps: 0, rewrites: 0,

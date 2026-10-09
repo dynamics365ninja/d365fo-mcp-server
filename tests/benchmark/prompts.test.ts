@@ -86,7 +86,7 @@ describe('prompt catalogue', () => {
 });
 
 describe('workspace prompts', () => {
-  const vars = { model: 'fm-mcp', modelDir: 'K:/PLD/fm-mcp/fm-mcp', packageDir: 'K:/PLD/fm-mcp', packagesRoot: 'K:/PLD' };
+  const vars = { model: 'fm-mcp', modelDir: 'K:/PLD/fm-mcp/fm-mcp', packageDir: 'K:/PLD/fm-mcp', packagesRoot: 'K:/PLD', buildCommand: 'node K:/r/scripts/benchmarkSandboxBuild.mjs K:/PLD/fm-mcp' };
 
   it('fills the placeholders, leaves them visible without a sandbox, and hashes the template', () => {
     const spec: PromptSpec = { id: 'w', title: 'w', prompt: 'Write into {{model}} at {{ modelDir }}; standard code under {{packagesRoot}}.', tags: [], workspace: {} };
@@ -94,6 +94,7 @@ describe('workspace prompts', () => {
     expect(renderPrompt(spec, null)).toBe(spec.prompt);
     expect(usesPlaceholders(spec.prompt)).toBe(true);
     expect(usesPlaceholders('no {{placeholders}} here')).toBe(false);
+    expect(renderPrompt({ ...spec, prompt: 'Build: `{{buildCommand}}`' }, vars)).toBe('Build: `node K:/r/scripts/benchmarkSandboxBuild.mjs K:/PLD/fm-mcp`');
   });
 
   it('validates workspace, timeoutSeconds and file expectations; files need a workspace', () => {

@@ -122,6 +122,10 @@ interface RunOptions extends CommonOptions {
   allowDirtyBaseline?: boolean;
   /** false with --no-bp. */
   bp?: boolean;
+  /** false with --no-web: no WebFetch/WebSearch for either variant. */
+  web?: boolean;
+  /** false with --no-agent-build: the cells get no build command. */
+  agentBuild?: boolean;
 }
 
 const DEFAULT_MODELS = 'sonnet';
@@ -214,6 +218,24 @@ export function sandboxEditRule(packageDir: string): string {
   return `Edit(//${drive ? `${drive[1].toLowerCase()}/${drive[2]}` : p.replace(/^\/+/, '')}/**)`;
 }
 const SANDBOX_READ_TOOLS = ['Read', 'Glob', 'Grep'];
+/** Both variants may look things up on the web, as a developer would (learn.microsoft.com, forums). */
+const WEB_TOOLS = ['WebFetch', 'WebSearch'];
+
+/**
+ * The command a sandbox cell builds with — the same labels + xppc full build the
+ * runner scores with, errors printed. Forward slashes, unquoted: the permission
+ * rule matches the command text, and the prompt tells the agent to run it as is.
+ */
+export function sandboxBuildCommand(repo: string, packageDir: string): string {
+  const fwd = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '');
+  return `node ${fwd(repo)}/scripts/benchmarkSandboxBuild.mjs ${fwd(packageDir)}`;
+}
+
+/** The only shell command a sandbox cell may run, in either shell tool the host offers. */
+export function sandboxBuildRules(command: string): string[] {
+  return [`Bash(${command})`, `PowerShell(${command})`];
+}
+const NO_BUILD_COMMAND = '(no build command is available in this run)';
 const BUILD_TIMEOUT_MS = 20 * 60 * 1000;
 
 export async function benchmarkRunCommand(promptArg: string | undefined, opts: RunOptions): Promise<void> {
@@ -295,7 +317,13 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
         info,
         targets,
         scratch,
-        vars: { model: info.model, modelDir: info.modelDir, packageDir: info.packageDir, packagesRoot: info.packagesRoot },
+        vars: {
+          model: info.model,
+          modelDir: info.modelDir,
+          packageDir: info.packageDir,
+          packagesRoot: info.packagesRoot,
+          buildCommand: opts.agentBuild === false ? NO_BUILD_COMMAND : sandboxBuildCommand(repoRoot, info.packageDir),
+        },
       };
     }
   } catch (err) {
@@ -409,6 +437,8 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
           const allowedTools = [
             ...(sandbox ? SANDBOX_READ_TOOLS : []),
             ...(sandbox && spec.workspace ? [sandboxEditRule(sandbox.info.packageDir)] : []),
+            ...(sandbox && spec.workspace && opts.agentBuild !== false ? sandboxBuildRules(sandbox.vars.buildCommand) : []),
+            ...(opts.web !== false ? WEB_TOOLS : []),
             ...splitList(opts.allowedTools, ''),
           ];
           const options: ClaudeCodeOptions = {
@@ -816,6 +846,8 @@ export function registerBenchmarkCommands(program: Command): void {
     .option('--sandbox-model <name>', 'model folder inside the sandbox package (default: the package name)')
     .option('--no-build', 'skip the xppc build check of prompts that ask for one')
     .option('--no-bp', 'skip the xppbp best-practice check after a clean build')
+    .option('--no-web', 'do not allow WebFetch/WebSearch (both variants get them by default)')
+    .option('--no-agent-build', 'do not give sandbox cells the build command (both variants get it by default)')
     .option('--allow-dirty-baseline', 'run even when the sandbox does not build clean before the first cell')
     .option('--cwd <dir>', 'working directory for claude (default: current directory; the sandbox package with --sandbox)')
     .option('--label <text>', 'tag these runs ("release 1.20", "VM contoso")')

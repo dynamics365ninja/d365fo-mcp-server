@@ -1,0 +1,48 @@
+{
+  "id": "daily-invoice-field-flow",
+  "title": "Daily 1: carry a sales order field to the posted invoice — find the posting hook",
+  "prompt": "You are a Dynamics 365 Finance & Operations X++ developer. Work in the model `{{model}}`: its metadata folder is `{{modelDir}}` and its package descriptor is under `{{packageDir}}\\Descriptor`. The standard application's metadata (ApplicationSuite, ApplicationPlatform, ApplicationFoundation, …) is under `{{packagesRoot}}` — read it, never change it. Extensions only, no overlayering. Every new object name starts with the prefix Con. Every user-facing text (labels, help texts) is a label in the model's label file `{{model}}`, never a hardcoded string.\n\nBusiness requirement: sales clerks enter the customer's project code on the sales order header, and accounting must see the same code on the posted customer invoice.\n\nImplement:\n1. A new string EDT ConProjectCode, 20 characters, with a label.\n2. A field ConProjectCode (that EDT) on the sales order header table, shown on the sales order form in the header's General section.\n3. The same field on the posted customer invoice journal header table, shown on the form that lists posted customer invoice journals.\n4. Copy the value from the sales order to the invoice journal header when the sales order is invoiced. Find the standard method that initializes the invoice journal header from the sales order during invoice posting and extend it with Chain of Command — not a form, and not code that updates the journal after it has been written.\n\nThe model must build (xppc full build) with zero errors. To build it, run exactly `{{buildCommand}}` in the shell — it compiles the labels and the model and prints every error. When you are done, reply with the list of objects you created or changed, one line each, and name the standard method you extended.",
+  "tags": ["daily", "discovery", "edt", "table-extension", "form-extension", "coc", "posting", "labels", "L3"],
+  "workspace": { "build": true },
+  "timeoutSeconds": 1800,
+  "expects": {
+    "mustMatch": ["initFromSalesTable|initFromSalesParmTable|initInvoiceHeaderFromSourceTable|initJournalHeader"],
+    "files": [
+      {
+        "name": "EDT ConProjectCode, 20 characters",
+        "path": "/AxEdt/ConProjectCode\\.xml$",
+        "contains": ["AxEdtString", "<StringSize>20</StringSize>"]
+      },
+      {
+        "name": "SalesTable extension: the field",
+        "path": "/AxTableExtension/SalesTable\\.[^/]+\\.xml$",
+        "contains": ["<Name>ConProjectCode</Name>"]
+      },
+      {
+        "name": "CustInvoiceJour extension: the field",
+        "path": "/AxTableExtension/CustInvoiceJour\\.[^/]+\\.xml$",
+        "contains": ["<Name>ConProjectCode</Name>"]
+      },
+      {
+        "name": "SalesTable form extension shows it",
+        "path": "/AxFormExtension/SalesTable\\.[^/]+\\.xml$",
+        "contains": ["ConProjectCode"]
+      },
+      {
+        "name": "CustInvoiceJournal form extension shows it",
+        "path": "/AxFormExtension/CustInvoiceJournal\\.[^/]+\\.xml$",
+        "contains": ["ConProjectCode"]
+      },
+      {
+        "name": "CoC on the method that initializes the invoice header",
+        "path": "/AxClass/[^/]+\\.xml$",
+        "contains": [
+          "ExtensionOf\\s*\\(\\s*(tableStr\\s*\\(\\s*CustInvoiceJour|classStr\\s*\\(\\s*SalesInvoiceJournalCreate(Base)?)\\s*\\)",
+          "next\\s+(initFromSalesTable|initFromSalesParmTable|initInvoiceHeaderFromSourceTable|initJournalHeader)\\s*\\(",
+          "ConProjectCode"
+        ]
+      }
+    ]
+  },
+  "notes": "Everyday use-case 1 — 'make a field flow through posting'. Unlike the reference prompts it does not name the hook: the agent has to find where invoice posting initializes CustInvoiceJour from the order. Verified in the AOT 2026-10-09: SalesInvoiceJournalCreate.initInvoiceHeaderFromSourceTable calls CustInvoiceJour.initFromSalesTable; SalesInvoiceJournalCreateBase.initJournalHeader calls CustInvoiceJour.initFromSalesParmTable — CoC on any of the four is accepted. Forms: SalesTable (TabHeaderGeneral), CustInvoiceJournal."
+}

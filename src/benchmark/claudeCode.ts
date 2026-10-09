@@ -158,7 +158,8 @@ export interface ReworkTrace {
 const isBuildTool = (name: string, input: any): boolean =>
   /__build_d365fo_project$/.test(name) ||
   ((name === 'Bash' || name === 'PowerShell') && typeof input?.command === 'string' &&
-    /xppc(\.exe)?["']?\s+(-|\/)(metadata|modelmodule|output|compilermetadata)/i.test(input.command));
+    (/xppc(\.exe)?["']?\s+(-|\/)(metadata|modelmodule|output|compilermetadata)/i.test(input.command) ||
+      /^\s*node\s+\S*benchmarkSandboxBuild\.mjs\b/i.test(input.command)));
 
 /** The host refused the call — nothing ran, so it is neither a build nor a tool's own error. */
 const isPermissionDenial = (body: string): boolean => /^\s*Permission to use \S+ has been denied/.test(body);
