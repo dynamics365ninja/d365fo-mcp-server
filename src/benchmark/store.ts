@@ -67,6 +67,18 @@ export function writeRun(runsDir: string, run: BenchmarkRun): string {
   return file;
 }
 
+/**
+ * Replace an existing record — only for `benchmark rederive`, which rewrites
+ * DERIVED fields from kept evidence and says so in the record's notes. A
+ * measured number is never changed this way.
+ */
+export function rewriteRun(runsDir: string, run: BenchmarkRun): string {
+  const file = path.join(runsDir, `${run.runId}.json`);
+  if (!fs.existsSync(file)) throw new Error(`No record to rewrite: ${file}`);
+  fs.writeFileSync(file, `${JSON.stringify(run, null, 2)}\n`, 'utf8');
+  return file;
+}
+
 /** Every valid record, oldest first. Invalid files are skipped (same policy as the corpus loader) — `countRunFiles` says how many were there. */
 export function loadRuns(runsDir: string): BenchmarkRun[] {
   return loadJsonRecords(runsDir, isBenchmarkRun).sort((a, b) => a.timestamp.localeCompare(b.timestamp));

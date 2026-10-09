@@ -139,11 +139,29 @@ export interface ReworkTrace {
   buildFailures: number;
   /** Write operations per target (a file for the file tools, objectType:name for the server's). */
   writes: Record<string, number>;
+  /**
+   * Writes that REPAIR: a write to a target already written, made after a
+   * failure since its previous write — a failed build, or that write itself
+   * failing. Building an object in steps (create, then add a field, then a
+   * field group — the server's normal flow) is not repair; counting every
+   * repeated write charged the MCP side for its own workflow.
+   */
+  repairs: number;
 }
 
+/**
+ * A build: the server's build tool, or a shell command that RUNS xppc — the
+ * executable followed by its own switches. A command that merely mentions it
+ * (`ls bin | grep xppc`) is not one; counting it made a plain cell, which
+ * cannot build at all, report "1/2 builds failed".
+ */
 const isBuildTool = (name: string, input: any): boolean =>
   /__build_d365fo_project$/.test(name) ||
-  ((name === 'Bash' || name === 'PowerShell') && typeof input?.command === 'string' && /xppc(\.exe)?\b/i.test(input.command));
+  ((name === 'Bash' || name === 'PowerShell') && typeof input?.command === 'string' &&
+    /xppc(\.exe)?["']?\s+(-|\/)(metadata|modelmodule|output|compilermetadata)/i.test(input.command));
+
+/** The host refused the call — nothing ran, so it is neither a build nor a tool's own error. */
+const isPermissionDenial = (body: string): boolean => /^\s*Permission to use \S+ has been denied/.test(body);
 
 const BUILD_FAILED = /❌\s*Build|Build FAILED|Build failed|\b[1-9]\d*\s+error\(s\)|Errors:\s*[1-9]|Compile (Fatal )?Error/i;
 
@@ -172,9 +190,14 @@ function resultText(content: unknown): string {
 export function parseStreamJson(text: string): StreamSummary {
   const summary: StreamSummary = {
     init: null, toolCalls: {}, assistantMessages: 0, result: null, stray: [],
-    rework: { toolErrors: {}, buildAttempts: 0, buildFailures: 0, writes: {} },
+    rework: { toolErrors: {}, buildAttempts: 0, buildFailures: 0, writes: {}, repairs: 0 },
   };
   const uses = new Map<string, { name: string; input: any }>();
+  // Repair detection: a counter of failed builds, the counter's value at each
+  // target's last write, and the targets whose last write itself failed.
+  let failedBuilds = 0;
+  const failuresAtWrite = new Map<string, number>();
+  const failedTargets = new Set<string>();
   for (const line of text.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -203,9 +226,14 @@ export function parseStreamJson(text: string): StreamSummary {
           if (block && block.type === 'tool_use' && typeof block.name === 'string') {
             summary.toolCalls[block.name] = (summary.toolCalls[block.name] ?? 0) + 1;
             if (typeof block.id === 'string') uses.set(block.id, { name: block.name, input: block.input });
-            if (isBuildTool(block.name, block.input)) summary.rework.buildAttempts++;
             const target = writeTarget(block.name, block.input);
-            if (target) summary.rework.writes[target] = (summary.rework.writes[target] ?? 0) + 1;
+            if (target) {
+              const seen = summary.rework.writes[target] ?? 0;
+              if (seen > 0 && (failedTargets.has(target) || (failuresAtWrite.get(target) ?? 0) < failedBuilds)) summary.rework.repairs++;
+              summary.rework.writes[target] = seen + 1;
+              failuresAtWrite.set(target, failedBuilds);
+              failedTargets.delete(target);
+            }
           }
         }
       }
@@ -219,7 +247,16 @@ export function parseStreamJson(text: string): StreamSummary {
           const body = resultText(block.content);
           const failed = block.is_error === true || (use.name.startsWith('mcp__') && /^\s*❌/.test(body));
           if (failed) summary.rework.toolErrors[use.name] = (summary.rework.toolErrors[use.name] ?? 0) + 1;
-          if (isBuildTool(use.name, use.input) && (failed || BUILD_FAILED.test(body))) summary.rework.buildFailures++;
+          const written = writeTarget(use.name, use.input);
+          if (written && failed && !isPermissionDenial(body)) failedTargets.add(written);
+          // Counted on the RESULT: a build the host refused never ran.
+          if (isBuildTool(use.name, use.input) && !isPermissionDenial(body)) {
+            summary.rework.buildAttempts++;
+            if (failed || BUILD_FAILED.test(body)) {
+              summary.rework.buildFailures++;
+              failedBuilds++;
+            }
+          }
         }
       }
     } else if (ev.type === 'result') {
@@ -342,7 +379,7 @@ export function summarizeRework(t: ReworkTrace): ReworkSummary {
     buildAttempts: t.buildAttempts,
     buildFailures: t.buildFailures,
     writeOps: counts.reduce((s, n) => s + n, 0),
-    rewrites: counts.reduce((s, n) => s + Math.max(0, n - 1), 0),
+    rewrites: t.repairs,
   };
 }
 

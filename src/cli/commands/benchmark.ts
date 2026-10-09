@@ -14,13 +14,13 @@
  */
 import { execFile } from 'node:child_process';
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import type { Command } from 'commander';
 import { formatMetric } from '../../benchmark/aggregate.js';
 import { buildClaudeArgs, runClaudeCode, toBenchmarkRun, type ClaudeCodeOptions, type RecordContext } from '../../benchmark/claudeCode.js';
 import { loadCreditsConfig } from '../../benchmark/credits.js';
 import { sessionToBenchmarkRun } from '../../benchmark/ingest.js';
+import { rederiveRun } from '../../benchmark/rederive.js';
 import {
   pruneStaleExtensionRows,
   resolveMcpTargets,
@@ -49,6 +49,7 @@ import {
   filterRuns,
   headCommitTime,
   loadRuns,
+  rewriteRun,
   serverGitSha,
   writeRun,
   type RunFilter,
@@ -269,7 +270,10 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
   // ---- sandbox: validate, pick the servers, prove where they write
   let sandbox: SandboxRun | null = null;
   let mcpConfig = mcpConfigFile;
-  const scratch = path.join(os.tmpdir(), 'd365fo-mcp-benchmark', `${new Date().toISOString().replace(/[:.]/g, '-')}-${process.pid}`);
+  // Not under %TEMP%: on the VM a snapshot there was stripped of its Descriptor
+  // and model folder mid-run by something outside the benchmark. The benchmark
+  // root is ours (eval/benchmark/.work is gitignored).
+  const scratch = path.join(bp.root, '.work', `${new Date().toISOString().replace(/[:.]/g, '-')}-${process.pid}`);
   try {
     const serverNames = splitList(opts.mcpServers, '');
     if (mcpConfigFile && serverNames.length > 0) {
@@ -738,6 +742,27 @@ export async function benchmarkReportCommand(opts: ReportOptions): Promise<void>
   }
 }
 
+export async function benchmarkRederiveCommand(opts: CommonOptions & RunFilter & { dryRun?: boolean }): Promise<void> {
+  const bp = paths(opts);
+  try {
+    const runs = filterRuns(loadRuns(bp.runs), opts);
+    const specs = new Map(loadPromptSpecs(bp.prompts).map(s => [s.id, s]));
+    let rewritten = 0, noEvidence = 0;
+    for (const r of runs) {
+      const evidence = path.join(bp.root, 'artifacts', r.runId);
+      if (!fs.existsSync(path.join(evidence, 'stream.jsonl'))) { noEvidence++; continue; }
+      const { run, changes } = rederiveRun(r, specs.get(r.promptId) ?? null, evidence);
+      if (changes.length === 0) continue;
+      p.log.step(`${r.runId}\n   ${changes.join('\n   ')}`);
+      if (!opts.dryRun) rewriteRun(bp.runs, run);
+      rewritten++;
+    }
+    p.outro(`${rewritten} record(s) ${opts.dryRun ? 'would be' : ''} re-derived of ${runs.length}${noEvidence ? ` · ${noEvidence} without a kept stream (left as recorded)` : ''}`);
+  } catch (err) {
+    fail(err instanceof Error ? err.message : String(err));
+  }
+}
+
 export async function benchmarkListCommand(opts: CommonOptions & RunFilter): Promise<void> {
   const bp = paths(opts);
   try {
@@ -838,6 +863,11 @@ export function registerBenchmarkCommands(program: Command): void {
     .option('--json', 'print the report data instead of writing files')
     .description('Render the HTML report (+ markdown twin) from the recorded runs')
     .action((opts: ReportOptions) => benchmarkReportCommand(opts));
+
+  filterOptions(bench.command('rederive'))
+    .option('--dry-run', 'print what would change, write nothing')
+    .description('Recompute rework and the answer/file checks of recorded runs from their kept stream and files (eval/benchmark/artifacts)')
+    .action((opts: CommonOptions & RunFilter & { dryRun?: boolean }) => benchmarkRederiveCommand(opts));
 
   filterOptions(bench.command('list'))
     .description('List recorded runs, one line each')

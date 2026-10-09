@@ -192,6 +192,24 @@ describe('verdict: valid output and rework', () => {
   });
 });
 
+describe('verdict across prompts', () => {
+  it('uses the median of per-prompt effects, not a pooled median that mixes cheap and expensive prompts', () => {
+    // MCP costs more on both prompts (+50 %, +20 %), yet the pooled medians
+    // (with: 15, 60 → 37.5; without: 10, 100 → 55) would read as a saving.
+    const rs = [
+      run({ promptId: 'a', mcp: true, aic: { value: 15, source: 'host-cost' } }),
+      run({ promptId: 'a', mcp: false, aic: { value: 10, source: 'host-cost' } }),
+      run({ promptId: 'b', mcp: true, aic: { value: 120, source: 'host-cost' } }),
+      run({ promptId: 'b', mcp: false, aic: { value: 100, source: 'host-cost' } }),
+    ];
+    const html = renderHtml(buildReportModel(rs, [], { credits: DEFAULT_CREDITS }));
+    const verdict = html.slice(html.indexOf('class="verdict"'), html.indexOf('class="sentence'));
+    expect(verdict).toContain('median of 2 per-prompt effects');
+    expect(verdict).toMatch(/data-to="35" [^>]*>\+35 %/);
+    expect(html).toMatch(/it cost 35 % more \(median per prompt\)/);
+  });
+});
+
 describe('renderMarkdown', () => {
   it('prints the overview and per-prompt tables with the same medians', () => {
     const md = renderMarkdown(buildReportModel(runs, specs, { credits: DEFAULT_CREDITS, now: new Date('2026-10-07T12:00:00Z') }));

@@ -15,6 +15,7 @@ import {
   isBuildOutput,
   isEmptyDiff,
   restoreSandbox,
+  snapshotDamage,
   snapshotSandbox,
   xppcErrorLines,
 } from '../../src/benchmark/sandbox.js';
@@ -122,13 +123,30 @@ describe('snapshot → diff → restore', () => {
     expect(() => snapshotSandbox(pkg, path.join(root, 'snap'))).toThrow(/already exists/);
   });
 
+  it('refuses a damaged snapshot before touching the sandbox', () => {
+    // Seen on the VM: the snapshot lost Descriptor/ and the model folder mid-run.
+    const snap = snapshotSandbox(pkg, path.join(root, 'snap'));
+    put('fm-mcp/AxClass/ConCellOutput.xml', '<AxClass/>');
+    fs.rmSync(path.join(snap.dir, 'Descriptor'), { recursive: true, force: true });
+    fs.rmSync(path.join(snap.dir, 'fm-mcp'), { recursive: true, force: true });
+    expect(snapshotDamage(snap).sort()).toEqual([
+      'missing Descriptor/fm-mcp.xml',
+      'missing fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt',
+      'missing fm-mcp/AxTable/ConDemoNoteHeader.xml',
+    ]);
+    expect(() => restoreSandbox(pkg, snap)).toThrow(/no longer matches.*without touching the sandbox/s);
+    // The sandbox still holds the cell's output and every original file.
+    expect(fs.existsSync(path.join(pkg, 'fm-mcp', 'AxClass', 'ConCellOutput.xml'))).toBe(true);
+    expect(fs.existsSync(path.join(pkg, 'Descriptor', 'fm-mcp.xml'))).toBe(true);
+  });
+
   it('stops with the snapshot location when the restore cannot be proven', () => {
     const snap = snapshotSandbox(pkg, path.join(root, 'snap'));
     put('fm-mcp/AxClass/ConX.xml', 'x');
     // A snapshot whose copy lost a file cannot put it back.
     fs.rmSync(path.join(snap.dir, 'fm-mcp', 'AxTable', 'ConDemoNoteHeader.xml'));
     fs.rmSync(path.join(pkg, 'fm-mcp', 'AxTable', 'ConDemoNoteHeader.xml'));
-    expect(() => restoreSandbox(pkg, snap)).toThrow(/could not be restored|ENOENT/);
+    expect(() => restoreSandbox(pkg, snap)).toThrow(/no longer matches|could not be restored/);
   });
 });
 

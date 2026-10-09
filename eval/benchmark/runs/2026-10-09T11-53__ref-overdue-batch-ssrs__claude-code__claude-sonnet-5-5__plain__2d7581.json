@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T11-53__ref-overdue-batch-ssrs__claude-code__claude-sonnet-5-5__plain__2d7581",
+  "timestamp": "2026-10-09T11:53:33.303Z",
+  "promptId": "ref-overdue-batch-ssrs",
+  "promptHash": "9e347753ed7b",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "reference v2",
+  "durationMs": 270613,
+  "apiMs": 182715,
+  "requests": 38,
+  "toolCalls": 37,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 4,
+    "Read": 10,
+    "Bash": 8,
+    "Grep": 3,
+    "Write": 11
+  },
+  "inputTokens": 788961,
+  "cachedTokens": 730921,
+  "outputTokens": 27407,
+  "hostCost": {
+    "value": 0.6523421999999999,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 65.23422,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 0.8666666666666667,
+  "checks": [
+    {
+      "name": "matches ConCustOverdueSnapshotService",
+      "passed": true
+    },
+    {
+      "name": "matches ConCustOverdueReport",
+      "passed": true
+    },
+    {
+      "name": "file snapshot table",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation data contract",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation service over CustTransOpen",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation controller with main",
+      "passed": true
+    },
+    {
+      "name": "file action menu item for the batch job",
+      "passed": true
+    },
+    {
+      "name": "file TempDB report table",
+      "passed": true
+    },
+    {
+      "name": "file report data contract",
+      "passed": true
+    },
+    {
+      "name": "file report data provider",
+      "passed": true
+    },
+    {
+      "name": "file report with a DP dataset and a design",
+      "passed": true
+    },
+    {
+      "name": "file output menu item for the report",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": false
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": false
+    }
+  ],
+  "resultChars": 3082,
+  "resultExcerpt": "I wrote all the objects but couldn't run the xppc full build, so none of it has been compiled. PowerShell and Bash were both denied in this session. You'll need to run the build yourself, or allow a shell so I can.\n\nObjects created in `fm-mcp` (extensions only; nothing in the standard application was touched):\n- **Label file `fm-mcp_en-US`** (changed): 15 new `Con…` labels appended; `AuditProbe` i",
+  "notes": "2 permission denial(s): PowerShell, Bash · re-derived 2026-10-09 from kept stream/artifacts: rework 3/0/1/0 → 3/0/0/0 (tool errors/failed/attempted builds/rewrites)",
+  "evidence": {
+    "sessionId": "c1ed2278-20a3-463f-9abe-af01f766d4d0",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxClass/ConCustOverdueReportContract.xml",
+    "fm-mcp/AxClass/ConCustOverdueReportDP.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotContract.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotController.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotService.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxMenuItemAction/ConCustOverdueSnapshot.xml",
+    "fm-mcp/AxMenuItemOutput/ConCustOverdueReport.xml",
+    "fm-mcp/AxReport/ConCustOverdueReport.xml",
+    "fm-mcp/AxTable/ConCustOverdueReportTmp.xml",
+    "fm-mcp/AxTable/ConCustOverdueSnapshot.xml"
+  ],
+  "build": {
+    "ok": false,
+    "errorCount": 5,
+    "errors": [
+      "Compile Error: Class Method dynamics://Class/ConCustOverdueReportDP/Method/processReport: [(31,33),(31,58)]: ClassDoesNotContainMethod: Class 'ConCustOverdueReportDP' does not contain a definition for method 'parmUserConnection' and no extension method 'parmUserConnection' accepting a first argument",
+      "Compile Error: Class Method dynamics://Class/ConCustOverdueReportDP/Method/processReport: [(33,49),(33,57)]: Cannot implicitly convert from type 'real(AmountMST)' to type 'str(DirPartyName)'.",
+      "Compile Error: Class Method dynamics://Class/ConCustOverdueReportDP/Method/processReport: [(33,59),(33,75)]: Cannot implicitly convert from type 'date(DueDate)' to type 'real(AmountMST)'.",
+      "Compile Error: Class Method dynamics://Class/ConCustOverdueReportDP/Method/processReport: [(33,92),(33,106)]: Cannot implicitly convert from type 'str(DirPartyName)' to type 'int'.",
+      "Compile Fatal Error: Class Method dynamics://Class/ConCustOverdueSnapshotService/Method/process: [(36,20),(36,51)]: Illegal table specification."
+    ],
+    "durationMs": 11757
+  },
+  "rework": {
+    "toolErrors": 3,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Bash": 1,
+      "Glob": 1
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 11,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": null
+  }
+}

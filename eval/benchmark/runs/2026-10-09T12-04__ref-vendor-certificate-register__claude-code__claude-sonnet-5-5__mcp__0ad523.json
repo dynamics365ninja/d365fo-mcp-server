@@ -1,0 +1,173 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T12-04__ref-vendor-certificate-register__claude-code__claude-sonnet-5-5__mcp__0ad523",
+  "timestamp": "2026-10-09T12:04:37.883Z",
+  "promptId": "ref-vendor-certificate-register",
+  "promptHash": "f04876b5d381",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "mcpServers": [
+    "d365fo-eval"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "37fca19e",
+  "label": "reference v2",
+  "durationMs": 219282,
+  "apiMs": 122843,
+  "requests": 42,
+  "toolCalls": 41,
+  "mcpToolCalls": 8,
+  "tools": {
+    "PowerShell": 1,
+    "ToolSearch": 1,
+    "mcp__d365fo-eval__get_workspace_info": 1,
+    "Glob": 3,
+    "Read": 7,
+    "mcp__d365fo-eval__labels": 1,
+    "Write": 8,
+    "Bash": 6,
+    "mcp__d365fo-eval__d365fo_file": 2,
+    "mcp__d365fo-eval__get_knowledge": 1,
+    "Grep": 1,
+    "Edit": 6,
+    "mcp__d365fo-eval__build_d365fo_project": 3
+  },
+  "inputTokens": 1178217,
+  "cachedTokens": 1121488,
+  "outputTokens": 16155,
+  "hostCost": {
+    "value": 0.6126756,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 61.26756,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches ConVendCertificate",
+      "passed": true
+    },
+    {
+      "name": "file string EDT ConVendCertificateId",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum ConVendCertificateType",
+      "passed": true
+    },
+    {
+      "name": "file table: fields, primary index, VendTable relation, find/exist/validateWrite",
+      "passed": true
+    },
+    {
+      "name": "file SimpleList form over the table",
+      "passed": true
+    },
+    {
+      "name": "file display menu item",
+      "passed": true
+    },
+    {
+      "name": "file ProcurementAndSourcing menu extension",
+      "passed": true
+    },
+    {
+      "name": "file maintain privilege (delete)",
+      "passed": true
+    },
+    {
+      "name": "file view privilege (read only)",
+      "passed": true
+    },
+    {
+      "name": "file VendTable form extension opens the register",
+      "passed": true
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1583,
+  "resultExcerpt": "The `fm-mcp` model builds with the xppc full build: 0 errors, 0 warnings. I didn't run best-practice checks, a database sync or any runtime test, so none of the objects has been opened or exercised.\n\nObjects created or changed:\n- Label file `fm-mcp` (en-US): added 13 labels for the new objects and the error message.\n- EDT `ConVendCertificateId` (string, size 20).\n- Extensible enum `ConVendCertific",
+  "notes": "2 permission denial(s): PowerShell, Bash · re-derived 2026-10-09 from kept stream/artifacts: rework 8/2/3/6 → 8/2/3/4 (tool errors/failed/attempted builds/rewrites)",
+  "evidence": {
+    "sessionId": "effa9d67-0cf9-4009-955a-fa117c827f4e",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxEdt/ConVendCertificateId.xml",
+    "fm-mcp/AxEnum/ConVendCertificateType.xml",
+    "fm-mcp/AxForm/ConVendCertificate.xml",
+    "fm-mcp/AxFormExtension/VendTable.ConExtension.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxMenuExtension/ProcurementAndSourcing.ConExtension.xml",
+    "fm-mcp/AxMenuItemDisplay/ConVendCertificate.xml",
+    "fm-mcp/AxSecurityPrivilege/ConVendCertificateMaintain.xml",
+    "fm-mcp/AxSecurityPrivilege/ConVendCertificateView.xml",
+    "fm-mcp/AxTable/ConVendCertificate.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 16124
+  },
+  "rework": {
+    "toolErrors": 8,
+    "mcpToolErrors": 3,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "mcp__d365fo-eval__labels": 1,
+      "Glob": 2,
+      "Bash": 1,
+      "mcp__d365fo-eval__build_d365fo_project": 2,
+      "Edit": 1
+    },
+    "buildAttempts": 3,
+    "buildFailures": 2,
+    "writeOps": 16,
+    "rewrites": 4
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 24,
+      "findings": [
+        "Warning BPErrorLabelIsText SecurityPrivilege/ConVendCertificateMaintain",
+        "Warning BPErrorPrivilegeNotCoveredByDuty SecurityPrivilege/ConVendCertificateMaintain",
+        "Warning BPErrorLabelIsText SecurityPrivilege/ConVendCertificateView",
+        "Warning BPErrorPrivilegeNotCoveredByDuty SecurityPrivilege/ConVendCertificateView",
+        "Warning BPErrorHelpIsText EdtString/ConVendCertificateId",
+        "Warning BPErrorLabelIsText EdtString/ConVendCertificateId",
+        "Warning BPErrorLabelIsText Enum/ConVendCertificateType",
+        "Warning BPErrorLabelIsText Form/ConVendCertificate/FormDesign/FormDesign",
+        "Warning BPErrorLabelNotDefined Form/ConVendCertificate/FormDesign/FormDesign/FormGroupControl/CustomFilterGroup/FormStringControl/QuickFilter",
+        "BestPractices Warning: AxTable dynamics://Table/ConVendCertificate: The index 'CertificateIdx' specified as Primary key on table 'ConVendCertificate' is not des",
+        "Warning BPErrorEDTNotMigrated Table/ConVendCertificate/TableFieldString/VendAccount",
+        "Warning BPErrorTableMissingGroupAutoReport Table/ConVendCertificate",
+        "Warning BPErrorTableTitleField1NotDeclared Table/ConVendCertificate",
+        "Warning BPErrorTablePrimaryKeyEditable Table/ConVendCertificate/TableIndex/CertificateIdx/TableIndexField/VendAccount",
+        "Warning BPErrorTablePrimaryKeyEditable Table/ConVendCertificate/TableIndex/CertificateIdx/TableIndexField/CertificateId"
+      ]
+    }
+  }
+}

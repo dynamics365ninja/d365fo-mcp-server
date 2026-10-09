@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T11-40__ref-credit-hold-extension__claude-code__claude-sonnet-5-5__mcp__fc66df",
+  "timestamp": "2026-10-09T11:40:49.363Z",
+  "promptId": "ref-credit-hold-extension",
+  "promptHash": "ad7da9adf05a",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "mcpServers": [
+    "d365fo-eval"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "20f4169c",
+  "label": "reference v2",
+  "durationMs": 87522,
+  "apiMs": 63777,
+  "requests": 26,
+  "toolCalls": 25,
+  "mcpToolCalls": 10,
+  "tools": {
+    "PowerShell": 1,
+    "ToolSearch": 2,
+    "mcp__d365fo-eval__get_workspace_info": 1,
+    "Glob": 1,
+    "Read": 6,
+    "mcp__d365fo-eval__labels": 1,
+    "mcp__d365fo-eval__get_knowledge": 1,
+    "Grep": 1,
+    "Write": 2,
+    "mcp__d365fo-eval__d365fo_file": 6,
+    "Edit": 2,
+    "mcp__d365fo-eval__build_d365fo_project": 1
+  },
+  "inputTokens": 794798,
+  "cachedTokens": 766243,
+  "outputTokens": 8880,
+  "hostCost": {
+    "value": 0.3561966,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 35.61966,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches ConCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "matches SalesTableConCreditHold_Extension",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum ConCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: 3 fields + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustTable form extension shows the group",
+      "passed": true
+    },
+    {
+      "name": "file ModifiedField event handler",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable CoC on validateWrite",
+      "passed": true
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1935,
+  "resultExcerpt": "The `fm-mcp` model builds with a full xppc build and reports 0 errors and 0 warnings. I did not run the best-practice check, database sync, or any runtime test, so the form layout and handler behavior are untested.\n\nObjects created or changed:\n- Label file `fm-mcp` (en-US): added 12 `Con…` labels, covering field labels, help texts, enum value labels, the field group caption and the error message `",
+  "notes": "1 permission denial(s): PowerShell",
+  "evidence": {
+    "sessionId": "0c260317-cf93-432d-a993-829df6a5d2bf",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxClass/ConCustTableEventHandler.xml",
+    "fm-mcp/AxClass/SalesTableConCreditHold_Extension.xml",
+    "fm-mcp/AxEnum/ConCreditHoldReason.xml",
+    "fm-mcp/AxFormExtension/CustTable.ConExtension.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxTableExtension/CustTable.ConExtension.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 15272
+  },
+  "rework": {
+    "toolErrors": 2,
+    "mcpToolErrors": 1,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "mcp__d365fo-eval__labels": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 9,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 4,
+      "findings": [
+        "Warning BPErrorLabelIsText Enum/ConCreditHoldReason",
+        "Warning BPErrorLabelIsText Class/SalesTableConCreditHold_Extension/Method/validateWrite",
+        "BestPractices Warning: AxClass dynamics://Class/SalesTableConCreditHold_Extension/Method/validateWrite: [(22,77),(22,97)]: The placeholder '%2' to strFmt is not",
+        "BestPractices Warning: AxClass dynamics://Class/SalesTableConCreditHold_Extension/Method/validateWrite: [(22,99),(22,138)]: The placeholder '%2' to strFmt is no"
+      ]
+    }
+  }
+}

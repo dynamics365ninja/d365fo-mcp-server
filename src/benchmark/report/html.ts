@@ -444,7 +444,53 @@ function pairBars(withV: number | null, withoutV: number | null, show: (v: numbe
   return `<div class="pair-bars">${bar('mcp', 'with MCP', withV)}${bar('plain', 'without', withoutV)}</div>`;
 }
 
-function verdictCard(metric: VerdictMetric, vs: Versus, lead: boolean): string {
+/**
+ * A relative effect as the rest of the page computes it: per prompt (median
+ * with vs median without, then median over models), then the median of those.
+ * Pooling every run's time or cost across prompts instead mixes a 2-minute
+ * prompt with an 8-minute one and can point the other way: on the first
+ * reference run the pooled AIC said −6 % while every per-prompt view said +33 %.
+ */
+export interface PromptEffect {
+  median: number;
+  perPrompt: Array<{ title: string; delta: number }>;
+}
+
+export function promptEffects(m: ReportModel, metric: MetricKey): PromptEffect | null {
+  const per = m.prompts
+    .map(p => {
+      const ds = p.modelEffects.map(r => r.deltas[metric]?.deltaPct).filter((d): d is number => typeof d === 'number');
+      if (ds.length === 0) return null;
+      const sorted = [...ds].sort((a, b) => a - b);
+      const mid = sorted.length / 2;
+      const d = sorted.length % 2 ? sorted[Math.floor(mid)] : (sorted[mid - 1] + sorted[mid]) / 2;
+      return { title: p.title.replace(/^Reference \d+:\s*/, '').split(' — ')[0], delta: d };
+    })
+    .filter((x): x is { title: string; delta: number } => x !== null);
+  if (per.length === 0) return null;
+  const sorted = per.map(x => x.delta).sort((a, b) => a - b);
+  const mid = sorted.length / 2;
+  return { median: sorted.length % 2 ? sorted[Math.floor(mid)] : (sorted[mid - 1] + sorted[mid]) / 2, perPrompt: per };
+}
+
+function effectCard(metric: VerdictMetric, effect: PromptEffect): string {
+  const d = effect.median;
+  const good = metric.better === 'lower' ? d < 0 : d > 0;
+  const tone = Math.abs(d) < 1e-9 ? '' : good ? 'good' : 'bad';
+  const chips = effect.perPrompt.map(x => {
+    const g = metric.better === 'lower' ? x.delta < 0 : x.delta > 0;
+    return `<div class="pbar"><span title="${esc(x.title)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.title)}</span><span></span><span class="chip ${Math.abs(x.delta) < 1e-9 ? 'neutral' : g ? 'good' : 'bad'}">${esc(formatDeltaPct(x.delta))}</span></div>`;
+  });
+  return `<div class="card vcard reveal${tone ? ` ${tone}` : ''}">
+    <div class="k">${esc(metric.label.replace(' (median)', ''))}</div>
+    <div class="big">${counter(d, formatDeltaPct(d), Math.abs(d) >= 10 ? 0 : 1, d > 0 ? '+' : '', ' %')}</div>
+    <div class="vs">with MCP vs without · median of ${effect.perPrompt.length} per-prompt effect${effect.perPrompt.length === 1 ? '' : 's'}</div>
+    <div class="pair-bars">${chips.join('')}</div>
+  </div>`;
+}
+
+function verdictCard(metric: VerdictMetric, vs: Versus, lead: boolean, effect?: PromptEffect | null): string {
+  if (effect && metric.mode === 'pct') return effectCard(metric, effect);
   const w = vs.with ? metric.get(vs.with) : null;
   const wo = vs.without ? metric.get(vs.without) : null;
   const win = winner(w, wo, metric.better);
@@ -476,23 +522,25 @@ function verdictCard(metric: VerdictMetric, vs: Versus, lead: boolean): string {
 }
 
 /** One sentence that says what the numbers say, so nobody has to assemble it from tiles. */
-export function verdictSentence(vs: Versus): string {
+export function verdictSentence(vs: Versus, effects: { time?: PromptEffect | null; aic?: PromptEffect | null } = {}): string {
   const w = vs.with, wo = vs.without;
   if (!w || !wo) return 'Run both variants to compare them — every number here is "with MCP relative to without".';
   const parts: string[] = [];
   if (w.validRate !== null && wo.validRate !== null) {
     parts.push(`With MCP, ${Math.round(w.validRate * w.judged)} of ${w.judged} runs delivered valid output, against ${Math.round(wo.validRate * wo.judged)} of ${wo.judged} without`);
   }
-  const rel = (a: number | null, b: number | null, word: [string, string]) => {
+  const say = (d: number, word: [string, string]) =>
+    Math.abs(d) < 3 ? `about as ${word[0] === 'longer' ? 'long' : 'much'}` : `${Math.abs(Math.round(d))} % ${d > 0 ? word[0] : word[1]}`;
+  const rel = (a: number | null, b: number | null, word: [string, string], effect?: PromptEffect | null) => {
+    if (effect) return say(effect.median, word);
     if (a === null || b === null || b === 0) return null;
-    const d = ((a - b) / b) * 100;
-    if (Math.abs(d) < 3) return `about as ${word[0] === 'longer' ? 'long' : 'much'}`;
-    return `${Math.abs(Math.round(d))} % ${d > 0 ? word[0] : word[1]}`;
+    return say(((a - b) / b) * 100, word);
   };
-  const time = rel(w.timeMs, wo.timeMs, ['longer', 'shorter']);
-  const cost = rel(w.aic, wo.aic, ['more', 'less']);
+  const time = rel(w.timeMs, wo.timeMs, ['longer', 'shorter'], effects.time);
+  const cost = rel(w.aic, wo.aic, ['more', 'less'], effects.aic);
+  const perPrompt = effects.time || effects.aic ? ' (median per prompt)' : '';
   if (time) parts.push(`it took ${time}`);
-  if (cost) parts.push(`it cost ${cost}`);
+  if (cost) parts.push(`it cost ${cost}${perPrompt}`);
   const rw = (q: VariantQuality) => (q.toolErrors ?? 0) + (q.buildFailures ?? 0) + (q.rewrites ?? 0);
   if (w.toolErrors !== null && wo.toolErrors !== null) {
     parts.push(`and needed ${num1(rw(w))} repair step${rw(w) === 1 ? '' : 's'} per run against ${num1(rw(wo))}`);
@@ -502,12 +550,13 @@ export function verdictSentence(vs: Versus): string {
   return `${s.charAt(0).toUpperCase()}${s.slice(1)}.`;
 }
 
-function verdictBlock(vs: Versus, scope: string): string {
+function verdictBlock(vs: Versus, scope: string, effects: { time?: PromptEffect | null; aic?: PromptEffect | null } = {}): string {
   if (!vs.with || !vs.without) return '<p class="lede">The verdict needs runs both with and without MCP.</p>';
   // A card neither side has data for (rework on records older than the trace) is left out, not drawn empty.
   const metrics = VERDICT_METRICS.filter(m => m.get(vs.with!) !== null || m.get(vs.without!) !== null);
-  return `<div class="verdict" style="--rest:${Math.max(1, metrics.length - 1)}">${metrics.map((m, i) => verdictCard(m, vs, i === 0 && m.key === 'valid')).join('')}</div>
-  <p class="sentence reveal">${esc(verdictSentence(vs))} <span class="tagline">(${esc(scope)})</span></p>`;
+  const effectOf = (key: string) => (key === 'time' ? effects.time : key === 'aic' ? effects.aic : null);
+  return `<div class="verdict" style="--rest:${Math.max(1, metrics.length - 1)}">${metrics.map((m, i) => verdictCard(m, vs, i === 0 && m.key === 'valid', effectOf(m.key))).join('')}</div>
+  <p class="sentence reveal">${esc(verdictSentence(vs, effects))} <span class="tagline">(${esc(scope)})</span></p>`;
 }
 
 // ---------------------------------------------------------------- 2. scoreboard
@@ -859,7 +908,7 @@ export function renderHtml(m: ReportModel): string {
     ? '<div class="card empty">No runs match. Record one with <code>d365fo-mcp benchmark run</code> or <code>benchmark ingest</code>.</div>'
     : `<h2 style="margin-top:8px">Verdict</h2>
   <p class="lede">Does the D365FO MCP server get the job done — valid output that builds and passes best practice — and what does that cost in time, credits and repair work? All prompts, all models.</p>
-  ${verdictBlock(m.versus, 'all prompts')}
+  ${verdictBlock(m.versus, 'all prompts', { time: promptEffects(m, 'durationMs'), aic: promptEffects(m, 'aic') })}
   ${m.prompts.length > 1 ? `<h2>Per prompt</h2><p class="lede">The same comparison for each use-case. Click a prompt to jump to its detail.</p>${scoreboard(m)}` : ''}
   <h2>MCP effect per model</h2>
   <p class="lede">With MCP relative to without, per model — a bar to the left of zero is a saving (or, for checks, a loss).</p>

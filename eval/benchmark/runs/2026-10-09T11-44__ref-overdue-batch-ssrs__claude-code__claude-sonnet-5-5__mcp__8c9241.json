@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T11-44__ref-overdue-batch-ssrs__claude-code__claude-sonnet-5-5__mcp__8c9241",
+  "timestamp": "2026-10-09T11:44:43.263Z",
+  "promptId": "ref-overdue-batch-ssrs",
+  "promptHash": "9e347753ed7b",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "mcpServers": [
+    "d365fo-eval"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "20f4169c",
+  "label": "reference v2",
+  "durationMs": 501456,
+  "apiMs": 290014,
+  "requests": 64,
+  "toolCalls": 63,
+  "mcpToolCalls": 14,
+  "tools": {
+    "ToolSearch": 1,
+    "Bash": 9,
+    "mcp__d365fo-eval__labels": 1,
+    "PowerShell": 1,
+    "Write": 7,
+    "mcp__d365fo-eval__get_knowledge": 1,
+    "mcp__d365fo-eval__generate_object": 1,
+    "Read": 6,
+    "Edit": 24,
+    "mcp__d365fo-eval__build_d365fo_project": 11,
+    "Grep": 1
+  },
+  "inputTokens": 2695384,
+  "cachedTokens": 2611073,
+  "outputTokens": 36888,
+  "hostCost": {
+    "value": 1.2281905999999998,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 122.81906,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches ConCustOverdueSnapshotService",
+      "passed": true
+    },
+    {
+      "name": "matches ConCustOverdueReport",
+      "passed": true
+    },
+    {
+      "name": "file snapshot table",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation data contract",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation service over CustTransOpen",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation controller with main",
+      "passed": true
+    },
+    {
+      "name": "file action menu item for the batch job",
+      "passed": true
+    },
+    {
+      "name": "file TempDB report table",
+      "passed": true
+    },
+    {
+      "name": "file report data contract",
+      "passed": true
+    },
+    {
+      "name": "file report data provider",
+      "passed": true
+    },
+    {
+      "name": "file report with a DP dataset and a design",
+      "passed": true
+    },
+    {
+      "name": "file output menu item for the report",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 2428,
+  "resultExcerpt": "The `fm-mcp` model builds with a full xppc build: 0 errors, 1 warning. I haven't run any of it, so the batch job and the report are untested at runtime, and the report isn't deployed to the report server.\n\n**Warning:** `count(RecId)` is int64 and goes into the integer `OpenTransCount`. The select list can't cast it, so the compiler says it \"loses range\". I left it.\n\n**Objects created:**\n- Table `C",
+  "notes": "3 permission denial(s): PowerShell, Bash, Bash · re-derived 2026-10-09 from kept stream/artifacts: rework 14/9/11/21 → 14/9/11/9 (tool errors/failed/attempted builds/rewrites)",
+  "evidence": {
+    "sessionId": "c7156323-fe81-4ad7-820d-01102c535ffb",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxClass/ConCustOverdueReportContract.xml",
+    "fm-mcp/AxClass/ConCustOverdueReportDP.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotContract.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotController.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotService.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxMenuItemAction/ConCustOverdueSnapshot.xml",
+    "fm-mcp/AxMenuItemOutput/ConCustOverdueReport.xml",
+    "fm-mcp/AxReport/ConCustOverdueReport.xml",
+    "fm-mcp/AxTable/ConCustOverdueReportTmp.xml",
+    "fm-mcp/AxTable/ConCustOverdueSnapshot.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 12420
+  },
+  "rework": {
+    "toolErrors": 14,
+    "mcpToolErrors": 10,
+    "toolErrorsByTool": {
+      "Bash": 3,
+      "mcp__d365fo-eval__labels": 1,
+      "PowerShell": 1,
+      "mcp__d365fo-eval__build_d365fo_project": 9
+    },
+    "buildAttempts": 11,
+    "buildFailures": 9,
+    "writeOps": 32,
+    "rewrites": 9
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 29,
+      "findings": [
+        "Warning BPErrorMenuItemNotCoveredByPrivilege MenuItemOutput/ConCustOverdueReport",
+        "BestPractices Warning: AxMenuItemOutput dynamics://MenuItemOutput/ConCustOverdueReport: [BPErrorMissingOrUnsupportedImage] A missing or unsupported image is bei",
+        "Warning BPErrorMenuItemNotCoveredByPrivilege MenuItemAction/ConCustOverdueSnapshot",
+        "Warning BPErrorHelpIsText MenuItemAction/ConCustOverdueSnapshot",
+        "BestPractices Warning: AxMenuItemAction dynamics://MenuItemAction/ConCustOverdueSnapshot: [BPErrorMissingOrUnsupportedImage] A missing or unsupported image is b",
+        "BestPractices Warning: AxTable dynamics://Table/ConCustOverdueSnapshot: The index 'AccountAsOfDateIdx' specified as Primary key on table 'ConCustOverdueSnapshot",
+        "Warning BPErrorEDTNotMigrated Table/ConCustOverdueSnapshot/TableFieldString/AccountNum",
+        "Warning BPErrorTableFieldNotDefinedUsingType Table/ConCustOverdueSnapshot/TableFieldInt/OpenTransCount",
+        "Warning BPErrorTableMissingGroupAutoReport Table/ConCustOverdueSnapshot",
+        "Warning BPErrorTablePrimaryKeyEditable Table/ConCustOverdueSnapshot/TableIndex/AccountAsOfDateIdx/TableIndexField/AccountNum",
+        "Warning BPErrorTablePrimaryKeyEditable Table/ConCustOverdueSnapshot/TableIndex/AccountAsOfDateIdx/TableIndexField/AsOfDate",
+        "Warning BPErrorLabelIsText Table/ConCustOverdueSnapshot",
+        "Warning BPErrorLabelIsText Table/ConCustOverdueSnapshot",
+        "Warning BPErrorLabelIsText Table/ConCustOverdueSnapshot/TableFieldDate/AsOfDate",
+        "Warning BPErrorLabelIsText Table/ConCustOverdueSnapshot/TableFieldReal/OverdueAmountMST"
+      ]
+    }
+  }
+}

@@ -121,3 +121,5 @@ eval/benchmark/reports/
 # The files each sandbox cell wrote, kept so a corrected check can re-score
 # them (the sandbox itself is restored after every cell). Local evidence only.
 eval/benchmark/artifacts/
+# A run's working folder: filtered MCP config, the sandbox snapshot, build logs.
+eval/benchmark/.work/

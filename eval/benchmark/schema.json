@@ -87,7 +87,7 @@
     },
     "rework": {
       "type": "object",
-      "description": "How much repair the cell needed on the way, from the host's stream: tool errors, failed builds inside the cell, repeated writes to one target.",
+      "description": "How much repair the cell needed on the way, from the host's stream: tool errors, failed builds inside the cell, and rewrites — a target written again after a failure since its previous write (building an object in steps is not counted).",
       "additionalProperties": false,
       "required": ["toolErrors", "mcpToolErrors", "toolErrorsByTool", "buildAttempts", "buildFailures", "writeOps", "rewrites"],
       "properties": {

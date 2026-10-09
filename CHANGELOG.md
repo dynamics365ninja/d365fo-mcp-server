@@ -60,6 +60,17 @@ those are called out explicitly below.
   table + form extension, data-event handler, CoC), a vendor certificate register
   (EDT, table, SimpleList form, menu extension, privileges, VendTable form
   extension) and an overdue snapshot (SysOperation batch job + RDP SSRS report).
+  Each sandbox cell is judged on what it left behind — well-formed XML, a clean
+  xppc build (labels compiled first), no xppbp error the clean sandbox did not
+  already have — and on how it got there: tool errors (MCP ones counted
+  separately), failed builds inside the cell, rewrites of one object. The raw
+  stream and the written files are kept per run, and `benchmark rederive`
+  recomputes rework and the answer/file checks from them when a parser or check
+  is fixed later. The report page opens with a verdict (valid output, time,
+  credits, rework — with vs without, in one sentence), a per-prompt scoreboard
+  and per prompt a with/without table, a check heat strip and the recurring
+  errors; charts and tables sit under Details; motion is off under
+  `prefers-reduced-motion`.
 - **`modify-property` sets properties on a form's own controls.** With
   `controlName` (or a dotted `propertyPath`, `"PostButton.NeedsRecord"`), it now
   reaches a control of an `objectType="form"` and a control a form extension

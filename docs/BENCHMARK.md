@@ -56,6 +56,7 @@ cells get neither.
 | `--sandbox <package>` | — | throwaway package the write prompts work in — see [Prompts that write](#prompts-that-write-the-sandbox) |
 | `--sandbox-model <name>` | package name | the model folder inside the sandbox package |
 | `--no-build` | — | skip the xppc build check (the file checks still run) |
+| `--no-bp` | — | skip the xppbp best-practice check after a clean build |
 | `--allow-dirty-baseline` | — | run although the sandbox does not build clean before the first cell |
 | `--cwd <dir>` | current dir | run claude from your solution folder so `CLAUDE.md` / the workspace apply (not with `--sandbox`) |
 | `--timeout s` | prompt's `timeoutSeconds`, else 900 | a cell that overruns is killed and recorded as `timeout` |
@@ -116,14 +117,14 @@ Around the matrix and every cell the runner:
    cell builds through the server. That gap is part of what is being measured;
    add `--allowed-tools PowerShell` to close it. Every cell's raw stream is kept
    in `eval/benchmark/artifacts/<runId>/stream.jsonl` (gitignored).
-6. **Scores what the cell wrote**: the package is diffed against the snapshot,
-   the added/changed files (build output left out) become the record's
-   `artifacts`, each `expects.files` entry is one check, and with
-   `workspace.build` the module is built and "builds clean (xppc)" is one more
-   check (failed when the cell wrote nothing — the untouched sandbox building is
-   not the cell's achievement). The record's `build` keeps the first error lines.
-7. **Restores the package** byte for byte and re-diffs to prove it; a failed
-   restore stops the matrix (the snapshot stays in the temp folder).
+6. **Scores what the cell wrote** — see [Output validity and rework](#output-validity-and-rework).
+7. **Restores the package** byte for byte and re-diffs to prove it. Before it
+   copies anything back it checks the snapshot against its manifest: a damaged
+   snapshot stops the matrix *without touching the sandbox*. (On the VM both
+   snapshots then kept under `%TEMP%` lost their `Descriptor` and model folder in
+   the same 100 ms, mid-run, from outside the benchmark; the half-done restore
+   that followed is why the working folder now lives in `eval/benchmark/.work/`,
+   gitignored.) The server build tool's state file in `%TEMP%` is cleared too.
 8. **Re-syncs the symbol index** of every selected server for every path that
    moved — the server upserts what it writes into its SQLite index, and the next
    with-MCP cell would otherwise find the previous cell's table in `search`.
@@ -134,6 +135,53 @@ re-scored against them — the first reference run needed exactly that: the form
 check asked for a bare `<Pattern>`, while AxForm XML writes
 `<Pattern xmlns="">SimpleList</Pattern>`. What the permission fence refused
 (tool and file name) is noted on the record.
+
+### Output validity and rework
+
+A final "builds clean" answers only half the question. A server that writes
+content the model then has to diagnose and repair costs turns, time and credits
+on the way, and content can build and still be wrong. So every sandbox cell is
+judged on both:
+
+**What it left behind** (checks, and `quality` on the record):
+
+| Check | How |
+|---|---|
+| files | each `expects.files` entry — path and content regexes over the files the cell added or changed (build output left out) |
+| written XML is well-formed | every written `.xml` parses (xml2js) |
+| builds clean (xppc) | labels compiled (labelc, as the server's build does), then a full xppc build of the sandbox module; failed when the cell wrote nothing |
+| no new best-practice errors (xppbp) | after a clean build, xppbp over the module; a cell is charged only with findings the clean sandbox did not already have (baseline taken once per matrix). After a failed build it fails as "not shown clean" |
+
+**How it got there** (`rework` on the record, from the stream): tool calls that
+came back as errors (an MCP result starting `❌` counts), builds inside the cell
+— the server's build tool or a shell command that *runs* xppc — and how many
+failed, and writes per target (a file, or `objectType:name` for the server's
+writes). A **rewrite** is a write that repairs: the target was written before
+and something failed since — a build, or that target's previous write. Building
+an object in steps (create the table, add a field, add a field group — the
+server's normal flow) is not counted; the first version counted every repeated
+write and charged the MCP side for its own workflow. A call the host refused is
+not a build.
+
+The page's verdict uses **valid output** = builds clean, well-formed XML, no new
+BP errors, and **rework per run** = tool errors + failed builds + rewrites.
+
+### Evidence and re-deriving
+
+Each cell's raw stream and the files it wrote are kept in
+`eval/benchmark/artifacts/<runId>/` (gitignored). When a parser or a check turns
+out wrong after the fact — it has happened twice: a form check that did not allow
+`<Pattern xmlns="">`, a build counter that took `ls … | grep xppc` for a build —
+
+```bash
+npm run cli -- benchmark rederive --label "reference v2" --dry-run   # what would change
+npm run cli -- benchmark rederive --label "reference v2"
+```
+
+recomputes the rework trace and the answer and file checks from that evidence
+and appends what changed to the record's notes. The build and xppbp checks and
+every measured number (time, tokens, cost) are kept as recorded: they need the
+sandbox state the restore removed.
 
 A run warns when the server's `dist/index.js` is older than HEAD: the cells
 would measure an older server than the `serverGitSha` on their records. Run
@@ -167,53 +215,32 @@ name.
 
 ### The report (`benchmark report`)
 
-One self-contained HTML file (works from disk, light/dark) and a markdown twin.
-Filters are command-line flags — `--prompt`, `--host`, `--model`, `--label`,
-`--since`, `--until` — and the page has a prompt switcher.
+One self-contained HTML file (works from disk, light/dark, phone width) and a
+markdown twin. Filters are command-line flags — `--prompt`, `--host`, `--model`,
+`--label`, `--since`, `--until` — and the page has a prompt switcher.
 
-The page leads with the difference, not the absolute values. At the top, for
-all prompts, and again inside every prompt:
+The page follows the question order:
 
-- **MCP effect per model** — one small panel per metric (run time, output
-  tokens, AIC, round trips, checks), one bar per model: *with MCP relative to
-  without*, as a signed percentage from a zero baseline. Green ▼ = better with
-  MCP, red ▲ = worse. Across prompts the bar is the median of the per-prompt
-  effects, so a prompt with many repeats does not outvote one with few.
-- **MCP effect over time** — per metric, one line per model: for every day
-  that has both cells, the relative difference of the two daily medians. Zero
-  is "no difference". A new release of the server moves these lines; a new
-  model version moves the absolute values but not necessarily the effect.
-- **KPI tiles** — runs, fastest and cheapest cell, and the MCP effect summarised
-  over models.
+1. **Verdict** — four cards, with MCP against without, over all prompts: *valid
+   output* (share of runs), *run time* and *AI Credits* (medians, as a signed
+   difference), *rework per run*; each with both values as bars, green ▼ when
+   MCP is better, red ▲ when worse; and one sentence that says it ("With MCP, 9
+   of 9 runs delivered valid output, against 4 of 9 without; it took 34 % longer…").
+2. **Per prompt** — a scoreboard: one row per prompt, the two sides as pills for
+   valid output, checks, time, AIC and rework, ✓ on the better side.
+3. **MCP effect per model** — one panel per metric, one signed bar per model
+   (with relative to without, median of the per-prompt effects).
+4. **Each prompt** — a with/without table (valid output, builds, checks, time,
+   AIC, round trips, tool errors and the MCP share of them, failed builds,
+   rewrites, new BP errors and warnings), a heat strip of every check's pass
+   rate per side, and the build/BP errors that recur, counted, positions stripped.
+5. **Details** under each prompt — the MCP effect over time, dumbbells of the
+   absolute medians, absolute trends faceted per host, the stats and effect
+   tables and every run (with build, BP and rework columns).
 
-Everything else is one click away under **Details**: dumbbells of the absolute
-medians (without → with, per model), absolute trends with / without side by
-side (faceted per host — an editor session and a headless run are not one
-scale), the stats table (medians, p90, completion rate, AIC source), the
-MCP-effect table and every run. `--json` prints the data instead.
-
-## The reference prompts
-
-Three prompts tagged `reference` are the benchmark's standing use-cases. They
-were picked from what F&O projects implement most often — the extension types
-Microsoft's extensibility guidance and the MB-500 curriculum are built around
-(table/form extensions, CoC and event handlers, SysOperation, SSRS) — and from
-this server's own demand data: across 1,603 MCP calls mined from real Copilot
-sessions (`eval/demand-digest.json`) the top write shapes are new enums,
-table-extension fields + field groups, form-extension controls and CoC classes.
-Each prompt is a realistic business request that touches several change types
-at once, names the objects (so the file checks are deterministic) and leaves
-the platform details — control names, signatures, XML shapes — to be found.
-
-| Prompt | Change types | Objects | Checks |
-|---|---|---|---|
-| `ref-credit-hold-extension` | extensible enum, table extension (fields + field group), form extension, data-event handler, CoC on a standard table, labels | 5 + label file | 6 files + build |
-| `ref-vendor-certificate-register` | EDT, enum, new table (index, relation, find/exist, validateWrite), SimpleList form, display menu item, menu extension, 2 privileges, form extension, labels | 10 + label file | 10 files + build |
-| `ref-overdue-batch-ssrs` | regular table, SysOperation batch (contract / service / controller / action menu item), TempDB table, RDP SSRS report (contract / DP / AxReport + design / output menu item) | 10 + label file | 10 files + build |
-
-Every reference prompt shares one preamble (model and folders via
-placeholders, prefix `Con`, labels instead of text, no `today()`, extensions
-only, must build) so the three differ only in the business request.
+Cards rise in as they scroll into view, bars grow from zero and the headline
+numbers count up; nothing moves under `prefers-reduced-motion`, and every number
+is in the HTML without the script. `--json` prints the data instead.
 
 ## Adding a prompt
 

@@ -120,6 +120,19 @@ export function snapshotSandbox(packageDir: string, snapshotDir: string): Snapsh
   return { dir: snapshotDir, manifest, dirs: walkDirs(packageDir) };
 }
 
+/** Paths the snapshot copy has lost or changed since it was taken ("missing x", "changed y"). */
+export function snapshotDamage(snapshot: Snapshot): string[] {
+  if (!fs.existsSync(snapshot.dir)) return [`missing ${snapshot.dir}`];
+  const now = manifestOf(snapshot.dir);
+  const out: string[] = [];
+  for (const [rel, hash] of snapshot.manifest) {
+    const h = now.get(rel);
+    if (h === undefined) out.push(`missing ${rel}`);
+    else if (h !== hash) out.push(`changed ${rel}`);
+  }
+  return out;
+}
+
 export interface SandboxDiff {
   added: string[];
   modified: string[];
@@ -175,6 +188,19 @@ function pruneEmptyDirs(root: string, rel: string, keep: Set<string>): void {
  * every later cell would start from a different model.
  */
 export function restoreSandbox(packageDir: string, snapshot: Snapshot, diff: SandboxDiff = diffSandbox(packageDir, snapshot)): void {
+  // Prove the copy before trusting it. On the VM a snapshot under %TEMP% lost
+  // its Descriptor and model folder mid-run (both snapshots there, the same
+  // 100 ms, no benchmark code involved); restoring from it half-reset the
+  // sandbox and the matrix died on ENOENT. A damaged snapshot now stops the run
+  // BEFORE the sandbox is touched, so the sandbox keeps the cell's state and
+  // nothing is lost that a person cannot see.
+  const damaged = snapshotDamage(snapshot);
+  if (damaged.length > 0) {
+    throw new Error(
+      `The snapshot at ${snapshot.dir} no longer matches what was taken (${damaged.slice(0, 4).join(', ')}${damaged.length > 4 ? ', …' : ''}). ` +
+        `Stopping without touching the sandbox ${packageDir}: it still holds the last cell's files. Restore it from a clean copy by hand.`,
+    );
+  }
   const keepDirs = new Set<string>(snapshot.dirs);
   for (const rel of snapshot.manifest.keys()) {
     const parts = rel.split('/');

@@ -114,7 +114,7 @@ export interface ReworkSummary {
   buildFailures: number;
   /** Write operations (file tools + the server's create/modify). */
   writeOps: number;
-  /** Writes beyond the first per target — the same object written again to repair it. */
+  /** Repair writes: a target written again after a failure since its last write (a failed build, or that write failing). Building an object in steps is not counted. */
   rewrites: number;
 }
 

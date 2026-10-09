@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T11-42__ref-credit-hold-extension__claude-code__claude-sonnet-5-5__plain__46ab1f",
+  "timestamp": "2026-10-09T11:42:47.280Z",
+  "promptId": "ref-credit-hold-extension",
+  "promptHash": "ad7da9adf05a",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "reference v2",
+  "durationMs": 95714,
+  "apiMs": 72361,
+  "requests": 22,
+  "toolCalls": 21,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 2,
+    "Read": 7,
+    "Grep": 2,
+    "Bash": 3,
+    "Write": 6
+  },
+  "inputTokens": 347277,
+  "cachedTokens": 325693,
+  "outputTokens": 11714,
+  "hostCost": {
+    "value": 0.2685746,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 26.85746,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 0.9090909090909091,
+  "checks": [
+    {
+      "name": "matches ConCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "matches SalesTableConCreditHold_Extension",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum ConCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: 3 fields + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustTable form extension shows the group",
+      "passed": true
+    },
+    {
+      "name": "file ModifiedField event handler",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable CoC on validateWrite",
+      "passed": true
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": false
+    }
+  ],
+  "resultChars": 2407,
+  "resultExcerpt": "The metadata for all five objects is written, but I couldn't run the xppc full build, so it has not been compiled. The session denied PowerShell and Bash, and xppc can't run without a shell. I haven't checked whether it builds, and I haven't tested the new-order blocking at runtime.\n\nIf you want me to run the build, allow Bash or PowerShell for it. You can also run it yourself with `xppc.exe` agai",
+  "notes": "3 permission denial(s): PowerShell, Bash, Bash · re-derived 2026-10-09 from kept stream/artifacts: rework 4/1/2/0 → 4/0/0/0 (tool errors/failed/attempted builds/rewrites)",
+  "evidence": {
+    "sessionId": "2fda2754-f939-4fdd-84c3-aac0eabcd2df",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxClass/ConCustTableEventHandler.xml",
+    "fm-mcp/AxClass/SalesTableConCreditHold_Extension.xml",
+    "fm-mcp/AxEnum/ConCreditHoldReason.xml",
+    "fm-mcp/AxFormExtension/CustTable.ConCreditHoldExtension.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxTableExtension/CustTable.ConCreditHoldExtension.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 8017
+  },
+  "rework": {
+    "toolErrors": 4,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Glob": 1,
+      "Bash": 2
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 6,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 4,
+      "warnings": 4,
+      "findings": [
+        "BestPractices Error: Error reading TableExtension 'CustTable.ConCreditHoldExtension'.",
+        "BestPractices Error: TableExtension 'CustTable.ConCreditHoldExtension' not found.",
+        "BestPractices Error: Error reading Enum 'ConCreditHoldReason'.",
+        "BestPractices Error: Enum 'ConCreditHoldReason' not found.",
+        "BestPractices Warning: Class dynamics://Class/ConCustTableEventHandler: The element 'ConCustTableEventHandler' in module 'fm-mcp' appears not to have been compi",
+        "BestPractices Warning: Microsoft.Dynamics.AX.Metadata.MetaModel.AxClass ConCustTableEventHandler: No Best Practices checks were run on Microsoft.Dynamics.AX.Met",
+        "BestPractices Warning: Class dynamics://Class/SalesTableConCreditHold_Extension: The element 'SalesTableConCreditHold_Extension' in module 'fm-mcp' appears not ",
+        "BestPractices Warning: Microsoft.Dynamics.AX.Metadata.MetaModel.AxClass SalesTableConCreditHold_Extension: No Best Practices checks were run on Microsoft.Dynami"
+      ]
+    }
+  }
+}

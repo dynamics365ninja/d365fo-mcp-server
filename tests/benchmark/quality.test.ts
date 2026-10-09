@@ -29,7 +29,10 @@ describe('rework trace from the stream', () => {
       assistant(use('d', 'Edit', { file_path: 'K:\\PLD\\fm-mcp\\fm-mcp\\AxForm\\ConVendCertificate.xml' }), use('e', 'Edit', { file_path: 'K:/PLD/fm-mcp/fm-mcp/AxForm/ConVendCertificate.xml' })),
       user(res('d', 'ok'), res('e', 'ok')),
       assistant(use('f', 'PowerShell', { command: '& K:\\PLD\\bin\\xppc.exe -modelmodule=fm-mcp' })),
-      user(res('f', 'Permission denied', true)),
+      user(res('f', 'Permission to use PowerShell has been denied because Claude Code is running in don\'t ask mode.', true)),
+      // Mentions xppc, runs nothing: not a build.
+      assistant(use('f2', 'Bash', { command: 'ls fm-mcp/bin | grep -iE "xppc|\\.exe"' })),
+      user(res('f2', 'xppc.exe')),
       assistant(use('g', 'mcp__d365fo-eval__build_d365fo_project', {})),
       user(res('g', '✅ Build succeeded\nErrors: 0')),
       assistant(use('h', 'mcp__d365fo-eval__search', { query: 'x' })),
@@ -37,10 +40,30 @@ describe('rework trace from the stream', () => {
     ].join('\n');
     const s = parseStreamJson(stream);
     expect(s.rework.toolErrors).toEqual({ 'mcp__d365fo-eval__d365fo_file': 1, 'mcp__d365fo-eval__build_d365fo_project': 1, PowerShell: 1 });
-    expect(s.rework.buildAttempts).toBe(3);
-    expect(s.rework.buildFailures).toBe(2);
+    // The refused PowerShell xppc never ran, and the grep only mentions xppc: two real builds, one failed.
+    expect(s.rework.buildAttempts).toBe(2);
+    expect(s.rework.buildFailures).toBe(1);
     const r = summarizeRework(s.rework);
-    expect(r).toMatchObject({ toolErrors: 3, mcpToolErrors: 2, buildAttempts: 3, buildFailures: 2, writeOps: 4, rewrites: 2 });
+    expect(r).toMatchObject({ toolErrors: 3, mcpToolErrors: 2, buildAttempts: 2, buildFailures: 1, writeOps: 4, rewrites: 1 });
+  });
+
+  it('counts a repeated write as a repair only after a failure, not when an object is built in steps', () => {
+    const file = (id: string, action: string) => use(id, 'mcp__s__d365fo_file', { action, objectType: 'table', objectName: 'ConT' });
+    const steps = [
+      // The server's normal flow: create, then add a field, then a field group. Not repair.
+      assistant(file('a', 'create')), user(res('a', '✅ created')),
+      assistant(file('b', 'modify')), user(res('b', '✅ field added')),
+      assistant(file('c', 'modify')), user(res('c', '✅ group added')),
+      // A build fails; the next write to the table repairs it.
+      assistant(use('d', 'mcp__s__build_d365fo_project', {})), user(res('d', '❌ Build FAILED', true)),
+      assistant(file('e', 'modify')), user(res('e', '✅ fixed')),
+      // A write that fails, then the same write again: repair.
+      assistant(file('f', 'modify')), user(res('f', '❌ invalid property', true)),
+      assistant(file('g', 'modify')), user(res('g', '✅')),
+    ].join('\n');
+    const r = summarizeRework(parseStreamJson(steps).rework);
+    expect(r.writeOps).toBe(6);
+    expect(r.rewrites).toBe(2);
   });
 
   it('is all zeros for a stream with no tool use', () => {
