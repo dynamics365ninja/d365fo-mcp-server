@@ -55,6 +55,13 @@ export interface BenchmarkRun {
   modelRequested: string | null;
   /** True when the d365fo MCP server was available to the agent. */
   mcp: boolean;
+  /**
+   * What a with-MCP cell got besides the server, e.g. "instructions:
+   * copilot-instructions.md" — the documented setup tells Claude Code users to
+   * install that file as CLAUDE.md. Absent: the server alone. A different setup
+   * is a different configuration on the leaderboard.
+   */
+  setup?: string | null;
   /** MCP servers the host reported as connected (empty when mcp=false). */
   mcpServers: string[];
   serverVersion: string | null;

@@ -490,10 +490,19 @@ export function modelName(id: string): string {
 
 const slotOf = (m: ReportModel, model: string) => m.slots.get(model) ?? 8;
 
+/** "instructions: copilot-instructions.md" → "+ instructions". */
+const setupShort = (setup: string | null) => (setup ? `+ ${setup.split(':')[0]}` : '');
+
 function configLabel(m: ReportModel, c: ConfigKey, withHost: boolean): string {
-  return `<span class="cfg"><span class="sw s${slotOf(m, c.model)}${c.mcp ? '' : ' hollow'}"></span><b>${esc(modelName(c.model))}</b>${
-    c.mcp ? '<span class="badge mcp">MCP</span>' : '<span class="badge plain">no MCP</span>'}${withHost ? `<small>${esc(c.host)}</small>` : ''}</span>`;
+  const badge = c.mcp
+    ? `<span class="badge mcp"${c.setup ? ` title="${esc(c.setup)}"` : ''}>MCP${c.setup ? ` ${esc(setupShort(c.setup))}` : ''}</span>`
+    : '<span class="badge plain">no MCP</span>';
+  return `<span class="cfg"><span class="sw s${slotOf(m, c.model)}${c.mcp ? '' : ' hollow'}"></span><b>${esc(modelName(c.model))}</b>${badge}${withHost ? `<small>${esc(c.host)}</small>` : ''}</span>`;
 }
+
+/** How a configuration is named in a sentence or a tooltip. */
+const configWords = (c: { model: string; mcp: boolean; setup: string | null }) =>
+  `${modelName(c.model)} ${c.mcp ? `with MCP${c.setup ? ` ${setupShort(c.setup)}` : ''}` : 'without MCP'}`;
 
 const deltaPctOf = (w: number | null, wo: number | null) => (w === null || wo === null || wo === 0 ? null : ((w - wo) / wo) * 100);
 
@@ -512,7 +521,7 @@ const reworkOf = (q: VariantQuality) => (q.toolErrors === null && q.buildFailure
 
 /** One sentence per model, so nobody has to assemble the finding from tiles. */
 export function liftSentence(l: ModelLift): string {
-  const name = modelName(l.model);
+  const name = `${modelName(l.model)}${l.setup ? ` (MCP ${setupShort(l.setup)})` : ''}`;
   const w = l.with, wo = l.without;
   if (!w || !wo) return `${name}: run both variants to compare them.`;
   const parts: string[] = [];
@@ -557,7 +566,7 @@ function liftCards(m: ReportModel, scope: Scope): string {
     const tone = headline === null || Math.abs(headline) < 0.5 ? '' : headline > 0 ? ' good' : ' bad';
     const big = headline === null ? '<span class="na">waiting for both variants</span>' : counter(headline, `${headline > 0 ? '+' : headline < 0 ? '−' : '±'}${Math.abs(Math.round(headline))}`, 0, headline > 0 ? '+' : '', '');
     return `<article class="card lift reveal${tone}" style="--c: var(--series-${slotOf(m, l.model) + 1}, var(--series-other))">
-      <div class="lift-head"><span class="sw s${slotOf(m, l.model)}"></span>${esc(modelName(l.model))}${withHost ? ` <small>${esc(l.host)}</small>` : ''}</div>
+      <div class="lift-head"><span class="sw s${slotOf(m, l.model)}"></span>${esc(modelName(l.model))}${l.setup ? ` <span class="badge mcp" title="${esc(l.setup)}">MCP ${esc(setupShort(l.setup))}</span>` : ''}${withHost ? ` <small>${esc(l.host)}</small>` : ''}</div>
       <div class="lift-big">${big}${headline === null ? '' : '<span class="unit">pp</span>'}</div>
       <div class="lift-sub">${judged ? 'valid output' : 'checks passed'} with the MCP server, percentage points</div>
       <div class="lrows">${rows}</div>
@@ -583,8 +592,8 @@ function leaderboard(m: ReportModel, scope: Scope): string {
     const ci = judged ? c.validCi : null;
     const ciText = ci ? `${Math.round(ci[0] * 100)}–${Math.round(ci[1] * 100)} %` : '';
     const tip = judged
-      ? `${modelName(c.model)} ${c.mcp ? 'with' : 'without'} MCP: ${c.validCount} of ${c.q.judged} runs valid${ci ? `, 95 % interval ${ciText}` : ''}`
-      : `${modelName(c.model)} ${c.mcp ? 'with' : 'without'} MCP: mean checks passed`;
+      ? `${configWords(c)}: ${c.validCount} of ${c.q.judged} runs valid${ci ? `, 95 % interval ${ciText}` : ''}`
+      : `${configWords(c)}: mean checks passed`;
     return `<tr class="rank-${i + 1}">
       <td class="rk"><span>${i + 1}</span></td>
       <td>${configLabel(m, c, withHost)}</td>
@@ -612,12 +621,12 @@ function scatterBlock(m: ReportModel, scope: Scope): string {
   const point = (c: ConfigRow | null): LiftPoint | null => {
     const y = c ? rateOf(c) : null;
     if (!c || c.aicMean === null || y === null) return null;
-    return { x: c.aicMean, y, tip: `${modelName(c.model)} ${c.mcp ? 'with' : 'without'} MCP — ${pctOf(y)} ${judged ? 'valid' : 'checks'}, ${formatMetric('aic', c.aicMean)} AIC per run, ${perValidOf(c.q.aicPerValid)} per valid output` };
+    return { x: c.aicMean, y, tip: `${configWords(c)} — ${pctOf(y)} ${judged ? 'valid' : 'checks'}, ${formatMetric('aic', c.aicMean)} AIC per run, ${perValidOf(c.q.aicPerValid)} per valid output` };
   };
-  const series: LiftSeries[] = scope.lifts.map(l => ({ label: modelName(l.model), slot: slotOf(m, l.model), with: point(l.with), without: point(l.without) }));
+  const series: LiftSeries[] = scope.lifts.map(l => ({ label: `${modelName(l.model)}${l.setup ? ` ${setupShort(l.setup)}` : ''}`, slot: slotOf(m, l.model), with: point(l.with), without: point(l.without) }));
   const svg = liftScatter({ series, title: `${judged ? 'Valid output' : 'Checks passed'} against AI Credits per run, ${scope.label}`, xLabel: 'AI Credits per run (mean)', formatX: v => formatMetric('aic', v) });
   return `<figure class="card reveal"><figcaption>${judged ? 'Valid output' : 'Checks passed'} vs cost<small>one colour per model · ○ without MCP → ● with MCP</small></figcaption>${svg}
-    <ul class="legend">${scope.lifts.map(l => `<li><span class="swatch s${slotOf(m, l.model)}"></span>${esc(modelName(l.model))}</li>`).join('')}<li><span class="swatch ring"></span>without MCP</li><li><span class="swatch solid"></span>with MCP</li></ul></figure>`;
+    <ul class="legend">${[...new Set(scope.lifts.map(l => l.model))].map(model => `<li><span class="swatch s${slotOf(m, model)}"></span>${esc(modelName(model))}</li>`).join('')}<li><span class="swatch ring"></span>without MCP</li><li><span class="swatch solid"></span>with MCP</li></ul></figure>`;
 }
 
 function matrixBlock(m: ReportModel): string {
@@ -638,7 +647,7 @@ function matrixBlock(m: ReportModel): string {
       const k = m.configKeys[i];
       const main = judged ? `${c.validCount}/${c.q.judged}` : pctOf(rate);
       const sub = judged ? perValidOf(c.q.aicPerValid) : formatMetric('aic', c.aicMean);
-      const tip = `${r.title} — ${modelName(k.model)} ${k.mcp ? 'with' : 'without'} MCP: ${judged ? `${c.validCount} of ${c.q.judged} runs valid, ${perValidOf(c.q.aicPerValid)} AIC per valid output` : `${pctOf(rate)} of checks`}, ${formatMetric('aic', c.aicMean)} AIC per run, ${formatMetric('durationMs', c.q.timeMs)} median`;
+      const tip = `${r.title} — ${configWords(k)}: ${judged ? `${c.validCount} of ${c.q.judged} runs valid, ${perValidOf(c.q.aicPerValid)} AIC per valid output` : `${pctOf(rate)} of checks`}, ${formatMetric('aic', c.aicMean)} AIC per run, ${formatMetric('durationMs', c.q.timeMs)} median`;
       return `<td class="mx ${step}" data-tip="${esc(tip)}"><b>${esc(main)}</b><small>${esc(sub)}${judged ? ' / valid' : ' / run'}</small></td>`;
     });
     return `${group}<tr data-suite="${esc(r.suite)}"><td class="mx-task"><a href="#p-${esc(r.promptId)}" data-goto="${esc(r.promptId)}">${esc(shortTitle(r.title))}</a></td>${cells.join('')}</tr>`;
@@ -725,9 +734,9 @@ function checkMatrixBlock(m: ReportModel, p: PromptSection): string {
   if (p.checkMatrix.length === 0) return '';
   const cols = m.configKeys.map((k, i) => ({ k, i })).filter(x => p.configs[x.i] !== null);
   const shorten = (n: string) => n.replace(/^file /, '').replace(/^matches /, 'answer ~ ').replace(/^avoids /, 'answer ≁ ');
-  const head = cols.map(({ k }) => `<div class="hd" title="${esc(`${modelName(k.model)} ${k.mcp ? 'with' : 'without'} MCP`)}"><span class="sw s${slotOf(m, k.model)}${k.mcp ? '' : ' hollow'}"></span>${k.mcp ? 'MCP' : 'plain'}</div>`).join('');
+  const head = cols.map(({ k }) => `<div class="hd" title="${esc(configWords(k))}"><span class="sw s${slotOf(m, k.model)}${k.mcp ? '' : ' hollow'}"></span>${k.mcp ? (k.setup ? 'MCP+' : 'MCP') : 'plain'}</div>`).join('');
   const rows = p.checkMatrix.map(r => `<div class="name" title="${esc(r.name)}">${esc(shorten(r.name))}</div>${cols
-    .map(({ k, i }) => `<div class="cell ${heatClass(r.rates[i])}" data-tip="${esc(`${modelName(k.model)} ${k.mcp ? 'with' : 'without'} MCP: ${pctOf(r.rates[i])} of runs passed`)}">${esc(pctOf(r.rates[i]))}</div>`)
+    .map(({ k, i }) => `<div class="cell ${heatClass(r.rates[i])}" data-tip="${esc(`${configWords(k)}: ${pctOf(r.rates[i])} of runs passed`)}">${esc(pctOf(r.rates[i]))}</div>`)
     .join('')}`);
   return `<div class="card reveal scroll"><h3 style="margin-top:0">Checks — share of runs that passed</h3>
   <div class="heat" style="grid-template-columns: minmax(160px, 1fr) repeat(${cols.length}, minmax(56px, 72px))"><div class="hd">check</div>${head}${rows.join('')}</div></div>`;

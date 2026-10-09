@@ -232,6 +232,23 @@ describe('leaderboard across tasks', () => {
     expect(html).toMatch(/AIC per run<\/span><span class="lv"><span class="from">55\.00<\/span><span class="arr">→<\/span><b>67\.50<\/b><\/span><span class="chip bad">↑ \+23 %<\/span>/);
   });
 
+  it('ranks an MCP setup with instructions as its own configuration, lifted against the same run without', () => {
+    const rs = [
+      run({ promptId: 'a', mcp: false, score: 0.5 }),
+      run({ promptId: 'a', mcp: true, score: 0.75 }),
+      run({ promptId: 'a', mcp: true, setup: 'instructions: copilot-instructions.md', score: 1 }),
+    ];
+    const m = buildReportModel(rs, [], { credits: DEFAULT_CREDITS });
+    expect(m.configKeys.map(k => `${k.mcp}/${k.setup}`)).toEqual(['true/instructions: copilot-instructions.md', 'true/null', 'false/null']);
+    const lifts = m.scopes[0].lifts;
+    expect(lifts.map(l => l.setup)).toEqual([null, 'instructions: copilot-instructions.md']);
+    expect(lifts.every(l => l.without?.mcp === false)).toBe(true);
+    // The per-model aggregates keep the setup apart instead of pooling it into "with MCP".
+    expect(m.overview.map(o => o.model)).toContain('claude-sonnet-5-5 + instructions');
+    const html = renderHtml(m);
+    expect(html).toContain('<span class="badge mcp" title="instructions: copilot-instructions.md">MCP + instructions</span>');
+  });
+
   it('splits the leaderboard by suite and groups the task matrix', () => {
     const suiteSpecs: PromptSpec[] = [
       { id: 'r1', title: 'Reference 1: a', prompt: 'a', tags: ['reference'] },

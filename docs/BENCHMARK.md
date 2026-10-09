@@ -62,7 +62,8 @@ cells get neither.
 | `--allow-dirty-baseline` | — | run although the sandbox does not build clean before the first cell |
 | `--cwd <dir>` | current dir | run claude from your solution folder so `CLAUDE.md` / the workspace apply (not with `--sandbox`) |
 | `--timeout s` | prompt's `timeoutSeconds`, else 900 | a cell that overruns is killed and recorded as `timeout` |
-| `--max-turns`, `--max-budget-usd`, `--effort`, `--tools`, `--append-system-prompt-file` | — | passed through to claude |
+| `--max-turns`, `--max-budget-usd`, `--effort`, `--tools`, `--append-system-prompt-file` | — | passed through to claude (every cell) |
+| `--mcp-instructions <file>` | — | appended to the **with-MCP cells only** and recorded as the run's `setup` — the documented Claude Code setup installs `.github/copilot-instructions.md` as `CLAUDE.md`. The leaderboard shows it as its own configuration ("MCP + instructions") |
 | `--permission-mode` | `dontAsk` | nothing may prompt in a benchmark; the MCP tools are allowed explicitly |
 | `--label`, `--notes` | — | stored on every record of the batch |
 | `--no-excerpt` | — | leave the first 400 chars of the answer out of the record |
@@ -367,9 +368,22 @@ For the write prompts, step 3 becomes the sandbox run above (`--tag reference
 --sandbox … --mcp-servers …`), and a Copilot session of a reference prompt must
 start from the same clean sandbox: restore it by hand before each one.
 
+**The server alone vs the documented setup.** With the same tools on both
+sides, the models often leave the MCP server unused — in the first "v3" cells
+neither Sonnet nor Opus made a single MCP call on two of the three daily tasks;
+in "reference v2" they reached for the server mainly because it was the only
+way to build. The documented setup (docs/SETUP.md, Claude Code step 3) installs
+`.github/copilot-instructions.md` as `CLAUDE.md`, which tells the agent to use
+the MCP tools for D365FO objects. Measure that as its own configuration, against
+the same runs without MCP:
+
+```powershell
+npm run cli -- benchmark run all --tag reference,daily --models sonnet,opus --repeat 3 --variants mcp `
+  --mcp-instructions .github\copilot-instructions.md `
+  --sandbox K:\AosService\PackagesLocalDirectory\fm-mcp --mcp-servers d365fo-eval --label "v3 + instructions"
+npm run cli -- benchmark report --label "v3,v3 + instructions" --open   # a comma list compares labels
+```
+
 Open questions to settle there, in order: the `creditsPerUsd` reading against
-the real Copilot billing page; whether a with-MCP cell should also get
-`--append-system-prompt-file .github/copilot-instructions.md` (it changes what
-the model knows about the tools — run it as its own configuration under its own
-label, never mixed into the plain comparison); and which prompts deserve a SysTest-backed oracle through
+the real Copilot billing page; and which prompts deserve a SysTest-backed oracle through
 the eval loop rather than regex checks.

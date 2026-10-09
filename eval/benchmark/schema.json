@@ -16,6 +16,7 @@
     "model": { "type": "string" },
     "modelRequested": { "type": ["string", "null"] },
     "mcp": { "type": "boolean" },
+    "setup": { "type": ["string", "null"], "description": "What a with-MCP cell got besides the server (e.g. instructions: copilot-instructions.md); absent = the server alone." },
     "mcpServers": { "type": "array", "items": { "type": "string" } },
     "serverVersion": { "type": ["string", "null"] },
     "serverGitSha": { "type": ["string", "null"] },

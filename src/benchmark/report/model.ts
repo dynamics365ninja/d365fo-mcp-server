@@ -105,6 +105,8 @@ export interface ConfigKey {
   host: string;
   model: string;
   mcp: boolean;
+  /** With-MCP extras (BenchmarkRun.setup); null = the server alone. */
+  setup: string | null;
 }
 
 /**
@@ -124,10 +126,11 @@ export interface ConfigRow extends ConfigKey {
   repeats: number;
 }
 
-/** What switching the MCP server on did for one model. */
+/** What switching the MCP server on did for one model — one lift per MCP setup, each against the same run without. */
 export interface ModelLift {
   model: string;
   host: string;
+  setup: string | null;
   with: ConfigRow | null;
   without: ConfigRow | null;
 }
@@ -337,7 +340,8 @@ export function wilson(k: number, n: number, z = 1.96): [number, number] | null 
   return [Math.max(0, c - h), Math.min(1, c + h)];
 }
 
-const configKeyOf = (r: BenchmarkRun) => `${r.host}\u0000${r.model}\u0000${r.mcp}`;
+const setupOf = (r: BenchmarkRun) => (r.mcp ? r.setup ?? null : null);
+const configKeyOf = (r: BenchmarkRun) => `${r.host}\u0000${r.model}\u0000${r.mcp}\u0000${setupOf(r) ?? ''}`;
 
 export function configRow(runs: BenchmarkRun[]): ConfigRow | null {
   const q = variantQuality(runs);
@@ -352,6 +356,7 @@ export function configRow(runs: BenchmarkRun[]): ConfigRow | null {
     host: first.host,
     model: first.model,
     mcp: first.mcp,
+    setup: setupOf(first),
     q,
     validCount,
     validCi: q.judged ? wilson(validCount, q.judged) : null,
@@ -365,7 +370,7 @@ export function configRow(runs: BenchmarkRun[]): ConfigRow | null {
 export function rankConfigs(rows: ConfigRow[]): ConfigRow[] {
   const v = (r: ConfigRow) => r.q.validRate ?? -1;
   const c = (r: ConfigRow) => r.q.aicPerValid ?? Number.POSITIVE_INFINITY;
-  return [...rows].sort((a, b) => v(b) - v(a) || c(a) - c(b) || a.model.localeCompare(b.model) || Number(b.mcp) - Number(a.mcp));
+  return [...rows].sort((a, b) => v(b) - v(a) || c(a) - c(b) || a.model.localeCompare(b.model) || Number(b.mcp) - Number(a.mcp) || (a.setup ?? '').localeCompare(b.setup ?? ''));
 }
 
 function scopeOf(id: string, label: string, runs: BenchmarkRun[], promptIds: string[]): Scope {
@@ -376,14 +381,15 @@ function scopeOf(id: string, label: string, runs: BenchmarkRun[], promptIds: str
     if (b) b.push(r); else byKey.set(k, [r]);
   }
   const configs = rankConfigs([...byKey.values()].map(configRow).filter((c): c is ConfigRow => c !== null));
-  const pairs = new Map<string, ModelLift>();
-  for (const c of configs) {
-    const k = `${c.host}\u0000${c.model}`;
-    const lift = pairs.get(k) ?? { model: c.model, host: c.host, with: null, without: null };
-    if (c.mcp) lift.with = c; else lift.without = c;
-    pairs.set(k, lift);
+  // One lift per MCP setup of a model, each against the same run without MCP.
+  const plain = new Map(configs.filter(c => !c.mcp).map(c => [`${c.host}\u0000${c.model}`, c]));
+  const lifts: ModelLift[] = configs
+    .filter(c => c.mcp)
+    .map(c => ({ model: c.model, host: c.host, setup: c.setup, with: c, without: plain.get(`${c.host}\u0000${c.model}`) ?? null }));
+  for (const [k, c] of plain) {
+    if (!lifts.some(l => `${l.host}\u0000${l.model}` === k)) lifts.push({ model: c.model, host: c.host, setup: null, with: null, without: c });
   }
-  const lifts = [...pairs.values()].sort((a, b) => a.model.localeCompare(b.model) || a.host.localeCompare(b.host));
+  lifts.sort((a, b) => a.model.localeCompare(b.model) || a.host.localeCompare(b.host) || (a.setup ?? '').localeCompare(b.setup ?? ''));
   return { id, label, promptIds, runs: runs.length, configs, lifts };
 }
 
@@ -445,10 +451,14 @@ export function buildReportModel(runs: BenchmarkRun[], specs: PromptSpec[], opts
   const hosts = [...new Set(runs.map(r => r.host))].sort();
   const slots = assignModelSlots(models);
   const sortedAll = [...runs].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  // The per-model aggregates (overview, effects, trends) pair "with" and "without"
+  // by model. A with-MCP setup beyond the server alone is a separate series there,
+  // named after it, so it is never pooled into the plain server's numbers.
+  const legacy = (rs: BenchmarkRun[]) => rs.map(r => (r.mcp && r.setup ? { ...r, model: `${r.model} + ${r.setup.split(':')[0]}` } : r));
 
   // Overview: every (host, model, mcp) cell across all prompts.
   const overviewMap = new Map<string, BenchmarkRun[]>();
-  for (const r of runs) {
+  for (const r of legacy(runs)) {
     const k = `${r.host}\u0000${r.model}\u0000${r.mcp}`;
     const b = overviewMap.get(k);
     if (b) b.push(r); else overviewMap.set(k, [r]);
@@ -473,21 +483,23 @@ export function buildReportModel(runs: BenchmarkRun[], specs: PromptSpec[], opts
   const keyMap = new Map<string, ConfigKey>();
   for (const r of runs) {
     const key = configKeyOf(r);
-    if (!keyMap.has(key)) keyMap.set(key, { key, host: r.host, model: r.model, mcp: r.mcp });
+    if (!keyMap.has(key)) keyMap.set(key, { key, host: r.host, model: r.model, mcp: r.mcp, setup: setupOf(r) });
   }
-  const configKeys = [...keyMap.values()].sort((a, b) => a.model.localeCompare(b.model) || a.host.localeCompare(b.host) || Number(b.mcp) - Number(a.mcp));
+  const configKeys = [...keyMap.values()].sort((a, b) =>
+    a.model.localeCompare(b.model) || a.host.localeCompare(b.host) || Number(b.mcp) - Number(a.mcp) || (b.setup ?? '').localeCompare(a.setup ?? ''));
   const perConfig = (rs: BenchmarkRun[]) => configKeys.map(k => configRow(rs.filter(r => configKeyOf(r) === k.key)));
 
   const prompts: PromptSection[] = promptIds.map(promptId => {
     const prs = sortedAll.filter(r => r.promptId === promptId);
+    const lrs = legacy(prs);
     const spec = specById.get(promptId) ?? null;
     const sectionHosts = [...new Set(prs.map(r => r.host))].sort();
-    const groups = groupRuns(prs);
+    const groups = groupRuns(lrs);
     const effects = mcpEffects(groups);
     const hashes = [...new Set(prs.map(r => r.promptHash))];
     const currentHash = spec ? promptHash(spec.prompt) : null;
-    const trends = Object.fromEntries(HEADLINE_METRICS.map(m => [m, timeSeries(prs, m)])) as Record<MetricKey, TimeSeries[]>;
-    const effectTrends = Object.fromEntries(EFFECT_METRICS.map(m => [m, effectSeries(prs, m)])) as Record<MetricKey, EffectSeries[]>;
+    const trends = Object.fromEntries(HEADLINE_METRICS.map(m => [m, timeSeries(lrs, m)])) as Record<MetricKey, TimeSeries[]>;
+    const effectTrends = Object.fromEntries(EFFECT_METRICS.map(m => [m, effectSeries(lrs, m)])) as Record<MetricKey, EffectSeries[]>;
     const checkNames: string[] = [];
     for (const r of prs) for (const c of r.checks) if (!checkNames.includes(c.name)) checkNames.push(c.name);
     const checkMatrix = checkNames.map(name => ({
@@ -511,7 +523,7 @@ export function buildReportModel(runs: BenchmarkRun[], specs: PromptSpec[], opts
       runs: prs,
       groups,
       effects,
-      kpis: promptKpis(groups, effects, prs, sectionHosts),
+      kpis: promptKpis(groups, effects, lrs, sectionHosts),
       modelEffects: modelEffectRows(effects),
       effectTrends,
       trends,

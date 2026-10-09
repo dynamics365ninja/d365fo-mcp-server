@@ -352,6 +352,8 @@ export interface RecordContext {
   spec: PromptSpec;
   modelRequested: string;
   mcp: boolean;
+  /** With-MCP cells: what they got besides the server (see BenchmarkRun.setup). */
+  setup?: string | null;
   serverVersion: string | null;
   serverGitSha: string | null;
   label: string | null;
@@ -465,6 +467,7 @@ export function toBenchmarkRun(o: ClaudeCodeOutcome, ctx: RecordContext): Benchm
     model,
     modelRequested: ctx.modelRequested === model ? null : ctx.modelRequested,
     mcp: ctx.mcp,
+    ...(ctx.mcp && ctx.setup ? { setup: ctx.setup } : {}),
     mcpServers: (o.summary.init?.mcpServers ?? []).filter(s => s.status === 'connected').map(s => s.name),
     serverVersion: ctx.mcp ? ctx.serverVersion : null,
     serverGitSha: ctx.mcp ? ctx.serverGitSha : null,

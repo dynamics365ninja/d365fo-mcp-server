@@ -109,6 +109,8 @@ interface RunOptions extends CommonOptions {
   tools?: string;
   effort?: string;
   appendSystemPromptFile?: string;
+  /** Appended to the system prompt of the with-MCP cells only — the documented setup's instructions file. */
+  mcpInstructions?: string;
   claudeBin?: string;
   prompt?: string;
   excerpt?: boolean;
@@ -452,7 +454,9 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
             maxTurns,
             maxBudgetUsd: maxBudget,
             effort: opts.effort ?? null,
-            appendSystemPromptFile: opts.appendSystemPromptFile ? path.resolve(opts.appendSystemPromptFile) : null,
+            appendSystemPromptFile: mcp && opts.mcpInstructions
+              ? path.resolve(opts.mcpInstructions)
+              : opts.appendSystemPromptFile ? path.resolve(opts.appendSystemPromptFile) : null,
             addDirs: sandbox ? [sandbox.info.packagesRoot] : [],
             timeoutMs: timeoutFor(spec) * 1000,
             claudeBin: opts.claudeBin ?? defaultClaudeBin(),
@@ -479,6 +483,7 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
             spec,
             modelRequested: model,
             mcp,
+            setup: mcp && opts.mcpInstructions ? `instructions: ${path.basename(opts.mcpInstructions)}` : null,
             serverVersion: VERSION,
             serverGitSha: sha,
             label: opts.label ?? null,
@@ -859,7 +864,8 @@ export function registerBenchmarkCommands(program: Command): void {
     .option('--allowed-tools <list>', 'extra --allowedTools entries, comma-separated')
     .option('--tools <list>', 'claude --tools: restrict the built-in set ("" = none, for a pure MCP cell)')
     .option('--effort <level>', 'claude --effort')
-    .option('--append-system-prompt-file <file>', 'claude --append-system-prompt-file (e.g. .github/copilot-instructions.md)')
+    .option('--append-system-prompt-file <file>', 'claude --append-system-prompt-file for every cell')
+    .option('--mcp-instructions <file>', 'append this file to the with-MCP cells only — the documented setup (.github/copilot-instructions.md installed as CLAUDE.md); recorded as the run\'s setup')
     .option('--claude-bin <path>', 'the claude executable (default: claude / claude.cmd on PATH)')
     .option('--no-excerpt', 'do not store the opening of the answer in the record')
     .option('--dry-run', 'print the matrix and each claude command without running anything')

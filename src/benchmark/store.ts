@@ -116,7 +116,8 @@ export function filterRuns(runs: BenchmarkRun[], f: RunFilter): BenchmarkRun[] {
     if (f.prompt && r.promptId !== f.prompt) return false;
     if (f.host && r.host !== f.host) return false;
     if (model && !r.model.toLowerCase().includes(model)) return false;
-    if (f.label && r.label !== f.label) return false;
+    // A comma list compares experiments run under different labels side by side.
+    if (f.label && !f.label.split(',').map(s => s.trim()).includes(r.label ?? '')) return false;
     const t = Date.parse(r.timestamp);
     if (since !== null && t < since) return false;
     if (until !== null && t > until) return false;
