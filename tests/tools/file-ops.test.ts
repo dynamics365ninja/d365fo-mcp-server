@@ -1882,6 +1882,101 @@ describe('modify_d365fo_file', () => {
     expect(writtenContent).not.toContain('ParentControlName');
   });
 
+  describe('modify-property on a control the document defines', () => {
+    const FORM_PATH = 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxForm\\MyForm.xml';
+    const FORM =
+      `<?xml version="1.0" encoding="utf-8"?>\n` +
+      `<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">\n` +
+      `\t<Name>MyForm</Name>\n` +
+      `\t<Design>\n` +
+      `\t\t<Controls xmlns="">\n` +
+      `\t\t\t<AxFormControl xmlns=""\n\t\t\t\ti:type="AxFormMenuFunctionButtonControl">\n` +
+      `\t\t\t\t<Name>PostButton</Name>\n` +
+      `\t\t\t\t<Type>MenuFunctionButton</Type>\n` +
+      `\t\t\t\t<FormControlExtension\n\t\t\t\t\ti:nil="true" />\n` +
+      `\t\t\t\t<MenuItemName>MyPostAction</MenuItemName>\n` +
+      `\t\t\t\t<MenuItemType>Action</MenuItemType>\n` +
+      `\t\t\t</AxFormControl>\n` +
+      `\t\t</Controls>\n` +
+      `\t</Design>\n` +
+      `</AxForm>`;
+
+    async function modify(objectType: string, objectName: string, filePath: string, xml: string, extra: Record<string, unknown>) {
+      const fsMod = await import('fs/promises');
+      (fsMod.readFile as any).mockResolvedValue(xml);
+      const setProperty = vi.fn(async () => ({ success: false, message: 'not supported for forms' }));
+      (ctx as any).bridge = { isReady: true, metadataAvailable: true, setProperty, refreshProvider: vi.fn() };
+      const result = await modifyD365FileTool(
+        req('modify_d365fo_file', { objectType, objectName, operation: 'modify-property', filePath, ...extra }),
+        ctx,
+      );
+      const written = (fsMod.writeFile as any).mock.calls.filter((c: any[]) => String(c[0]).includes(objectName));
+      return { result, setProperty, written };
+    }
+
+    it('sets NeedsRecord on a button of an AxForm, in element order, without the bridge', async () => {
+      const { result, setProperty, written } = await modify('form', 'MyForm', FORM_PATH, FORM, {
+        controlName: 'PostButton', propertyPath: 'NeedsRecord', propertyValue: 'Yes',
+      });
+      expect(result.isError).toBeFalsy();
+      expect(setProperty).not.toHaveBeenCalled();
+      expect(written.length).toBeGreaterThan(0);
+      const xml: string = written.at(-1)[1];
+      expect(xml.replace(/\r\n/g, '\n')).toContain(
+        '<MenuItemType>Action</MenuItemType>\n\t\t\t\t<NeedsRecord>Yes</NeedsRecord>',
+      );
+      expect(result.content[0].text).toContain('PostButton.NeedsRecord');
+    });
+
+    it('accepts the dotted spelling on a form too', async () => {
+      const { result, written } = await modify('form', 'MyForm', FORM_PATH, FORM, {
+        propertyPath: 'PostButton.MultiSelect', propertyValue: 'Yes',
+      });
+      expect(result.isError).toBeFalsy();
+      expect(written.at(-1)[1]).toContain('<MultiSelect>Yes</MultiSelect>');
+    });
+
+    it('refuses an unknown controlName on a form instead of writing a Design property', async () => {
+      const { result, written } = await modify('form', 'MyForm', FORM_PATH, FORM, {
+        controlName: 'NoSuchButton', propertyPath: 'NeedsRecord', propertyValue: 'Yes',
+      });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("no control named 'NoSuchButton'");
+      expect(written).toHaveLength(0);
+    });
+
+    it('writes on a control a form extension ADDS, not in <ControlModifications>', async () => {
+      const ext =
+        `<?xml version="1.0" encoding="utf-8"?>\n` +
+        `<AxFormExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance">\n` +
+        `\t<Name>CustTable.MyExt</Name>\n` +
+        `\t<ControlModifications />\n` +
+        `\t<Controls>\n` +
+        `\t\t<AxFormExtensionControl xmlns="">\n` +
+        `\t\t\t<Name>FormExtensionControl1</Name>\n` +
+        `\t\t\t<FormControl xmlns=""\n\t\t\t\ti:type="AxFormMenuFunctionButtonControl">\n` +
+        `\t\t\t\t<Name>MyExtButton</Name>\n` +
+        `\t\t\t\t<Type>MenuFunctionButton</Type>\n` +
+        `\t\t\t\t<FormControlExtension\n\t\t\t\t\ti:nil="true" />\n` +
+        `\t\t\t</FormControl>\n` +
+        `\t\t\t<Parent>ButtonGroup</Parent>\n` +
+        `\t\t</AxFormExtensionControl>\n` +
+        `\t</Controls>\n` +
+        `</AxFormExtension>`;
+      const { result, written } = await modify(
+        'form-extension', 'CustTable.MyExt',
+        'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxFormExtension\\CustTable.MyExt.xml', ext,
+        { controlName: 'MyExtButton', propertyPath: 'MenuItemName', propertyValue: 'MyAction' },
+      );
+      expect(result.isError).toBeFalsy();
+      const xml: string = written.at(-1)[1];
+      expect(xml.replace(/\r\n/g, '\n')).toContain(
+        '<FormControlExtension\n\t\t\t\t\ti:nil="true" />\n\t\t\t\t<MenuItemName>MyAction</MenuItemName>',
+      );
+      expect(xml).toContain('<ControlModifications />');
+    });
+  });
+
   it('add-control maps controlType to the matching AxForm*Control element (Integer → AxFormIntegerControl)', async () => {
     const fsMod = await import('fs/promises');
     const extXml =

@@ -894,12 +894,16 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
     required: ['propertyPath', 'propertyValue'],
     optional: ['controlName'],
     note:
-      'controlName is for objectType="form-extension" ONLY, and it is what customises a control of ' +
-      'the BASE form: the property goes to <ControlModifications>, the collection shipped extensions ' +
-      'use for exactly this (83 of 416, Visible/Enabled/Caption/HelpText/Label/CountryRegionCodes). ' +
-      'A dotted propertyPath ("MyGrid.Visible") is read the same way. WITHOUT a control the property ' +
-      'is the EXTENSION\'s own — on a form extension that changes the WHOLE FORM, so hiding one ' +
-      'control by omitting controlName hides the form instead. One envelope per control: a second ' +
+      'controlName (or a dotted propertyPath, "MyButton.NeedsRecord") targets a form CONTROL. On ' +
+      'objectType="form", and for a control a form extension ADDS, the property is written on that ' +
+      'control (e.g. MenuItemName, MenuItemType, MultiSelect, NeedsRecord, Visible, Label) in the ' +
+      'element order shipped metadata uses for its type; a property that type never carries is refused, ' +
+      'and an empty value removes it. On objectType="form-extension" a name the extension does not ' +
+      'define is a control of the BASE form: the property goes to <ControlModifications>, the ' +
+      'collection shipped extensions use for exactly this (83 of 416, Visible/Enabled/Caption/' +
+      'HelpText/Label/CountryRegionCodes). WITHOUT a control the property is the form\'s Design ' +
+      'property, or the EXTENSION\'s own — on a form extension that changes the WHOLE FORM, so hiding ' +
+      'one control by omitting controlName hides the form instead. One envelope per control: a second ' +
       'property joins the existing one. Idempotent. ' +
       'data-entity: label, developerDocumentation, primaryKey, isPublic, publicEntityName, ' +
       'publicCollectionName, dataManagementEnabled, dataManagementStagingTable, entityCategory, ' +

@@ -26,6 +26,8 @@ import { buildSuppressionXml } from '../../knowledge/bpMonikers/index.js';
 import { upsertAxTableProperty, upsertAxTableSubscriberAccessLevel, AX_TABLE_NON_EXISTENT_PROPERTIES } from '../../utils/axTablePropertyOrder.js';
 import { describeSubscriberAccessLevel, subscriberAccessLevelValue } from '../../utils/subscriberAccessLevel.js';
 import { upsertAxFormDesignProperty } from '../../utils/axFormDesignProperties.js';
+import { upsertFormControlProperty } from '../../utils/formControlPropertyXml.js';
+import { resolveControlPropertyTarget } from '../../utils/formExtensionControlModifications.js';
 import { buildAxDataEntityViewFieldXml } from '../xml/dataEntityViewExtensionXml.js';
 import {
   upsertDataEntityProperty, addDataEntityDataSource, addDataEntityMappedField,
@@ -1354,6 +1356,62 @@ export const directXmlDeleteAction = serializedOnFile(async (
  * in formControlRemoval.ts — pure and unit-tested, because a `<Name>` substring
  * replace here would cut the wrong element and report a ✅ for it.
  */
+/**
+ * modify-property on a control the FILE ITSELF defines: a control of the agent's
+ * own form, or one a form extension ADDS. The bridge has no modify-property for
+ * forms and the Design writer stops at <Design>, so without this a button's
+ * MenuItemName or NeedsRecord could only be set by rewriting the whole form. The
+ * property becomes a child of that control, in the order shipped metadata uses
+ * for its type — see formControlPropertyXml.ts.
+ *
+ * Returns null when the request is not for such a control, so the caller carries
+ * on: a form extension then means a BASE-form control (<ControlModifications>),
+ * and a form with a dotted path that names no control ("Design.Caption") goes to
+ * the Design writer, as before. A form with an explicit controlName it does not
+ * define is refused instead — writing a Design property there would be a ✅ on
+ * the wrong element.
+ */
+export const directXmlModifyControlProperty = serializedOnFile(async (
+  filePath: string,
+  objectType: string,
+  objectName: string,
+  propertyPath: string,
+  propertyValue: string,
+  controlName: string | undefined,
+): Promise<{ success: boolean; message: string } | null> => {
+  if (objectType !== 'form' && objectType !== 'form-extension') return null;
+  const target = resolveControlPropertyTarget(propertyPath, controlName);
+  if (!target) return null;
+
+  const content = (await fs.readFile(filePath, 'utf-8')).replace(/^\uFEFF/, '');
+  const outcome = upsertFormControlProperty(content, target.controlName, target.propertyName, propertyValue);
+  if (!outcome) {
+    if (objectType === 'form' && controlName) {
+      return {
+        success: false,
+        message:
+          `Form ${objectName} has no control named '${controlName}' — nothing was written. Read the form ` +
+          `with get_object_info to see its control names. Without controlName, modify-property on a form ` +
+          `sets a <Design> property (Caption, Style, …).`,
+      };
+    }
+    return null;
+  }
+  if (!outcome.ok) {
+    return {
+      success: false,
+      message: `Could not modify '${target.controlName}.${target.propertyName}' on ${objectName}: ${outcome.reason}`,
+    };
+  }
+  if (outcome.changed) await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
+  return {
+    success: true,
+    message:
+      `${outcome.changed ? '✅' : 'ℹ️'} ${outcome.detail} on control '${target.controlName}'` +
+      `${outcome.changed ? '' : ' — nothing written'}. File: ${filePath}`,
+  };
+});
+
 export const directXmlRemoveControl = serializedOnFile(async (
   filePath: string,
   controlName: string,

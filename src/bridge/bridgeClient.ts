@@ -1020,7 +1020,11 @@ export class BridgeClient extends EventEmitter {
 
     throw new Error(
       `Bridge executable not found. Searched:\n${candidates.map(c => `  - ${c}`).join('\n')}\n` +
-      `Build it with: cd bridge/D365MetadataBridge && dotnet build -c Release`
+      // Absolute, so it runs from any directory; one invocation, because Windows
+      // PowerShell 5.1 rejects `&&`. An npm install needs `-o` outside the
+      // package, which only the CLI knows — `doctor` prints that form.
+      `Build it with: dotnet build "${path.resolve(__dirname, '../../bridge/D365MetadataBridge/D365MetadataBridge.csproj')}" -c Release\n` +
+      '  (npm install: run `d365fo-mcp doctor` for the command that builds outside the package.)'
     );
   }
 

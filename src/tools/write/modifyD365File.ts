@@ -109,7 +109,7 @@ import {
   directXmlAddDiagnosticSuppression,
   directXmlAddModuleReference,
   directXmlRemoveModuleReference,
-  directXmlEnsureRelationProperties,
+  directXmlEnsureRelationProperties, directXmlModifyControlProperty,
 } from './directXmlWriters.js';
 import { addReportParameter, refreshReportDataset } from './reportDesignXml.js';
 
@@ -2578,6 +2578,8 @@ export async function modifyD365FileTool(
       }
       case 'modify-property': {
         if (args.propertyPath && args.propertyValue !== undefined) {
+          const own = await directXmlModifyControlProperty(actualFilePath, objectType, objectName, args.propertyPath, String(args.propertyValue), (args as { controlName?: string }).controlName);
+          if (own) { bridgeResult = viaXmlFallback(own); break; } // a control this file defines (own form, or one an extension adds)
           // ── Form extension targeting a BASE-FORM control ─────────────────────
           // Must run BEFORE the bridge: a control-level request handed to the
           // generic property writer lands in the extension's ROOT

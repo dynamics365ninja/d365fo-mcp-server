@@ -58,6 +58,8 @@ export interface ElementOrderViolation {
    *            which in practice means the type does not have that property and
    *            the platform will ignore it. Reported separately because "never
    *            observed" is weaker evidence than "observed in the other order".
+   *            Never reported for an EMPTY element (`<Items />`): it carries no
+   *            value for the platform to ignore, and Microsoft ships some (#1093).
    */
   kind: 'order' | 'unknown';
   /** 1-based line of `element` in the document, for a clickable message. */
@@ -77,11 +79,20 @@ const ITYPE = /i:type="([^"]+)"/;
  */
 const CONTROL_ELEMENTS = new Set(['AxFormControl', 'FormControl']);
 
+interface Child {
+  name: string;
+  index: number;
+  /** No text and no child elements: `<Items />` or `<Items></Items>`. */
+  empty: boolean;
+}
+
 interface Frame {
   tag: string;
   itype: string | null;
   /** Direct children, in document order, with the offset each was seen at. */
-  children: Array<{ name: string; index: number }>;
+  children: Child[];
+  /** This element's own entry in its parent's `children`, to record emptiness on close. */
+  entry?: Child;
   /** Offset just past this element's opening tag, for reading its text. */
   contentStart: number;
   /** The control's own `<Name>` text, filled in when that child closes. */
@@ -146,6 +157,7 @@ export function findControlElementOrderViolations(xml: string): ElementOrderViol
       const top = stack[stack.length - 1];
       if (!top || top.tag !== closing) continue;
       stack.pop();
+      if (top.entry) top.entry.empty = xml.slice(top.contentStart, m.index).trim() === '';
       const parent = stack[stack.length - 1];
       if (top.tag === 'Name' && parent && CONTROL_ELEMENTS.has(parent.tag) && parent.nameValue === undefined) {
         parent.nameValue = xml.slice(top.contentStart, m.index).trim();
@@ -156,11 +168,13 @@ export function findControlElementOrderViolations(xml: string): ElementOrderViol
 
     if (!starting) continue; // comment / CDATA / PI / doctype — consumed whole
 
-    if (stack.length > 0) stack[stack.length - 1].children.push({ name: starting, index: m.index });
+    // Self-closing is empty for good; an open tag is decided when it closes.
+    const entry: Child = { name: starting, index: m.index, empty: isSelfClosing };
+    if (stack.length > 0) stack[stack.length - 1].children.push(entry);
 
     if (!isSelfClosing) {
       const itype = CONTROL_ELEMENTS.has(starting) ? (ITYPE.exec(attrs)?.[1] ?? null) : null;
-      stack.push({ tag: starting, itype, children: [], contentStart: m.index + m[0].length });
+      stack.push({ tag: starting, itype, children: [], contentStart: m.index + m[0].length, entry });
     }
   }
 
@@ -184,6 +198,10 @@ function checkFrame(
   for (const child of frame.children) {
     const r = rank.get(child.name);
     if (r === undefined) {
+      // An empty element carries nothing the platform could ignore. Microsoft's
+      // own CustInvoiceJournal.ApplicationSuite_Extension writes `<Items />` on a
+      // string control (#1093); reporting it would only be noise.
+      if (child.empty) continue;
       out.push({
         controlType: frame.itype!,
         controlName,

@@ -45,8 +45,35 @@ those are called out explicitly below.
   regex checks); AIC pricing is `eval/benchmark/credits.json`, and every credit
   figure carries whether the host billed it or it was derived. Guide:
   [docs/BENCHMARK.md](docs/BENCHMARK.md).
+- **`modify-property` sets properties on a form's own controls.** With
+  `controlName` (or a dotted `propertyPath`, `"PostButton.NeedsRecord"`), it now
+  reaches a control of an `objectType="form"` and a control a form extension
+  ADDS — before, it stopped at `<Design>` and at base-form controls through
+  `<ControlModifications>`, so setting MenuItemName, MultiSelect or NeedsRecord
+  on such a button meant rewriting the whole form XML. The property is written
+  on that control in the element order shipped metadata uses for its type (the
+  census in `formControlElementOrder.generated.ts`), since the deserializer
+  drops an out-of-order element silently (#979); a property the type never
+  carries (MenuItemName on a plain Button) is refused, an empty value removes
+  the element, and an ambiguous or unknown control name writes nothing.
 
 ### Fixed
+- **The form element-order check no longer reports an empty element as unknown
+  (#1093).** Microsoft's own `CustInvoiceJournal.ApplicationSuite_Extension`
+  (ApplicationSuite 10.36) writes an empty `<Items />` on a string control, so
+  the shipped-metadata census failed on that VM, and a form write carrying the
+  same element got a warning about a value the platform would ignore. An empty
+  element carries no value, so it is no longer an `unknown` finding; one with
+  content still is, and the blocking `order` check is unchanged.
+- **The bridge build command the CLI prints failed in Windows PowerShell 5.1.**
+  `doctor` and `update` suggested `cd "…\D365MetadataBridge" && dotnet build -c
+  Release`, and the bridge's "executable not found" error a relative
+  `cd … && …`. PowerShell 5.1 — the default shell on D365FO VMs — rejects `&&`
+  as a statement separator, so the suggested fix failed exactly where it is
+  printed. Both now name the project in a single `dotnet build` invocation
+  (`dotnet build "<repo>\bridge\D365MetadataBridge\D365MetadataBridge.csproj"
+  -c Release`, plus `-o` for an npm install), which runs from any directory in
+  any shell.
 - **Creates into a model whose package has a different name reported failure
   (#1086).** The C# bridge built the reported path as `{Model}\{Model}\Ax…`, so
   for package `Enhancements` holding model `Sales Integration` it named a folder

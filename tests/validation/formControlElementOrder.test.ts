@@ -115,6 +115,45 @@ describe('findControlElementOrderViolations', () => {
     expect(formatElementOrderViolations(v)).toContain('appears on no AxFormTabPageControl');
   });
 
+  it('does not report an EMPTY element no shipped control of that type carries (#1093)', () => {
+    // Microsoft ships exactly this in CustInvoiceJournal.ApplicationSuite_Extension
+    // (ApplicationSuite 10.36): an empty <Items /> on a string control in a form
+    // extension. It carries no value, so there is nothing for the platform to ignore.
+    const ext =
+      `<AxFormExtension><Controls><AxFormExtensionControl xmlns="">` +
+      `<Name>FormExtensionControliys41b0e1</Name>` +
+      `<FormControl xmlns="" i:type="AxFormStringControl">` +
+      `<Name>CustInvoiceJour_TaxRegistrationNumber</Name><AllowEdit>No</AllowEdit>` +
+      `<AutoDeclaration>Yes</AutoDeclaration><FilterExpression>%1</FilterExpression>` +
+      `<Type>String</Type><FormControlExtension i:nil="true" />` +
+      `<DataMethod>CustInvoiceJourApplicationSuite_Extension.taxRegistrationNumber</DataMethod>` +
+      `<DataSource>CustInvoiceJour</DataSource><Items />` +
+      `</FormControl><Parent>MainGrid</Parent></AxFormExtensionControl></Controls></AxFormExtension>`;
+    expect(findControlElementOrderViolations(ext)).toEqual([]);
+
+    const spelledOut =
+      `<AxForm><Design><Controls><AxFormControl i:type="AxFormStringControl">` +
+      `<Name>S</Name><Type>String</Type><Items>\n  </Items>` +
+      `</AxFormControl></Controls></Design></AxForm>`;
+    expect(findControlElementOrderViolations(spelledOut)).toEqual([]);
+  });
+
+  it('still reports that element once it carries something', () => {
+    const xml =
+      `<AxForm><Design><Controls><AxFormControl i:type="AxFormStringControl">` +
+      `<Name>S</Name><Type>String</Type><Items><AxFormComboBoxItem><Text>A</Text></AxFormComboBoxItem></Items>` +
+      `</AxFormControl></Controls></Design></AxForm>`;
+    const v = findControlElementOrderViolations(xml);
+    expect(v).toHaveLength(1);
+    expect(v[0]).toMatchObject({ kind: 'unknown', element: 'Items', controlName: 'S' });
+
+    const tabPage =
+      `<AxForm><Design><Controls><AxFormControl i:type="AxFormTabPageControl">` +
+      `<Name>P</Name><Type>TabPage</Type><FrameType>None</FrameType>` +
+      `</AxFormControl></Controls></Design></AxForm>`;
+    expect(findControlElementOrderViolations(tabPage).map(f => f.element)).toEqual(['FrameType']);
+  });
+
   it('does not read markup out of an XML comment', () => {
     // The Workspace template ships a commented-out control example; a scanner
     // that matched inside comments opened a frame that never closed and blamed
