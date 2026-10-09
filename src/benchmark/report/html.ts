@@ -387,6 +387,8 @@ function counter(value: number, text: string, dec: number, pre = '', suf = ''): 
 
 const pctOf = (rate: number | null) => (rate === null ? '—' : `${Math.round(rate * 100)} %`);
 const num1 = (v: number | null) => (v === null ? '—' : v >= 10 ? Math.round(v).toLocaleString('en-US') : v.toFixed(1));
+/** AIC per valid output; null means no run of that side was valid, so no price can be put on a result. */
+const perValidOf = (v: number | null) => (v === null ? 'no valid run' : formatMetric('aic', v));
 
 /** Which side wins on a metric; null on a tie or when a side is missing. */
 function winner(withV: number | null, withoutV: number | null, better: Better): 'with' | 'without' | null {
@@ -428,6 +430,7 @@ interface VerdictMetric {
 
 const VERDICT_METRICS: VerdictMetric[] = [
   { key: 'valid', label: 'Valid output', better: 'higher', get: q => q.validRate, show: pctOf, mode: 'pp' },
+  { key: 'perValid', label: 'AI Credits per valid output', better: 'lower', get: q => q.aicPerValid, show: perValidOf, mode: 'pct' },
   { key: 'time', label: 'Run time (median)', better: 'lower', get: q => q.timeMs, show: v => formatMetric('durationMs', v), mode: 'pct' },
   { key: 'aic', label: 'Cost, AI Credits (median)', better: 'lower', get: q => q.aic, show: v => formatMetric('aic', v), mode: 'pct' },
   {
@@ -511,7 +514,9 @@ function verdictCard(metric: VerdictMetric, vs: Versus, lead: boolean, effect?: 
     ? `<div class="tagline">${Math.round((w ?? 0) * vs.with.judged)} of ${vs.with.judged} runs with MCP · ${Math.round((wo ?? 0) * vs.without.judged)} of ${vs.without.judged} without · builds clean, well-formed XML, no new BP errors</div>`
     : metric.key === 'rework'
       ? '<div class="tagline">tool errors + failed builds + rewrites of the same object, mean per run</div>'
-      : '';
+      : metric.key === 'perValid'
+        ? '<div class="tagline">AI Credits of every built run ÷ the valid ones — broken output is cheap per run, dear per result</div>'
+        : '';
   return `<div class="card vcard reveal${lead ? ' lead' : ''}${tone ? ` ${tone}` : ''}">
     <div class="k">${esc(metric.label)}</div>
     <div class="big">${big}</div>
@@ -540,7 +545,11 @@ export function verdictSentence(vs: Versus, effects: { time?: PromptEffect | nul
   const cost = rel(w.aic, wo.aic, ['more', 'less'], effects.aic);
   const perPrompt = effects.time || effects.aic ? ' (median per prompt)' : '';
   if (time) parts.push(`it took ${time}`);
-  if (cost) parts.push(`it cost ${cost}${perPrompt}`);
+  if (cost) parts.push(`it cost ${cost} per run${perPrompt}`);
+  if (w.aicPerValid !== null && (wo.aicPerValid !== null || (wo.judged > 0 && wo.validRate === 0))) {
+    const other = wo.aicPerValid === null ? 'no valid run to price without' : `${formatMetric('aic', wo.aicPerValid)} AIC without`;
+    parts.push(`${formatMetric('aic', w.aicPerValid)} AIC per valid output against ${other}`);
+  }
   const rw = (q: VariantQuality) => (q.toolErrors ?? 0) + (q.buildFailures ?? 0) + (q.rewrites ?? 0);
   if (w.toolErrors !== null && wo.toolErrors !== null) {
     parts.push(`and needed ${num1(rw(w))} repair step${rw(w) === 1 ? '' : 's'} per run against ${num1(rw(wo))}`);
@@ -579,10 +588,11 @@ function scoreboard(m: ReportModel): string {
       ${duoCell(g(w, q => q.checksMean), g(wo, q => q.checksMean), 'higher', v => (v === null ? '—' : `${Math.round(v)} %`))}
       ${duoCell(g(w, q => q.timeMs), g(wo, q => q.timeMs), 'lower', v => formatMetric('durationMs', v))}
       ${duoCell(g(w, q => q.aic), g(wo, q => q.aic), 'lower', v => formatMetric('aic', v))}
+      ${duoCell(g(w, q => q.aicPerValid), g(wo, q => q.aicPerValid), 'lower', perValidOf)}
       ${duoCell(g(w, rework), g(wo, rework), 'lower', num1)}
     </tr>`;
   });
-  return `<div class="card reveal scroll"><table class="board"><thead><tr><th>prompt</th><th>valid output</th><th>checks</th><th>run time</th><th>AIC</th><th>rework / run</th></tr></thead>
+  return `<div class="card reveal scroll"><table class="board"><thead><tr><th>prompt</th><th>valid output</th><th>checks</th><th>run time</th><th>AIC / run</th><th>AIC / valid output</th><th>rework / run</th></tr></thead>
   <tbody>${rows.join('')}</tbody></table>
   <p class="tagline"><span class="pill mcp">with MCP</span> <span class="pill plain">without</span> · ✓ marks the better side · valid output = builds clean, well-formed XML, no new BP errors</p></div>`;
 }
@@ -597,6 +607,7 @@ const VS_ROWS: VsRow[] = [
   { label: 'Checks passed', better: 'higher', get: q => (q.checksMean === null ? null : q.checksMean / 100), show: pctOf, mode: 'pp' },
   { label: 'Run time', better: 'lower', get: q => q.timeMs, show: v => formatMetric('durationMs', v), mode: 'pct' },
   { label: 'AI Credits', better: 'lower', get: q => q.aic, show: v => formatMetric('aic', v), mode: 'pct' },
+  { label: 'AI Credits per valid output', key: true, better: 'lower', get: q => q.aicPerValid, show: perValidOf, mode: 'pct' },
   { label: 'Round trips', better: 'lower', get: q => q.turns, show: v => formatMetric('requests', v), mode: 'pct' },
   { label: 'Tool errors / run', better: 'lower', get: q => q.toolErrors, show: num1, mode: 'abs' },
   { label: '  of them MCP', better: 'lower', get: q => q.mcpToolErrors, show: num1, mode: 'abs' },

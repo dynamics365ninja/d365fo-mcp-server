@@ -1,0 +1,192 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T13-45__ref-overdue-batch-ssrs__claude-code__claude-sonnet-5-5__mcp__dbff79",
+  "timestamp": "2026-10-09T13:45:30.525Z",
+  "promptId": "ref-overdue-batch-ssrs",
+  "promptHash": "9e347753ed7b",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "mcpServers": [
+    "d365fo-eval"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "c61ca5f1",
+  "label": "reference v2",
+  "durationMs": 442870,
+  "apiMs": 300164,
+  "requests": 72,
+  "toolCalls": 71,
+  "mcpToolCalls": 35,
+  "tools": {
+    "PowerShell": 2,
+    "ToolSearch": 1,
+    "mcp__d365fo-eval__get_workspace_info": 1,
+    "Glob": 2,
+    "mcp__d365fo-eval__get_knowledge": 4,
+    "Read": 10,
+    "mcp__d365fo-eval__labels": 1,
+    "Write": 1,
+    "mcp__d365fo-eval__generate_object": 1,
+    "Edit": 14,
+    "Grep": 4,
+    "mcp__d365fo-eval__d365fo_file": 19,
+    "Bash": 2,
+    "mcp__d365fo-eval__build_d365fo_project": 9
+  },
+  "inputTokens": 3037837,
+  "cachedTokens": 2930325,
+  "outputTokens": 35129,
+  "hostCost": {
+    "value": 1.3672549999999999,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 136.7255,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches ConCustOverdueSnapshotService",
+      "passed": true
+    },
+    {
+      "name": "matches ConCustOverdueReport",
+      "passed": true
+    },
+    {
+      "name": "file snapshot table",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation data contract",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation service over CustTransOpen",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation controller with main",
+      "passed": true
+    },
+    {
+      "name": "file action menu item for the batch job",
+      "passed": true
+    },
+    {
+      "name": "file TempDB report table",
+      "passed": true
+    },
+    {
+      "name": "file report data contract",
+      "passed": true
+    },
+    {
+      "name": "file report data provider",
+      "passed": true
+    },
+    {
+      "name": "file report with a DP dataset and a design",
+      "passed": true
+    },
+    {
+      "name": "file output menu item for the report",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 2343,
+  "resultExcerpt": "The full build now has zero errors and one warning. I could not delete the leftover `*.backup-*` files the edit tool wrote into the model folder, because shell access was denied.\n\nI created or changed these objects in `fm-mcp`:\n\n- `ConCustOverdueSnapshot` (table): the five fields, the unique index `AccountAsOfIdx` on AccountNum + AsOfDate, and a relation to CustTable.\n- `ConCustOverdueSnapshotCont",
+  "notes": "2 permission denial(s): PowerShell, Bash",
+  "evidence": {
+    "sessionId": "7fb6697b-e293-4f3a-87a0-b9c950374d56",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxClass/ConCustOverdueReportContract.xml",
+    "fm-mcp/AxClass/ConCustOverdueReportDP.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotContract.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotController.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotService.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotService.xml.backup-2026-10-09T13-48-03-163",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotService.xml.backup-2026-10-09T13-48-04-307",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotService.xml.backup-2026-10-09T13-49-06-947",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotService.xml.backup-2026-10-09T13-49-37-937",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotService.xml.backup-2026-10-09T13-50-25-601",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotService.xml.backup-2026-10-09T13-50-50-847",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotService.xml.backup-2026-10-09T13-51-24-669",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotService.xml.backup-2026-10-09T13-51-37-961",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotService.xml.backup-2026-10-09T13-51-54-391",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotService.xml.backup-2026-10-09T13-52-12-513",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotService.xml.backup-2026-10-09T13-52-33-230",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxMenuItemAction/ConCustOverdueSnapshot.xml",
+    "fm-mcp/AxMenuItemOutput/ConCustOverdueReport.xml",
+    "fm-mcp/AxReport/ConCustOverdueReport.xml",
+    "fm-mcp/AxTable/ConCustOverdueReportTmp.xml",
+    "fm-mcp/AxTable/ConCustOverdueSnapshot.xml",
+    "fm-mcp/AxTable/ConCustOverdueSnapshot.xml.backup-2026-10-09T13-47-15-815",
+    "fm-mcp/AxTable/ConCustOverdueSnapshot.xml.backup-2026-10-09T13-47-29-254"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 13324
+  },
+  "rework": {
+    "toolErrors": 11,
+    "mcpToolErrors": 8,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "mcp__d365fo-eval__labels": 1,
+      "Edit": 1,
+      "mcp__d365fo-eval__d365fo_file": 1,
+      "Bash": 1,
+      "mcp__d365fo-eval__build_d365fo_project": 6
+    },
+    "buildAttempts": 9,
+    "buildFailures": 6,
+    "writeOps": 35,
+    "rewrites": 8
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 21,
+      "findings": [
+        "Warning BPErrorMenuItemNotCoveredByPrivilege MenuItemOutput/ConCustOverdueReport",
+        "Warning BPErrorMenuItemNotCoveredByPrivilege MenuItemAction/ConCustOverdueSnapshot",
+        "Warning BPErrorEDTNotMigrated Table/ConCustOverdueSnapshot/TableFieldString/AccountNum",
+        "Warning BPErrorTableFieldNotDefinedUsingType Table/ConCustOverdueSnapshot/TableFieldInt/OpenTransCount",
+        "Warning BPErrorTablePrimaryKeyEditable Table/ConCustOverdueSnapshot/TableIndex/AccountAsOfIdx/TableIndexField/AccountNum",
+        "Warning BPErrorTablePrimaryKeyEditable Table/ConCustOverdueSnapshot/TableIndex/AccountAsOfIdx/TableIndexField/AsOfDate",
+        "Warning BPErrorLabelIsText Table/ConCustOverdueSnapshot",
+        "Warning BPErrorLabelIsText Table/ConCustOverdueSnapshot/TableFieldDate/AsOfDate",
+        "Warning BPErrorLabelIsText Table/ConCustOverdueSnapshot/TableFieldReal/OverdueAmountMST",
+        "Warning BPErrorLabelIsText Table/ConCustOverdueSnapshot/TableFieldDate/OldestDueDate",
+        "Warning BPErrorLabelIsText Table/ConCustOverdueSnapshot/TableFieldInt/OpenTransCount",
+        "Warning BPErrorDeveloperDocumentationNotDefined Table/ConCustOverdueSnapshot",
+        "BestPractices Warning: AxTable dynamics://Table/ConCustOverdueSnapshot: EDT relation found in field AccountNum of table ConCustOverdueSnapshot. It should be mig",
+        "Warning BPErrorEDTNotMigrated Table/ConCustOverdueReportTmp/TableFieldString/AccountNum",
+        "Warning BPErrorLabelIsText Table/ConCustOverdueReportTmp"
+      ]
+    }
+  }
+}

@@ -167,6 +167,19 @@ describe('verdict: valid output and rework', () => {
     expect(v.without!.rewrites).toBe(2);
     expect(v.with!.timeMs).toBe(300000);
     expect(v.without!.bpErrors).toBe(1);
+    // 3 × 80 AIC for 3 valid results; without, 180 AIC bought none.
+    expect(v.with!.aicPerValid).toBe(80);
+    expect(v.without!.aicPerValid).toBeNull();
+  });
+
+  it('prices a valid result from every judged run, so cheap broken runs do not look cheap', () => {
+    const one = sandboxRuns.map(r => (!r.mcp && r.timestamp.includes('T10') ? { ...r, quality: { xmlInvalid: [], bp: null } } : r));
+    const vs = buildReportModel(one, [], { credits: DEFAULT_CREDITS }).versus;
+    expect(vs.without!.validRate).toBeCloseTo(1 / 3, 6);
+    expect(vs.without!.aic).toBe(60);
+    expect(vs.without!.aicPerValid).toBe(180);
+    const html = renderHtml(buildReportModel(one, [], { credits: DEFAULT_CREDITS }));
+    expect(html).toContain('80.00 AIC per valid output against 180 AIC without');
   });
 
   it('lists the checks per variant and the recurring errors with positions stripped', () => {
@@ -181,7 +194,8 @@ describe('verdict: valid output and rework', () => {
   it('opens with a verdict that says it in a sentence, and marks the better side', () => {
     const html = renderHtml(model);
     expect(html).toContain('With MCP, 3 of 3 runs delivered valid output, against 0 of 3 without');
-    expect(html).toMatch(/it took 50 % longer, it cost 33 % more/);
+    expect(html).toMatch(/it took 50 % longer, it cost 33 % more per run \(median per prompt\), 80\.00 AIC per valid output against no valid run to price without/);
+    expect(html).toContain('AI Credits per valid output');
     expect(html.indexOf('class="verdict"')).toBeLessThan(html.indexOf('<section class="prompt"'));
     expect(html).toContain('class="card vcard reveal lead good"');
     expect(html).toContain('No build error, malformed file or new BP error in any run.');
@@ -206,7 +220,7 @@ describe('verdict across prompts', () => {
     const verdict = html.slice(html.indexOf('class="verdict"'), html.indexOf('class="sentence'));
     expect(verdict).toContain('median of 2 per-prompt effects');
     expect(verdict).toMatch(/data-to="35" [^>]*>\+35 %/);
-    expect(html).toMatch(/it cost 35 % more \(median per prompt\)/);
+    expect(html).toMatch(/it cost 35 % more per run \(median per prompt\)/);
   });
 });
 

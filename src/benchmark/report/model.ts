@@ -62,6 +62,12 @@ export interface VariantQuality {
   checksMean: number | null;
   timeMs: number | null;
   aic: number | null;
+  /**
+   * Total AIC of the judged runs divided by the valid ones among them — what one
+   * usable result cost. A run that stops early with broken output is cheap per
+   * run and dear per result. Null when nothing was judged or nothing was valid.
+   */
+  aicPerValid: number | null;
   turns: number | null;
   outputTokens: number | null;
   /** Mean per run, over runs that carry a rework trace. */
@@ -230,6 +236,9 @@ export function isValidOutput(r: BenchmarkRun): boolean | null {
 export function variantQuality(runs: BenchmarkRun[]): VariantQuality | null {
   if (runs.length === 0) return null;
   const judged = runs.map(isValidOutput).filter((v): v is boolean => v !== null);
+  const judgedRuns = runs.filter(r => isValidOutput(r) !== null);
+  const validCount = judged.filter(Boolean).length;
+  const judgedAic = judgedRuns.every(r => r.aic) ? judgedRuns.reduce((s, r) => s + r.aic!.value, 0) : null;
   const built = runs.filter(r => r.build !== undefined);
   const withRework = runs.filter(r => r.rework);
   const withBp = runs.filter(r => r.quality?.bp);
@@ -242,6 +251,7 @@ export function variantQuality(runs: BenchmarkRun[]): VariantQuality | null {
     checksMean: meanOf(runs.map(r => (r.score === null ? null : r.score * 100))),
     timeMs: med(runs.map(r => r.durationMs)),
     aic: med(runs.map(r => r.aic?.value ?? null)),
+    aicPerValid: judgedAic !== null && validCount > 0 ? judgedAic / validCount : null,
     turns: med(runs.map(r => r.requests)),
     outputTokens: med(runs.map(r => r.outputTokens)),
     toolErrors: withRework.length ? meanOf(withRework.map(r => r.rework!.toolErrors)) : null,

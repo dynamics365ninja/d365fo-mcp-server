@@ -1,0 +1,155 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T14-17__ref-overdue-batch-ssrs__claude-code__claude-sonnet-5-5__plain__16cf9d",
+  "timestamp": "2026-10-09T14:17:48.059Z",
+  "promptId": "ref-overdue-batch-ssrs",
+  "promptHash": "9e347753ed7b",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "reference v2",
+  "durationMs": 254574,
+  "apiMs": 184652,
+  "requests": 39,
+  "toolCalls": 38,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 3,
+    "Glob": 5,
+    "Read": 7,
+    "Bash": 8,
+    "Grep": 2,
+    "Write": 11,
+    "Edit": 2
+  },
+  "inputTokens": 1338149,
+  "cachedTokens": 1287251,
+  "outputTokens": 26435,
+  "hostCost": {
+    "value": 0.7252882,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 72.52882,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 0.8666666666666667,
+  "checks": [
+    {
+      "name": "matches ConCustOverdueSnapshotService",
+      "passed": true
+    },
+    {
+      "name": "matches ConCustOverdueReport",
+      "passed": true
+    },
+    {
+      "name": "file snapshot table",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation data contract",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation service over CustTransOpen",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation controller with main",
+      "passed": true
+    },
+    {
+      "name": "file action menu item for the batch job",
+      "passed": true
+    },
+    {
+      "name": "file TempDB report table",
+      "passed": true
+    },
+    {
+      "name": "file report data contract",
+      "passed": true
+    },
+    {
+      "name": "file report data provider",
+      "passed": true
+    },
+    {
+      "name": "file report with a DP dataset and a design",
+      "passed": true
+    },
+    {
+      "name": "file output menu item for the report",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": false
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": false
+    }
+  ],
+  "resultChars": 2200,
+  "resultExcerpt": "I wrote all the objects, but I couldn't run the xppc build, so nothing has been compiled and the zero-errors requirement is unverified. The shell tools were denied in this session. Please run the full xppc build on `fm-mcp`, or give me shell permission and I'll run it and fix whatever it reports.\n\n**Objects created** (all in `K:\\AosService\\PackagesLocalDirectory\\fm-mcp\\fm-mcp`):\n- `AxLabelFile\\Lab",
+  "notes": "4 permission denial(s): PowerShell, Bash, Bash, PowerShell",
+  "evidence": {
+    "sessionId": "deb0518d-28b7-4c34-bc77-750b8321980d",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxClass/ConCustOverdueReportContract.xml",
+    "fm-mcp/AxClass/ConCustOverdueReportDP.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotContract.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotController.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotService.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxMenuItemAction/ConCustOverdueSnapshot.xml",
+    "fm-mcp/AxMenuItemOutput/ConCustOverdueReport.xml",
+    "fm-mcp/AxReport/ConCustOverdueReport.xml",
+    "fm-mcp/AxTable/ConCustOverdueReportTmp.xml",
+    "fm-mcp/AxTable/ConCustOverdueSnapshot.xml"
+  ],
+  "build": {
+    "ok": false,
+    "errorCount": 13,
+    "errors": [
+      "Compile Fatal Error: Class Method dynamics://Class/ConCustOverdueSnapshotService/Method/process: [(31,24),(31,55)]: Illegal table specification.",
+      "Metadata Error: AxReport/ConCustOverdueReport/DefaultParameterGroup/Parameters/ReportParameterBases/AX_CompanyName/Expression: ConCustOverdueReport Report has invalid expression for property Title=Labels!@fm-mcp:ConCustOverdueReport. Unidentifiable substring 'mcp' in expression. The parser reported ",
+      "Metadata Error: AxReport/ConCustOverdueReport/DefaultParameterGroup/Parameters/ReportParameterBases/AX_CompanyName/Expression: ConCustOverdueReport Report has invalid expression for property Title=Labels!@fm-mcp:ConCustOverdueReport. Label @fm does not exist in the resx file.",
+      "Metadata Error: AxReport/ConCustOverdueReport/DefaultParameterGroup/Parameters/ReportParameterBases/AX_CompanyName/Expression: ConCustOverdueReport AccountNum has invalid expression for property Caption=Labels!@fm-mcp:ConCustAccount. Unidentifiable substring 'mcp' in expression. The parser reported ",
+      "Metadata Error: AxReport/ConCustOverdueReport/DefaultParameterGroup/Parameters/ReportParameterBases/AX_CompanyName/Expression: ConCustOverdueReport AccountNum has invalid expression for property Caption=Labels!@fm-mcp:ConCustAccount. Label @fm does not exist in the resx file.",
+      "Metadata Error: AxReport/ConCustOverdueReport/DefaultParameterGroup/Parameters/ReportParameterBases/AX_CompanyName/Expression: ConCustOverdueReport CustName has invalid expression for property Caption=Labels!@fm-mcp:ConCustName. Unidentifiable substring 'mcp' in expression. The parser reported error",
+      "Metadata Error: AxReport/ConCustOverdueReport/DefaultParameterGroup/Parameters/ReportParameterBases/AX_CompanyName/Expression: ConCustOverdueReport CustName has invalid expression for property Caption=Labels!@fm-mcp:ConCustName. Label @fm does not exist in the resx file.",
+      "Metadata Error: AxReport/ConCustOverdueReport/DefaultParameterGroup/Parameters/ReportParameterBases/AX_CompanyName/Expression: ConCustOverdueReport OverdueAmountMST has invalid expression for property Caption=Labels!@fm-mcp:ConOverdueAmountMST. Unidentifiable substring 'mcp' in expression. The parse"
+    ],
+    "durationMs": 12845
+  },
+  "rework": {
+    "toolErrors": 4,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 2,
+      "Bash": 2
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 13,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": null
+  }
+}
