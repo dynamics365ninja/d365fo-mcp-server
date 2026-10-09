@@ -179,7 +179,7 @@ describe('verdict: valid output and rework', () => {
     expect(vs.without!.aic).toBe(60);
     expect(vs.without!.aicPerValid).toBe(180);
     const html = renderHtml(buildReportModel(one, [], { credits: DEFAULT_CREDITS }));
-    expect(html).toContain('80.00 AIC per valid output against 180 AIC without');
+    expect(html).toContain('at 80.00 vs 180 AIC per valid output');
   });
 
   it('lists the checks per variant and the recurring errors with positions stripped', () => {
@@ -191,36 +191,62 @@ describe('verdict: valid output and rework', () => {
     expect(p.issues.with).toEqual([]);
   });
 
-  it('opens with a verdict that says it in a sentence, and marks the better side', () => {
+  it('ranks configurations by valid output, with a confidence interval, and says the finding per model', () => {
+    const lb = model.scopes[0].configs;
+    expect(lb.map(c => c.mcp)).toEqual([true, false]);
+    expect(lb[0].validCount).toBe(3);
+    // 3/3 is not "certainly 100 %": the Wilson interval still reaches down to ~44 %.
+    expect(lb[0].validCi![0]).toBeCloseTo(0.4385, 3);
+    expect(lb[0].validCi![1]).toBe(1);
     const html = renderHtml(model);
-    expect(html).toContain('With MCP, 3 of 3 runs delivered valid output, against 0 of 3 without');
-    expect(html).toMatch(/it took 50 % longer, it cost 33 % more per run \(median per prompt\), 80\.00 AIC per valid output against no valid run to price without/);
-    expect(html).toContain('AI Credits per valid output');
-    expect(html.indexOf('class="verdict"')).toBeLessThan(html.indexOf('<section class="prompt"'));
-    expect(html).toContain('class="card vcard reveal lead good"');
+    expect(html).toContain('Sonnet 5.5 delivered valid output in 3 of 3 runs with MCP against 0 of 3 without, at 80.00 AIC per valid output (none without), in 50 % more time.');
+    expect(html.indexOf('class="lifts"')).toBeLessThan(html.indexOf('<table class="leader">'));
+    expect(html.indexOf('<table class="leader">')).toBeLessThan(html.indexOf('<section class="prompt"'));
+    expect(html).toContain('<tr class="rank-1">');
+    expect(html).toContain('AIC / valid output');
+    expect(html).toContain('class="card lift reveal good"');
     expect(html).toContain('No build error, malformed file or new BP error in any run.');
     expect(html).toContain('class="cell c-part"');
     // Numbers are complete without the script; the script only animates them.
-    expect(html).toMatch(/<span data-to="100" data-dec="0" data-pre="" data-suf=" %">100 %<\/span>/);
+    expect(html).toContain('<span data-to="100" data-dec="0" data-pre="+" data-suf="">+100</span>');
     expect(html).toContain('prefers-reduced-motion: reduce');
   });
 });
 
-describe('verdict across prompts', () => {
-  it('uses the median of per-prompt effects, not a pooled median that mixes cheap and expensive prompts', () => {
-    // MCP costs more on both prompts (+50 %, +20 %), yet the pooled medians
-    // (with: 15, 60 → 37.5; without: 10, 100 → 55) would read as a saving.
+describe('leaderboard across tasks', () => {
+  it('prices a configuration by its mean AIC per run, which a mix of cheap and dear tasks cannot flip', () => {
+    // MCP costs more on both tasks (+50 %, +20 %). A pooled MEDIAN (with: 15, 120 → 67.5;
+    // without: 10, 100 → 55) happens to agree here, but on the first reference run it
+    // read as a saving; the mean over a balanced design is the sum of the per-task means.
     const rs = [
       run({ promptId: 'a', mcp: true, aic: { value: 15, source: 'host-cost' } }),
       run({ promptId: 'a', mcp: false, aic: { value: 10, source: 'host-cost' } }),
       run({ promptId: 'b', mcp: true, aic: { value: 120, source: 'host-cost' } }),
       run({ promptId: 'b', mcp: false, aic: { value: 100, source: 'host-cost' } }),
     ];
-    const html = renderHtml(buildReportModel(rs, [], { credits: DEFAULT_CREDITS }));
-    const verdict = html.slice(html.indexOf('class="verdict"'), html.indexOf('class="sentence'));
-    expect(verdict).toContain('median of 2 per-prompt effects');
-    expect(verdict).toMatch(/data-to="35" [^>]*>\+35 %/);
-    expect(html).toMatch(/it cost 35 % more per run \(median per prompt\)/);
+    const m = buildReportModel(rs, [], { credits: DEFAULT_CREDITS });
+    const lift = m.scopes[0].lifts[0];
+    expect(lift.with!.aicMean).toBe(67.5);
+    expect(lift.without!.aicMean).toBe(55);
+    const html = renderHtml(m);
+    expect(html).toMatch(/AIC per run<\/span><span class="lv"><span class="from">55\.00<\/span><span class="arr">→<\/span><b>67\.50<\/b><\/span><span class="chip bad">↑ \+23 %<\/span>/);
+  });
+
+  it('splits the leaderboard by suite and groups the task matrix', () => {
+    const suiteSpecs: PromptSpec[] = [
+      { id: 'r1', title: 'Reference 1: a', prompt: 'a', tags: ['reference'] },
+      { id: 'r2', title: 'Reference 2: b', prompt: 'b', tags: ['reference'] },
+      { id: 'd1', title: 'Daily 1: c', prompt: 'c', tags: ['daily'] },
+      { id: 'd2', title: 'Daily 2: d', prompt: 'd', tags: ['daily'] },
+    ];
+    const rs = suiteSpecs.flatMap(s => [run({ promptId: s.id, mcp: true }), run({ promptId: s.id, mcp: false })]);
+    const m = buildReportModel(rs, suiteSpecs, { credits: DEFAULT_CREDITS });
+    expect(m.scopes.map(s => s.id)).toEqual(['all', 'daily', 'reference']);
+    expect(m.scopes[1].promptIds).toEqual(['d1', 'd2']);
+    expect(m.matrix.map(r => r.suite)).toEqual(['daily', 'daily', 'reference', 'reference']);
+    const html = renderHtml(m);
+    expect(html).toContain('<button role="tab" data-scope="daily" aria-selected="false">Daily <small>2</small></button>');
+    expect(html).toContain('<tr class="mx-suite" data-suite="reference">');
   });
 });
 

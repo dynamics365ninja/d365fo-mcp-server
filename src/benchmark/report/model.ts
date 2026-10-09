@@ -99,9 +99,67 @@ export interface Issue {
   count: number;
 }
 
+/** A column of the leaderboard and the task matrix: one agent setup. */
+export interface ConfigKey {
+  key: string;
+  host: string;
+  model: string;
+  mcp: boolean;
+}
+
+/**
+ * One leaderboard row: a configuration over a set of tasks. The design is
+ * balanced — every configuration runs every task the same number of times — so
+ * pooling across tasks compares like with like.
+ */
+export interface ConfigRow extends ConfigKey {
+  q: VariantQuality;
+  validCount: number;
+  /** 95 % Wilson interval of the valid-output rate; null when nothing was judged. */
+  validCi: [number, number] | null;
+  /** Mean AIC per run (total ÷ runs): with the valid rate it is the price of a valid result. */
+  aicMean: number | null;
+  prompts: number;
+  /** Runs per task, the most any task got. */
+  repeats: number;
+}
+
+/** What switching the MCP server on did for one model. */
+export interface ModelLift {
+  model: string;
+  host: string;
+  with: ConfigRow | null;
+  without: ConfigRow | null;
+}
+
+/** A task suite (a shared first tag, e.g. reference / daily), or all tasks. */
+export interface Scope {
+  id: string;
+  label: string;
+  promptIds: string[];
+  runs: number;
+  /** Ranked: valid-output rate, then AIC per valid output. */
+  configs: ConfigRow[];
+  lifts: ModelLift[];
+}
+
+export interface MatrixRow {
+  promptId: string;
+  title: string;
+  suite: string;
+  /** Aligned with ReportModel.configKeys. */
+  cells: Array<ConfigRow | null>;
+}
+
 export interface PromptSection {
   promptId: string;
   title: string;
+  /** The suite this task belongs to (its first tag when other tasks share it). */
+  suite: string;
+  /** This task per configuration, aligned with ReportModel.configKeys. */
+  configs: Array<ConfigRow | null>;
+  /** Each check's pass rate per configuration, aligned with ReportModel.configKeys. */
+  checkMatrix: Array<{ name: string; rates: Array<number | null> }>;
   spec: PromptSpec | null;
   tags: string[];
   /** Hashes seen in the runs; drift = the catalogue text differs from some runs' hash. */
@@ -144,6 +202,11 @@ export interface ReportModel {
   prompts: PromptSection[];
   /** With vs without over every run: the page's headline. */
   versus: Versus;
+  /** Every configuration in the runs, by model, with MCP first: the leaderboard's and the matrix's columns. */
+  configKeys: ConfigKey[];
+  /** "all" first, then one per suite when there is more than one. */
+  scopes: Scope[];
+  matrix: MatrixRow[];
 }
 
 export interface ReportOptions {
@@ -263,6 +326,83 @@ export function variantQuality(runs: BenchmarkRun[]): VariantQuality | null {
   };
 }
 
+/** 95 % Wilson score interval for k successes in n — honest at 0/n and n/n, where the normal interval collapses. */
+export function wilson(k: number, n: number, z = 1.96): [number, number] | null {
+  if (n <= 0) return null;
+  const p = k / n;
+  const z2 = z * z;
+  const d = 1 + z2 / n;
+  const c = (p + z2 / (2 * n)) / d;
+  const h = (z * Math.sqrt((p * (1 - p)) / n + z2 / (4 * n * n))) / d;
+  return [Math.max(0, c - h), Math.min(1, c + h)];
+}
+
+const configKeyOf = (r: BenchmarkRun) => `${r.host}\u0000${r.model}\u0000${r.mcp}`;
+
+export function configRow(runs: BenchmarkRun[]): ConfigRow | null {
+  const q = variantQuality(runs);
+  if (!q) return null;
+  const first = runs[0];
+  const validCount = runs.filter(r => isValidOutput(r) === true).length;
+  const perPrompt = new Map<string, number>();
+  for (const r of runs) perPrompt.set(r.promptId, (perPrompt.get(r.promptId) ?? 0) + 1);
+  const priced = runs.filter(r => r.aic);
+  return {
+    key: configKeyOf(first),
+    host: first.host,
+    model: first.model,
+    mcp: first.mcp,
+    q,
+    validCount,
+    validCi: q.judged ? wilson(validCount, q.judged) : null,
+    aicMean: priced.length === runs.length ? priced.reduce((s, r) => s + r.aic!.value, 0) / runs.length : null,
+    prompts: perPrompt.size,
+    repeats: Math.max(...perPrompt.values()),
+  };
+}
+
+/** Rank: more valid output first; at a tie, the cheaper valid result; then by name. */
+export function rankConfigs(rows: ConfigRow[]): ConfigRow[] {
+  const v = (r: ConfigRow) => r.q.validRate ?? -1;
+  const c = (r: ConfigRow) => r.q.aicPerValid ?? Number.POSITIVE_INFINITY;
+  return [...rows].sort((a, b) => v(b) - v(a) || c(a) - c(b) || a.model.localeCompare(b.model) || Number(b.mcp) - Number(a.mcp));
+}
+
+function scopeOf(id: string, label: string, runs: BenchmarkRun[], promptIds: string[]): Scope {
+  const byKey = new Map<string, BenchmarkRun[]>();
+  for (const r of runs) {
+    const k = configKeyOf(r);
+    const b = byKey.get(k);
+    if (b) b.push(r); else byKey.set(k, [r]);
+  }
+  const configs = rankConfigs([...byKey.values()].map(configRow).filter((c): c is ConfigRow => c !== null));
+  const pairs = new Map<string, ModelLift>();
+  for (const c of configs) {
+    const k = `${c.host}\u0000${c.model}`;
+    const lift = pairs.get(k) ?? { model: c.model, host: c.host, with: null, without: null };
+    if (c.mcp) lift.with = c; else lift.without = c;
+    pairs.set(k, lift);
+  }
+  const lifts = [...pairs.values()].sort((a, b) => a.model.localeCompare(b.model) || a.host.localeCompare(b.host));
+  return { id, label, promptIds, runs: runs.length, configs, lifts };
+}
+
+/**
+ * A task's suite is its first tag when another task in the report shares it
+ * (reference, daily); a tag only one task carries is a topic, not a suite.
+ */
+function suitesOf(promptIds: string[], specById: Map<string, PromptSpec>): Map<string, string> {
+  const first = new Map(promptIds.map(id => [id, specById.get(id)?.tags[0] ?? '']));
+  const count = new Map<string, number>();
+  for (const t of first.values()) if (t) count.set(t, (count.get(t) ?? 0) + 1);
+  return new Map(promptIds.map(id => {
+    const t = first.get(id) ?? '';
+    return [id, t && (count.get(t) ?? 0) > 1 ? t : 'other'];
+  }));
+}
+
+const suiteLabel = (s: string) => (s === 'all' ? 'All tasks' : s.charAt(0).toUpperCase() + s.slice(1));
+
 function versusOf(runs: BenchmarkRun[]): Versus {
   return { with: variantQuality(runs.filter(r => r.mcp)), without: variantQuality(runs.filter(r => !r.mcp)) };
 }
@@ -328,6 +468,16 @@ export function buildReportModel(runs: BenchmarkRun[], specs: PromptSpec[], opts
   // By title, numerically: "Reference 2" before "Reference 10", and in the order the catalogue names them.
   const titleOf = (id: string) => specById.get(id)?.title ?? id;
   const promptIds = [...new Set(runs.map(r => r.promptId))].sort((a, b) => titleOf(a).localeCompare(titleOf(b), 'en', { numeric: true }) || a.localeCompare(b));
+  const suites = suitesOf(promptIds, specById);
+
+  const keyMap = new Map<string, ConfigKey>();
+  for (const r of runs) {
+    const key = configKeyOf(r);
+    if (!keyMap.has(key)) keyMap.set(key, { key, host: r.host, model: r.model, mcp: r.mcp });
+  }
+  const configKeys = [...keyMap.values()].sort((a, b) => a.model.localeCompare(b.model) || a.host.localeCompare(b.host) || Number(b.mcp) - Number(a.mcp));
+  const perConfig = (rs: BenchmarkRun[]) => configKeys.map(k => configRow(rs.filter(r => configKeyOf(r) === k.key)));
+
   const prompts: PromptSection[] = promptIds.map(promptId => {
     const prs = sortedAll.filter(r => r.promptId === promptId);
     const spec = specById.get(promptId) ?? null;
@@ -338,9 +488,21 @@ export function buildReportModel(runs: BenchmarkRun[], specs: PromptSpec[], opts
     const currentHash = spec ? promptHash(spec.prompt) : null;
     const trends = Object.fromEntries(HEADLINE_METRICS.map(m => [m, timeSeries(prs, m)])) as Record<MetricKey, TimeSeries[]>;
     const effectTrends = Object.fromEntries(EFFECT_METRICS.map(m => [m, effectSeries(prs, m)])) as Record<MetricKey, EffectSeries[]>;
+    const checkNames: string[] = [];
+    for (const r of prs) for (const c of r.checks) if (!checkNames.includes(c.name)) checkNames.push(c.name);
+    const checkMatrix = checkNames.map(name => ({
+      name,
+      rates: configKeys.map(k => {
+        const hits = prs.filter(r => configKeyOf(r) === k.key).flatMap(r => r.checks.filter(c => c.name === name));
+        return hits.length ? hits.filter(c => c.passed).length / hits.length : null;
+      }),
+    }));
     return {
       promptId,
       title: spec?.title ?? promptId,
+      suite: suites.get(promptId) ?? 'other',
+      configs: perConfig(prs),
+      checkMatrix,
       spec,
       tags: spec?.tags ?? [],
       hashes,
@@ -392,6 +554,17 @@ export function buildReportModel(runs: BenchmarkRun[], specs: PromptSpec[], opts
   const unpriced = runs.filter(r => !r.aic).length;
   if (unpriced > 0) creditsNotes.push(`${unpriced} run(s) carry no AIC — no cost and no rate for the model`);
 
+  const suiteIds = [...new Set(promptIds.map(id => suites.get(id) ?? 'other'))];
+  const scopes: Scope[] = [scopeOf('all', suiteLabel('all'), runs, promptIds)];
+  if (suiteIds.length > 1) {
+    for (const s of suiteIds) {
+      const ids = promptIds.filter(id => suites.get(id) === s);
+      scopes.push(scopeOf(s, suiteLabel(s), runs.filter(r => ids.includes(r.promptId)), ids));
+    }
+  }
+  // Suites in first-seen order, tasks by title inside each.
+  const matrix: MatrixRow[] = suiteIds.flatMap(s => prompts.filter(p => p.suite === s).map(p => ({ promptId: p.promptId, title: p.title, suite: p.suite, cells: p.configs })));
+
   return {
     generatedAt: now.toISOString(),
     title: opts.title ?? 'D365FO MCP benchmark',
@@ -409,5 +582,8 @@ export function buildReportModel(runs: BenchmarkRun[], specs: PromptSpec[], opts
     overview,
     prompts,
     versus: versusOf(runs),
+    configKeys,
+    scopes,
+    matrix,
   };
 }

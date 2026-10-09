@@ -308,3 +308,87 @@ export function divergingBars(o: DivergingOptions): string {
   parts.push('</svg>');
   return parts.join('');
 }
+
+// ---------------------------------------------------------------- success vs cost
+
+export interface LiftPoint {
+  /** Cost axis value (AIC per run). */
+  x: number;
+  /** Valid-output rate, 0..1. */
+  y: number;
+  tip: string;
+}
+
+export interface LiftSeries {
+  label: string;
+  slot: number;
+  without: LiftPoint | null;
+  with: LiftPoint | null;
+}
+
+export interface LiftScatterOptions {
+  series: LiftSeries[];
+  title: string;
+  xLabel: string;
+  formatX: (v: number) => string;
+  width?: number;
+  height?: number;
+}
+
+/**
+ * Success against cost, the shape benchmark leaderboards use for "how good, at
+ * what price": one colour per model, a hollow ring without MCP, a filled dot
+ * with it, and an arrow between them — the MCP server's effect is the arrow.
+ * Up is better, left is cheaper.
+ */
+export function liftScatter(o: LiftScatterOptions): string {
+  const W = o.width ?? 1000;
+  const H = o.height ?? 360;
+  const L = 56, R = 130, T = 18, B = 46;
+  const pw = W - L - R, ph = H - T - B;
+  const pts = o.series.flatMap(s => [s.with, s.without].filter((p): p is LiftPoint => p !== null));
+  if (pts.length === 0) return '<div class="empty">no priced runs</div>';
+  const xTicks = niceTicks(0, Math.max(...pts.map(p => p.x)) * 1.08, 5);
+  const xMax = xTicks[xTicks.length - 1] || 1;
+  const sx = (v: number) => L + (v / xMax) * pw;
+  const sy = (v: number) => T + (1 - v) * ph;
+  const out: string[] = [];
+  out.push(`<svg class="chart scatter" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.title)}"><title>${esc(o.title)}</title>`);
+  out.push('<defs>');
+  for (const s of o.series) {
+    out.push(`<marker id="arrow-s${s.slot}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="s${s.slot}"/></marker>`);
+  }
+  out.push('</defs>');
+  for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+    out.push(`<line class="grid" x1="${L}" x2="${L + pw}" y1="${sy(t).toFixed(1)}" y2="${sy(t).toFixed(1)}"/>`);
+    out.push(`<text class="tick" x="${L - 8}" y="${(sy(t) + 4).toFixed(1)}" text-anchor="end">${Math.round(t * 100)} %</text>`);
+  }
+  for (const t of xTicks) {
+    out.push(`<line class="grid" x1="${sx(t).toFixed(1)}" x2="${sx(t).toFixed(1)}" y1="${T}" y2="${T + ph}"/>`);
+    out.push(`<text class="tick" x="${sx(t).toFixed(1)}" y="${T + ph + 18}" text-anchor="middle">${esc(o.formatX(t))}</text>`);
+  }
+  out.push(`<line class="axis" x1="${L}" x2="${L + pw}" y1="${T + ph}" y2="${T + ph}"/>`);
+  out.push(`<text class="muted" x="${L + pw / 2}" y="${H - 6}" text-anchor="middle">${esc(o.xLabel)}</text>`);
+  out.push(`<text class="muted" x="${L + 6}" y="${T + 12}">↖ better: more valid output, fewer credits</text>`);
+  for (const s of o.series) {
+    if (!s.with || !s.without) continue;
+    const x1 = sx(s.without.x), y1 = sy(s.without.y), x2 = sx(s.with.x), y2 = sy(s.with.y);
+    const len = Math.hypot(x2 - x1, y2 - y1);
+    if (len < 18) continue;
+    // Stop short of both markers so the arrowhead sits on the ring, not under the dot.
+    const k1 = 10 / len, k2 = 12 / len;
+    out.push(`<line class="lift-arrow s${s.slot}" x1="${(x1 + (x2 - x1) * k1).toFixed(1)}" y1="${(y1 + (y2 - y1) * k1).toFixed(1)}" x2="${(x2 - (x2 - x1) * k2).toFixed(1)}" y2="${(y2 - (y2 - y1) * k2).toFixed(1)}" marker-end="url(#arrow-s${s.slot})"/>`);
+  }
+  for (const s of o.series) {
+    if (s.without) out.push(`<circle class="pt hollow s${s.slot}" cx="${sx(s.without.x).toFixed(1)}" cy="${sy(s.without.y).toFixed(1)}" r="7" tabindex="0" data-tip="${esc(s.without.tip)}"/>`);
+    if (s.with) {
+      const x = sx(s.with.x), y = sy(s.with.y);
+      out.push(`<circle class="pt s${s.slot}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="7" tabindex="0" data-tip="${esc(s.with.tip)}"/>`);
+      out.push(`<text class="label" x="${(x + 12).toFixed(1)}" y="${(y + 4).toFixed(1)}">${esc(s.label)}</text>`);
+    } else if (s.without) {
+      out.push(`<text class="label" x="${(sx(s.without.x) + 12).toFixed(1)}" y="${(sy(s.without.y) + 4).toFixed(1)}">${esc(s.label)}</text>`);
+    }
+  }
+  out.push('</svg>');
+  return out.join('');
+}

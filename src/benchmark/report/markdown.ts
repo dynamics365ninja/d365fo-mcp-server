@@ -3,7 +3,7 @@
  * release note. Same numbers, same medians, no charts.
  */
 import { EFFECT_METRICS, METRIC_BY_KEY, formatDeltaPct, formatMetric, type MetricKey, type ModelEffectRow } from '../aggregate.js';
-import type { ReportModel } from './model.js';
+import type { ReportModel, Scope } from './model.js';
 
 const COLS: Array<[MetricKey, string]> = [
   ['durationMs', 'time (med)'],
@@ -26,6 +26,24 @@ function effectTable(rows: ModelEffectRow[], multiHost: boolean): string {
   );
 }
 
+const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)} %`);
+
+/** The leaderboard of one scope, ranked as on the page. */
+function leaderboardTable(scope: Scope): string {
+  const judged = scope.configs.some(c => c.q.judged > 0);
+  return table(
+    ['#', 'model', 'MCP', judged ? 'valid output' : 'checks', '95 % CI', 'checks', 'AIC / valid', 'AIC / run', 'time (med)', 'runs'],
+    scope.configs.map((c, i) => [
+      String(i + 1), c.model, c.mcp ? 'yes' : 'no',
+      judged ? `${pct(c.q.validRate)} (${c.validCount}/${c.q.judged})` : pct(c.q.checksMean === null ? null : c.q.checksMean / 100),
+      c.validCi ? `${Math.round(c.validCi[0] * 100)}–${Math.round(c.validCi[1] * 100)} %` : '—',
+      pct(c.q.checksMean === null ? null : c.q.checksMean / 100),
+      c.q.aicPerValid === null ? (c.q.judged ? 'no valid run' : '—') : formatMetric('aic', c.q.aicPerValid),
+      formatMetric('aic', c.aicMean), formatMetric('durationMs', c.q.timeMs), String(c.q.n),
+    ]),
+  );
+}
+
 export function renderMarkdown(m: ReportModel): string {
   const out: string[] = [];
   out.push(`# ${m.title}`);
@@ -35,6 +53,14 @@ export function renderMarkdown(m: ReportModel): string {
     (m.filters.length ? ` · filters: ${m.filters.join(', ')}` : ''));
   out.push('');
   for (const k of m.overviewKpis) out.push(`- **${k.label}:** ${k.value}${k.sub ? ` — ${k.sub}` : ''}`);
+  for (const s of m.scopes) {
+    out.push('');
+    out.push(`## Leaderboard — ${s.label} (${s.promptIds.length} task${s.promptIds.length === 1 ? '' : 's'}, ${s.runs} runs)`);
+    out.push('');
+    out.push(leaderboardTable(s));
+  }
+  out.push('');
+  out.push('Valid output = builds clean, well-formed XML, no new best-practice error. AIC / run is the mean; AIC / valid = the AIC of all runs ÷ valid runs.');
   out.push('');
   out.push('## MCP effect per model, all prompts');
   out.push('');

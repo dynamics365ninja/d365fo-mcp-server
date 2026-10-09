@@ -57,6 +57,8 @@ cells get neither.
 | `--sandbox-model <name>` | package name | the model folder inside the sandbox package |
 | `--no-build` | — | skip the xppc build check (the file checks still run) |
 | `--no-bp` | — | skip the xppbp best-practice check after a clean build |
+| `--no-web` | — | do not allow WebFetch/WebSearch (both variants get them by default) |
+| `--no-agent-build` | — | do not give sandbox cells the build command (both variants get it by default) |
 | `--allow-dirty-baseline` | — | run although the sandbox does not build clean before the first cell |
 | `--cwd <dir>` | current dir | run claude from your solution folder so `CLAUDE.md` / the workspace apply (not with `--sandbox`) |
 | `--timeout s` | prompt's `timeoutSeconds`, else 900 | a cell that overruns is killed and recorded as `timeout` |
@@ -113,10 +115,18 @@ Around the matrix and every cell the runner:
    directory, Claude Code runs read-only shell commands such as `cd …; ls`
    without asking even in `dontAsk` mode, and one such `cd` into ApplicationSuite
    got every later sandbox write of a plain cell refused (0 files written).
-   Other shell commands are refused: a plain cell cannot run xppc, a with-MCP
-   cell builds through the server. That gap is part of what is being measured;
-   add `--allowed-tools PowerShell` to close it. Every cell's raw stream is kept
-   in `eval/benchmark/artifacts/<runId>/stream.jsonl` (gitignored).
+   **Both variants get the same means to check their work**: `WebFetch` and
+   `WebSearch`, and exactly one shell command — the sandbox build,
+   `node <repo>/scripts/benchmarkSandboxBuild.mjs <package>`, which compiles the
+   labels and runs the same full xppc build the runner scores with and prints
+   every error. The prompt names it (`{{buildCommand}}`); the permission rules
+   allow that command in Bash and PowerShell and refuse every other one (checked
+   on the VM). Without it the plain cell could not build at all and stopped as
+   soon as it had written something: in "reference v2" no plain cell built once,
+   7 of 9 left output that did not build or failed best practice, and their lower
+   cost meant "stopped sooner", not "cheaper". The with-MCP cell may build either
+   way. `--no-web` / `--no-agent-build` reproduce the old setup. Every cell's raw
+   stream is kept in `eval/benchmark/artifacts/<runId>/stream.jsonl` (gitignored).
 6. **Scores what the cell wrote** — see [Output validity and rework](#output-validity-and-rework).
 7. **Restores the package** byte for byte and re-diffs to prove it. Before it
    copies anything back it checks the snapshot against its manifest: a damaged
@@ -193,8 +203,8 @@ would measure an older server than the `serverGitSha` on their records. Run
 Remove-Item Env:D365FO_WORKSPACE_PATH -ErrorAction SilentlyContinue
 npm run cli -- benchmark run all --tag reference --dry-run `
   --sandbox K:\AosService\PackagesLocalDirectory\fm-mcp --mcp-servers d365fo-eval
-npm run cli -- benchmark run all --tag reference --models sonnet,opus --repeat 3 `
-  --sandbox K:\AosService\PackagesLocalDirectory\fm-mcp --mcp-servers d365fo-eval --label "reference v1"
+npm run cli -- benchmark run all --tag reference,daily --models sonnet,opus --repeat 3 `
+  --sandbox K:\AosService\PackagesLocalDirectory\fm-mcp --mcp-servers d365fo-eval --label "v3"
 ```
 
 ### Recording a Copilot Chat session (`benchmark ingest`)
@@ -219,24 +229,38 @@ One self-contained HTML file (works from disk, light/dark, phone width) and a
 markdown twin. Filters are command-line flags — `--prompt`, `--host`, `--model`,
 `--label`, `--since`, `--until` — and the page has a prompt switcher.
 
-The page follows the question order:
+The page is laid out like a public benchmark leaderboard:
 
-1. **Verdict** — four cards, with MCP against without, over all prompts: *valid
-   output* (share of runs), *run time* and *AI Credits* (medians, as a signed
-   difference), *rework per run*; each with both values as bars, green ▼ when
-   MCP is better, red ▲ when worse; and one sentence that says it ("With MCP, 9
-   of 9 runs delivered valid output, against 4 of 9 without; it took 34 % longer…").
-2. **Per prompt** — a scoreboard: one row per prompt, the two sides as pills for
-   valid output, checks, time, AIC and rework, ✓ on the better side.
-3. **MCP effect per model** — one panel per metric, one signed bar per model
-   (with relative to without, median of the per-prompt effects).
-4. **Each prompt** — a with/without table (valid output, builds, checks, time,
-   AIC, round trips, tool errors and the MCP share of them, failed builds,
-   rewrites, new BP errors and warnings), a heat strip of every check's pass
-   rate per side, and the build/BP errors that recur, counted, positions stripped.
-5. **Details** under each prompt — the MCP effect over time, dumbbells of the
-   absolute medians, absolute trends faceted per host, the stats and effect
-   tables and every run (with build, BP and rework columns).
+1. **Header** — tasks, models, configurations, runs, runs per cell.
+2. **Suite tabs** — *All tasks* and one tab per suite (a first tag that more than
+   one task shares: `reference`, `daily`). The tab switches everything below it
+   that depends on the task set.
+3. **MCP effect per model** — one card per model: the change in valid output in
+   percentage points, then valid output, checks, AIC per valid output, AIC per
+   run, median time and rework, each as *without → with* with a coloured change
+   chip (↑/↓ is the direction, green/red whether that is better), and one
+   sentence that says it.
+4. **Leaderboard** — one row per configuration (model × with/without MCP),
+   ranked by valid output, then by AIC per valid output. The valid-output bar
+   carries its **95 % Wilson interval** (3 of 3 still means "somewhere between
+   44 and 100 %"), the hatched bar is the run without MCP, bold marks the best
+   value in a column.
+5. **Valid output vs cost** — one point per configuration, a hollow ring without
+   MCP, a filled dot with it, and an arrow per model between them: the arrow is
+   the MCP server's effect. Up is better, left is cheaper.
+6. **Tasks × configurations** — a matrix: valid runs out of runs (checks for a
+   read-only task) and the AIC one valid result cost, darker = more often valid,
+   grouped by suite.
+7. **Task details** — per task its own leaderboard, every check's pass rate per
+   configuration, the build/BP errors that recur, the per-metric MCP effect per
+   model, and under *Details* the trends, dumbbells, tables and every run.
+8. **Methodology** — tasks, tooling, scoring, cost and statistics, in four cards.
+
+Cost per configuration is the **mean** AIC per run — the design is balanced
+(every configuration runs every task equally often), so the mean over all runs is
+the sum of the per-task means and a cheap task cannot flip it the way a pooled
+median did on the first reference run. **AIC per valid output** = the AIC of all
+judged runs ÷ the valid ones. Time stays a median.
 
 Cards rise in as they scroll into view, bars grow from zero and the headline
 numbers count up; nothing moves under `prefers-reduced-motion`, and every number
@@ -275,18 +299,32 @@ A prompt that writes adds `workspace` and file checks:
 }
 ```
 
-`{{model}}`, `{{modelDir}}`, `{{packageDir}}` and `{{packagesRoot}}` are filled
-from `--sandbox`; the prompt hash is taken over the template, so the experiment
+`{{model}}`, `{{modelDir}}`, `{{packageDir}}`, `{{packagesRoot}}` and
+`{{buildCommand}}` are filled from `--sandbox`; the prompt hash is taken over the template, so the experiment
 is the same on any machine. A file check's `path` is a regex over the path
 relative to the sandbox package (forward slashes); it passes when a file the
 cell added or changed matches the path, every `contains` and no `notContains`.
-Name the objects in the prompt — a check cannot find a table whose name the
-model was free to choose.
+Name the objects the cell creates — a check cannot find a table whose name the
+model was free to choose. The **daily** prompts deliberately do *not* name the
+standard objects to touch (the posting hook, the data entity and its staging
+table, the call chain): finding them is the work. Their checks accept every
+correct answer verified in the AOT (four CoC targets for the invoice hook), and
+the ground truth is in the prompt's `notes`.
 
 ## Reading the numbers honestly
 
-- **Medians, not means.** Agent runs have a long tail; one wandering run must not
-  speak for a model. p90 is beside the median so the tail is still visible.
+- **Medians for time, means for cost.** Agent runs have a long tail; one
+  wandering run must not speak for a model's time, and p90 is beside the median
+  so the tail is still visible. Cost is a mean because credits add up: what a
+  configuration spends over the suite is what you pay.
+- **Mind the interval.** With three runs per cell, a valid-output rate is wide —
+  the leaderboard draws its 95 % interval; overlapping intervals are not a
+  reliable difference.
+- **An agent may ignore the server.** On read-only discovery the models often
+  grep and read the metadata themselves even with the MCP tools connected (the
+  first `daily-credit-limit-trace` runs made no MCP call at all). That is a
+  finding about the tools' pull, not a broken run; the per-run tool counts are on
+  every record.
 - **Compare within a prompt.** Different prompts have different shapes; the
   overview table is for orientation, the per-prompt sections are for conclusions.
 - **A hash warning means two experiments.** The prompt text changed; do not read a
@@ -332,6 +370,6 @@ start from the same clean sandbox: restore it by hand before each one.
 Open questions to settle there, in order: the `creditsPerUsd` reading against
 the real Copilot billing page; whether a with-MCP cell should also get
 `--append-system-prompt-file .github/copilot-instructions.md` (it changes what
-the model knows about the tools — a fair comparison either gives it to both
-cells or to neither); and which prompts deserve a SysTest-backed oracle through
+the model knows about the tools — run it as its own configuration under its own
+label, never mixed into the plain comparison); and which prompts deserve a SysTest-backed oracle through
 the eval loop rather than regex checks.

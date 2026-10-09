@@ -28,8 +28,8 @@ import {
   type MetricKey,
   type ModelEffectRow,
 } from '../aggregate.js';
-import type { CheckRate, Issue, Kpi, PromptSection, ReportModel, VariantQuality, Versus } from './model.js';
-import { divergingBars, dumbbellChart, esc, legend, lineChart, type DivergingRow, type DumbbellRow, type LineSeries } from './svg.js';
+import type { ConfigKey, ConfigRow, Issue, Kpi, ModelLift, PromptSection, ReportModel, Scope, VariantQuality } from './model.js';
+import { divergingBars, dumbbellChart, esc, legend, liftScatter, lineChart, type DivergingRow, type DumbbellRow, type LiftPoint, type LiftSeries, type LineSeries } from './svg.js';
 
 const LIGHT = `
   --page: #f4f5f9; --surface: #ffffff; --surface-2: #f8f9fc; --text: #0f1222; --text-2: #4a4f66; --muted: #858aa0;
@@ -39,7 +39,9 @@ const LIGHT = `
   --hero-a: #4f46e5; --hero-b: #0ea5e9;
   --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
   --series-5: #e87ba4; --series-6: #008300; --series-7: #4a3aa7; --series-8: #e34948; --series-other: #898781;
-  --from: #a5b4c8; --to: #4f46e5; --good-mark: #10b981; --bad-mark: #ef4444;`;
+  --from: #a5b4c8; --to: #4f46e5; --good-mark: #10b981; --bad-mark: #ef4444;
+  --seq-0: #eceae6; --seq-1: #cde2fb; --seq-2: #86b6ef; --seq-3: #2a78d6; --seq-4: #184f95;
+  --seq-ink-0: #52514e; --seq-ink-1: #0d366b; --seq-ink-2: #0d366b;`;
 const DARK = `
   --page: #0b0d17; --surface: #141726; --surface-2: #1a1e30; --text: #f3f4fa; --text-2: #b6bad0; --muted: #7c8199;
   --grid: #262a3f; --axis: #383d58; --border: rgba(255,255,255,0.08); --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
@@ -48,7 +50,9 @@ const DARK = `
   --hero-a: #6366f1; --hero-b: #0891b2;
   --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
   --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767;
-  --from: #64748b; --to: #818cf8; --good-mark: #10b981; --bad-mark: #ef4444;`;
+  --from: #64748b; --to: #818cf8; --good-mark: #10b981; --bad-mark: #ef4444;
+  --seq-0: #262624; --seq-1: #104281; --seq-2: #1c5cab; --seq-3: #2a78d6; --seq-4: #3987e5;
+  --seq-ink-0: #9a9890; --seq-ink-1: #cde2fb; --seq-ink-2: #e8f1fd;`;
 
 const CSS = `
 :root { color-scheme: light; ${LIGHT} }
@@ -59,69 +63,132 @@ html, body { margin: 0; background: var(--page); color: var(--text); font: 14px/
 main { max-width: 1240px; margin: 0 auto; padding: 0 16px 56px; }
 code { font: 12.5px/1.4 "Cascadia Code", Consolas, ui-monospace, monospace; }
 
-/* hero */
-.hero { position: relative; margin: 0 -16px 28px; padding: 36px 32px 30px; color: #fff; overflow: hidden;
-  background: linear-gradient(120deg, var(--hero-a), var(--hero-b)); border-radius: 0 0 22px 22px; }
-.hero::after { content: ""; position: absolute; inset: -40% -10% auto auto; width: 520px; height: 520px; border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(255,255,255,.22), transparent); animation: drift 14s ease-in-out infinite alternate; }
-@keyframes drift { to { transform: translate(-80px, 60px) scale(1.1); } }
-.hero .eyebrow { text-transform: uppercase; letter-spacing: .14em; font-size: 12px; opacity: .85; font-weight: 600; }
-.hero h1 { font: 700 32px/1.15 "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; margin: 6px 0 8px; letter-spacing: -.01em; }
-.hero .meta { opacity: .9; font-size: 13px; }
-.hero .toggle { position: absolute; right: 24px; top: 24px; z-index: 1; border: 1px solid rgba(255,255,255,.4); background: rgba(255,255,255,.12);
-  color: #fff; border-radius: 999px; padding: 6px 14px; cursor: pointer; font: inherit; backdrop-filter: blur(6px); }
-.hero .toggle:hover { background: rgba(255,255,255,.22); }
-.legend-chips { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
-.legend-chips span { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,.14); border-radius: 999px; padding: 3px 12px; font-size: 12.5px; }
-.legend-chips i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
-.legend-chips .mcp i { background: #fff; } .legend-chips .plain i { background: rgba(255,255,255,.45); }
+/* hero — a dark band in both themes, the way leaderboard pages open */
+.hero { position: relative; color: #e8ebf7; overflow: hidden; background: #0b1020;
+  background-image: radial-gradient(900px 420px at 85% -10%, rgba(99,102,241,.35), transparent 60%), radial-gradient(700px 380px at 5% 110%, rgba(14,165,233,.22), transparent 60%),
+    linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+  background-size: auto, auto, 32px 32px, 32px 32px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.hero-in { position: relative; max-width: 1240px; margin: 0 auto; padding: 44px 16px 34px; }
+.hero .eyebrow { text-transform: uppercase; letter-spacing: .16em; font-size: 11.5px; color: #a5b4fc; font-weight: 700; }
+.hero h1 { font: 750 38px/1.1 "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; margin: 10px 0 10px; letter-spacing: -.02em; color: #fff; }
+.hero-lede { max-width: 780px; margin: 0 0 22px; color: #c3c8e0; font-size: 15.5px; }
+.hstats { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+.hstat { display: grid; padding: 10px 16px; border: 1px solid rgba(255,255,255,.1); border-radius: 12px; background: rgba(255,255,255,.04); min-width: 104px; }
+.hstat b { font: 750 26px/1.1 "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; color: #fff; font-variant-numeric: tabular-nums; }
+.hstat > span { font-size: 12px; color: #9aa1c0; }
+.hero .meta { font-size: 12.5px; color: #8f96b5; }
+.hero .toggle { position: absolute; right: 16px; top: 22px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06);
+  color: #e8ebf7; border-radius: 999px; padding: 6px 14px; cursor: pointer; font: inherit; font-size: 12.5px; }
+.hero .toggle:hover { background: rgba(255,255,255,.14); }
+main { padding-top: 8px; }
 
-h2 { font: 650 20px/1.25 "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; margin: 40px 0 6px; letter-spacing: -.01em; }
+h2 { font: 650 21px/1.25 "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; margin: 42px 0 6px; letter-spacing: -.01em; }
 h3 { font-size: 12px; margin: 26px 0 10px; font-weight: 700; color: var(--text-2); text-transform: uppercase; letter-spacing: .08em; }
 .lede { color: var(--text-2); margin: 0 0 14px; max-width: 900px; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; box-shadow: var(--shadow); }
-
-/* verdict */
-.verdict { display: grid; grid-template-columns: 1.45fr repeat(var(--rest, 3), minmax(0, 1fr)); gap: 14px; }
-@media (max-width: 1080px) { .verdict { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 620px) { .verdict { grid-template-columns: 1fr; } }
-.vcard { position: relative; overflow: hidden; }
-.vcard .k { color: var(--text-2); font-size: 12.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
-.vcard .big { font: 750 44px/1.05 "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; margin: 8px 0 2px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-.vcard.lead .big { font-size: 56px; }
-.vcard .vs { color: var(--text-2); font-size: 13px; }
-.vcard .vs b { color: var(--text); font-variant-numeric: tabular-nums; }
-.vcard::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--plain); }
-.vcard.good::before { background: var(--good); } .vcard.bad::before { background: var(--bad); }
-.vcard.good .big { color: var(--good); } .vcard.bad .big { color: var(--bad); }
-.chip { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 10px; font-size: 12.5px; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chip { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .chip.good { background: var(--good-soft); color: var(--good); } .chip.bad { background: var(--bad-soft); color: var(--bad); }
 .chip.neutral { background: var(--plain-soft); color: var(--plain-ink); }
-.pair-bars { margin-top: 12px; display: grid; gap: 6px; }
-.pbar { display: grid; grid-template-columns: 84px 1fr 64px; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
-.pbar .track { height: 10px; background: var(--surface-2); border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
-.pbar .fill { height: 100%; width: var(--w); border-radius: 6px; background: var(--plain); }
-.pbar.mcp .fill { background: linear-gradient(90deg, var(--mcp), var(--hero-b)); }
-.pbar .v { text-align: right; font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; }
-.sentence { margin: 16px 0 0; font-size: 15.5px; color: var(--text); background: var(--surface); border: 1px solid var(--border);
-  border-left: 5px solid var(--mcp); border-radius: 12px; padding: 14px 18px; box-shadow: var(--shadow); }
 
-/* scoreboard */
+/* suite tabs */
+.tabs { position: sticky; top: 0; z-index: 6; display: flex; gap: 4px; margin: 22px 0 0; padding: 10px 0; background: color-mix(in srgb, var(--page) 90%, transparent); backdrop-filter: blur(8px); }
+.tabs button { border: 1px solid var(--border); background: var(--surface); color: var(--text-2); border-radius: 10px; padding: 8px 16px; cursor: pointer; font: inherit; font-weight: 600; }
+.tabs button small { color: var(--muted); font-weight: 500; margin-left: 4px; }
+.tabs button[aria-selected="true"] { background: var(--text); color: var(--page); border-color: var(--text); }
+.tabs button[aria-selected="true"] small { color: inherit; opacity: .7; }
+
+/* model identity */
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: currentColor; flex: none; }
+.sw.hollow { background: transparent; box-shadow: inset 0 0 0 2px currentColor; }
+.sw.s0 { color: var(--series-1); } .sw.s1 { color: var(--series-2); } .sw.s2 { color: var(--series-3); } .sw.s3 { color: var(--series-4); }
+.sw.s4 { color: var(--series-5); } .sw.s5 { color: var(--series-6); } .sw.s6 { color: var(--series-7); } .sw.s7 { color: var(--series-8); } .sw.s8 { color: var(--series-other); }
+.cfg { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.cfg b { font-weight: 650; }
+.cfg small { color: var(--muted); }
+.badge { display: inline-block; border-radius: 6px; padding: 1px 7px; font-size: 11px; font-weight: 700; letter-spacing: .02em; }
+.badge.mcp { background: var(--mcp-soft); color: var(--mcp-ink); } .badge.plain { background: var(--plain-soft); color: var(--plain-ink); }
+
+/* MCP lift per model */
+.lifts { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+.lift { position: relative; overflow: hidden; border-top: 4px solid var(--c); }
+.lift-head { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; }
+.lift-head .sw { width: 12px; height: 12px; }
+.lift-head small { color: var(--muted); font-weight: 500; }
+.lift-big { font: 780 56px/1 "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; margin: 14px 0 2px; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.lift-big .na { font-size: 18px; font-weight: 600; color: var(--muted); letter-spacing: 0; }
+.lift-big .unit { font-size: 22px; margin-left: 4px; color: var(--text-2); font-weight: 650; }
+.lift.good .lift-big { color: var(--good); } .lift.bad .lift-big { color: var(--bad); }
+.lift-sub { color: var(--text-2); font-size: 13px; margin-bottom: 12px; }
+.lrows { display: grid; gap: 0; border-top: 1px solid var(--grid); }
+.lrow { display: grid; grid-template-columns: minmax(0, 1fr) auto 86px; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--grid); font-size: 13px; }
+.lrow .lk { color: var(--text-2); }
+.lrow .lv { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lrow .lv .from { color: var(--muted); } .lrow .lv .arr { color: var(--muted); margin: 0 6px; }
+.lrow .chip { justify-self: end; }
+.lift-sentence { margin: 12px 0 0; color: var(--text-2); font-size: 13px; }
+
+/* leaderboard */
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--grid); vertical-align: middle; }
 th { color: var(--text-2); font-weight: 650; white-space: nowrap; font-size: 12px; }
+th small { color: var(--muted); font-weight: 500; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.board td { padding: 12px 10px; }
-.board .prompt-cell b { display: block; font-size: 14px; }
-.board .prompt-cell code { color: var(--muted); }
-.duo { display: inline-grid; grid-template-columns: auto auto; gap: 4px 6px; align-items: center; }
-.pill { display: inline-block; white-space: nowrap; min-width: 58px; text-align: center; border-radius: 8px; padding: 3px 8px; font-weight: 650; font-variant-numeric: tabular-nums; font-size: 12.5px; }
-.pill.mcp { background: var(--mcp-soft); color: var(--mcp-ink); } .pill.plain { background: var(--plain-soft); color: var(--plain-ink); }
-.pill.win { box-shadow: inset 0 0 0 2px var(--good); }
-.pill .crown { margin-left: 4px; }
+td.muted { color: var(--muted); }
+td.best { font-weight: 750; color: var(--text); }
+td.em { font-weight: 650; }
 .scroll { overflow-x: auto; }
+.board-card { margin-top: 4px; padding: 6px 18px 14px; }
+.leader td { padding: 13px 10px; }
+.leader.compact td { padding: 9px 10px; }
+.leader .rk span { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border); font-weight: 750; font-variant-numeric: tabular-nums; }
+.leader .rank-1 .rk span { background: linear-gradient(135deg, #fde68a, #f59e0b); color: #3b2300; border: 0; }
+.leader .rank-2 .rk span { background: linear-gradient(135deg, #e5e7eb, #9ca3af); color: #1f2937; border: 0; }
+.leader .rank-3 .rk span { background: linear-gradient(135deg, #fed7aa, #c2410c); color: #fff; border: 0; }
+.leader .rank-1 td { background: color-mix(in srgb, var(--mcp-soft) 30%, transparent); }
+.score { min-width: 240px; display: grid; grid-template-columns: minmax(110px, 1fr) auto; grid-template-rows: auto auto; column-gap: 10px; align-items: center; }
+.score small { grid-column: 1 / -1; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.sbar { position: relative; height: 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px; }
+.sbar .fill { height: 100%; width: var(--w); border-radius: 6px; background: var(--c); }
+.sbar.hatched .fill { background: repeating-linear-gradient(135deg, var(--c) 0 3px, color-mix(in srgb, var(--c) 35%, transparent) 3px 6px); }
+.sbar .ci { position: absolute; top: 50%; height: 2px; margin-top: -1px; background: var(--text); opacity: .55; border-radius: 1px; }
+.sbar .ci::before, .sbar .ci::after { content: ""; position: absolute; top: -4px; width: 2px; height: 10px; background: var(--text); }
+.sbar .ci::before { left: 0; } .sbar .ci::after { right: 0; }
+.sv { font: 750 18px/1 "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; font-variant-numeric: tabular-nums; min-width: 52px; text-align: right; }
 
-/* prompt switcher */
+/* success vs cost */
+figure.card { margin-top: 14px; }
+svg .pt { stroke: var(--surface); stroke-width: 2; cursor: default; }
+svg .pt.hollow { fill: var(--surface) !important; stroke-width: 2.5; }
+svg .pt.hollow.s0 { stroke: var(--series-1); } svg .pt.hollow.s1 { stroke: var(--series-2); } svg .pt.hollow.s2 { stroke: var(--series-3); }
+svg .pt.hollow.s3 { stroke: var(--series-4); } svg .pt.hollow.s4 { stroke: var(--series-5); } svg .pt.hollow.s5 { stroke: var(--series-6); }
+svg .pt.hollow.s6 { stroke: var(--series-7); } svg .pt.hollow.s7 { stroke: var(--series-8); } svg .pt.hollow.s8 { stroke: var(--series-other); }
+svg .pt:hover, svg .pt:focus { stroke: var(--text); outline: none; }
+svg .lift-arrow { fill: none; stroke-width: 2; stroke-dasharray: 5 4; }
+.swatch.ring { box-shadow: inset 0 0 0 2px var(--text-2); background: transparent; }
+.swatch.solid { background: var(--text-2); }
+.legend .swatch.s0 { background: var(--series-1); } .legend .swatch.s1 { background: var(--series-2); } .legend .swatch.s2 { background: var(--series-3); }
+.legend .swatch.s3 { background: var(--series-4); } .legend .swatch.s4 { background: var(--series-5); } .legend .swatch.s5 { background: var(--series-6); }
+.legend .swatch.s6 { background: var(--series-7); } .legend .swatch.s7 { background: var(--series-8); } .legend .swatch.s8 { background: var(--series-other); }
+
+/* tasks × configurations */
+.matrix th.mx-h { text-align: center; vertical-align: bottom; }
+.matrix th.mx-h .cfg { flex-direction: column; gap: 4px; }
+.matrix td.mx { text-align: center; min-width: 96px; border-left: 2px solid var(--surface); }
+.matrix td.mx b { display: block; font-size: 15px; font-variant-numeric: tabular-nums; }
+.matrix td.mx small { display: block; font-size: 11px; opacity: .85; font-variant-numeric: tabular-nums; }
+.matrix .v0 { background: var(--seq-0); color: var(--seq-ink-0); } .matrix .v1 { background: var(--seq-1); color: var(--seq-ink-1); }
+.matrix .v2 { background: var(--seq-2); color: var(--seq-ink-2); } .matrix .v3 { background: var(--seq-3); color: #fff; } .matrix .v4 { background: var(--seq-4); color: #fff; }
+.matrix .na { color: var(--muted); }
+.matrix .mx-task a { color: var(--text); text-decoration: none; font-weight: 600; }
+.matrix .mx-task a:hover { text-decoration: underline; }
+.matrix tr.mx-suite td { background: var(--surface-2); color: var(--text-2); font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; padding: 6px 10px; }
+
+/* methodology */
+.method { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.method h4 { margin: 0 0 6px; font-size: 14px; }
+.method p { margin: 0; color: var(--text-2); font-size: 13px; }
+
+/* task switcher */
 .filters { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 0; margin: 28px 0 0;
   background: color-mix(in srgb, var(--page) 88%, transparent); backdrop-filter: blur(8px); }
 .filters .meta { color: var(--text-2); font-weight: 600; margin-right: 4px; }
@@ -159,14 +226,15 @@ section.prompt { margin-top: 36px; padding-top: 4px; }
   .vtable { grid-template-columns: 96px minmax(0, 1fr) minmax(0, 1fr) 62px; font-size: 12.5px; }
   .vcell { grid-template-columns: 1fr; } .vcell .track { display: none; } .vcell .v { min-width: 0; }
   .vtable > div { padding: 8px 4px; }
-  .hero { padding: 26px 20px 22px; } .hero h1 { font-size: 26px; }
+  .hero-in { padding: 28px 16px 22px; } .hero h1 { font-size: 27px; }
   .hero .toggle { position: static; margin-top: 14px; }
-  .vcard .big { font-size: 38px; } .vcard.lead .big { font-size: 46px; }
-  .pbar { grid-template-columns: 64px 1fr 56px; }
+  .hstat { min-width: 0; flex: 1 1 40%; } .lift-big { font-size: 44px; }
+  .lifts { grid-template-columns: 1fr; } .lrow { grid-template-columns: minmax(0, 1fr) auto; } .lrow .chip { grid-column: 2; }
 }
 .heat { display: grid; grid-template-columns: minmax(0, 1fr) minmax(52px, 70px) minmax(52px, 70px); gap: 4px 6px; align-items: center; font-size: 12.5px; }
 .heat .hd { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-2); text-align: center; }
 .heat .hd:first-child { text-align: left; }
+.heat .hd .sw { margin-right: 5px; vertical-align: -1px; }
 .heat .name { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .heat .cell { text-align: center; border-radius: 6px; padding: 4px 0; font-weight: 650; font-variant-numeric: tabular-nums; }
 .heat .c-full { background: var(--good-soft); color: var(--good); }
@@ -254,12 +322,13 @@ footer { margin-top: 44px; color: var(--muted); font-size: 12px; border-top: 1px
 @keyframes grow { from { width: 0; } }
 @keyframes grow-x { from { transform: scaleX(0); } }
 @keyframes draw { from { stroke-dashoffset: 1600; } to { stroke-dashoffset: 0; } }
-.vcard { transition: transform .2s ease, box-shadow .2s ease; }
-.vcard:hover { transform: translateY(-2px); }
+.lift, .leader tbody tr { transition: transform .2s ease, box-shadow .2s ease, background .2s; }
+.lift:hover { transform: translateY(-2px); }
+.leader tbody tr:hover td { background: var(--surface-2); }
 @media (prefers-reduced-motion: reduce) {
   .js .reveal { opacity: 1; transform: none; transition: none; }
   .js .reveal.in .fill, .js .reveal.in svg .bar, .js .reveal.in svg .line { animation: none; }
-  .hero::after { animation: none; } .vcard, .filters button { transition: none; }
+  .lift, .leader tbody tr, .filters button { transition: none; }
 }
 `;
 
@@ -362,6 +431,27 @@ const JS = `
   var links = document.querySelectorAll('a[data-goto]');
   for (var l = 0; l < links.length; l++) links[l].addEventListener('click', function (e) { select(e.currentTarget.getAttribute('data-goto')); });
 
+  // Suite tabs: switch the leaderboard pane, and show only that suite's tasks below.
+  var tabs = document.querySelectorAll('.tabs button[data-scope]');
+  function scope(id) {
+    for (var t = 0; t < tabs.length; t++) tabs[t].setAttribute('aria-selected', String(tabs[t].getAttribute('data-scope') === id));
+    var panes = document.querySelectorAll('.scope-pane');
+    for (var p = 0; p < panes.length; p++) {
+      var on = panes[p].getAttribute('data-scope') === id;
+      panes[p].classList.toggle('hidden', !on);
+      if (on) { var rs2 = panes[p].querySelectorAll('.reveal'); for (var q2 = 0; q2 < rs2.length; q2++) revealed(rs2[q2]); }
+    }
+    var suited = document.querySelectorAll('.matrix tr[data-suite], .filters button[data-suite]');
+    for (var s2 = 0; s2 < suited.length; s2++) suited[s2].classList.toggle('hidden', id !== 'all' && suited[s2].getAttribute('data-suite') !== id);
+    select('*');
+    var secs = document.querySelectorAll('section.prompt');
+    for (var s3 = 0; s3 < secs.length; s3++) if (id !== 'all' && secs[s3].getAttribute('data-suite') !== id) secs[s3].classList.add('hidden');
+    try { localStorage.setItem('bench.scope', id); } catch (err) {}
+  }
+  for (var t2 = 0; t2 < tabs.length; t2++) tabs[t2].addEventListener('click', function (e) { scope(e.currentTarget.getAttribute('data-scope')); });
+  var savedScope = null; try { savedScope = localStorage.getItem('bench.scope'); } catch (err) {}
+  if (savedScope && document.querySelector('.tabs button[data-scope="' + savedScope.replace(/"/g, '') + '"]')) scope(savedScope);
+
   // Theme toggle.
   var toggle = document.querySelector('.toggle');
   try { var th = localStorage.getItem('bench.theme'); if (th) root.setAttribute('data-theme', th); } catch (err) {}
@@ -390,269 +480,257 @@ const num1 = (v: number | null) => (v === null ? '—' : v >= 10 ? Math.round(v)
 /** AIC per valid output; null means no run of that side was valid, so no price can be put on a result. */
 const perValidOf = (v: number | null) => (v === null ? 'no valid run' : formatMetric('aic', v));
 
-/** Which side wins on a metric; null on a tie or when a side is missing. */
-function winner(withV: number | null, withoutV: number | null, better: Better): 'with' | 'without' | null {
-  if (withV === null || withoutV === null || withV === withoutV) return null;
-  return (better === 'lower' ? withV < withoutV : withV > withoutV) ? 'with' : 'without';
+// ---------------------------------------------------------------- 1. leaderboard
+
+/** "claude-sonnet-5-5" → "Sonnet 5.5"; any other id as it is. */
+export function modelName(id: string): string {
+  const m = /^claude-([a-z]+)-(\d+)-(\d+)(?:-.*)?$/i.exec(id);
+  return m ? `${m[1].charAt(0).toUpperCase()}${m[1].slice(1)} ${m[2]}.${m[3]}` : id;
 }
 
-function deltaChip(withV: number | null, withoutV: number | null, better: Better, mode: 'pct' | 'pp' | 'abs'): string {
-  if (withV === null || withoutV === null) return '<span class="chip neutral">—</span>';
-  let d: number;
-  let text: string;
-  if (mode === 'pp') {
-    d = (withV - withoutV) * 100;
-    text = `${d > 0 ? '+' : d < 0 ? '−' : '±'}${Math.abs(Math.round(d))} pp`;
-  } else if (mode === 'abs') {
-    d = withV - withoutV;
-    text = `${d > 0 ? '+' : d < 0 ? '−' : '±'}${Math.abs(d) >= 10 ? Math.round(Math.abs(d)) : Math.abs(d).toFixed(1)}`;
-  } else {
-    if (withoutV === 0) return '<span class="chip neutral">—</span>';
-    d = ((withV - withoutV) / withoutV) * 100;
-    text = formatDeltaPct(d);
-  }
-  if (Math.abs(d) < 1e-9) return `<span class="chip neutral">${esc(text)}</span>`;
-  // The glyph marks the verdict, as everywhere on the page: ▼ better with MCP, ▲ worse.
+const slotOf = (m: ReportModel, model: string) => m.slots.get(model) ?? 8;
+
+function configLabel(m: ReportModel, c: ConfigKey, withHost: boolean): string {
+  return `<span class="cfg"><span class="sw s${slotOf(m, c.model)}${c.mcp ? '' : ' hollow'}"></span><b>${esc(modelName(c.model))}</b>${
+    c.mcp ? '<span class="badge mcp">MCP</span>' : '<span class="badge plain">no MCP</span>'}${withHost ? `<small>${esc(c.host)}</small>` : ''}</span>`;
+}
+
+const deltaPctOf = (w: number | null, wo: number | null) => (w === null || wo === null || wo === 0 ? null : ((w - wo) / wo) * 100);
+
+/** "+78 pp" / "−70 %" chip, green when MCP is better, red when worse. */
+function liftChip(d: number | null, better: Better, unit: '%' | 'pp' | 'abs'): string {
+  if (d === null || !Number.isFinite(d)) return '<span class="chip neutral">—</span>';
+  const sign = d > 0 ? '+' : d < 0 ? '−' : '±';
+  const text = unit === 'pp' ? `${sign}${Math.abs(Math.round(d))} pp` : unit === 'abs' ? `${sign}${num1(Math.abs(d))}` : formatDeltaPct(d);
+  if (Math.abs(d) < (unit === 'abs' ? 0.05 : 0.5)) return `<span class="chip neutral">${esc(text)}</span>`;
   const good = better === 'lower' ? d < 0 : d > 0;
-  return `<span class="chip ${good ? 'good' : 'bad'}">${good ? '▼' : '▲'} ${esc(text)}</span>`;
+  // The arrow says which way the number moved, the colour whether that is better.
+  return `<span class="chip ${good ? 'good' : 'bad'}">${d > 0 ? '↑' : '↓'} ${esc(text)}</span>`;
 }
 
-// ---------------------------------------------------------------- 1. verdict
+const reworkOf = (q: VariantQuality) => (q.toolErrors === null && q.buildFailures === null ? null : (q.toolErrors ?? 0) + (q.buildFailures ?? 0) + (q.rewrites ?? 0));
 
-interface VerdictMetric {
-  key: string;
-  label: string;
-  better: Better;
-  get: (q: VariantQuality) => number | null;
-  show: (v: number | null) => string;
-  mode: 'pct' | 'pp' | 'abs';
-}
-
-const VERDICT_METRICS: VerdictMetric[] = [
-  { key: 'valid', label: 'Valid output', better: 'higher', get: q => q.validRate, show: pctOf, mode: 'pp' },
-  { key: 'perValid', label: 'AI Credits per valid output', better: 'lower', get: q => q.aicPerValid, show: perValidOf, mode: 'pct' },
-  { key: 'time', label: 'Run time (median)', better: 'lower', get: q => q.timeMs, show: v => formatMetric('durationMs', v), mode: 'pct' },
-  { key: 'aic', label: 'Cost, AI Credits (median)', better: 'lower', get: q => q.aic, show: v => formatMetric('aic', v), mode: 'pct' },
-  {
-    key: 'rework', label: 'Rework per run', better: 'lower',
-    get: q => (q.toolErrors === null && q.buildFailures === null ? null : (q.toolErrors ?? 0) + (q.buildFailures ?? 0) + (q.rewrites ?? 0)),
-    show: num1, mode: 'abs',
-  },
-];
-
-function pairBars(withV: number | null, withoutV: number | null, show: (v: number | null) => string): string {
-  const max = Math.max(withV ?? 0, withoutV ?? 0) || 1;
-  const bar = (cls: string, label: string, v: number | null) =>
-    `<div class="pbar ${cls}"><span>${label}</span><div class="track"><div class="fill" style="--w:${v === null ? 0 : Math.max(2, (v / max) * 100).toFixed(1)}%"></div></div><span class="v">${esc(show(v))}</span></div>`;
-  return `<div class="pair-bars">${bar('mcp', 'with MCP', withV)}${bar('plain', 'without', withoutV)}</div>`;
-}
-
-/**
- * A relative effect as the rest of the page computes it: per prompt (median
- * with vs median without, then median over models), then the median of those.
- * Pooling every run's time or cost across prompts instead mixes a 2-minute
- * prompt with an 8-minute one and can point the other way: on the first
- * reference run the pooled AIC said −6 % while every per-prompt view said +33 %.
- */
-export interface PromptEffect {
-  median: number;
-  perPrompt: Array<{ title: string; delta: number }>;
-}
-
-export function promptEffects(m: ReportModel, metric: MetricKey): PromptEffect | null {
-  const per = m.prompts
-    .map(p => {
-      const ds = p.modelEffects.map(r => r.deltas[metric]?.deltaPct).filter((d): d is number => typeof d === 'number');
-      if (ds.length === 0) return null;
-      const sorted = [...ds].sort((a, b) => a - b);
-      const mid = sorted.length / 2;
-      const d = sorted.length % 2 ? sorted[Math.floor(mid)] : (sorted[mid - 1] + sorted[mid]) / 2;
-      return { title: p.title.replace(/^Reference \d+:\s*/, '').split(' — ')[0], delta: d };
-    })
-    .filter((x): x is { title: string; delta: number } => x !== null);
-  if (per.length === 0) return null;
-  const sorted = per.map(x => x.delta).sort((a, b) => a - b);
-  const mid = sorted.length / 2;
-  return { median: sorted.length % 2 ? sorted[Math.floor(mid)] : (sorted[mid - 1] + sorted[mid]) / 2, perPrompt: per };
-}
-
-function effectCard(metric: VerdictMetric, effect: PromptEffect): string {
-  const d = effect.median;
-  const good = metric.better === 'lower' ? d < 0 : d > 0;
-  const tone = Math.abs(d) < 1e-9 ? '' : good ? 'good' : 'bad';
-  const chips = effect.perPrompt.map(x => {
-    const g = metric.better === 'lower' ? x.delta < 0 : x.delta > 0;
-    return `<div class="pbar"><span title="${esc(x.title)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.title)}</span><span></span><span class="chip ${Math.abs(x.delta) < 1e-9 ? 'neutral' : g ? 'good' : 'bad'}">${esc(formatDeltaPct(x.delta))}</span></div>`;
-  });
-  return `<div class="card vcard reveal${tone ? ` ${tone}` : ''}">
-    <div class="k">${esc(metric.label.replace(' (median)', ''))}</div>
-    <div class="big">${counter(d, formatDeltaPct(d), Math.abs(d) >= 10 ? 0 : 1, d > 0 ? '+' : '', ' %')}</div>
-    <div class="vs">with MCP vs without · median of ${effect.perPrompt.length} per-prompt effect${effect.perPrompt.length === 1 ? '' : 's'}</div>
-    <div class="pair-bars">${chips.join('')}</div>
-  </div>`;
-}
-
-function verdictCard(metric: VerdictMetric, vs: Versus, lead: boolean, effect?: PromptEffect | null): string {
-  if (effect && metric.mode === 'pct') return effectCard(metric, effect);
-  const w = vs.with ? metric.get(vs.with) : null;
-  const wo = vs.without ? metric.get(vs.without) : null;
-  const win = winner(w, wo, metric.better);
-  const tone = win === 'with' ? 'good' : win === 'without' ? 'bad' : '';
-  let big: string;
-  if (metric.key === 'valid' && w !== null) big = counter(w * 100, pctOf(w), 0, '', ' %');
-  else if (metric.mode === 'pct' && w !== null && wo !== null && wo !== 0) {
-    const d = ((w - wo) / wo) * 100;
-    big = counter(d, formatDeltaPct(d), Math.abs(d) >= 10 ? 0 : 1, d > 0 ? '+' : '', ' %');
-  } else if (metric.mode === 'abs' && w !== null && wo !== null) {
-    const d = w - wo;
-    big = counter(d, `${d > 0 ? '+' : d < 0 ? '−' : '±'}${num1(Math.abs(d))}`, Math.abs(d) >= 10 ? 0 : 1, d > 0 ? '+' : '');
-  } else big = esc(metric.show(w));
-  const sub = metric.key === 'valid'
-    ? `with MCP vs <b>${esc(pctOf(wo))}</b> without · ${deltaChip(w, wo, 'higher', 'pp')}`
-    : `with MCP vs without · <b>${esc(metric.show(w))}</b> vs <b>${esc(metric.show(wo))}</b>`;
-  const n = metric.key === 'valid' && vs.with && vs.without
-    ? `<div class="tagline">${Math.round((w ?? 0) * vs.with.judged)} of ${vs.with.judged} runs with MCP · ${Math.round((wo ?? 0) * vs.without.judged)} of ${vs.without.judged} without · builds clean, well-formed XML, no new BP errors</div>`
-    : metric.key === 'rework'
-      ? '<div class="tagline">tool errors + failed builds + rewrites of the same object, mean per run</div>'
-      : metric.key === 'perValid'
-        ? '<div class="tagline">AI Credits of every built run ÷ the valid ones — broken output is cheap per run, dear per result</div>'
-        : '';
-  return `<div class="card vcard reveal${lead ? ' lead' : ''}${tone ? ` ${tone}` : ''}">
-    <div class="k">${esc(metric.label)}</div>
-    <div class="big">${big}</div>
-    <div class="vs">${sub}</div>
-    ${pairBars(w, wo, metric.show)}
-    ${n}
-  </div>`;
-}
-
-/** One sentence that says what the numbers say, so nobody has to assemble it from tiles. */
-export function verdictSentence(vs: Versus, effects: { time?: PromptEffect | null; aic?: PromptEffect | null } = {}): string {
-  const w = vs.with, wo = vs.without;
-  if (!w || !wo) return 'Run both variants to compare them — every number here is "with MCP relative to without".';
+/** One sentence per model, so nobody has to assemble the finding from tiles. */
+export function liftSentence(l: ModelLift): string {
+  const name = modelName(l.model);
+  const w = l.with, wo = l.without;
+  if (!w || !wo) return `${name}: run both variants to compare them.`;
   const parts: string[] = [];
-  if (w.validRate !== null && wo.validRate !== null) {
-    parts.push(`With MCP, ${Math.round(w.validRate * w.judged)} of ${w.judged} runs delivered valid output, against ${Math.round(wo.validRate * wo.judged)} of ${wo.judged} without`);
+  if (w.q.judged && wo.q.judged) {
+    parts.push(`${name} delivered valid output in ${w.validCount} of ${w.q.judged} runs with MCP against ${wo.validCount} of ${wo.q.judged} without`);
+  } else {
+    parts.push(`${name} passed ${pctOf(w.q.checksMean === null ? null : w.q.checksMean / 100)} of the checks with MCP against ${pctOf(wo.q.checksMean === null ? null : wo.q.checksMean / 100)} without`);
   }
-  const say = (d: number, word: [string, string]) =>
-    Math.abs(d) < 3 ? `about as ${word[0] === 'longer' ? 'long' : 'much'}` : `${Math.abs(Math.round(d))} % ${d > 0 ? word[0] : word[1]}`;
-  const rel = (a: number | null, b: number | null, word: [string, string], effect?: PromptEffect | null) => {
-    if (effect) return say(effect.median, word);
-    if (a === null || b === null || b === 0) return null;
-    return say(((a - b) / b) * 100, word);
+  if (w.q.aicPerValid !== null && (wo.q.aicPerValid !== null || wo.q.validRate === 0)) {
+    parts.push(wo.q.aicPerValid === null
+      ? `at ${formatMetric('aic', w.q.aicPerValid)} AIC per valid output (none without)`
+      : `at ${formatMetric('aic', w.q.aicPerValid)} vs ${formatMetric('aic', wo.q.aicPerValid)} AIC per valid output`);
+  }
+  const t = deltaPctOf(w.q.timeMs, wo.q.timeMs);
+  if (t !== null) parts.push(Math.abs(t) < 3 ? 'in about the same time' : `in ${Math.abs(Math.round(t))} % ${t > 0 ? 'more' : 'less'} time`);
+  return `${parts.join(', ')}.`;
+}
+
+function liftCards(m: ReportModel, scope: Scope): string {
+  const withHost = new Set(scope.lifts.map(l => l.host)).size > 1;
+  const cards = scope.lifts.map(l => {
+    const w = l.with?.q ?? null, wo = l.without?.q ?? null;
+    const judged = Boolean(w?.judged || wo?.judged);
+    const headline = judged
+      ? (w?.validRate ?? null) !== null && (wo?.validRate ?? null) !== null ? (w!.validRate! - wo!.validRate!) * 100 : null
+      : w?.checksMean != null && wo?.checksMean != null ? w.checksMean - wo.checksMean : null;
+    const row = (label: string, a: string, b: string, chip: string) =>
+      `<div class="lrow"><span class="lk">${esc(label)}</span><span class="lv"><span class="from">${esc(a)}</span><span class="arr">→</span><b>${esc(b)}</b></span>${chip}</div>`;
+    const rows = [
+      judged
+        ? row('Valid output', pctOf(wo?.validRate ?? null), pctOf(w?.validRate ?? null), liftChip(headline, 'higher', 'pp'))
+        : '',
+      row('Checks passed', pctOf(wo?.checksMean != null ? wo.checksMean / 100 : null), pctOf(w?.checksMean != null ? w.checksMean / 100 : null),
+        liftChip(w?.checksMean != null && wo?.checksMean != null ? w.checksMean - wo.checksMean : null, 'higher', 'pp')),
+      judged ? row('AIC per valid output', perValidOf(wo?.aicPerValid ?? null), perValidOf(w?.aicPerValid ?? null), liftChip(deltaPctOf(w?.aicPerValid ?? null, wo?.aicPerValid ?? null), 'lower', '%')) : '',
+      row('AIC per run', formatMetric('aic', l.without?.aicMean ?? null), formatMetric('aic', l.with?.aicMean ?? null), liftChip(deltaPctOf(l.with?.aicMean ?? null, l.without?.aicMean ?? null), 'lower', '%')),
+      row('Time, median', formatMetric('durationMs', wo?.timeMs ?? null), formatMetric('durationMs', w?.timeMs ?? null), liftChip(deltaPctOf(w?.timeMs ?? null, wo?.timeMs ?? null), 'lower', '%')),
+      w && wo && reworkOf(w) !== null && reworkOf(wo) !== null
+        ? row('Rework per run', num1(reworkOf(wo)), num1(reworkOf(w)), liftChip(reworkOf(w)! - reworkOf(wo)!, 'lower', 'abs'))
+        : '',
+    ].join('');
+    const tone = headline === null || Math.abs(headline) < 0.5 ? '' : headline > 0 ? ' good' : ' bad';
+    const big = headline === null ? '<span class="na">waiting for both variants</span>' : counter(headline, `${headline > 0 ? '+' : headline < 0 ? '−' : '±'}${Math.abs(Math.round(headline))}`, 0, headline > 0 ? '+' : '', '');
+    return `<article class="card lift reveal${tone}" style="--c: var(--series-${slotOf(m, l.model) + 1}, var(--series-other))">
+      <div class="lift-head"><span class="sw s${slotOf(m, l.model)}"></span>${esc(modelName(l.model))}${withHost ? ` <small>${esc(l.host)}</small>` : ''}</div>
+      <div class="lift-big">${big}${headline === null ? '' : '<span class="unit">pp</span>'}</div>
+      <div class="lift-sub">${judged ? 'valid output' : 'checks passed'} with the MCP server, percentage points</div>
+      <div class="lrows">${rows}</div>
+      <p class="lift-sentence">${esc(liftSentence(l))}</p>
+    </article>`;
+  });
+  return `<div class="lifts">${cards.join('')}</div>`;
+}
+
+function leaderboard(m: ReportModel, scope: Scope): string {
+  const withHost = new Set(scope.configs.map(c => c.host)).size > 1;
+  const judged = scope.configs.some(c => c.q.judged > 0);
+  const best = (f: (c: ConfigRow) => number | null, better: Better) => {
+    const vs = scope.configs.map(f).filter((v): v is number => v !== null);
+    return vs.length ? (better === 'lower' ? Math.min(...vs) : Math.max(...vs)) : null;
   };
-  const time = rel(w.timeMs, wo.timeMs, ['longer', 'shorter'], effects.time);
-  const cost = rel(w.aic, wo.aic, ['more', 'less'], effects.aic);
-  const perPrompt = effects.time || effects.aic ? ' (median per prompt)' : '';
-  if (time) parts.push(`it took ${time}`);
-  if (cost) parts.push(`it cost ${cost} per run${perPrompt}`);
-  if (w.aicPerValid !== null && (wo.aicPerValid !== null || (wo.judged > 0 && wo.validRate === 0))) {
-    const other = wo.aicPerValid === null ? 'no valid run to price without' : `${formatMetric('aic', wo.aicPerValid)} AIC without`;
-    parts.push(`${formatMetric('aic', w.aicPerValid)} AIC per valid output against ${other}`);
-  }
-  const rw = (q: VariantQuality) => (q.toolErrors ?? 0) + (q.buildFailures ?? 0) + (q.rewrites ?? 0);
-  if (w.toolErrors !== null && wo.toolErrors !== null) {
-    parts.push(`and needed ${num1(rw(w))} repair step${rw(w) === 1 ? '' : 's'} per run against ${num1(rw(wo))}`);
-  }
-  if (parts.length === 0) return 'No comparable runs yet.';
-  const s = parts.join(', ');
-  return `${s.charAt(0).toUpperCase()}${s.slice(1)}.`;
-}
-
-function verdictBlock(vs: Versus, scope: string, effects: { time?: PromptEffect | null; aic?: PromptEffect | null } = {}): string {
-  if (!vs.with || !vs.without) return '<p class="lede">The verdict needs runs both with and without MCP.</p>';
-  // A card neither side has data for (rework on records older than the trace) is left out, not drawn empty.
-  const metrics = VERDICT_METRICS.filter(m => m.get(vs.with!) !== null || m.get(vs.without!) !== null);
-  const effectOf = (key: string) => (key === 'time' ? effects.time : key === 'aic' ? effects.aic : null);
-  return `<div class="verdict" style="--rest:${Math.max(1, metrics.length - 1)}">${metrics.map((m, i) => verdictCard(m, vs, i === 0 && m.key === 'valid', effectOf(m.key))).join('')}</div>
-  <p class="sentence reveal">${esc(verdictSentence(vs, effects))} <span class="tagline">(${esc(scope)})</span></p>`;
-}
-
-// ---------------------------------------------------------------- 2. scoreboard
-
-function duoCell(w: number | null, wo: number | null, better: Better, show: (v: number | null) => string): string {
-  const win = winner(w, wo, better);
-  const pill = (cls: string, v: number | null, isWin: boolean) =>
-    `<span class="pill ${cls}${isWin ? ' win' : ''}">${esc(show(v))}${isWin ? '<span class="crown">✓</span>' : ''}</span>`;
-  return `<td><span class="duo">${pill('mcp', w, win === 'with')}${pill('plain', wo, win === 'without')}</span></td>`;
-}
-
-function scoreboard(m: ReportModel): string {
-  const rows = m.prompts.map(p => {
-    const w = p.versus.with, wo = p.versus.without;
-    const g = <T,>(q: VariantQuality | null, f: (q: VariantQuality) => T) => (q ? f(q) : null);
-    const rework = (q: VariantQuality) => (q.toolErrors === null ? null : (q.toolErrors ?? 0) + (q.buildFailures ?? 0) + (q.rewrites ?? 0));
-    return `<tr>
-      <td class="prompt-cell"><a href="#p-${esc(p.promptId)}" data-goto="${esc(p.promptId)}" style="color:inherit;text-decoration:none"><b>${esc(p.title)}</b></a><code>${esc(p.promptId)}</code></td>
-      ${duoCell(g(w, q => q.validRate), g(wo, q => q.validRate), 'higher', pctOf)}
-      ${duoCell(g(w, q => q.checksMean), g(wo, q => q.checksMean), 'higher', v => (v === null ? '—' : `${Math.round(v)} %`))}
-      ${duoCell(g(w, q => q.timeMs), g(wo, q => q.timeMs), 'lower', v => formatMetric('durationMs', v))}
-      ${duoCell(g(w, q => q.aic), g(wo, q => q.aic), 'lower', v => formatMetric('aic', v))}
-      ${duoCell(g(w, q => q.aicPerValid), g(wo, q => q.aicPerValid), 'lower', perValidOf)}
-      ${duoCell(g(w, rework), g(wo, rework), 'lower', num1)}
+  const bestPerValid = best(c => c.q.aicPerValid, 'lower');
+  const bestAic = best(c => c.aicMean, 'lower');
+  const bestTime = best(c => c.q.timeMs, 'lower');
+  const mark = (v: number | null, b: number | null) => (v !== null && b !== null && Math.abs(v - b) < 1e-9 ? ' best' : '');
+  const rows = scope.configs.map((c, i) => {
+    const rate = judged ? c.q.validRate : c.q.checksMean === null ? null : c.q.checksMean / 100;
+    const ci = judged ? c.validCi : null;
+    const ciText = ci ? `${Math.round(ci[0] * 100)}–${Math.round(ci[1] * 100)} %` : '';
+    const tip = judged
+      ? `${modelName(c.model)} ${c.mcp ? 'with' : 'without'} MCP: ${c.validCount} of ${c.q.judged} runs valid${ci ? `, 95 % interval ${ciText}` : ''}`
+      : `${modelName(c.model)} ${c.mcp ? 'with' : 'without'} MCP: mean checks passed`;
+    return `<tr class="rank-${i + 1}">
+      <td class="rk"><span>${i + 1}</span></td>
+      <td>${configLabel(m, c, withHost)}</td>
+      <td class="score" data-tip="${esc(tip)}"><div class="sbar${c.mcp ? '' : ' hatched'}" style="--c: var(--series-${slotOf(m, c.model) + 1}, var(--series-other))">
+        <div class="fill" style="--w:${rate === null ? 0 : (rate * 100).toFixed(1)}%"></div>${ci ? `<div class="ci" style="left:${(ci[0] * 100).toFixed(1)}%;width:${((ci[1] - ci[0]) * 100).toFixed(1)}%"></div>` : ''}</div>
+        <span class="sv">${rate === null ? '—' : counter(rate * 100, pctOf(rate), 0, '', ' %')}</span>
+        <small>${judged ? `${c.validCount}/${c.q.judged}${ci ? ` · CI ${ciText}` : ''}` : 'checks'}</small></td>
+      ${judged ? `<td class="num">${esc(pctOf(c.q.checksMean === null ? null : c.q.checksMean / 100))}</td>` : ''}
+      ${judged ? `<td class="num em${mark(c.q.aicPerValid, bestPerValid)}">${esc(perValidOf(c.q.aicPerValid))}</td>` : ''}
+      <td class="num${mark(c.aicMean, bestAic)}">${esc(formatMetric('aic', c.aicMean))}</td>
+      <td class="num${mark(c.q.timeMs, bestTime)}">${esc(formatMetric('durationMs', c.q.timeMs))}</td>
+      <td class="num">${esc(num1(reworkOf(c.q)))}</td>
+      <td class="num muted">${c.q.n}</td>
     </tr>`;
   });
-  return `<div class="card reveal scroll"><table class="board"><thead><tr><th>prompt</th><th>valid output</th><th>checks</th><th>run time</th><th>AIC / run</th><th>AIC / valid output</th><th>rework / run</th></tr></thead>
-  <tbody>${rows.join('')}</tbody></table>
-  <p class="tagline"><span class="pill mcp">with MCP</span> <span class="pill plain">without</span> · ✓ marks the better side · valid output = builds clean, well-formed XML, no new BP errors</p></div>`;
+  return `<div class="card board-card reveal scroll"><table class="leader">
+    <thead><tr><th>#</th><th>configuration</th><th>${judged ? 'valid output <small>95 % CI</small>' : 'checks passed'}</th>${judged ? '<th class="num">checks</th><th class="num">AIC / valid output</th>' : ''}<th class="num">AIC / run</th><th class="num">time <small>median</small></th><th class="num">rework / run</th><th class="num">runs</th></tr></thead>
+    <tbody>${rows.join('')}</tbody></table>
+    <p class="tagline">Ranked by valid output, then by the price of a valid result. <b>Valid output</b> = builds clean, well-formed XML, no new best-practice error. Hatched bar = without MCP. The thin band on a bar is its 95 % confidence interval — overlapping bands are not a reliable difference. Bold = best in column.</p></div>`;
 }
 
-// ---------------------------------------------------------------- 3. per prompt
-
-interface VsRow { label: string; key?: boolean; better: Better; get: (q: VariantQuality) => number | null; show: (v: number | null) => string; mode: 'pct' | 'pp' | 'abs' }
-
-const VS_ROWS: VsRow[] = [
-  { label: 'Valid output', key: true, better: 'higher', get: q => q.validRate, show: pctOf, mode: 'pp' },
-  { label: 'Builds clean', better: 'higher', get: q => q.buildRate, show: pctOf, mode: 'pp' },
-  { label: 'Checks passed', better: 'higher', get: q => (q.checksMean === null ? null : q.checksMean / 100), show: pctOf, mode: 'pp' },
-  { label: 'Run time', better: 'lower', get: q => q.timeMs, show: v => formatMetric('durationMs', v), mode: 'pct' },
-  { label: 'AI Credits', better: 'lower', get: q => q.aic, show: v => formatMetric('aic', v), mode: 'pct' },
-  { label: 'AI Credits per valid output', key: true, better: 'lower', get: q => q.aicPerValid, show: perValidOf, mode: 'pct' },
-  { label: 'Round trips', better: 'lower', get: q => q.turns, show: v => formatMetric('requests', v), mode: 'pct' },
-  { label: 'Tool errors / run', better: 'lower', get: q => q.toolErrors, show: num1, mode: 'abs' },
-  { label: '  of them MCP', better: 'lower', get: q => q.mcpToolErrors, show: num1, mode: 'abs' },
-  { label: 'Failed builds / run', better: 'lower', get: q => q.buildFailures, show: num1, mode: 'abs' },
-  { label: 'Rewrites / run', better: 'lower', get: q => q.rewrites, show: num1, mode: 'abs' },
-  { label: 'New BP errors / run', better: 'lower', get: q => q.bpErrors, show: num1, mode: 'abs' },
-  { label: 'New BP warnings / run', better: 'lower', get: q => q.bpWarnings, show: num1, mode: 'abs' },
-];
-
-function versusTable(vs: Versus): string {
-  if (!vs.with && !vs.without) return '';
-  const cells: string[] = ['<div class="hd"></div>', '<div class="hd mcp">with MCP</div>', '<div class="hd plain">without</div>', '<div class="hd">Δ</div>'];
-  for (const row of VS_ROWS) {
-    const w = vs.with ? row.get(vs.with) : null;
-    const wo = vs.without ? row.get(vs.without) : null;
-    if (w === null && wo === null) continue;
-    const max = Math.max(w ?? 0, wo ?? 0) || 1;
-    const win = winner(w, wo, row.better);
-    const cell = (cls: string, v: number | null, isWin: boolean) =>
-      `<div class="vcell ${cls}${isWin ? ' win' : ''}"><div class="track"><div class="fill" style="--w:${v === null ? 0 : Math.max(v === 0 ? 0 : 2, (v / max) * 100).toFixed(1)}%"></div></div><span class="v">${esc(row.show(v))}</span></div>`;
-    const rowCells = [
-      `<div class="metric${row.key ? ' key' : ''}${row.label.startsWith(' ') ? ' sub' : ''}">${esc(row.label.trim())}</div>`,
-      cell('mcp', w, win === 'with'),
-      cell('plain', wo, win === 'without'),
-      `<div>${deltaChip(w, wo, row.better, row.mode)}</div>`,
-    ];
-    cells.push(row.key ? `<div class="row-key" style="display:contents">${rowCells.join('')}</div>` : rowCells.join(''));
-  }
-  return `<div class="card reveal"><h3 style="margin-top:0">With MCP vs without</h3><div class="vtable">${cells.join('')}</div>
-  <p class="tagline">Rates are shares of runs; time, AIC and round trips are medians; rework and BP counts are means per run. ✓ marks the better side.</p></div>`;
+function scatterBlock(m: ReportModel, scope: Scope): string {
+  const judged = scope.configs.some(c => c.q.judged > 0);
+  const rateOf = (c: ConfigRow) => (judged ? c.q.validRate : c.q.checksMean === null ? null : c.q.checksMean / 100);
+  const point = (c: ConfigRow | null): LiftPoint | null => {
+    const y = c ? rateOf(c) : null;
+    if (!c || c.aicMean === null || y === null) return null;
+    return { x: c.aicMean, y, tip: `${modelName(c.model)} ${c.mcp ? 'with' : 'without'} MCP — ${pctOf(y)} ${judged ? 'valid' : 'checks'}, ${formatMetric('aic', c.aicMean)} AIC per run, ${perValidOf(c.q.aicPerValid)} per valid output` };
+  };
+  const series: LiftSeries[] = scope.lifts.map(l => ({ label: modelName(l.model), slot: slotOf(m, l.model), with: point(l.with), without: point(l.without) }));
+  const svg = liftScatter({ series, title: `${judged ? 'Valid output' : 'Checks passed'} against AI Credits per run, ${scope.label}`, xLabel: 'AI Credits per run (mean)', formatX: v => formatMetric('aic', v) });
+  return `<figure class="card reveal"><figcaption>${judged ? 'Valid output' : 'Checks passed'} vs cost<small>one colour per model · ○ without MCP → ● with MCP</small></figcaption>${svg}
+    <ul class="legend">${scope.lifts.map(l => `<li><span class="swatch s${slotOf(m, l.model)}"></span>${esc(modelName(l.model))}</li>`).join('')}<li><span class="swatch ring"></span>without MCP</li><li><span class="swatch solid"></span>with MCP</li></ul></figure>`;
 }
+
+function matrixBlock(m: ReportModel): string {
+  if (m.matrix.length === 0 || m.configKeys.length === 0) return '';
+  const withHost = new Set(m.configKeys.map(c => c.host)).size > 1;
+  const head = m.configKeys.map(c => `<th class="mx-h">${configLabel(m, c, withHost)}</th>`).join('');
+  let lastSuite = '';
+  const multiSuite = new Set(m.matrix.map(r => r.suite)).size > 1;
+  const rows = m.matrix.map(r => {
+    const group = multiSuite && r.suite !== lastSuite
+      ? `<tr class="mx-suite" data-suite="${esc(r.suite)}"><td colspan="${m.configKeys.length + 1}">${esc(r.suite.charAt(0).toUpperCase() + r.suite.slice(1))}</td></tr>` : '';
+    lastSuite = r.suite;
+    const cells = r.cells.map((c, i) => {
+      if (!c) return '<td class="mx na">—</td>';
+      const judged = c.q.judged > 0;
+      const rate = judged ? c.q.validRate : c.q.checksMean === null ? null : c.q.checksMean / 100;
+      const step = rate === null ? 'na' : rate >= 0.999 ? 'v4' : rate >= 0.66 ? 'v3' : rate >= 0.33 ? 'v2' : rate > 0.001 ? 'v1' : 'v0';
+      const k = m.configKeys[i];
+      const main = judged ? `${c.validCount}/${c.q.judged}` : pctOf(rate);
+      const sub = judged ? perValidOf(c.q.aicPerValid) : formatMetric('aic', c.aicMean);
+      const tip = `${r.title} — ${modelName(k.model)} ${k.mcp ? 'with' : 'without'} MCP: ${judged ? `${c.validCount} of ${c.q.judged} runs valid, ${perValidOf(c.q.aicPerValid)} AIC per valid output` : `${pctOf(rate)} of checks`}, ${formatMetric('aic', c.aicMean)} AIC per run, ${formatMetric('durationMs', c.q.timeMs)} median`;
+      return `<td class="mx ${step}" data-tip="${esc(tip)}"><b>${esc(main)}</b><small>${esc(sub)}${judged ? ' / valid' : ' / run'}</small></td>`;
+    });
+    return `${group}<tr data-suite="${esc(r.suite)}"><td class="mx-task"><a href="#p-${esc(r.promptId)}" data-goto="${esc(r.promptId)}">${esc(shortTitle(r.title))}</a></td>${cells.join('')}</tr>`;
+  });
+  return `<div class="card reveal scroll"><table class="matrix"><thead><tr><th>task</th>${head}</tr></thead><tbody>${rows.join('')}</tbody></table>
+  <p class="tagline">Cell = runs with valid output out of runs (for a read-only task: checks passed), and the AI Credits one valid result cost. Darker = more often valid. Click a task for its detail.</p></div>`;
+}
+
+/** "Daily 1: carry a field … — find the hook" → "Carry a field …". */
+function shortTitle(title: string): string {
+  const t = title.replace(/^(Reference|Daily)\s+\d+:\s*/i, '').split(' — ')[0];
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+function scopePanes(m: ReportModel): string {
+  const tabs = m.scopes.length > 1
+    ? `<div class="tabs" role="tablist">${m.scopes.map((s, i) => `<button role="tab" data-scope="${esc(s.id)}" aria-selected="${i === 0}">${esc(s.label)} <small>${s.promptIds.length}</small></button>`).join('')}</div>`
+    : '';
+  const panes = m.scopes.map((s, i) => `<div class="scope-pane${i === 0 ? '' : ' hidden'}" data-scope="${esc(s.id)}">
+    <h2>MCP effect per model</h2>
+    <p class="lede">The same model with and without the D365FO MCP server, ${esc(s.label.toLowerCase())} (${s.promptIds.length} task${s.promptIds.length === 1 ? '' : 's'}, ${s.runs} runs).</p>
+    ${liftCards(m, s)}
+    <h2>Leaderboard</h2>
+    ${leaderboard(m, s)}
+    ${scatterBlock(m, s)}
+  </div>`);
+  return `${tabs}${panes.join('')}`;
+}
+
+function methodology(m: ReportModel): string {
+  const repeats = Math.max(0, ...m.scopes[0]?.configs.map(c => c.repeats) ?? [0]);
+  return `<div class="method">
+    <div class="card reveal"><h4>Tasks</h4><p>Everyday Dynamics 365 F&amp;O work: <b>reference</b> tasks name every object to build (enums, table and form extensions, CoC, SysOperation, SSRS, security); <b>daily</b> tasks name none, so the agent has to find the hook, the entity or the call chain first. Every task's checks and ground truth are in <code>eval/benchmark/prompts/</code>.</p></div>
+    <div class="card reveal"><h4>Same tools, one difference</h4><p>Each run is a fresh headless agent session with no memory. Both variants may read the standard application, write only to a throwaway sandbox package, search the web and run one build command. The only difference is the MCP server. The sandbox is restored from a snapshot after every run.</p></div>
+    <div class="card reveal"><h4>Scoring</h4><p><b>Valid output</b>: after the run the sandbox is compiled (labels, then a full xppc build), every written XML file must parse, and xppbp must report no best-practice error the clean sandbox did not have. <b>Checks</b>: the files and answer the task asks for. <b>Rework</b>: tool errors, failed builds and repair writes on the way.</p></div>
+    <div class="card reveal"><h4>Cost and statistics</h4><p><b>AI Credits</b> per run are the host's cost converted at a fixed rate; <b>per valid output</b> = all runs' credits ÷ valid runs, so a cheap run with broken output counts as spent, not saved. Up to ${repeats} run${repeats === 1 ? '' : 's'} per task and configuration; the valid-output rate carries a 95 % Wilson interval; time is a median.</p></div>
+  </div>`;
+}
+
+// ---------------------------------------------------------------- 3. per task
 
 function heatClass(rate: number | null): string {
   if (rate === null) return 'c-na';
   return rate >= 0.999 ? 'c-full' : rate <= 0.001 ? 'c-none' : 'c-part';
 }
 
-function checkHeat(rates: CheckRate[]): string {
-  if (rates.length === 0) return '';
+interface TaskCol { label: string; get: (c: ConfigRow) => number | null; show: (v: number | null) => string; better: Better; when: boolean }
+
+/** The task's own leaderboard: one row per configuration, best value per column marked. */
+function taskTable(m: ReportModel, p: PromptSection): string {
+  const present = m.configKeys.map((k, i) => ({ k, c: p.configs[i] })).filter((x): x is { k: ConfigKey; c: ConfigRow } => x.c !== null);
+  if (present.length === 0) return '';
+  const withHost = new Set(present.map(x => x.k.host)).size > 1;
+  const judged = present.some(x => x.c.q.judged > 0);
+  const best = (f: (c: ConfigRow) => number | null, better: Better) => {
+    const vs = present.map(x => f(x.c)).filter((v): v is number => v !== null);
+    return vs.length ? (better === 'lower' ? Math.min(...vs) : Math.max(...vs)) : null;
+  };
+  const all: TaskCol[] = [
+    { label: 'valid output', get: c => c.q.validRate, show: pctOf, better: 'higher', when: judged },
+    { label: 'checks', get: c => (c.q.checksMean === null ? null : c.q.checksMean / 100), show: pctOf, better: 'higher', when: true },
+    { label: 'AIC / valid output', get: c => c.q.aicPerValid, show: perValidOf, better: 'lower', when: judged },
+    { label: 'AIC / run', get: c => c.aicMean, show: v => formatMetric('aic', v), better: 'lower', when: true },
+    { label: 'time, median', get: c => c.q.timeMs, show: v => formatMetric('durationMs', v), better: 'lower', when: true },
+    { label: 'failed builds / run', get: c => c.q.buildFailures, show: num1, better: 'lower', when: judged },
+    { label: 'tool errors / run', get: c => c.q.toolErrors, show: num1, better: 'lower', when: true },
+    { label: 'new BP warnings / run', get: c => c.q.bpWarnings, show: num1, better: 'lower', when: judged },
+  ];
+  const cols = all.filter(c => c.when);
+  const bests = cols.map(col => best(col.get, col.better));
+  const rows = present.map(({ k, c }) => `<tr><td>${configLabel(m, k, withHost)}</td>${cols
+    .map((col, j) => {
+      const v = col.get(c);
+      const isBest = v !== null && bests[j] !== null && Math.abs(v - bests[j]!) < 1e-9 && present.length > 1;
+      const extra = col.label === 'valid output' ? ` <small>${c.validCount}/${c.q.judged}</small>` : '';
+      return `<td class="num${isBest ? ' best' : ''}">${esc(col.show(v))}${extra}</td>`;
+    })
+    .join('')}<td class="num muted">${c.q.n}</td></tr>`);
+  return `<div class="card reveal scroll"><table class="leader compact"><thead><tr><th>configuration</th>${cols.map(c => `<th class="num">${esc(c.label)}</th>`).join('')}<th class="num">runs</th></tr></thead><tbody>${rows.join('')}</tbody></table>
+  <p class="tagline">Bold = best in column. Rates are shares of runs, time a median, rework and BP counts means per run.</p></div>`;
+}
+
+function checkMatrixBlock(m: ReportModel, p: PromptSection): string {
+  if (p.checkMatrix.length === 0) return '';
+  const cols = m.configKeys.map((k, i) => ({ k, i })).filter(x => p.configs[x.i] !== null);
   const shorten = (n: string) => n.replace(/^file /, '').replace(/^matches /, 'answer ~ ').replace(/^avoids /, 'answer ≁ ');
-  const rows = rates.map(r => `<div class="name" title="${esc(r.name)}">${esc(shorten(r.name))}</div>
-    <div class="cell ${heatClass(r.withRate)}" data-tip="with MCP: ${esc(pctOf(r.withRate))} of runs passed">${esc(pctOf(r.withRate))}</div>
-    <div class="cell ${heatClass(r.withoutRate)}" data-tip="without MCP: ${esc(pctOf(r.withoutRate))} of runs passed">${esc(pctOf(r.withoutRate))}</div>`);
-  return `<div class="card reveal"><h3 style="margin-top:0">Checks — share of runs that passed</h3>
-  <div class="heat"><div class="hd">check</div><div class="hd">MCP</div><div class="hd">plain</div>${rows.join('')}</div></div>`;
+  const head = cols.map(({ k }) => `<div class="hd" title="${esc(`${modelName(k.model)} ${k.mcp ? 'with' : 'without'} MCP`)}"><span class="sw s${slotOf(m, k.model)}${k.mcp ? '' : ' hollow'}"></span>${k.mcp ? 'MCP' : 'plain'}</div>`).join('');
+  const rows = p.checkMatrix.map(r => `<div class="name" title="${esc(r.name)}">${esc(shorten(r.name))}</div>${cols
+    .map(({ k, i }) => `<div class="cell ${heatClass(r.rates[i])}" data-tip="${esc(`${modelName(k.model)} ${k.mcp ? 'with' : 'without'} MCP: ${pctOf(r.rates[i])} of runs passed`)}">${esc(pctOf(r.rates[i]))}</div>`)
+    .join('')}`);
+  return `<div class="card reveal scroll"><h3 style="margin-top:0">Checks — share of runs that passed</h3>
+  <div class="heat" style="grid-template-columns: minmax(160px, 1fr) repeat(${cols.length}, minmax(56px, 72px))"><div class="hd">check</div>${head}${rows.join('')}</div></div>`;
 }
 
 function issueList(issues: Issue[], cls: string, title: string): string {
@@ -662,10 +740,11 @@ function issueList(issues: Issue[], cls: string, title: string): string {
   return `<div><h4 class="${cls}">${esc(title)}</h4>${body}</div>`;
 }
 
-function issuesBlock(p: PromptSection): string {
+function issuesBlock(p: PromptSection, models: number): string {
   if (!p.versus.with?.judged && !p.versus.without?.judged) return '';
+  const all = models > 1 ? ', all models' : '';
   return `<div class="card reveal"><h3 style="margin-top:0">What broke — recurring errors</h3><div class="issues">
-    ${issueList(p.issues.with, 'mcp', 'with MCP')}${issueList(p.issues.without, 'plain', 'without MCP')}</div></div>`;
+    ${issueList(p.issues.with, 'mcp', `with MCP${all}`)}${issueList(p.issues.without, 'plain', `without MCP${all}`)}</div></div>`;
 }
 
 // ---------------------------------------------------------------- details (charts and tables)
@@ -729,8 +808,8 @@ function runsTable(p: PromptSection): string {
     const bp = r.quality?.bp ? `${r.quality.bp.errors ? `<span class="ko">${r.quality.bp.errors} err</span>` : '<span class="ok">0 err</span>'} · ${r.quality.bp.warnings} warn` : '—';
     const rework = r.rework ? `${r.rework.toolErrors} / ${r.rework.buildFailures} / ${r.rework.rewrites}` : '—';
     return `<tr>
-      <td>${esc(fmtTs(r.timestamp))}</td><td>${esc(r.model)}${r.host !== p.hosts[0] || p.hosts.length > 1 ? ` <span class="tagline">${esc(r.host)}</span>` : ''}</td>
-      <td>${r.mcp ? '<span class="pill mcp">with</span>' : '<span class="pill plain">without</span>'}</td><td>${esc(r.outcome)}</td>
+      <td>${esc(fmtTs(r.timestamp))}</td><td>${esc(modelName(r.model))}${r.host !== p.hosts[0] || p.hosts.length > 1 ? ` <span class="tagline">${esc(r.host)}</span>` : ''}</td>
+      <td>${r.mcp ? '<span class="badge mcp">MCP</span>' : '<span class="badge plain">no MCP</span>'}</td><td>${esc(r.outcome)}</td>
       <td class="num">${esc(formatMetric('durationMs', r.durationMs))}</td><td class="num">${r.requests}</td><td class="num">${esc(toolsNote)}</td>
       <td class="num">${esc(formatMetric('outputTokens', r.outputTokens))}</td><td class="num">${esc(formatMetric('aic', r.aic?.value ?? null))}</td>
       <td class="num">${r.score === null ? '—' : `${Math.round(r.score * 100)} %`}</td>
@@ -870,14 +949,14 @@ function promptSection(p: PromptSection, m: ReportModel): string {
   const drift = p.hashDrift
     ? `<div class="warn">⚠ The prompt text in the catalogue (hash ${esc(p.currentHash ?? '')}) differs from the one some of these runs used (${esc(p.hashes.filter(h => h !== p.currentHash).join(', '))}). Treat older runs as a different experiment.</div>`
     : '';
-  const quality = `${versusTable(p.versus)}<div style="display:grid;gap:14px">${checkHeat(p.checkRates)}</div>`;
-  return `<section class="prompt" data-prompt="${esc(p.promptId)}" id="p-${esc(p.promptId)}">
+  return `<section class="prompt" data-prompt="${esc(p.promptId)}" data-suite="${esc(p.suite)}" id="p-${esc(p.promptId)}">
   <div class="phead"><h2>${esc(p.title)}</h2><div class="tagline">${p.runs.length} runs · ${esc(p.hosts.join(', '))}</div></div>
   <div class="tagline"><code>${esc(p.promptId)}</code> ${p.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>
   ${drift}
   ${promptText}
-  <div class="vgrid">${quality}</div>
-  ${issuesBlock(p)}
+  ${taskTable(m, p)}
+  ${checkMatrixBlock(m, p)}
+  ${issuesBlock(p, m.models.length)}
   <h3>MCP effect per model</h3>
   ${effectBars(p.modelEffects, p.hosts, p.promptId)}
   <details class="more"><summary>Details — over time, absolute values, tables, every run</summary>
@@ -911,45 +990,54 @@ function overviewTable(m: ReportModel): string {
 
 export function renderHtml(m: ReportModel): string {
   const filters = m.prompts.length > 1
-    ? `<div class="filters"><span class="meta">Prompt</span><button data-prompt="*" aria-pressed="true">All</button>${m.prompts
-        .map(p => `<button data-prompt="${esc(p.promptId)}" aria-pressed="false">${esc(p.title.replace(/^Reference \d+:\s*/, '').split(' — ')[0])}</button>`)
+    ? `<div class="filters"><span class="meta">Task</span><button data-prompt="*" aria-pressed="true">All</button>${m.prompts
+        .map(p => `<button data-prompt="${esc(p.promptId)}" data-suite="${esc(p.suite)}" aria-pressed="false">${esc(shortTitle(p.title))}</button>`)
         .join('')}</div>`
     : '';
+  const all = m.scopes[0];
+  const repeats = all ? Math.max(0, ...all.configs.map(c => c.repeats)) : 0;
+  const stat = (n: number | string, label: string) => `<div class="hstat"><b>${typeof n === 'number' ? counter(n, String(n), 0) : esc(n)}</b><span>${esc(label)}</span></div>`;
   const body = m.runsTotal === 0
     ? '<div class="card empty">No runs match. Record one with <code>d365fo-mcp benchmark run</code> or <code>benchmark ingest</code>.</div>'
-    : `<h2 style="margin-top:8px">Verdict</h2>
-  <p class="lede">Does the D365FO MCP server get the job done — valid output that builds and passes best practice — and what does that cost in time, credits and repair work? All prompts, all models.</p>
-  ${verdictBlock(m.versus, 'all prompts', { time: promptEffects(m, 'durationMs'), aic: promptEffects(m, 'aic') })}
-  ${m.prompts.length > 1 ? `<h2>Per prompt</h2><p class="lede">The same comparison for each use-case. Click a prompt to jump to its detail.</p>${scoreboard(m)}` : ''}
-  <h2>MCP effect per model</h2>
-  <p class="lede">With MCP relative to without, per model — a bar to the left of zero is a saving (or, for checks, a loss).</p>
-  ${effectBars(m.overviewEffects, m.hosts, 'all prompts')}
-  <details class="more"><summary>All prompts, medians per model</summary>${kpiRow(m.overviewKpis)}<div class="card">${overviewTable(m)}</div></details>
+    : `${scopePanes(m)}
+  <h2>Tasks × configurations</h2>
+  <p class="lede">Every task for every configuration: how often the output was valid, and what one valid result cost.</p>
+  ${matrixBlock(m)}
+  <h2>Task details</h2>
+  <p class="lede">Each task's own leaderboard, which checks fail where, the errors that recur, and every run.</p>
   ${filters}
-  ${m.prompts.map(p => promptSection(p, m)).join('\n')}`;
+  ${m.prompts.map(p => promptSection(p, m)).join('\n')}
+  <h2>Methodology</h2>
+  ${methodology(m)}
+  <details class="more"><summary>All tasks, medians per configuration and the MCP effect per metric</summary>
+    ${effectBars(m.overviewEffects, m.hosts, 'all prompts')}
+    ${kpiRow(m.overviewKpis)}<div class="card">${overviewTable(m)}</div>
+  </details>`;
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(m.title)}</title>
-<meta name="description" content="Model × MCP benchmark: valid output, run time, AI Credits and rework per model, with and without the D365FO MCP server, over time.">
+<meta name="description" content="Leaderboard of coding agents on everyday Dynamics 365 F&amp;O tasks, with and without the D365FO MCP server: valid output, AI Credits, time and rework per model.">
 <style>${CSS}</style>
 </head>
 <body>
-<main>
 <header class="hero">
-  <div class="eyebrow">D365FO MCP benchmark</div>
-  <h1>${esc(m.title)}</h1>
-  <div class="meta">Generated ${esc(fmtTs(m.generatedAt))} UTC · ${m.runsTotal} runs · ${m.prompts.length} prompt${m.prompts.length === 1 ? '' : 's'} · ${esc(m.models.join(', ') || 'no models')}${m.span ? ` · ${esc(m.span.from.slice(0, 10))} → ${esc(m.span.to.slice(0, 10))}` : ''}${m.filters.length ? ` · filters: ${esc(m.filters.join(', '))}` : ''}${m.skippedFiles ? ` · <b>${m.skippedFiles} unreadable record file(s) skipped</b>` : ''}</div>
-  <div class="legend-chips"><span class="mcp"><i></i>with MCP</span><span class="plain"><i></i>without MCP</span><span>▼ green = better with MCP · ▲ red = worse</span></div>
-  <button class="toggle" type="button">Light / dark</button>
+  <div class="hero-in">
+    <div class="eyebrow">Benchmark · Dynamics 365 Finance &amp; Operations · X++</div>
+    <h1>${esc(m.title)}</h1>
+    <p class="hero-lede">Coding agents on everyday F&amp;O development tasks, with and without the D365FO MCP server — scored on output that compiles, passes best practice and does what the task asked.</p>
+    <div class="hstats">${stat(m.prompts.length, m.prompts.length === 1 ? 'task' : 'tasks')}${stat(m.models.length, m.models.length === 1 ? 'model' : 'models')}${stat(m.configKeys.length, 'configurations')}${stat(m.runsTotal, 'runs')}${repeats ? stat(repeats, repeats === 1 ? 'run per cell' : 'runs per cell') : ''}</div>
+    <div class="meta">${esc(m.models.map(modelName).join(' · ') || 'no models')} · ${esc(m.hosts.join(', '))}${m.span ? ` · ${esc(m.span.from.slice(0, 10))} → ${esc(m.span.to.slice(0, 10))}` : ''}${m.filters.length ? ` · ${esc(m.filters.join(', '))}` : ''} · generated ${esc(fmtTs(m.generatedAt))} UTC${m.skippedFiles ? ` · <b>${m.skippedFiles} unreadable record file(s) skipped</b>` : ''}</div>
+    <button class="toggle" type="button">Light / dark</button>
+  </div>
 </header>
+<main>
 ${body}
 <footer>
   <p><b>AIC = AI Credits.</b> ${m.creditsNotes.length ? esc(m.creditsNotes.join(' · ')) : 'No priced runs.'} Rates live in <code>eval/benchmark/credits.json</code>.</p>
-  <p><b>Valid output</b> = the sandbox builds clean after the run (xppc, full), every written XML file parses, and xppbp reports no best-practice error the clean sandbox did not already have. <b>Rework</b> = tool calls that came back as errors, builds that failed inside the run, and writes to an object it had already written.</p>
-  <p>Costs are medians (p90 in the tables), rates are shares of runs. A cell is one (prompt, host, model, with/without MCP). Every chart's numbers are in a table under Details.</p>
+  <p>Records: <code>eval/benchmark/runs/</code> · prompts and checks: <code>eval/benchmark/prompts/</code> · method: <code>docs/BENCHMARK.md</code>. Every number on this page is computed from the records by <code>d365fo-mcp benchmark report</code>.</p>
 </footer>
 </main>
 <script>${JS}</script>

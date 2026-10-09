@@ -71,6 +71,17 @@ those are called out explicitly below.
   and per prompt a with/without table, a check heat strip and the recurring
   errors; charts and tables sit under Details; motion is off under
   `prefers-reduced-motion`.
+  Both variants now get the same means to check their work — the web tools
+  and one shell command, the sandbox build (`scripts/benchmarkSandboxBuild.mjs`)
+  — so the only difference is the MCP server (`--no-web`, `--no-agent-build`
+  restore the old setup). Three `daily` prompts name no standard object, so
+  the agent has to find it: carry a sales order field to the posted invoice,
+  expose a customer field on the current customers data entity and its
+  staging table, and trace the sales credit limit check (read-only). The page
+  is now a leaderboard: suite tabs, an MCP-effect card per model, configurations
+  ranked by valid output with a 95 % Wilson interval and AIC per valid output,
+  a valid-output-vs-cost chart with one arrow per model, and a tasks ×
+  configurations matrix; `report.md` carries the same leaderboard.
 - **`modify-property` sets properties on a form's own controls.** With
   `controlName` (or a dotted `propertyPath`, `"PostButton.NeedsRecord"`), it now
   reaches a control of an `objectType="form"` and a control a form extension
