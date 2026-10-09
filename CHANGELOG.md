@@ -45,6 +45,21 @@ those are called out explicitly below.
   regex checks); AIC pricing is `eval/benchmark/credits.json`, and every credit
   figure carries whether the host billed it or it was derived. Guide:
   [docs/BENCHMARK.md](docs/BENCHMARK.md).
+  Prompts that write AOT objects run against a **sandbox package**
+  (`--sandbox …\PackagesLocalDirectory\fm-mcp`): the package is snapshotted
+  after a clean baseline build, every cell may edit nothing but it (`Edit(./**)`
+  in `dontAsk` mode, standard metadata readable through `--add-dir`), is scored
+  on the files it wrote (`expects.files`) and an xppc full build, and is
+  restored byte for byte afterwards — with the symbol-index rows its writes
+  upserted taken back out, so the next with-MCP cell cannot `search` its way to
+  the previous cell's objects. `--mcp-servers` picks the servers a cell gets, and
+  a run refuses any server whose effective workspace is not the sandbox model —
+  including the case where `D365FO_WORKSPACE_PATH` in the launching shell
+  outranks the server's own config. Three **reference prompts** (`--tag
+  reference`) cover the common F&O change types: CustTable credit hold (enum,
+  table + form extension, data-event handler, CoC), a vendor certificate register
+  (EDT, table, SimpleList form, menu extension, privileges, VendTable form
+  extension) and an overdue snapshot (SysOperation batch job + RDP SSRS report).
 - **`modify-property` sets properties on a form's own controls.** With
   `controlName` (or a dotted `propertyPath`, `"PostButton.NeedsRecord"`), it now
   reaches a control of an `objectType="form"` and a control a form extension

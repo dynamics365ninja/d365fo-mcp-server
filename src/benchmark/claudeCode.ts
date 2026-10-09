@@ -26,6 +26,8 @@ import { buildRunId } from './store.js';
 import {
   BENCHMARK_SCHEMA_VERSION,
   type BenchmarkOutcome,
+  type BuildResult,
+  type CheckResult,
   type BenchmarkRun,
   type CreditsConfig,
   type PromptSpec,
@@ -46,6 +48,8 @@ export interface ClaudeCodeOptions {
   maxBudgetUsd: number | null;
   effort: string | null;
   appendSystemPromptFile: string | null;
+  /** --add-dir entries: folders the file tools may read (and edit, where an Edit rule allows it). */
+  addDirs: string[];
   timeoutMs: number;
   claudeBin: string;
 }
@@ -79,6 +83,7 @@ export function buildClaudeArgs(opts: ClaudeCodeOptions): string[] {
   if (opts.maxBudgetUsd !== null) args.push('--max-budget-usd', String(opts.maxBudgetUsd));
   if (opts.effort) args.push('--effort', opts.effort);
   if (opts.appendSystemPromptFile) args.push('--append-system-prompt-file', opts.appendSystemPromptFile);
+  if (opts.addDirs.length > 0) args.push('--add-dir', ...opts.addDirs);
   return args;
 }
 
@@ -185,6 +190,8 @@ export function quoteForCmd(arg: string): string {
 /**
  * Spawn the CLI. CLAUDECODE / CLAUDE_CODE_ENTRYPOINT are unset so a benchmark
  * started from inside a Claude Code session is not refused as a nested one.
+ * Auto-memory is switched off: a cell that saved "the table is called X" would
+ * hand the answer to every later cell run from the same folder.
  */
 export const spawnProcess: ProcessRunner = (bin, args, io) =>
   new Promise(resolve => {
@@ -192,6 +199,7 @@ export const spawnProcess: ProcessRunner = (bin, args, io) =>
     const env = { ...process.env };
     delete env.CLAUDECODE;
     delete env.CLAUDE_CODE_ENTRYPOINT;
+    env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = '1';
     const win = process.platform === 'win32';
     const child = spawn(bin, win ? args.map(quoteForCmd) : args, {
       cwd: io.cwd,
@@ -244,6 +252,11 @@ export interface RecordContext {
   /** Keep the opening of the answer in the record (default true). */
   excerpt: boolean;
   timestamp: Date;
+  /** Sandbox runs: checks scored outside the answer (files written, the build), counted into `score`. */
+  extraChecks?: CheckResult[];
+  /** Sandbox runs: what the cell wrote, relative to the sandbox package. */
+  artifacts?: string[];
+  build?: BuildResult | null;
 }
 
 const EXCERPT_CHARS = 400;
@@ -286,7 +299,9 @@ export function toBenchmarkRun(o: ClaudeCodeOutcome, ctx: RecordContext): Benchm
   const model = modelIds.length > 0 ? modelIds.join('+') : (o.summary.init?.model ?? ctx.modelRequested);
   const outcome = outcomeOf(o);
   const answer = typeof r?.result === 'string' ? r.result : null;
-  const { checks, score } = evaluateChecks(ctx.spec, answer);
+  const answerChecks = evaluateChecks(ctx.spec, answer).checks;
+  const checks = [...answerChecks, ...(ctx.extraChecks ?? [])];
+  const score = checks.length === 0 ? null : checks.filter(c => c.passed).length / checks.length;
   const tools = o.summary.toolCalls;
   const toolCalls = Object.values(tools).reduce((s, n) => s + n, 0);
   const mcpToolCalls = Object.entries(tools).filter(([n]) => n.startsWith('mcp__')).reduce((s, [, n]) => s + n, 0);
@@ -335,5 +350,7 @@ export function toBenchmarkRun(o: ClaudeCodeOutcome, ctx: RecordContext): Benchm
     resultExcerpt: ctx.excerpt && answer !== null ? answer.slice(0, EXCERPT_CHARS) : null,
     notes: noteParts.length > 0 ? noteParts.join(' · ') : null,
     evidence: { sessionId: r?.session_id ?? null, logPath: null },
+    ...(ctx.artifacts !== undefined ? { artifacts: ctx.artifacts } : {}),
+    ...(ctx.build !== undefined ? { build: ctx.build } : {}),
   };
 }

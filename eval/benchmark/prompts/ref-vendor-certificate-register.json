@@ -1,0 +1,73 @@
+{
+  "id": "ref-vendor-certificate-register",
+  "title": "Reference 2: vendor certificate register — EDT, enum, table, SimpleList form, menu, security, form extension",
+  "prompt": "You are a Dynamics 365 Finance & Operations X++ developer. Work in the model `{{model}}`: its metadata folder is `{{modelDir}}` and its package descriptor is under `{{packageDir}}\\Descriptor`. The standard application's metadata (ApplicationSuite, ApplicationPlatform, ApplicationFoundation, …) is under `{{packagesRoot}}` — read it, never change it. Extensions only, no overlayering. Every new object name starts with the prefix Con. Every user-facing text (labels, help texts, info/warning/error messages) is a label in the model's label file `{{model}}`, never a hardcoded string. Never use today(); use DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone()).\n\nBusiness requirement: procurement wants to register the quality certificates of each vendor (ISO 9001, ISO 14001, food safety, …) with their validity, and open them straight from the vendor.\n\nImplement:\n1. A string EDT ConVendCertificateId (size 20) and an extensible enum ConVendCertificateType with the values Iso9001, Iso14001, FoodSafety and Other.\n2. A new table ConVendCertificate with the fields VendAccount (EDT VendAccount, mandatory), CertificateId (ConVendCertificateId, mandatory), CertificateType (ConVendCertificateType), ValidFrom and ValidTo (EDT TransDate) and Description (EDT Description). Give it a unique index on VendAccount + CertificateId used as the primary and clustered index, a foreign-key relation to VendTable on VendAccount, title fields, an Overview field group with all fields, static find() and exist() methods by VendAccount + CertificateId, and a validateWrite() that rejects a ValidTo earlier than ValidFrom with a label error.\n3. A form ConVendCertificate that follows the SimpleList form pattern, with a grid over the Overview field group.\n4. A display menu item ConVendCertificate that opens the form, added through a menu extension to the standard Procurement and sourcing module menu (ProcurementAndSourcing).\n5. Two security privileges on that menu item: ConVendCertificateMaintain (delete access) and ConVendCertificateView (read access).\n6. A form extension of the standard vendor details form VendTable with an action pane button that opens ConVendCertificate filtered on the current vendor.\n\nThe model must build (xppc full build) with zero errors. When you are done, reply with the list of objects you created or changed, one line each.",
+  "tags": ["reference", "edt", "enum", "table", "form", "form-pattern", "menu-item", "menu-extension", "security", "form-extension", "labels", "L3"],
+  "workspace": { "build": true },
+  "timeoutSeconds": 1800,
+  "expects": {
+    "mustMatch": ["ConVendCertificate"],
+    "files": [
+      {
+        "name": "string EDT ConVendCertificateId",
+        "path": "/AxEdt/ConVendCertificateId\\.xml$",
+        "contains": ["AxEdtString"]
+      },
+      {
+        "name": "extensible enum ConVendCertificateType",
+        "path": "/AxEnum/ConVendCertificateType\\.xml$",
+        "contains": ["<IsExtensible>true</IsExtensible>", "Iso9001", "Iso14001", "FoodSafety"]
+      },
+      {
+        "name": "table: fields, primary index, VendTable relation, find/exist/validateWrite",
+        "path": "/AxTable/ConVendCertificate\\.xml$",
+        "contains": [
+          "<Name>VendAccount</Name>",
+          "<Name>CertificateId</Name>",
+          "<Name>ValidTo</Name>",
+          "<PrimaryIndex>[^<]+</PrimaryIndex>",
+          "<RelatedTable>VendTable</RelatedTable>",
+          "static\\s+ConVendCertificate\\s+find\\s*\\(",
+          "static\\s+boolean\\s+exist\\s*\\(",
+          "boolean\\s+validateWrite\\s*\\("
+        ]
+      },
+      {
+        "name": "SimpleList form over the table",
+        "path": "/AxForm/ConVendCertificate\\.xml$",
+        "contains": ["<Pattern>SimpleList</Pattern>", "<Table>ConVendCertificate</Table>"]
+      },
+      {
+        "name": "display menu item",
+        "path": "/AxMenuItemDisplay/ConVendCertificate\\.xml$",
+        "contains": ["<Object>ConVendCertificate</Object>"]
+      },
+      {
+        "name": "ProcurementAndSourcing menu extension",
+        "path": "/AxMenuExtension/ProcurementAndSourcing\\.[^/]+\\.xml$",
+        "contains": ["ConVendCertificate"]
+      },
+      {
+        "name": "maintain privilege (delete)",
+        "path": "/AxSecurityPrivilege/ConVendCertificateMaintain\\.xml$",
+        "contains": ["ConVendCertificate", "<Delete>Allow</Delete>"]
+      },
+      {
+        "name": "view privilege (read only)",
+        "path": "/AxSecurityPrivilege/ConVendCertificateView\\.xml$",
+        "contains": ["ConVendCertificate", "<Read>Allow</Read>"],
+        "notContains": ["<Delete>Allow</Delete>"]
+      },
+      {
+        "name": "VendTable form extension opens the register",
+        "path": "/AxFormExtension/VendTable\\.[^/]+\\.xml$",
+        "contains": ["ConVendCertificate"]
+      },
+      {
+        "name": "labels added to the model's label file",
+        "path": "/AxLabelFile/LabelResources/[^/]+/[^/]+\\.label\\.txt$"
+      }
+    ]
+  },
+  "notes": "Reference use-case 2 of 3 — 'new master data'. The full vertical slice every new setup/master table gets: data model, a form on a standard pattern, navigation, security, and the entry point from the standard record it belongs to. Grounding the MCP server should supply: the SimpleList pattern's required control tree, the ProcurementAndSourcing menu's structure, the VendTable form's action pane, the AxSecurityPrivilege shape."
+}

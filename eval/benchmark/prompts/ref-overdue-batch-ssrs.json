@@ -1,0 +1,72 @@
+{
+  "id": "ref-overdue-batch-ssrs",
+  "title": "Reference 3: overdue snapshot — SysOperation batch job + SSRS report (RDP)",
+  "prompt": "You are a Dynamics 365 Finance & Operations X++ developer. Work in the model `{{model}}`: its metadata folder is `{{modelDir}}` and its package descriptor is under `{{packageDir}}\\Descriptor`. The standard application's metadata (ApplicationSuite, ApplicationPlatform, ApplicationFoundation, …) is under `{{packagesRoot}}` — read it, never change it. Extensions only, no overlayering. Every new object name starts with the prefix Con. Every user-facing text (labels, help texts, info/warning/error messages) is a label in the model's label file `{{model}}`, never a hardcoded string. Never use today(); use DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone()).\n\nBusiness requirement: every night collections wants a snapshot of overdue customer balances, and a printable report over a snapshot.\n\nImplement:\n1. A regular table ConCustOverdueSnapshot with the fields AccountNum (EDT CustAccount), AsOfDate (EDT TransDate), OverdueAmountMST (EDT AmountMST), OldestDueDate (EDT DueDate) and OpenTransCount (integer), a unique index on AccountNum + AsOfDate, and a relation to CustTable.\n2. A SysOperation batch job:\n   - data contract ConCustOverdueSnapshotContract with the parameters AsOfDate (default: the session date), MinDaysOverdue (integer, default 30) and an optional customer group (EDT CustGroupId);\n   - service ConCustOverdueSnapshotService (extends SysOperationServiceBase) whose process method replaces the snapshot rows of that AsOfDate with one row per customer that has open customer transactions (CustTransOpen) due more than MinDaysOverdue days before AsOfDate — set-based where possible, in one transaction;\n   - controller ConCustOverdueSnapshotController (extends SysOperationServiceController) with a static main that runs the service, usable in batch;\n   - an action menu item ConCustOverdueSnapshot that starts the controller.\n3. An SSRS report over the snapshot with a report data provider:\n   - TempDB table ConCustOverdueReportTmp with AccountNum, CustName (EDT DirPartyName), OverdueAmountMST, OldestDueDate and OpenTransCount;\n   - data contract ConCustOverdueReportContract with an AsOfDate parameter;\n   - data provider class ConCustOverdueReportDP (extends SRSReportDataProviderBase) that fills the temp table from the snapshot rows of that date;\n   - report ConCustOverdueReport with a dataset over the data provider and one design that lists the rows in a table;\n   - an output menu item ConCustOverdueReport that runs the report.\n\nThe model must build (xppc full build) with zero errors. When you are done, reply with the list of objects you created or changed, one line each.",
+  "tags": ["reference", "table", "sysoperation", "batch", "ssrs", "report", "temp-table", "menu-item", "labels", "L4"],
+  "workspace": { "build": true },
+  "timeoutSeconds": 2400,
+  "expects": {
+    "mustMatch": ["ConCustOverdueSnapshotService", "ConCustOverdueReport"],
+    "files": [
+      {
+        "name": "snapshot table",
+        "path": "/AxTable/ConCustOverdueSnapshot\\.xml$",
+        "contains": ["<Name>OverdueAmountMST</Name>", "<Name>OldestDueDate</Name>", "<Name>OpenTransCount</Name>", "<RelatedTable>CustTable</RelatedTable>"]
+      },
+      {
+        "name": "SysOperation data contract",
+        "path": "/AxClass/ConCustOverdueSnapshotContract\\.xml$",
+        "contains": ["DataContract(Attribute)?\\b", "DataMember(Attribute)?\\b", "MinDaysOverdue", "AsOfDate"],
+        "notContains": ["\\btoday\\s*\\(\\s*\\)"]
+      },
+      {
+        "name": "SysOperation service over CustTransOpen",
+        "path": "/AxClass/ConCustOverdueSnapshotService\\.xml$",
+        "contains": ["extends\\s+SysOperationServiceBase", "CustTransOpen", "ConCustOverdueSnapshot\\b"],
+        "notContains": ["\\btoday\\s*\\(\\s*\\)"]
+      },
+      {
+        "name": "SysOperation controller with main",
+        "path": "/AxClass/ConCustOverdueSnapshotController\\.xml$",
+        "contains": ["extends\\s+SysOperationServiceController", "static\\s+void\\s+main\\s*\\("]
+      },
+      {
+        "name": "action menu item for the batch job",
+        "path": "/AxMenuItemAction/ConCustOverdueSnapshot\\.xml$",
+        "contains": ["ConCustOverdueSnapshotController"]
+      },
+      {
+        "name": "TempDB report table",
+        "path": "/AxTable/ConCustOverdueReportTmp\\.xml$",
+        "contains": ["<TableType>TempDB</TableType>", "<Name>CustName</Name>"]
+      },
+      {
+        "name": "report data contract",
+        "path": "/AxClass/ConCustOverdueReportContract\\.xml$",
+        "contains": ["DataContract(Attribute)?\\b", "AsOfDate"]
+      },
+      {
+        "name": "report data provider",
+        "path": "/AxClass/ConCustOverdueReportDP\\.xml$",
+        "contains": [
+          "extends\\s+SRSReportDataProviderBase",
+          "SRSReportParameterAttribute\\s*\\(\\s*classStr\\s*\\(\\s*ConCustOverdueReportContract\\s*\\)\\s*\\)",
+          "SRSReportDataSetAttribute",
+          "processReport",
+          "ConCustOverdueReportTmp"
+        ]
+      },
+      {
+        "name": "report with a DP dataset and a design",
+        "path": "/AxReport/ConCustOverdueReport\\.xml$",
+        "contains": ["<DataSourceType>ReportDataProvider</DataSourceType>", "ConCustOverdueReportDP", "<AxReportDesign\\b"]
+      },
+      {
+        "name": "output menu item for the report",
+        "path": "/AxMenuItemOutput/ConCustOverdueReport\\.xml$",
+        "contains": ["ConCustOverdueReport"]
+      }
+    ]
+  },
+  "notes": "Reference use-case 3 of 3 — 'process + reporting'. The two framework patterns every F&O project implements repeatedly: a SysOperation batch job (contract / service / controller / menu item) and an RDP-based SSRS report (TempDB table / contract / DP / AxReport with a design / output menu item). The report design is the hardest artifact to write by hand — that is where the with/without MCP gap should be widest. Grounding the MCP server should supply: CustTransOpen's fields, the SysOperation and SRS base classes and attributes, the AxReport dataset + design shape."
+}

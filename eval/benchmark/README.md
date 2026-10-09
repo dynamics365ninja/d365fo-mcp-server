@@ -6,7 +6,8 @@ guide in [docs/BENCHMARK.md](../../docs/BENCHMARK.md).
 
 ```
 eval/benchmark/
-├── prompts/<id>.json   the prompt catalogue — one experiment each (id, title, prompt, expects)
+├── prompts/<id>.json   the prompt catalogue — one experiment each (id, title, prompt, expects);
+│                       ref-*.json are the three reference use-cases that write into a sandbox
 ├── runs/<runId>.json   one record per run (committed — the report is derived from these)
 ├── credits.json        AI-Credits pricing: creditsPerUsd, per-model USD rates
 ├── schema.json         JSON Schema of a run record
@@ -16,6 +17,8 @@ eval/benchmark/
 ```bash
 npm run cli -- benchmark prompts                                   # the catalogue
 npm run cli -- benchmark run all --models sonnet,opus --repeat 3    # headless matrix via claude -p
+npm run cli -- benchmark run all --tag reference --models sonnet,opus --repeat 3 \
+  --sandbox 'K:\AosService\PackagesLocalDirectory\fm-mcp' --mcp-servers d365fo-eval   # the 3 write prompts
 npm run cli -- benchmark ingest <main.jsonl> --prompt <id>          # a Copilot Chat session
 npm run cli -- benchmark report --open                              # the report
 ```

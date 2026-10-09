@@ -50,9 +50,15 @@ cells get neither.
 | `--models a,b` | `sonnet` | anything `claude --model` accepts (aliases or full ids). The record stores the id the host resolved. |
 | `--variants mcp,plain` | both | |
 | `--repeat n` | 1 | repeats are the outer loop, so a slow hour hits every cell, not one model |
+| `--tag a,b` | — | with `all`: only prompts carrying one of the tags (`--tag reference`) |
 | `--mcp-config <file>` | `./.mcp.json` | `{"mcpServers": {...}}` — the same file your editor uses |
-| `--cwd <dir>` | current dir | run claude from your solution folder so `CLAUDE.md` / the workspace apply |
-| `--timeout s` | 900 | a cell that overruns is killed and recorded as `timeout` |
+| `--mcp-servers a,b` | all in the file | only these servers; **required with `--sandbox`** when the file lists more than one |
+| `--sandbox <package>` | — | throwaway package the write prompts work in — see [Prompts that write](#prompts-that-write-the-sandbox) |
+| `--sandbox-model <name>` | package name | the model folder inside the sandbox package |
+| `--no-build` | — | skip the xppc build check (the file checks still run) |
+| `--allow-dirty-baseline` | — | run although the sandbox does not build clean before the first cell |
+| `--cwd <dir>` | current dir | run claude from your solution folder so `CLAUDE.md` / the workspace apply (not with `--sandbox`) |
+| `--timeout s` | prompt's `timeoutSeconds`, else 900 | a cell that overruns is killed and recorded as `timeout` |
 | `--max-turns`, `--max-budget-usd`, `--effort`, `--tools`, `--append-system-prompt-file` | — | passed through to claude |
 | `--permission-mode` | `dontAsk` | nothing may prompt in a benchmark; the MCP tools are allowed explicitly |
 | `--label`, `--notes` | — | stored on every record of the batch |
@@ -60,7 +66,67 @@ cells get neither.
 | `--prompt "<text>"` | — | one-off prompt instead of a catalogue entry (`benchmark run my-id --prompt "…"`) |
 
 A record is written after every cell, so an interrupted matrix keeps what it
-measured. Exit code 1 when any cell did not complete.
+measured. Exit code 1 when any cell did not complete. Every cell runs with
+`CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`: a cell that saved "the table is called X"
+as a memory would hand the answer to every later cell started from the same
+folder.
+
+### Prompts that write: the sandbox
+
+A prompt with a `workspace` block (all three reference prompts) creates AOT
+objects, and only runs with `--sandbox <package folder>` — a throwaway package
+such as `K:\AosService\PackagesLocalDirectory\fm-mcp`, never a customer model.
+Around the matrix and every cell the runner:
+
+1. **Checks the write target.** `--mcp-servers` selects the servers the with-MCP
+   cells get (written to a filtered copy of the config). For each, the runner
+   reads the server's effective `D365FO_WORKSPACE_PATH` the way the server does
+   — entry `env`, then the inherited environment, then the config file named by
+   `D365FO_CONFIG` — and refuses unless it is the sandbox model. A variable set
+   in the launching shell outranks the server's config file; on the VM this
+   feature was built on, the session environment carried
+   `D365FO_WORKSPACE_PATH=K:\AosService`, which would have sent every with-MCP
+   write there. Unset it (`env -u D365FO_WORKSPACE_PATH …`, PowerShell
+   `Remove-Item Env:D365FO_WORKSPACE_PATH`) or set it in the server's `env` block.
+2. **Builds a baseline** (xppc full build of the sandbox module) when a prompt
+   asks for the build check, and stops if the sandbox does not build clean on
+   its own — otherwise every "builds clean" check fails for a reason no cell
+   caused.
+3. **Snapshots the package** (Descriptor, the model folder, `bin`; a sandbox is
+   a few MB and more than 5,000 files is refused) into the temp folder.
+4. **Runs the cell in the package**: cwd is the package, the built-in tools are
+   `Read Glob Grep` plus `Edit(./**)` — in `dontAsk` mode that rule lets the file
+   tools write inside the package and nowhere else (checked on the VM: a write
+   to an `--add-dir` folder is denied) — and `--add-dir <PackagesLocalDirectory>`
+   makes the standard metadata readable, so the plain cell can look up CustTable
+   the way a developer without the server would. Shells are not allowed: a plain
+   cell cannot run xppc, a with-MCP cell builds through the server. That gap is
+   part of what is being measured; add `--allowed-tools PowerShell` to close it.
+5. **Scores what the cell wrote**: the package is diffed against the snapshot,
+   the added/changed files (build output left out) become the record's
+   `artifacts`, each `expects.files` entry is one check, and with
+   `workspace.build` the module is built and "builds clean (xppc)" is one more
+   check (failed when the cell wrote nothing — the untouched sandbox building is
+   not the cell's achievement). The record's `build` keeps the first error lines.
+6. **Restores the package** byte for byte and re-diffs to prove it; a failed
+   restore stops the matrix (the snapshot stays in the temp folder).
+7. **Re-syncs the symbol index** of every selected server for every path that
+   moved — the server upserts what it writes into its SQLite index, and the next
+   with-MCP cell would otherwise find the previous cell's table in `search`.
+
+A run warns when the server's `dist/index.js` is older than HEAD: the cells
+would measure an older server than the `serverGitSha` on their records. Run
+`npm run build` first.
+
+```powershell
+# On the VM: drop the inherited workspace; the dry run validates the sandbox,
+# the write targets and every command without running a cell
+Remove-Item Env:D365FO_WORKSPACE_PATH -ErrorAction SilentlyContinue
+npm run cli -- benchmark run all --tag reference --dry-run `
+  --sandbox K:\AosService\PackagesLocalDirectory\fm-mcp --mcp-servers d365fo-eval
+npm run cli -- benchmark run all --tag reference --models sonnet,opus --repeat 3 `
+  --sandbox K:\AosService\PackagesLocalDirectory\fm-mcp --mcp-servers d365fo-eval --label "reference v1"
+```
 
 ### Recording a Copilot Chat session (`benchmark ingest`)
 
@@ -105,6 +171,29 @@ side (faceted per host — an editor session and a headless run are not one
 scale), the stats table (medians, p90, completion rate, AIC source), the
 MCP-effect table and every run. `--json` prints the data instead.
 
+## The reference prompts
+
+Three prompts tagged `reference` are the benchmark's standing use-cases. They
+were picked from what F&O projects implement most often — the extension types
+Microsoft's extensibility guidance and the MB-500 curriculum are built around
+(table/form extensions, CoC and event handlers, SysOperation, SSRS) — and from
+this server's own demand data: across 1,603 MCP calls mined from real Copilot
+sessions (`eval/demand-digest.json`) the top write shapes are new enums,
+table-extension fields + field groups, form-extension controls and CoC classes.
+Each prompt is a realistic business request that touches several change types
+at once, names the objects (so the file checks are deterministic) and leaves
+the platform details — control names, signatures, XML shapes — to be found.
+
+| Prompt | Change types | Objects | Checks |
+|---|---|---|---|
+| `ref-credit-hold-extension` | extensible enum, table extension (fields + field group), form extension, data-event handler, CoC on a standard table, labels | 5 + label file | 6 files + build |
+| `ref-vendor-certificate-register` | EDT, enum, new table (index, relation, find/exist, validateWrite), SimpleList form, display menu item, menu extension, 2 privileges, form extension, labels | 10 + label file | 10 files + build |
+| `ref-overdue-batch-ssrs` | regular table, SysOperation batch (contract / service / controller / action menu item), TempDB table, RDP SSRS report (contract / DP / AxReport + design / output menu item) | 10 + label file | 10 files + build |
+
+Every reference prompt shares one preamble (model and folders via
+placeholders, prefix `Con`, labels instead of text, no `today()`, extensions
+only, must build) so the three differ only in the business request.
+
 ## Adding a prompt
 
 ```json
@@ -120,8 +209,31 @@ MCP-effect table and every run. `--json` prints the data instead.
 The file name must equal `id`. Checks are regexes with flags `is` (X++ is
 case-insensitive). Pick prompts that have a *grounded* answer the server can
 supply — an EDT name, a method signature, a knowledge topic — so the with/without
-difference means something. Prompts that write into a model must point `--cwd`
-at a **sandbox** model, never a customer one.
+difference means something.
+
+A prompt that writes adds `workspace` and file checks:
+
+```json
+{
+  "id": "my-write-prompt",
+  "prompt": "Work in the model `{{model}}` (metadata folder `{{modelDir}}`; standard metadata under `{{packagesRoot}}`) …",
+  "workspace": { "build": true },
+  "timeoutSeconds": 1800,
+  "expects": {
+    "files": [
+      { "name": "the table", "path": "/AxTable/ConMyTable\\.xml$", "contains": ["<Name>MyField</Name>"], "notContains": ["\\btoday\\s*\\(\\)"] }
+    ]
+  }
+}
+```
+
+`{{model}}`, `{{modelDir}}`, `{{packageDir}}` and `{{packagesRoot}}` are filled
+from `--sandbox`; the prompt hash is taken over the template, so the experiment
+is the same on any machine. A file check's `path` is a regex over the path
+relative to the sandbox package (forward slashes); it passes when a file the
+cell added or changed matches the path, every `contains` and no `notContains`.
+Name the objects in the prompt — a check cannot find a table whose name the
+model was free to choose.
 
 ## Reading the numbers honestly
 
@@ -164,6 +276,10 @@ NTFS rejects, and JSON with a PowerShell BOM is read fine.
 4. For Copilot: turn on chat debug logging, run the catalogue prompt by hand,
    `benchmark ingest` the `main.jsonl`, grade with `--score`.
 5. `benchmark report --open`, commit `eval/benchmark/runs/*.json`, never a log.
+
+For the write prompts, step 3 becomes the sandbox run above (`--tag reference
+--sandbox … --mcp-servers …`), and a Copilot session of a reference prompt must
+start from the same clean sandbox: restore it by hand before each one.
 
 Open questions to settle there, in order: the `creditsPerUsd` reading against
 the real Copilot billing page; whether a with-MCP cell should also get

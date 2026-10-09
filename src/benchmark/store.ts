@@ -112,6 +112,16 @@ export function filterRuns(runs: BenchmarkRun[], f: RunFilter): BenchmarkRun[] {
   });
 }
 
+/** Commit time of HEAD, or null outside a git checkout. */
+export function headCommitTime(repoRoot: string): Date | null {
+  try {
+    const s = execFileSync('git', ['log', '-1', '--format=%ct'], { cwd: repoRoot, stdio: ['ignore', 'pipe', 'ignore'] }).toString('utf8').trim();
+    return s ? new Date(Number(s) * 1000) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Short commit of the server under test, or null outside a git checkout. */
 export function serverGitSha(repoRoot: string): string | null {
   try {

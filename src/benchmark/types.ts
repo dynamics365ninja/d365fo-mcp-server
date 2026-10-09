@@ -89,6 +89,38 @@ export interface BenchmarkRun {
   resultExcerpt: string | null;
   notes: string | null;
   evidence: { sessionId: string | null; logPath: string | null };
+  /**
+   * Sandbox runs only: files the cell added or changed in the sandbox package,
+   * relative to it with forward slashes, build output left out. Absent for a
+   * run that wrote nothing it was asked to write anywhere (answer-only prompts).
+   */
+  artifacts?: string[];
+  /** Sandbox runs only: the xppc full build of the sandbox model after the cell; null when not built. */
+  build?: BuildResult | null;
+}
+
+export interface BuildResult {
+  ok: boolean;
+  /** Error lines in the xppc log (compile, metadata and validation errors). */
+  errorCount: number;
+  /** The first few error lines, trimmed — enough to see what broke. */
+  errors: string[];
+  durationMs: number;
+}
+
+/**
+ * A file the cell must have written into the sandbox. One check per entry:
+ * passed when at least one added or changed file's relative path matches
+ * `path` and its content matches every `contains` and none of `notContains`.
+ * Pre-existing files the cell did not touch never satisfy it.
+ */
+export interface FileExpectation {
+  /** Check name in the record; defaults to the path regex. */
+  name?: string;
+  /** Regex (flags `i`) over the path relative to the sandbox package, forward slashes. */
+  path: string;
+  contains?: string[];
+  notContains?: string[];
 }
 
 export interface PromptExpectations {
@@ -96,14 +128,30 @@ export interface PromptExpectations {
   mustMatch?: string[];
   /** Regexes the final answer must NOT match. */
   mustNotMatch?: string[];
+  /** Files the cell must have written into the sandbox (needs `workspace`). */
+  files?: FileExpectation[];
 }
 
 export interface PromptSpec {
   id: string;
   title: string;
+  /**
+   * The text the model receives. `{{model}}`, `{{modelDir}}`, `{{packageDir}}`
+   * and `{{packagesRoot}}` are filled from --sandbox at run time; the hash is
+   * taken over the template, so the experiment is the same on every machine.
+   */
   prompt: string;
   tags: string[];
   expects?: PromptExpectations;
+  /**
+   * Present when the prompt writes AOT objects. Such a prompt runs only with
+   * --sandbox: the agent may edit nothing but the sandbox package, every cell
+   * starts from the same snapshot of it, and with `build` the result is
+   * compiled and "builds clean" becomes one of the checks.
+   */
+  workspace?: { build?: boolean };
+  /** Per-cell timeout for this prompt; overrides --timeout when larger work needs longer. */
+  timeoutSeconds?: number;
   notes?: string;
 }
 

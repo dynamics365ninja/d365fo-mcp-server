@@ -49,6 +49,7 @@ function baseOptions(over: Partial<ClaudeCodeOptions> = {}): ClaudeCodeOptions {
     maxBudgetUsd: null,
     effort: null,
     appendSystemPromptFile: null,
+    addDirs: [],
     timeoutMs: 1000,
     claudeBin: 'claude',
     ...over,
@@ -87,7 +88,16 @@ describe('buildClaudeArgs', () => {
     expect(args[args.indexOf('--tools') + 1]).toBe('');
     expect(args[args.indexOf('--append-system-prompt-file') + 1]).toBe('/x/sys.md');
     const bare = buildClaudeArgs(baseOptions());
-    for (const flag of ['--max-turns', '--max-budget-usd', '--effort', '--tools', '--append-system-prompt-file']) expect(bare).not.toContain(flag);
+    for (const flag of ['--max-turns', '--max-budget-usd', '--effort', '--tools', '--append-system-prompt-file', '--add-dir']) expect(bare).not.toContain(flag);
+  });
+
+  it('gives a sandbox cell the read-only folders with --add-dir, after every other flag', () => {
+    const args = buildClaudeArgs(baseOptions({ allowedTools: ['Read', 'Edit(./**)'], addDirs: ['K:/AosService/PackagesLocalDirectory'] }));
+    const i = args.indexOf('--add-dir');
+    expect(args.slice(i)).toEqual(['--add-dir', 'K:/AosService/PackagesLocalDirectory']);
+    expect(args.slice(args.indexOf('--allowedTools') + 1, args.indexOf('--allowedTools') + 3)).toEqual(['Read', 'Edit(./**)']);
+    // The edit rule carries parentheses and an asterisk: quoted for cmd, never refused.
+    expect(quoteForCmd('Edit(./**)')).toBe('"Edit(./**)"');
   });
 });
 
@@ -194,6 +204,25 @@ describe('toBenchmarkRun', () => {
     expect(toBenchmarkRun(await runClaudeCode(baseOptions(), fakeRunner(budget)), ctx(false)).outcome).toBe('budget_exceeded');
     const auth = JSON.stringify({ type: 'result', subtype: 'success', is_error: true, result: 'Not logged in', usage: {} });
     expect(toBenchmarkRun(await runClaudeCode(baseOptions(), fakeRunner(auth)), ctx(false)).outcome).toBe('error');
+  });
+
+  it('counts the sandbox checks into the score and keeps artifacts and build on the record', async () => {
+    const outcome = await runClaudeCode(baseOptions(), fakeRunner(STREAM));
+    const build = { ok: false, errorCount: 2, errors: ['Compile Error: x', 'Compile Error: y'], durationMs: 42000 };
+    const run = toBenchmarkRun(outcome, {
+      ...ctx(true),
+      extraChecks: [{ name: 'file AxTable', passed: true }, { name: 'builds clean (xppc)', passed: false }],
+      artifacts: ['fm-mcp/AxTable/ConX.xml'],
+      build,
+    });
+    expect(run.checks).toHaveLength(5);
+    expect(run.score).toBeCloseTo(4 / 5, 6);
+    expect(run.artifacts).toEqual(['fm-mcp/AxTable/ConX.xml']);
+    expect(run.build).toEqual(build);
+    // An answer-only run carries neither field.
+    const plain = toBenchmarkRun(outcome, ctx(true));
+    expect('artifacts' in plain).toBe(false);
+    expect('build' in plain).toBe(false);
   });
 
   it('warns in the notes when MCP was requested but no server connected', async () => {

@@ -67,6 +67,23 @@
       "type": "object",
       "additionalProperties": false,
       "properties": { "sessionId": { "type": ["string", "null"] }, "logPath": { "type": ["string", "null"] } }
+    },
+    "artifacts": {
+      "type": "array",
+      "description": "Sandbox runs: files the cell added or changed in the sandbox package, relative, forward slashes, build output left out.",
+      "items": { "type": "string" }
+    },
+    "build": {
+      "type": ["object", "null"],
+      "description": "Sandbox runs of a prompt with workspace.build: the xppc full build after the cell; null when the cell wrote nothing to build.",
+      "additionalProperties": false,
+      "required": ["ok", "errorCount", "errors", "durationMs"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "errorCount": { "type": "integer", "minimum": 0 },
+        "errors": { "type": "array", "items": { "type": "string" } },
+        "durationMs": { "type": "number", "minimum": 0 }
+      }
     }
   }
 }

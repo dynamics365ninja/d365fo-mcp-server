@@ -1,0 +1,45 @@
+{
+  "id": "ref-credit-hold-extension",
+  "title": "Reference 1: credit hold on CustTable — enum, table + form extension, event handler, CoC",
+  "prompt": "You are a Dynamics 365 Finance & Operations X++ developer. Work in the model `{{model}}`: its metadata folder is `{{modelDir}}` and its package descriptor is under `{{packageDir}}\\Descriptor`. The standard application's metadata (ApplicationSuite, ApplicationPlatform, ApplicationFoundation, …) is under `{{packagesRoot}}` — read it, never change it. Extensions only, no overlayering. Every new object name starts with the prefix Con. Every user-facing text (labels, help texts, info/warning/error messages) is a label in the model's label file `{{model}}`, never a hardcoded string. Never use today(); use DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone()).\n\nBusiness requirement: credit controllers need to put a customer on a documented credit hold, and new sales orders for a customer on hold must be blocked.\n\nImplement:\n1. A new extensible enum ConCreditHoldReason with the values None (the default), OverdueInvoices, DisputedBalance and ManualReview.\n2. A table extension of the standard table CustTable adding the fields ConCreditHoldReason (the enum above), ConCreditHoldNote (EDT Description) and ConCreditHoldSince (EDT TransDate, not editable by the user), and a field group ConCreditHold holding the three fields.\n3. A form extension of the standard customer details form CustTable that shows the ConCreditHold field group on the Credit and collections tab page.\n4. An event handler class ConCustTableEventHandler that subscribes to the ModifiedField data event of CustTable: when ConCreditHoldReason changes, set ConCreditHoldSince to the session date if the new reason is not None, and clear it when it is None.\n5. A Chain of Command extension class SalesTableConCreditHold_Extension of the standard table SalesTable that wraps validateWrite(): call next first; for a new order (no RecId yet) whose customer has a ConCreditHoldReason other than None, report an error (a label that names the reason) and return false; otherwise return the base result.\n\nThe model must build (xppc full build) with zero errors. When you are done, reply with the list of objects you created or changed, one line each.",
+  "tags": ["reference", "enum", "table-extension", "form-extension", "event-handler", "coc", "labels", "L3"],
+  "workspace": { "build": true },
+  "timeoutSeconds": 1800,
+  "expects": {
+    "mustMatch": ["ConCreditHoldReason", "SalesTableConCreditHold_Extension"],
+    "files": [
+      {
+        "name": "extensible enum ConCreditHoldReason",
+        "path": "/AxEnum/ConCreditHoldReason\\.xml$",
+        "contains": ["<IsExtensible>true</IsExtensible>", "OverdueInvoices", "DisputedBalance", "ManualReview"]
+      },
+      {
+        "name": "CustTable extension: 3 fields + field group",
+        "path": "/AxTableExtension/CustTable\\.[^/]+\\.xml$",
+        "contains": ["<Name>ConCreditHoldReason</Name>", "<Name>ConCreditHoldNote</Name>", "<Name>ConCreditHoldSince</Name>", "<Name>ConCreditHold</Name>"]
+      },
+      {
+        "name": "CustTable form extension shows the group",
+        "path": "/AxFormExtension/CustTable\\.[^/]+\\.xml$",
+        "contains": ["ConCreditHold"]
+      },
+      {
+        "name": "ModifiedField event handler",
+        "path": "/AxClass/ConCustTableEventHandler\\.xml$",
+        "contains": ["DataEventHandler\\s*\\(\\s*tableStr\\s*\\(\\s*CustTable\\s*\\)\\s*,\\s*DataEventType::ModifiedField", "ConCreditHoldSince"],
+        "notContains": ["\\btoday\\s*\\(\\s*\\)"]
+      },
+      {
+        "name": "SalesTable CoC on validateWrite",
+        "path": "/AxClass/SalesTableConCreditHold_Extension\\.xml$",
+        "contains": ["ExtensionOf\\s*\\(\\s*tableStr\\s*\\(\\s*SalesTable\\s*\\)\\s*\\)", "final\\s+class", "next\\s+validateWrite\\s*\\(", "ConCreditHoldReason", "@[A-Za-z0-9_-]+:[A-Za-z0-9_]+"],
+        "notContains": ["\\b(checkFailed|error|warning)\\s*\\(\\s*\"[^@\"]"]
+      },
+      {
+        "name": "labels added to the model's label file",
+        "path": "/AxLabelFile/LabelResources/[^/]+/[^/]+\\.label\\.txt$"
+      }
+    ]
+  },
+  "notes": "Reference use-case 1 of 3 — 'extend standard'. The most frequent real request shape in the mined Copilot demand (eval/demand-digest.json: create:enum, table-extension add-field + add-field-to-field-group, form-extension add-control, class-extension) plus the two business-logic hooks every F&O project uses: a data-event handler and a CoC wrapper. Grounding the MCP server should supply: the CustTable form's credit tab page name, the SalesTable.validateWrite signature, the ModifiedField event args type, the label file id."
+}

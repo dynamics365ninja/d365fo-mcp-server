@@ -14,14 +14,30 @@
  */
 import { execFile } from 'node:child_process';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import type { Command } from 'commander';
 import { formatMetric } from '../../benchmark/aggregate.js';
-import { runClaudeCode, toBenchmarkRun, type ClaudeCodeOptions } from '../../benchmark/claudeCode.js';
-import { buildClaudeArgs } from '../../benchmark/claudeCode.js';
+import { buildClaudeArgs, runClaudeCode, toBenchmarkRun, type ClaudeCodeOptions, type RecordContext } from '../../benchmark/claudeCode.js';
 import { loadCreditsConfig } from '../../benchmark/credits.js';
 import { sessionToBenchmarkRun } from '../../benchmark/ingest.js';
-import { adHocPromptSpec, loadPromptSpec, loadPromptSpecs } from '../../benchmark/prompts.js';
+import {
+  resolveMcpTargets,
+  sandboxTargetProblems,
+  staleServerScripts,
+  syncSymbolIndex,
+  writeFilteredMcpConfig,
+  type McpServerTarget,
+} from '../../benchmark/mcpTarget.js';
+import {
+  adHocPromptSpec,
+  evaluateFileChecks,
+  loadPromptSpec,
+  loadPromptSpecs,
+  renderPrompt,
+  usesPlaceholders,
+  type PromptVars,
+} from '../../benchmark/prompts.js';
 import { renderHtml } from '../../benchmark/report/html.js';
 import { renderMarkdown } from '../../benchmark/report/markdown.js';
 import { buildReportModel } from '../../benchmark/report/model.js';
@@ -29,12 +45,24 @@ import {
   benchmarkPaths,
   countRunFiles,
   filterRuns,
+  headCommitTime,
   loadRuns,
   serverGitSha,
   writeRun,
   type RunFilter,
 } from '../../benchmark/store.js';
-import type { BenchmarkRun, PromptSpec } from '../../benchmark/types.js';
+import {
+  authoredChanges,
+  buildSandbox,
+  describeSandbox,
+  diffSandbox,
+  isBuildOutput,
+  restoreSandbox,
+  snapshotSandbox,
+  type SandboxInfo,
+  type Snapshot,
+} from '../../benchmark/sandbox.js';
+import type { BenchmarkRun, BuildResult, PromptSpec } from '../../benchmark/types.js';
 import { VERSION } from '../../version.js';
 import { isWindows, repoRoot } from '../context.js';
 import { readSessionLog } from '../session/sessionLog.js';
@@ -76,6 +104,13 @@ interface RunOptions extends CommonOptions {
   prompt?: string;
   excerpt?: boolean;
   dryRun?: boolean;
+  tag?: string;
+  sandbox?: string;
+  sandboxModel?: string;
+  mcpServers?: string;
+  /** false with --no-build. */
+  build?: boolean;
+  allowDirtyBaseline?: boolean;
 }
 
 const DEFAULT_MODELS = 'sonnet';
@@ -123,33 +158,59 @@ function resolveMcpConfig(explicit: string | undefined, root: string): string | 
   return candidates.find(c => fs.existsSync(c)) ?? null;
 }
 
+/**
+ * Selection: a catalogue id, `all`, or `all --tag reference` (every prompt
+ * carrying the tag). A one-off --prompt beats both.
+ */
+function selectSpecs(promptArg: string | undefined, opts: RunOptions, dir: string): PromptSpec[] | null {
+  if (opts.prompt) return [adHocPromptSpec(promptArg ?? 'ad-hoc', opts.prompt)];
+  if (!promptArg) return null;
+  if (promptArg !== 'all') return [loadPromptSpec(dir, promptArg)];
+  const all = loadPromptSpecs(dir);
+  const tags = splitList(opts.tag, '');
+  return tags.length === 0 ? all : all.filter(s => tags.some(t => s.tags.includes(t)));
+}
+
+/** Everything a sandbox run needs, resolved and checked before the first cell. */
+interface SandboxRun {
+  info: SandboxInfo;
+  vars: PromptVars;
+  /** The servers the with-MCP cells get — the ones whose index is re-synced. */
+  targets: McpServerTarget[];
+  /** Scratch folder: the filtered MCP config, the snapshot, the build logs. */
+  scratch: string;
+}
+
+/** Edit rule a workspace cell gets: the sandbox package (its cwd) and nothing else — verified to hold in dontAsk mode. */
+const SANDBOX_EDIT_RULE = 'Edit(./**)';
+const SANDBOX_READ_TOOLS = ['Read', 'Glob', 'Grep'];
+const BUILD_TIMEOUT_MS = 20 * 60 * 1000;
+
 export async function benchmarkRunCommand(promptArg: string | undefined, opts: RunOptions): Promise<void> {
   const bp = paths(opts);
   let specs: PromptSpec[];
   try {
-    if (opts.prompt) {
-      specs = [adHocPromptSpec(promptArg ?? 'ad-hoc', opts.prompt)];
-    } else if (!promptArg) {
-      fail('Usage: d365fo-mcp benchmark run <promptId|all> [--models sonnet,opus] [--variants mcp,plain] [--repeat 3] …\n   or: benchmark run <id> --prompt "<text>" for a one-off prompt');
+    const selected = selectSpecs(promptArg, opts, bp.prompts);
+    if (!selected) {
+      fail('Usage: d365fo-mcp benchmark run <promptId|all> [--tag reference] [--models sonnet,opus] [--variants mcp,plain] [--repeat 3] [--sandbox <package>] …\n   or: benchmark run <id> --prompt "<text>" for a one-off prompt');
       return;
-    } else {
-      specs = promptArg === 'all' ? loadPromptSpecs(bp.prompts) : [loadPromptSpec(bp.prompts, promptArg)];
     }
+    specs = selected;
   } catch (err) {
     fail(err instanceof Error ? err.message : String(err));
     return;
   }
   if (specs.length === 0) {
-    fail(`No prompts in ${bp.prompts}. Add a <id>.json there (see eval/benchmark/README.md).`);
+    fail(`No prompts in ${bp.prompts}${opts.tag ? ` tagged ${opts.tag}` : ''}. Add a <id>.json there (see eval/benchmark/README.md).`);
     return;
   }
 
-  let models: string[], variants: boolean[], repeat: number, timeoutS: number, maxTurns: number | null, maxBudget: number | null;
+  let models: string[], variants: boolean[], repeat: number, timeoutS: number | null, maxTurns: number | null, maxBudget: number | null;
   try {
     models = splitList(opts.models, DEFAULT_MODELS);
     variants = parseVariants(opts.variants);
     repeat = optionalInt(opts.repeat, 'repeat') ?? 1;
-    timeoutS = optionalInt(opts.timeout, 'timeout') ?? DEFAULT_TIMEOUT_S;
+    timeoutS = optionalInt(opts.timeout, 'timeout');
     maxTurns = optionalInt(opts.maxTurns, 'max-turns');
     maxBudget = optionalNumber(opts.maxBudgetUsd, 'max-budget-usd');
   } catch (err) {
@@ -157,16 +218,67 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
     return;
   }
 
-  const mcpConfig = variants.includes(true) ? resolveMcpConfig(opts.mcpConfig, repoRoot) : null;
-  if (variants.includes(true) && !mcpConfig) {
+  const writing = specs.filter(s => s.workspace);
+  if (writing.length > 0 && !opts.sandbox && !opts.dryRun) {
+    fail(
+      `${writing.map(s => s.id).join(', ')}: ${writing.length === 1 ? 'writes' : 'write'} AOT objects, so ${writing.length === 1 ? 'it runs' : 'they run'} only with --sandbox <package folder> ` +
+        '(a throwaway package such as …\\PackagesLocalDirectory\\fm-mcp: every cell starts from a snapshot of it and is scored on what it wrote).',
+    );
+    return;
+  }
+  if (opts.sandbox && opts.cwd) {
+    fail('--cwd cannot be combined with --sandbox: a sandbox cell runs in the sandbox package, which is the only folder it may edit.');
+    return;
+  }
+
+  const mcpConfigFile = variants.includes(true) ? resolveMcpConfig(opts.mcpConfig, repoRoot) : null;
+  if (variants.includes(true) && !mcpConfigFile) {
     fail('No MCP config for the with-MCP cells. Pass --mcp-config <file> (a {"mcpServers": {...}} JSON) or put .mcp.json in the current directory.');
+    return;
+  }
+
+  // ---- sandbox: validate, pick the servers, prove where they write
+  let sandbox: SandboxRun | null = null;
+  let mcpConfig = mcpConfigFile;
+  const scratch = path.join(os.tmpdir(), 'd365fo-mcp-benchmark', `${new Date().toISOString().replace(/[:.]/g, '-')}-${process.pid}`);
+  try {
+    const serverNames = splitList(opts.mcpServers, '');
+    if (mcpConfigFile && serverNames.length > 0) {
+      mcpConfig = path.join(scratch, 'mcp-config.json');
+      writeFilteredMcpConfig(mcpConfigFile, serverNames, mcpConfig);
+    }
+    if (opts.sandbox) {
+      const info = describeSandbox(opts.sandbox, opts.sandboxModel);
+      const targets = mcpConfig ? resolveMcpTargets(mcpConfig) : [];
+      if (mcpConfig && targets.length > 1 && serverNames.length === 0) {
+        throw new Error(
+          `${mcpConfigFile} lists ${targets.length} MCP servers (${targets.map(t => t.name).join(', ')}). ` +
+            'A sandbox run gives the with-MCP cells only the ones named with --mcp-servers, so a server that writes elsewhere cannot be reached.',
+        );
+      }
+      const problems = sandboxTargetProblems(targets, info.modelDir);
+      if (problems.length > 0) throw new Error(problems.join('\n'));
+      sandbox = {
+        info,
+        targets,
+        scratch,
+        vars: { model: info.model, modelDir: info.modelDir, packageDir: info.packageDir, packagesRoot: info.packagesRoot },
+      };
+    }
+  } catch (err) {
+    fs.rmSync(scratch, { recursive: true, force: true });
+    fail(err instanceof Error ? err.message : String(err));
     return;
   }
 
   const credits = loadCreditsConfig(bp.credits);
   const sha = serverGitSha(repoRoot);
-  const cwd = path.resolve(opts.cwd ?? process.cwd());
+  const head = headCommitTime(repoRoot);
+  const stale = mcpConfig && head ? staleServerScripts(mcpConfig, head) : [];
+  const cwd = sandbox ? sandbox.info.packageDir : path.resolve(opts.cwd ?? process.cwd());
   const cells = specs.length * models.length * variants.length * repeat;
+  const wantBuild = opts.build !== false;
+  const timeoutFor = (spec: PromptSpec) => timeoutS ?? spec.timeoutSeconds ?? DEFAULT_TIMEOUT_S;
 
   p.intro(`d365fo-mcp benchmark run — ${cells} cell${cells === 1 ? '' : 's'}`);
   p.note(
@@ -175,44 +287,93 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
       `models      ${models.join(', ')}`,
       `variants    ${variants.map(v => (v ? 'with MCP' : 'without MCP')).join(', ')}`,
       `repeat      ${repeat}×`,
-      `MCP config  ${mcpConfig ?? '(none needed)'}`,
+      `MCP config  ${mcpConfig ?? '(none needed)'}${sandbox && sandbox.targets.length ? ` — ${sandbox.targets.map(t => `${t.name} → ${t.workspacePath}`).join(', ')}` : ''}`,
       `cwd         ${cwd}`,
-      `timeout     ${timeoutS} s per cell${maxTurns ? ` · max ${maxTurns} turns` : ''}${maxBudget ? ` · max $${maxBudget}` : ''}`,
+      sandbox
+        ? `sandbox     ${sandbox.info.packageDir} (model ${sandbox.info.model}) · reset after every cell${writing.some(s => s.workspace?.build) && wantBuild ? ' · xppc build check' : ''}`
+        : 'sandbox     (none — answer-only prompts)',
+      `timeout     ${timeoutS ? `${timeoutS} s per cell` : `per prompt (default ${DEFAULT_TIMEOUT_S} s)`}${maxTurns ? ` · max ${maxTurns} turns` : ''}${maxBudget ? ` · max $${maxBudget}` : ''}`,
       `records →   ${bp.runs}`,
     ].join('\n'),
     'Matrix',
   );
+  if (stale.length > 0) {
+    p.log.warn(`${stale.join(', ')} is older than HEAD (${sha}) — the with-MCP cells would run an older server than their records claim. Run npm run build first.`);
+  }
+
+  // ---- baseline: the sandbox must build clean on its own, then it is snapshotted
+  let snapshot: Snapshot | null = null;
+  if (sandbox && !opts.dryRun) {
+    try {
+      if (wantBuild && writing.some(s => s.workspace?.build)) {
+        p.log.step(`Baseline build of ${sandbox.info.packageName} (xppc, full)…`);
+        fs.mkdirSync(sandbox.scratch, { recursive: true });
+        const base = await buildSandbox(sandbox.info, path.join(sandbox.scratch, 'baseline-xppc.log'), BUILD_TIMEOUT_MS);
+        if (!base.ok) {
+          const msg = `The sandbox does not build clean before any cell ran (${base.errorCount} error line(s)):\n   ${base.errors.join('\n   ')}`;
+          if (!opts.allowDirtyBaseline) throw new Error(`${msg}\nEvery "builds clean" check would fail for reasons no cell caused. Fix the sandbox, or pass --allow-dirty-baseline.`);
+          p.log.warn(msg);
+        } else {
+          p.log.success(`Baseline clean in ${formatMetric('durationMs', base.durationMs)}`);
+        }
+      }
+      snapshot = snapshotSandbox(sandbox.info.packageDir, path.join(sandbox.scratch, 'snapshot'));
+      p.log.info(`Snapshot of ${snapshot.manifest.size} files → ${snapshot.dir}\n   (an interrupted run leaves the sandbox as the last cell left it; copy this folder back over it)`);
+    } catch (err) {
+      // Nothing ran and no snapshot exists that a manual restore would need.
+      fs.rmSync(scratch, { recursive: true, force: true });
+      fail(err instanceof Error ? err.message : String(err));
+      return;
+    }
+  }
 
   // Repeats on the outside so a slow afternoon hits every cell, not one model.
   let done = 0, failed = 0;
   const started = Date.now();
   for (let rep = 0; rep < repeat; rep++) {
     for (const spec of specs) {
+      const promptText = renderPrompt(spec, sandbox?.vars ?? null);
       for (const model of models) {
         for (const mcp of variants) {
+          const allowedTools = [
+            ...(sandbox ? SANDBOX_READ_TOOLS : []),
+            ...(sandbox && spec.workspace ? [SANDBOX_EDIT_RULE] : []),
+            ...splitList(opts.allowedTools, ''),
+          ];
           const options: ClaudeCodeOptions = {
-            prompt: spec.prompt,
+            prompt: promptText,
             model,
             mcpConfig: mcp ? mcpConfig : null,
             cwd,
             permissionMode: opts.permissionMode ?? 'dontAsk',
-            allowedTools: splitList(opts.allowedTools, ''),
+            allowedTools: [...new Set(allowedTools)],
             tools: opts.tools ?? null,
             maxTurns,
             maxBudgetUsd: maxBudget,
             effort: opts.effort ?? null,
             appendSystemPromptFile: opts.appendSystemPromptFile ? path.resolve(opts.appendSystemPromptFile) : null,
-            timeoutMs: timeoutS * 1000,
+            addDirs: sandbox ? [sandbox.info.packagesRoot] : [],
+            timeoutMs: timeoutFor(spec) * 1000,
             claudeBin: opts.claudeBin ?? defaultClaudeBin(),
           };
           const tag = `${spec.id} · ${model} · ${mcp ? 'with' : 'without'} MCP${repeat > 1 ? ` · #${rep + 1}` : ''}`;
           if (opts.dryRun) {
-            p.log.step(`${tag}\n   ${options.claudeBin} ${buildClaudeArgs(options).map(a => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ')}  < prompt (${spec.prompt.length} chars)`);
+            const unfilled = !sandbox && usesPlaceholders(promptText) ? ' — placeholders unfilled without --sandbox' : '';
+            p.log.step(`${tag}\n   ${options.claudeBin} ${buildClaudeArgs(options).map(a => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ')}  < prompt (${promptText.length} chars${unfilled}, timeout ${timeoutFor(spec)} s)`);
             continue;
           }
           p.log.step(tag);
           const t0 = Date.now();
           const outcome = await runClaudeCode(options);
+
+          let scored: Pick<RecordContext, 'extraChecks' | 'artifacts' | 'build'> = {};
+          let moved: string[] = [];
+          if (sandbox && snapshot) {
+            const result = await scoreSandboxCell(spec, sandbox, snapshot, wantBuild, `${done + 1}`);
+            scored = result.scored;
+            moved = result.moved;
+          }
+
           const record = toBenchmarkRun(outcome, {
             spec,
             modelRequested: model,
@@ -224,6 +385,7 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
             credits,
             excerpt: opts.excerpt !== false,
             timestamp: new Date(t0),
+            ...scored,
           });
           const file = writeRun(bp.runs, record);
           done++;
@@ -232,15 +394,28 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
             `${record.outcome} in ${formatMetric('durationMs', record.durationMs)} · ${record.requests} turns · ${record.toolCalls} tool calls` +
             `${record.mcpToolCalls ? ` (${record.mcpToolCalls} MCP)` : ''} · ${formatMetric('outputTokens', record.outputTokens)} out tokens` +
             `${record.aic ? ` · ${formatMetric('aic', record.aic.value)} ${credits.unit}` : ''}` +
-            `${record.score !== null ? ` · checks ${Math.round(record.score * 100)} %` : ''}\n   → ${path.basename(file)}`;
+            `${record.score !== null ? ` · checks ${Math.round(record.score * 100)} %` : ''}` +
+            `${record.artifacts ? ` · ${record.artifacts.length} file(s) written` : ''}` +
+            `${record.build ? ` · build ${record.build.ok ? 'clean' : `${record.build.errorCount} error(s)`}` : ''}\n   → ${path.basename(file)}`;
           if (record.outcome === 'completed') p.log.success(line);
           else p.log.warn(`${line}\n   ${record.notes ?? ''}`);
+
+          if (sandbox && snapshot) {
+            try {
+              await resetSandbox(sandbox, snapshot, moved);
+            } catch (err) {
+              fail(err instanceof Error ? err.message : String(err));
+              return;
+            }
+          }
         }
       }
     }
   }
+  // The filtered MCP config, the snapshot and the build logs; kept only by a run that stopped early.
+  try { fs.rmSync(scratch, { recursive: true, force: true }); } catch { /* best effort — it is in the temp folder */ }
   if (opts.dryRun) {
-    p.outro('Dry run — nothing executed, nothing recorded.');
+    p.outro(`Dry run — nothing executed, nothing recorded.${sandbox ? ' Sandbox and MCP write targets checked.' : ''}`);
     return;
   }
   p.outro(
@@ -248,6 +423,63 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
       `${failed ? `, ${failed} did not complete` : ''} · next: d365fo-mcp benchmark report`,
   );
   if (failed > 0) process.exitCode = 1;
+}
+
+/**
+ * Score what a cell left in the sandbox: the file checks, and — for a prompt
+ * that asks for it — the build. "Builds clean" is a check only when the cell
+ * wrote something: the untouched sandbox builds clean, and that is not the
+ * cell's achievement.
+ */
+async function scoreSandboxCell(
+  spec: PromptSpec,
+  sandbox: SandboxRun,
+  snapshot: Snapshot,
+  wantBuild: boolean,
+  cellNo: string,
+): Promise<{ scored: Pick<RecordContext, 'extraChecks' | 'artifacts' | 'build'>; moved: string[] }> {
+  const pkg = sandbox.info.packageDir;
+  const diff = diffSandbox(pkg, snapshot);
+  const artifacts = authoredChanges(diff);
+  const changed = artifacts.map(rel => ({
+    path: rel,
+    read: () => {
+      try { return fs.readFileSync(path.join(pkg, rel), 'utf8'); } catch { return null; }
+    },
+  }));
+  const extraChecks = evaluateFileChecks(spec, changed);
+  let build: BuildResult | null = null;
+  if (spec.workspace?.build && wantBuild) {
+    if (artifacts.length > 0) {
+      p.log.info(`   building ${sandbox.info.packageName} with ${artifacts.length} written file(s)…`);
+      build = await buildSandbox(sandbox.info, path.join(sandbox.scratch, `cell-${cellNo}-xppc.log`), BUILD_TIMEOUT_MS);
+    }
+    extraChecks.push({ name: 'builds clean (xppc)', passed: build?.ok === true });
+  }
+  // Every non-build path that moved, deletions included — the index re-sync list.
+  const moved = [...diff.added, ...diff.modified, ...diff.deleted].filter(rel => !isBuildOutput(rel));
+  // An answer-only prompt that wrote nothing keeps its record free of sandbox fields.
+  const scored: Pick<RecordContext, 'extraChecks' | 'artifacts' | 'build'> = { extraChecks };
+  if (spec.workspace || artifacts.length > 0) scored.artifacts = artifacts;
+  if (spec.workspace?.build && wantBuild) scored.build = build;
+  return { scored, moved };
+}
+
+/** Restore the snapshot, then take what the cell put in the servers' indexes back out. */
+async function resetSandbox(sandbox: SandboxRun, snapshot: Snapshot, moved: string[]): Promise<void> {
+  restoreSandbox(sandbox.info.packageDir, snapshot);
+  if (moved.length === 0 || sandbox.targets.length === 0) return;
+  const files = moved.map(rel => path.join(sandbox.info.packageDir, ...rel.split('/')));
+  for (const target of sandbox.targets) {
+    const { synced, failed } = await syncSymbolIndex(target, files);
+    if (failed.length > 0) {
+      throw new Error(
+        `Sandbox restored, but the symbol index of '${target.name}' could not be re-synced for ${failed.length} file(s): ${failed.slice(0, 3).join('; ')}. ` +
+          "Stopping: the next with-MCP cell would find this cell's objects in search.",
+      );
+    }
+    p.log.info(`   sandbox restored · ${synced} index entr${synced === 1 ? 'y' : 'ies'} re-synced in '${target.name}'`);
+  }
 }
 
 // ---------------------------------------------------------------- ingest
@@ -433,11 +665,17 @@ export function registerBenchmarkCommands(program: Command): void {
     .option('-m, --models <list>', `comma-separated --model values for claude (default: ${DEFAULT_MODELS})`)
     .option('-v, --variants <list>', 'mcp,plain (default both)')
     .option('-r, --repeat <n>', 'repetitions of the whole matrix (default 1)')
+    .option('--tag <list>', "with 'all': only prompts carrying one of these tags (e.g. reference)")
     .option('--mcp-config <file>', 'MCP config JSON for the with-MCP cells (default: ./.mcp.json)')
-    .option('--cwd <dir>', 'working directory for claude (default: current directory)')
+    .option('--mcp-servers <list>', 'only these servers from the MCP config (required with --sandbox when it lists more than one)')
+    .option('--sandbox <packageDir>', 'throwaway D365FO package the write prompts work in; snapshotted, scored and restored around every cell')
+    .option('--sandbox-model <name>', 'model folder inside the sandbox package (default: the package name)')
+    .option('--no-build', 'skip the xppc build check of prompts that ask for one')
+    .option('--allow-dirty-baseline', 'run even when the sandbox does not build clean before the first cell')
+    .option('--cwd <dir>', 'working directory for claude (default: current directory; the sandbox package with --sandbox)')
     .option('--label <text>', 'tag these runs ("release 1.20", "VM contoso")')
     .option('--notes <text>', 'free-text note stored on each record')
-    .option('--timeout <seconds>', `kill a cell after this long (default ${DEFAULT_TIMEOUT_S})`)
+    .option('--timeout <seconds>', `kill a cell after this long (default: the prompt's timeoutSeconds, else ${DEFAULT_TIMEOUT_S})`)
     .option('--max-turns <n>', 'claude --max-turns')
     .option('--max-budget-usd <amount>', 'claude --max-budget-usd')
     .option('--permission-mode <mode>', 'claude --permission-mode (default dontAsk; MCP tools are allowed explicitly)')
