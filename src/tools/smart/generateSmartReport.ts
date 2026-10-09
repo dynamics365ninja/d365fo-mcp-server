@@ -1240,7 +1240,7 @@ export async function handleGenerateSmartReport(
     let projectMsg = '';
     if (effectiveProjectPath) {
       try {
-        const projectManager = new ProjectFileManager();
+        const projectManager = new ProjectFileManager({ withinSolutionRoots: true });
         const wasAdded = await projectManager.addToProject(
           effectiveProjectPath,
           obj.objectType as any,

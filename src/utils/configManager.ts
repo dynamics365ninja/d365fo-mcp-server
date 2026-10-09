@@ -286,8 +286,25 @@ class ConfigManager {
       // a developer creates a new VS project and leaves the default model name unchanged.
       // Prefer the first custom (non-demo) model; only fall back to demo models when that
       // is ALL that was found (unusual, but possible in purely tutorial repos).
-      if (all.length > 0 && !this.autoDetectedProject && !isNowStale) {
-        const primary = all.find(p => !isMicrosoftDemoModel(p.modelName)) ?? all[0];
+      // A model the user configured decides which projects may be picked at all. The
+      // scan used to take the first project in disk order: a projects folder that
+      // also holds one stray project of another model (a mis-set <Model>, a build
+      // project) had that project selected as THE project, its model registered as
+      // custom, and every new object of the configured model registered into it —
+      // which fails that project's build. No project of the configured model under
+      // the root means nothing is picked; the configured name still sets the model.
+      const configuredModel = this.configuredModelName()?.toLowerCase();
+      const candidates = configuredModel
+        ? all.filter(p => p.modelName.toLowerCase() === configuredModel)
+        : all;
+      if (configuredModel && candidates.length === 0 && all.length > 0) {
+        console.error(
+          `[ConfigManager] ⚠️ No project under D365FO_SOLUTIONS_PATH builds the configured model ` +
+          `"${this.configuredModelName()}" — none auto-selected. Pass projectName/projectPath to target one.`
+        );
+      }
+      if (candidates.length > 0 && !this.autoDetectedProject && !isNowStale) {
+        const primary = candidates.find(p => !isMicrosoftDemoModel(p.modelName)) ?? candidates[0];
         if (isMicrosoftDemoModel(primary.modelName)) {
           console.error(
             `[ConfigManager] ⚠️ All detected projects are Microsoft demo models — using "${primary.modelName}" as fallback.`,
@@ -302,7 +319,7 @@ class ConfigManager {
         // model would break detection outright, and get_workspace_info already
         // lists every project with the projectName to switch by.
         const scannedModels = distinctCustomModels(all.map(p => p.modelName));
-        if (scannedModels.length > 1) {
+        if (scannedModels.length > 1 && !configuredModel) {
           const shown = scannedModels.slice(0, 6).join(', ');
           console.error(
             `[ConfigManager] ⚠️ D365FO_SOLUTIONS_PATH holds ${scannedModels.length} custom models ` +
@@ -454,10 +471,16 @@ class ConfigManager {
    * when a projectPath is configured too: the detected project is then unused
    * and the disagreement has no effect. Printed once per distinct conflict.
    */
+  /** The model the USER named — D365FO_MODEL_NAME or modelName in the config file. */
+  private configuredModelName(): string | undefined {
+    const fileContext = this.config?.context || this.config?.servers?.context || null;
+    return process.env.D365FO_MODEL_NAME?.trim() || fileContext?.modelName?.trim() || undefined;
+  }
+
   private warnOnModelConflict(detected: D365ProjectInfo): void {
     const fileContext = this.config?.context || this.config?.servers?.context || null;
     const envModel = process.env.D365FO_MODEL_NAME?.trim();
-    const configured = envModel || fileContext?.modelName?.trim();
+    const configured = this.configuredModelName();
     if (!configured || configured.toLowerCase() === detected.modelName.toLowerCase()) return;
     if (process.env.D365FO_PROJECT_PATH || fileContext?.projectPath) return;
 
@@ -915,6 +938,17 @@ class ConfigManager {
       ...envContext,
       ...effectiveRuntime,
     };
+  }
+
+  /**
+   * The project path the USER configured — D365FO_PROJECT_PATH or projectPath in the
+   * config file — and nothing the server set at run time. getContext().projectPath is
+   * not that: forceProject() writes the project it activates into runtimeContext, so
+   * the merged value can name a project an earlier tool call chose.
+   */
+  getConfiguredProjectPath(): string | undefined {
+    const fileContext = this.config?.context || this.config?.servers?.context || null;
+    return process.env.D365FO_PROJECT_PATH?.trim() || fileContext?.projectPath?.trim() || undefined;
   }
 
   /**

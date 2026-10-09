@@ -105,6 +105,15 @@ export function buildProgressMessage(toolName: string, args: Record<string, any>
           }
         }
         case 'generate': return `🔧 Generating XML for ${a.objectType ?? 'object'} ${a.objectName ?? ''}`;
+        // These three used to fall through to "Creating …": an undo read
+        // "📁 Creating object", a project add-object "📁 Creating view X".
+        case 'undo':     return `↩️ Undoing changes${a.filePath ? ` to ${a.filePath}` : ''}`;
+        case 'delete':   return `🗑️ Deleting ${a.objectType ?? 'object'} ${a.objectName ?? ''}`.trim();
+        case 'project': {
+          const p = { ...a, ...(a.params ?? {}) };
+          const target = p.objectName ? ` ${p.objectName}` : p.projectName ? ` ${p.projectName}` : '';
+          return `🗂️ Project ${p.operation ?? 'operation'}${target}`;
+        }
         default:         return `📁 Creating ${a.objectType ?? 'object'} ${a.objectName ?? ''}`;
       }
     case 'generate_object':

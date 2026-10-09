@@ -7,7 +7,8 @@
  *   • modify   → edit an EXISTING object via IMetadataProvider (write)
  *   • delete   → remove an object's XML and its .rnrproj registration (write)
  *   • project  → VS project + solution operations, by `operation` (write)
- *   • undo     → roll a file back to HEAD, or delete it when untracked (write)
+ *   • undo     → roll a file back to HEAD, or delete it when untracked; outside
+ *                git, delete only a file this session created (write)
  *
  * Like `labels`, this mixes a read-capable action (generate works on Azure
  * read-only) with write actions that need local Windows-VM filesystem access;
@@ -45,7 +46,8 @@ const D365FileArgsSchema = z
       'create → write a NEW object file (Windows); modify → edit an EXISTING object (Windows); ' +
       'project → VS project ops via params.operation: create | delete | add-object | remove-object (Windows); ' +
       'delete → remove an object file and its project registration (Windows); ' +
-      'undo → roll a file back to HEAD, or delete it when untracked (Windows).',
+      'undo → roll a file back to HEAD, or delete it when untracked; outside git, delete only a file ' +
+      'created this session (Windows).',
     ),
     // Operation-specific parameters may arrive nested in `params` (the published
     // schema advertises only this object) — they are flattened before dispatch.
@@ -245,6 +247,9 @@ async function modifyWithExtensionAutoCreate(
 async function runModifyBatch(
   rest: Record<string, unknown>,
   context: XppServerContext,
+  // The action the CALLER sent. create's operations[] run through here too, and a
+  // heading of action="modify" under a create reads as a different call.
+  calledAs: 'modify' | 'create' = 'modify',
 ): Promise<any> {
   const { operations, ...shared } = rest as { operations: unknown[] } & Record<string, unknown>;
 
@@ -379,7 +384,7 @@ async function runModifyBatch(
   const notAttempted = operations.length - results.length;
 
   const head =
-    `${failed === 0 ? (declined ? '⏭️' : '✅') : '⚠️'} d365fo_file(action="modify") — ` +
+    `${failed === 0 ? (declined ? '⏭️' : '✅') : '⚠️'} d365fo_file(action="${calledAs}") — ` +
     `${succeeded}/${operations.length} operation(s) applied` +
     (declined ? `, ${declined} skipped (nothing written — see below)` : '') +
     (failed ? `, failed at #${stoppedAt + 1}` : '') +
@@ -540,7 +545,7 @@ export async function d365foFileTool(request: CallToolRequest, context: XppServe
       // The written name, not the requested one.
       objectName: outcome.finalObjectName,
       operations,
-    }, context);
+    }, context, 'create');
     return {
       content: [{
         type: 'text',

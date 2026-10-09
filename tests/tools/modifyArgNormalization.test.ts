@@ -157,6 +157,7 @@ import {
   modifyD365FileTool, normalizeModifyArgs, baseObjectNameCandidates, resetRepeatedNoteMemory,
 } from '../../src/tools/write/modifyD365File';
 import { deriveExtensionInfix } from '../../src/utils/modelClassifier';
+import * as fs from 'fs/promises';
 
 const FILE_PATH = 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxTable\\ConProbeTable.xml';
 
@@ -432,10 +433,50 @@ describe('an advisory about the workspace is spelled out once, not per write', (
     const second = textOf(await addIndex('Idx2'));
 
     expect(first).toContain('Target is not under git');
-    expect(first).toContain('d365fo_file(action="undo") would not work here');
+    expect(first).toContain('cannot revert a modify');
     expect(second).not.toContain('Target is not under git');
     // The backup path is what a caller may actually need - never dropped.
     expect(second).toMatch(/Backup: .*\.backup-/);
+  });
+});
+
+describe('a modify outside git keeps a copy only when it changed the file', () => {
+  beforeEach(() => resetRepeatedNoteMemory());
+
+  const copiesTaken = () => vi.mocked(fs.copyFile).mock.calls.map(c => String(c[1]));
+  const copiesRemoved = () => vi.mocked(fs.rm).mock.calls.map(c => String(c[0])).filter(p => p.includes('.backup-'));
+
+  it('a call refused before it touched the file removes the copy it took', async () => {
+    // Observed live: each refused add-field on a view left a .backup-* of the
+    // untouched file — four refusals, four copies.
+    const r = await modifyD365FileTool(
+      req({
+        // Passes the up-front parameter checks (dataField is a mutating param) and is
+        // refused inside the operation, after the copy was taken.
+        objectType: 'table', objectName: 'ConProbeTable', operation: 'add-field',
+        fieldName: 'NoType', dataField: 'NoType', filePath: FILE_PATH,
+      }),
+      ctx(),
+    );
+    expect(r.isError).toBe(true);
+    expect(textOf(r)).toContain('nothing was written');
+    expect(copiesTaken()).toHaveLength(1);
+    expect(copiesRemoved()).toEqual(copiesTaken());
+    expect(textOf(r)).not.toContain('Backup:');
+  });
+
+  it('a call that wrote keeps its copy', async () => {
+    const r = await modifyD365FileTool(
+      req({
+        objectType: 'table', objectName: 'ConProbeTable', operation: 'add-index',
+        indexName: 'IdxKeep', indexFields: [{ fieldName: 'ProbeId' }], filePath: FILE_PATH,
+      }),
+      ctx(),
+    );
+    expect(r.isError, textOf(r)).toBeFalsy();
+    expect(copiesTaken()).toHaveLength(1);
+    expect(copiesRemoved()).toHaveLength(0);
+    expect(textOf(r)).toContain(copiesTaken()[0]);
   });
 });
 

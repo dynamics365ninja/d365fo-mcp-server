@@ -122,15 +122,15 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
   dataField: {
     type: 'string',
     description:
-      'add-field on a data-entity-extension: source table field name for the mapped field ' +
-      '(e.g. "MyField"). Required alongside dataSource — used instead of fieldType/fieldBaseType, ' +
-      'since a data-entity mapped field (AxDataEntityViewMappedField) has no EDT/base-type of its own.',
+      'add-field on a data-entity(-extension) or a view: source table field name for the mapped/bound field ' +
+      '(e.g. "MyField"). Entities: required alongside dataSource. Views: defaults to fieldName. Used ' +
+      'instead of fieldType/fieldBaseType — neither a mapped field nor a view field has an EDT of its own.',
   },
   dataSource: {
     type: 'string',
     description:
-      'add-field on a data-entity-extension: source data-source/table name on the entity for the ' +
-      'mapped field (e.g. "MyTable"). Required alongside dataField.',
+      'add-field on a data-entity(-extension) or a view: the data source the field reads from — a data ' +
+      'source NAME of the entity or view, not necessarily its table (e.g. "MyTable"). Required.',
   },
   fields: {
     type: 'array of { name, edt?, type?, mandatory?, label? }',
@@ -304,6 +304,13 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
   dataSourceReadOnly: {
     type: 'boolean',
     description: 'add-data-source on a data-entity: write <IsReadOnly>Yes</IsReadOnly> on the new datasource.',
+  },
+  insertIfEmpty: {
+    type: 'boolean',
+    description:
+      'add-data-source on a form/form-extension: false writes <InsertIfEmpty>No</InsertIfEmpty> — no empty ' +
+      'record is created when the data source returns none (the usual choice for a joined, read-only ' +
+      'source; 12,798 shipped form data sources set it, always to No). Omitted or true = platform default (Yes).',
   },
   // add-query-range
   rangeField: {
@@ -589,7 +596,7 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   'add-field': {
     required: ['fieldName'],
     optional: ['fieldType', 'fieldBaseType', 'fieldEnumType', 'fieldMandatory', 'fieldLabel', 'dataField', 'dataSource', 'fieldGroupName', 'autoCorrect'],
-    mutationOneOf: ['fieldType', 'fieldEnumType', 'dataField', 'fieldBaseType'],
+    mutationOneOf: ['fieldType', 'fieldEnumType', 'dataField', 'dataSource', 'fieldBaseType'],
     note:
       'Enum field: pass fieldEnumType="<enum name>" and NO fieldType — an enum-typed table field ' +
       'is an AxTableFieldEnum with an EnumType and needs no EDT. (fieldType is the EDT name here, ' +
@@ -602,7 +609,10 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       'use AutoReport). It is not defaulted — a group the base entity does not have is a compile error. ' +
       'data-entity: same dataField + dataSource contract — adds an AxDataEntityViewMappedField to the ' +
       'entity itself; dataSource must be a datasource of the entity\'s own query (add it first with ' +
-      'add-data-source, e.g. a DisplayValue field from an outer-joined DimensionSetEntity).',
+      'add-data-source, e.g. a DisplayValue field from an outer-joined DimensionSetEntity). ' +
+      'view: pass dataSource (a data source of the view, not necessarily its table name) and dataField ' +
+      '(defaults to fieldName) — writes an AxViewFieldBound, which has no EDT; fieldType does not apply. ' +
+      'fieldLabel is optional.',
   },
   'modify-field': {
     required: ['fieldName'],
@@ -696,9 +706,10 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   },
   'add-data-source': {
     required: ['dataSourceName', 'dataSourceTable'],
-    optional: ['joinSource', 'linkType', 'joinField', 'relatedField', 'dataSourceReadOnly'],
+    optional: ['joinSource', 'linkType', 'joinField', 'relatedField', 'dataSourceReadOnly', 'insertIfEmpty'],
     note:
-      'form-extension: adds a data source to the extension. ' +
+      'form-extension: adds a data source to the extension; insertIfEmpty=false writes InsertIfEmpty=No ' +
+      '(what the VS designer writes for a new one, and what a joined read-only source wants). ' +
       'data-entity: adds an embedded QUERY datasource with its join relation to the entity\'s ' +
       'ViewMetadata — dataSourceName/dataSourceTable name it, joinSource is the datasource to nest under ' +
       '(default: the root), linkType is the join mode (default InnerJoin; OuterJoin for optional ' +
