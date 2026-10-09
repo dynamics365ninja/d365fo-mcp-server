@@ -225,6 +225,19 @@ describe('toBenchmarkRun', () => {
     expect('build' in plain).toBe(false);
   });
 
+  it('names what the permission fence refused, by tool and file name only', async () => {
+    const result = JSON.stringify({
+      type: 'result', subtype: 'success', is_error: false, result: 'done', num_turns: 2, usage: {},
+      permission_denials: [
+        { tool_name: 'Edit', tool_use_id: 't1', tool_input: { file_path: 'K:\\AosService\\PackagesLocalDirectory\\fm-mcp\\fm-mcp\\AxReport\\ConCustOverdueReport.xml' } },
+        { tool_name: 'Bash', tool_use_id: 't2', tool_input: { command: 'xppc.exe' } },
+      ],
+    });
+    const run = toBenchmarkRun(await runClaudeCode(baseOptions(), fakeRunner(result)), ctx(true));
+    expect(run.notes).toContain('2 permission denial(s): Edit ConCustOverdueReport.xml, Bash');
+    expect(run.notes).not.toContain('AosService');
+  });
+
   it('warns in the notes when MCP was requested but no server connected', async () => {
     const noMcp = STREAM.replace('"status":"connected"', '"status":"failed"');
     const run = toBenchmarkRun(await runClaudeCode(baseOptions(), fakeRunner(noMcp)), ctx(true));

@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T11-00__ref-vendor-certificate-register__claude-code__claude-sonnet-5-5__plain__2bd697",
+  "timestamp": "2026-10-09T11:00:04.339Z",
+  "promptId": "ref-vendor-certificate-register",
+  "promptHash": "f04876b5d381",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "reference v1",
+  "durationMs": 163982,
+  "apiMs": 120933,
+  "requests": 54,
+  "toolCalls": 53,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 2,
+    "Glob": 10,
+    "Read": 17,
+    "Grep": 12,
+    "Write": 10,
+    "Bash": 2
+  },
+  "inputTokens": 1086434,
+  "cachedTokens": 1036615,
+  "outputTokens": 18813,
+  "hostCost": {
+    "value": 0.594641,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 59.4641,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 0.9166666666666666,
+  "checks": [
+    {
+      "name": "matches ConVendCertificate",
+      "passed": true
+    },
+    {
+      "name": "file string EDT ConVendCertificateId",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum ConVendCertificateType",
+      "passed": true
+    },
+    {
+      "name": "file table: fields, primary index, VendTable relation, find/exist/validateWrite",
+      "passed": true
+    },
+    {
+      "name": "file SimpleList form over the table",
+      "passed": true
+    },
+    {
+      "name": "file display menu item",
+      "passed": true
+    },
+    {
+      "name": "file ProcurementAndSourcing menu extension",
+      "passed": true
+    },
+    {
+      "name": "file maintain privilege (delete)",
+      "passed": true
+    },
+    {
+      "name": "file view privilege (read only)",
+      "passed": true
+    },
+    {
+      "name": "file VendTable form extension opens the register",
+      "passed": true
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": false
+    }
+  ],
+  "resultChars": 2235,
+  "resultExcerpt": "I wrote all the objects, but I couldn't run the xppc build, so \"zero errors\" is unverified. Both PowerShell and Bash were denied in this session (don't-ask mode), and I didn't try to get around that.\n\nTo build it, either allow Bash or PowerShell for `K:\\AosService\\PackagesLocalDirectory\\Bin\\xppc.exe` and I'll run it and fix whatever it reports, or run a full build of `fm-mcp` yourself and send me ",
+  "notes": "3 permission denial(s): PowerShell, PowerShell, Bash",
+  "evidence": {
+    "sessionId": "9f72603b-f25a-407e-b099-e5cb2496a7c7",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxEdt/ConVendCertificateId.xml",
+    "fm-mcp/AxEnum/ConVendCertificateType.xml",
+    "fm-mcp/AxForm/ConVendCertificate.xml",
+    "fm-mcp/AxFormExtension/VendTable.ConExtension.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxMenuExtension/ProcurementAndSourcing.ConExtension.xml",
+    "fm-mcp/AxMenuItemDisplay/ConVendCertificate.xml",
+    "fm-mcp/AxSecurityPrivilege/ConVendCertificateMaintain.xml",
+    "fm-mcp/AxSecurityPrivilege/ConVendCertificateView.xml",
+    "fm-mcp/AxTable/ConVendCertificate.xml"
+  ],
+  "build": {
+    "ok": false,
+    "errorCount": 2,
+    "errors": [
+      "Metadata Error: AxEnum/ConVendCertificateType/UseEnumValue: UseEnumValue property must be set to 'No' when the IsExtensible property is 'True'.",
+      "FormPatternValidation Error: AxForm/ConVendCertificate/Design: Control 'AxForm/ConVendCertificate/Design' is missing child 'Application Bar' required by pattern 'Simple List'."
+    ],
+    "durationMs": 15859
+  }
+}

@@ -312,8 +312,21 @@ export function toBenchmarkRun(o: ClaudeCodeOutcome, ctx: RecordContext): Benchm
   if (ctx.mcp && o.summary.init && o.summary.init.mcpServers.every(s => s.status !== 'connected')) {
     noteParts.push('MCP requested but no server reported connected — treat this cell as "without MCP" when reading it');
   }
+  // What the permission fence refused. A sandbox cell may edit only inside the
+  // package; a refusal there is part of the result (the cell had to work around
+  // it), so it is named — tool and file name, never the full path.
+  const denials = Array.isArray(r?.permission_denials) ? r.permission_denials : [];
+  if (denials.length > 0) {
+    const named = denials.slice(0, 6).map(d => {
+      const x = (d ?? {}) as { tool_name?: unknown; tool_input?: { file_path?: unknown; command?: unknown } };
+      const tool = typeof x.tool_name === 'string' ? x.tool_name : '?';
+      const file = typeof x.tool_input?.file_path === 'string' ? ` ${x.tool_input.file_path.split(/[\\/]/).pop()}` : '';
+      return `${tool}${file}`;
+    });
+    noteParts.push(`${denials.length} permission denial(s): ${named.join(', ')}${denials.length > 6 ? ', …' : ''}`);
+  }
   if (outcome !== 'completed') {
-    const tail = (o.process.stderr || o.summary.stray.join(' | ')).trim().split(/\r?\n/).slice(-3).join(' | ');
+    const tail =(o.process.stderr || o.summary.stray.join(' | ')).trim().split(/\r?\n/).slice(-3).join(' | ');
     noteParts.push(`${outcome}: exit ${o.process.exitCode ?? 'n/a'}${r?.subtype ? `, ${r.subtype}` : ''}${tail ? ` — ${tail.slice(0, 300)}` : ''}`);
   }
 

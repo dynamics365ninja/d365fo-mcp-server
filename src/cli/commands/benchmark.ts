@@ -22,8 +22,10 @@ import { buildClaudeArgs, runClaudeCode, toBenchmarkRun, type ClaudeCodeOptions,
 import { loadCreditsConfig } from '../../benchmark/credits.js';
 import { sessionToBenchmarkRun } from '../../benchmark/ingest.js';
 import {
+  pruneStaleExtensionRows,
   resolveMcpTargets,
   sandboxTargetProblems,
+  staleSandboxIndexFiles,
   staleServerScripts,
   syncSymbolIndex,
   writeFilteredMcpConfig,
@@ -301,6 +303,33 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
     p.log.warn(`${stale.join(', ')} is older than HEAD (${sha}) — the with-MCP cells would run an older server than their records claim. Run npm run build first.`);
   }
 
+  // ---- index hygiene: rows of the sandbox model whose files are gone (left by
+  // earlier runs) would feed the MCP cells phantom objects and a wrong inferred
+  // prefix; the plain cells never read the index. A dry run only reports them.
+  if (sandbox) {
+    try {
+      for (const target of sandbox.targets) {
+        const files = await staleSandboxIndexFiles(target, sandbox.info.model, sandbox.info.packagesRoot);
+        const extensions = await pruneStaleExtensionRows(target, sandbox.info.model, sandbox.info.modelDir, { dryRun: opts.dryRun });
+        if (files.length + extensions.length === 0) continue;
+        if (opts.dryRun) {
+          p.log.warn(`'${target.name}' index holds ${files.length} object row(s) and ${extensions.length} extension row(s) of ${sandbox.info.model} with no file on disk — a real run removes them before the first cell.`);
+          continue;
+        }
+        const { failed } = await syncSymbolIndex(target, files);
+        if (failed.length > 0) throw new Error(`Could not remove stale index rows from '${target.name}': ${failed.slice(0, 3).join('; ')}`);
+        p.log.info(
+          `Index of '${target.name}': removed ${files.length} stale object file(s) and ${extensions.length} stale extension row(s) of ${sandbox.info.model}` +
+            `${extensions.length ? ` (${extensions.slice(0, 8).join(', ')}${extensions.length > 8 ? ', …' : ''})` : ''}`,
+        );
+      }
+    } catch (err) {
+      fs.rmSync(scratch, { recursive: true, force: true });
+      fail(err instanceof Error ? err.message : String(err));
+      return;
+    }
+  }
+
   // ---- baseline: the sandbox must build clean on its own, then it is snapshotted
   let snapshot: Snapshot | null = null;
   if (sandbox && !opts.dryRun) {
@@ -388,6 +417,9 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
             ...scored,
           });
           const file = writeRun(bp.runs, record);
+          // Keep what the cell wrote before the restore wipes it: a check found
+          // wrong later (it happened — <Pattern xmlns="">) can then be re-scored.
+          if (sandbox && record.artifacts?.length) keepArtifacts(sandbox.info.packageDir, record.artifacts, path.join(bp.root, 'artifacts', record.runId));
           done++;
           if (record.outcome !== 'completed') failed++;
           const line =
@@ -465,6 +497,17 @@ async function scoreSandboxCell(
   return { scored, moved };
 }
 
+/** Copy the cell's authored files to eval/benchmark/artifacts/<runId>/ (gitignored). Best effort. */
+function keepArtifacts(packageDir: string, artifacts: string[], outDir: string): void {
+  for (const rel of artifacts) {
+    try {
+      const target = path.join(outDir, ...rel.split('/'));
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.copyFileSync(path.join(packageDir, ...rel.split('/')), target);
+    } catch { /* evidence, not the measurement */ }
+  }
+}
+
 /** Restore the snapshot, then take what the cell put in the servers' indexes back out. */
 async function resetSandbox(sandbox: SandboxRun, snapshot: Snapshot, moved: string[]): Promise<void> {
   restoreSandbox(sandbox.info.packageDir, snapshot);
@@ -478,7 +521,13 @@ async function resetSandbox(sandbox: SandboxRun, snapshot: Snapshot, moved: stri
           "Stopping: the next with-MCP cell would find this cell's objects in search.",
       );
     }
-    p.log.info(`   sandbox restored · ${synced} index entr${synced === 1 ? 'y' : 'ies'} re-synced in '${target.name}'`);
+    // extension_metadata is keyed by name, not path: a row whose name is not the
+    // file's (seen once in the first reference run) survives the per-file re-sync.
+    const extensions = await pruneStaleExtensionRows(target, sandbox.info.model, sandbox.info.modelDir);
+    p.log.info(
+      `   sandbox restored · ${synced} index entr${synced === 1 ? 'y' : 'ies'} re-synced in '${target.name}'` +
+        `${extensions.length ? ` · ${extensions.length} extension row(s) with no file removed (${extensions.join(', ')})` : ''}`,
+    );
   }
 }
 

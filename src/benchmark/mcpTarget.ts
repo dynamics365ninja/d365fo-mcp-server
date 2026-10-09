@@ -159,6 +159,68 @@ export function sandboxTargetProblems(targets: McpServerTarget[], modelDir: stri
   return problems;
 }
 
+/**
+ * Index rows of the sandbox model whose files are gone — what earlier eval or
+ * benchmark runs left behind when their files were removed without a re-sync.
+ *
+ * They are not harmless: on the VM, 27 of the 28 rows indexed for fm-mcp
+ * pointed at deleted ConDemo* files, so `search` offered objects that do not
+ * exist and the server's prefix inference (naming.prefixSource=model) learned
+ * "ConDemo" from them — every with-MCP create of "ConCustOverdueSnapshot" came
+ * out as "ConDemoConCustOverdueSnapshot", and the cell stopped to ask.
+ * The plain cells never see the index, so a dirty one skews only the MCP side.
+ */
+export async function staleSandboxIndexFiles(target: Pick<McpServerTarget, 'dbPath'>, model: string, packagesRoot: string): Promise<string[]> {
+  if (!target.dbPath || !fs.existsSync(target.dbPath)) return [];
+  const { DatabaseSync } = await import('node:sqlite');
+  const db = new DatabaseSync(target.dbPath, { readOnly: true });
+  try {
+    const rows = db.prepare('SELECT DISTINCT file_path AS p FROM symbols WHERE model = ? AND file_path IS NOT NULL').all(model) as Array<{ p: string }>;
+    return rows
+      .map(r => (path.isAbsolute(r.p) ? r.p : path.join(packagesRoot, r.p)))
+      .filter(p => !fs.existsSync(p));
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Extension rows of the sandbox model with no file left in the model folder.
+ * extension_metadata is keyed by name + type + model, not by path, so
+ * {@link staleSandboxIndexFiles} cannot see these; on the VM all 18 fm-mcp rows
+ * were stale (CustTable.FmProbeExt, CustTable.ConChainAudit, …), telling a
+ * with-MCP cell that CustTable already had extensions in the sandbox.
+ * A row is stale when no file under `modelDir` is named after the extension.
+ */
+export async function pruneStaleExtensionRows(
+  target: Pick<McpServerTarget, 'dbPath' | 'labelsDbPath'>,
+  model: string,
+  modelDir: string,
+  opts: { dryRun?: boolean } = {},
+): Promise<string[]> {
+  if (!target.dbPath || !fs.existsSync(target.dbPath)) return [];
+  const present = new Set<string>();
+  const walk = (dir: string) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.isDirectory()) walk(path.join(dir, e.name));
+      else if (e.name.toLowerCase().endsWith('.xml')) present.add(e.name.slice(0, -4).toLowerCase());
+    }
+  };
+  if (fs.existsSync(modelDir)) walk(modelDir);
+  const { XppSymbolIndex } = await import('../metadata/symbolIndex.js');
+  const index = new XppSymbolIndex(target.dbPath, target.labelsDbPath ?? undefined, { backgroundIndexBuilds: false });
+  try {
+    const rows = index.db
+      .prepare('SELECT extension_name AS name, extension_type AS type FROM extension_metadata WHERE model = ?')
+      .all(model) as Array<{ name: string; type: string }>;
+    const stale = rows.filter(r => !present.has(r.name.toLowerCase()));
+    if (!opts.dryRun) for (const r of stale) index.removeExtensionMetadata(r.name, r.type, model);
+    return stale.map(r => `${r.type} ${r.name}`);
+  } finally {
+    index.close();
+  }
+}
+
 export type IndexSync = (target: Pick<McpServerTarget, 'dbPath' | 'labelsDbPath'>, files: string[]) => Promise<{ synced: number; failed: string[] }>;
 
 /**

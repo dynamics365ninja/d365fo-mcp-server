@@ -70,6 +70,16 @@ describe('prompt catalogue', () => {
     }
   });
 
+  it('matches the form pattern element the way shipped metadata writes it (with xmlns="")', () => {
+    // A first version required a bare <Pattern> and failed every SimpleList form,
+    // because AxForm XML carries <Pattern xmlns="">SimpleList</Pattern> (CustGroup).
+    const spec = loadPromptSpecs(CATALOGUE).find(s => s.id === 'ref-vendor-certificate-register')!;
+    const form = spec.expects!.files!.find(f => f.path.includes('AxForm'))!;
+    const xml = '<Design><Pattern xmlns="">SimpleList</Pattern></Design><DataSources><AxFormDataSource><Table>ConVendCertificate</Table></AxFormDataSource></DataSources>';
+    expect(evaluateFileChecks(spec, [{ path: 'fm-mcp/AxForm/ConVendCertificate.xml', read: () => xml }]).find(c => c.name.includes('SimpleList'))?.passed).toBe(true);
+    expect(form.contains!.every(re => new RegExp(re, 'is').test(xml))).toBe(true);
+  });
+
   it('rejects an ad-hoc id that would not make a file name', () => {
     expect(() => adHocPromptSpec('a b', 'p')).toThrow(/letters, digits/);
   });

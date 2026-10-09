@@ -35,7 +35,7 @@
       {
         "name": "SimpleList form over the table",
         "path": "/AxForm/ConVendCertificate\\.xml$",
-        "contains": ["<Pattern>SimpleList</Pattern>", "<Table>ConVendCertificate</Table>"]
+        "contains": ["<Pattern\\b[^>]*>SimpleList</Pattern>", "<Table>ConVendCertificate</Table>"]
       },
       {
         "name": "display menu item",

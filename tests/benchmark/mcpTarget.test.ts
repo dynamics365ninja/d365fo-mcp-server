@@ -8,7 +8,9 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {
+  pruneStaleExtensionRows,
   resolveMcpTargets,
+  staleSandboxIndexFiles,
   resolveServerTarget,
   sandboxTargetProblems,
   staleServerScripts,
@@ -95,6 +97,41 @@ describe('sandboxTargetProblems', () => {
     const evalT = targets.find(t => t.name === 'd365fo-eval')!;
     expect(evalT.workspaceSource).toBe('inherited');
     expect(sandboxTargetProblems([evalT], sandboxModel())[0]).toMatch(/set in the environment the benchmark runs in.*Unset it/);
+  });
+});
+
+describe('stale index rows of the sandbox model', () => {
+  it('finds object rows whose file is gone and drops extension rows with no file, leaving the rest', async () => {
+    const { XppSymbolIndex } = await import('../../src/metadata/symbolIndex.js');
+    const modelDir = sandboxModel();
+    const pld = path.join(root, 'PLD');
+    write('PLD/fm-mcp/fm-mcp/AxTable/ConDemoNoteHeader.xml', '<AxTable/>');
+    write('PLD/fm-mcp/fm-mcp/AxTableExtension/CustTable.ConCreditHold.xml', '<AxTableExtension/>');
+    const dbPath = path.join(root, 'idx', 'x.db');
+    const labelsDbPath = path.join(root, 'idx', 'x-labels.db');
+    const index = new XppSymbolIndex(dbPath, labelsDbPath, { backgroundIndexBuilds: false });
+    index.addSymbol({ name: 'ConDemoNoteHeader', type: 'table', filePath: path.join(modelDir, 'AxTable', 'ConDemoNoteHeader.xml'), model: 'fm-mcp' });
+    index.addSymbol({ name: 'ConDemoDpTestTmp', type: 'table', filePath: path.join(modelDir, 'AxTable', 'ConDemoDpTestTmp.xml'), model: 'fm-mcp' });
+    // PackagesLocalDirectory-relative spelling, as older index rows carry it.
+    index.addSymbol({ name: 'ConRdLiveDP', type: 'class', filePath: 'fm-mcp/fm-mcp/AxClass/ConRdLiveDP.xml', model: 'fm-mcp' });
+    index.addSymbol({ name: 'CustTable', type: 'table', filePath: path.join(root, 'elsewhere.xml'), model: 'ApplicationSuite' });
+    index.upsertExtensionMetadata({ extensionName: 'CustTable.ConCreditHold', extensionType: 'table-extension', baseObjectName: 'CustTable', model: 'fm-mcp' });
+    index.upsertExtensionMetadata({ extensionName: 'CustTable.FmProbeExt', extensionType: 'table-extension', baseObjectName: 'CustTable', model: 'fm-mcp' });
+    index.upsertExtensionMetadata({ extensionName: 'VendGroup.ConDemoExtension', extensionType: 'table-extension', baseObjectName: 'VendGroup', model: 'Other' });
+    index.close();
+    const target = { dbPath, labelsDbPath };
+
+    const stale = await staleSandboxIndexFiles(target, 'fm-mcp', pld);
+    expect(stale.map(p => path.basename(p)).sort()).toEqual(['ConDemoDpTestTmp.xml', 'ConRdLiveDP.xml']);
+
+    expect(await pruneStaleExtensionRows(target, 'fm-mcp', modelDir, { dryRun: true })).toEqual(['table-extension CustTable.FmProbeExt']);
+    expect(await pruneStaleExtensionRows(target, 'fm-mcp', modelDir)).toEqual(['table-extension CustTable.FmProbeExt']);
+    expect(await pruneStaleExtensionRows(target, 'fm-mcp', modelDir)).toEqual([]);
+    // Another model's rows are never touched.
+    const check = new XppSymbolIndex(dbPath, labelsDbPath, { backgroundIndexBuilds: false });
+    const left = check.db.prepare('SELECT extension_name AS n FROM extension_metadata ORDER BY n').all() as Array<{ n: string }>;
+    check.close();
+    expect(left.map(r => r.n)).toEqual(['CustTable.ConCreditHold', 'VendGroup.ConDemoExtension']);
   });
 });
 

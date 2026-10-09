@@ -118,3 +118,6 @@ copilot-setup/
 # Benchmark reports are derived from eval/benchmark/runs/*.json — regenerate with
 # `d365fo-mcp benchmark report`; only the records are committed.
 eval/benchmark/reports/
+# The files each sandbox cell wrote, kept so a corrected check can re-score
+# them (the sandbox itself is restored after every cell). Local evidence only.
+eval/benchmark/artifacts/

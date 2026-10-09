@@ -88,13 +88,20 @@ Around the matrix and every cell the runner:
    `D365FO_WORKSPACE_PATH=K:\AosService`, which would have sent every with-MCP
    write there. Unset it (`env -u D365FO_WORKSPACE_PATH …`, PowerShell
    `Remove-Item Env:D365FO_WORKSPACE_PATH`) or set it in the server's `env` block.
-2. **Builds a baseline** (xppc full build of the sandbox module) when a prompt
+2. **Cleans the index of the sandbox model**: object rows whose file is gone and
+   extension rows with no file in the model folder are removed (a dry run only
+   reports them). The plain cells never read the index, so a dirty one skews only
+   the MCP side — on the VM, 27 of 28 fm-mcp object rows and all 18 extension
+   rows were left over from earlier eval runs; the server's prefix inference
+   learned `ConDemo` from them and every with-MCP create of
+   `ConCustOverdueSnapshot` came out as `ConDemoConCustOverdueSnapshot`.
+3. **Builds a baseline** (xppc full build of the sandbox module) when a prompt
    asks for the build check, and stops if the sandbox does not build clean on
    its own — otherwise every "builds clean" check fails for a reason no cell
    caused.
-3. **Snapshots the package** (Descriptor, the model folder, `bin`; a sandbox is
+4. **Snapshots the package** (Descriptor, the model folder, `bin`; a sandbox is
    a few MB and more than 5,000 files is refused) into the temp folder.
-4. **Runs the cell in the package**: cwd is the package, the built-in tools are
+5. **Runs the cell in the package**: cwd is the package, the built-in tools are
    `Read Glob Grep` plus `Edit(./**)` — in `dontAsk` mode that rule lets the file
    tools write inside the package and nowhere else (checked on the VM: a write
    to an `--add-dir` folder is denied) — and `--add-dir <PackagesLocalDirectory>`
@@ -102,17 +109,24 @@ Around the matrix and every cell the runner:
    the way a developer without the server would. Shells are not allowed: a plain
    cell cannot run xppc, a with-MCP cell builds through the server. That gap is
    part of what is being measured; add `--allowed-tools PowerShell` to close it.
-5. **Scores what the cell wrote**: the package is diffed against the snapshot,
+6. **Scores what the cell wrote**: the package is diffed against the snapshot,
    the added/changed files (build output left out) become the record's
    `artifacts`, each `expects.files` entry is one check, and with
    `workspace.build` the module is built and "builds clean (xppc)" is one more
    check (failed when the cell wrote nothing — the untouched sandbox building is
    not the cell's achievement). The record's `build` keeps the first error lines.
-6. **Restores the package** byte for byte and re-diffs to prove it; a failed
+7. **Restores the package** byte for byte and re-diffs to prove it; a failed
    restore stops the matrix (the snapshot stays in the temp folder).
-7. **Re-syncs the symbol index** of every selected server for every path that
+8. **Re-syncs the symbol index** of every selected server for every path that
    moved — the server upserts what it writes into its SQLite index, and the next
    with-MCP cell would otherwise find the previous cell's table in `search`.
+
+The files each cell wrote are copied to `eval/benchmark/artifacts/<runId>/`
+(gitignored) before the restore, so a check that turns out wrong can be
+re-scored against them — the first reference run needed exactly that: the form
+check asked for a bare `<Pattern>`, while AxForm XML writes
+`<Pattern xmlns="">SimpleList</Pattern>`. What the permission fence refused
+(tool and file name) is noted on the record.
 
 A run warns when the server's `dist/index.js` is older than HEAD: the cells
 would measure an older server than the `serverGitSha` on their records. Run
