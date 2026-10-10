@@ -37,6 +37,7 @@ namespace D365MetadataBridge
         private static string? _binPath = null;               // Explicit bin path (UDE: microsoftPackagesPath/bin)
         private static string _xrefServer = "localhost";
         private static string _xrefDatabase = string.Empty;
+        private static readonly Models.AxDbSqlOptions AxDbOptions = new Models.AxDbSqlOptions();
         private static string? _logFile = null;
         private static readonly TextWriter Log = Console.Error;
 
@@ -64,6 +65,25 @@ namespace D365MetadataBridge
                         break;
                     case "--log-file" when i + 1 < args.Length:
                         _logFile = args[++i];
+                        break;
+                    case "--axdb-server" when i + 1 < args.Length:
+                        AxDbOptions.Server = args[++i];
+                        break;
+                    case "--axdb-database" when i + 1 < args.Length:
+                        AxDbOptions.Database = args[++i];
+                        break;
+                    case "--axdb-trust-certificate":
+                        AxDbOptions.TrustCertificate = true;
+                        break;
+                    case "--axdb-timeout" when i + 1 < args.Length:
+                        if (!int.TryParse(args[++i], out var timeout) || timeout < 1 || timeout > 30)
+                        { Log.WriteLine("[FATAL] --axdb-timeout must be 1..30 seconds."); return 1; }
+                        AxDbOptions.TimeoutSeconds = timeout;
+                        break;
+                    case "--axdb-max-rows" when i + 1 < args.Length:
+                        if (!int.TryParse(args[++i], out var maxRows) || maxRows < 1 || maxRows > 1000)
+                        { Log.WriteLine("[FATAL] --axdb-max-rows must be 1..1000."); return 1; }
+                        AxDbOptions.MaxRows = maxRows;
                         break;
                     case "--help":
                         PrintUsage();
@@ -147,7 +167,8 @@ namespace D365MetadataBridge
             }
 
             // Create request dispatcher
-            var dispatcher = new RequestDispatcher(metadataService, writeService, xrefService);
+            var axdbService = new Services.AxDbSqlService(AxDbOptions);
+            var dispatcher = new RequestDispatcher(metadataService, writeService, xrefService, axdbService);
 
             // Send ready signal
             var readyResponse = new BridgeResponse
@@ -160,7 +181,8 @@ namespace D365MetadataBridge
                     packagesPath = _packagesPath,
                     referencePackagesPath = _referencePackagesPath,
                     metadataAvailable = metadataService != null,
-                    xrefAvailable = xrefService != null
+                    xrefAvailable = xrefService != null,
+                    axdbSqlAvailable = axdbService.Enabled
                 })
             };
             await WriteResponse(readyResponse);
@@ -532,6 +554,11 @@ Options:
   --xref-server <server>            SQL Server for cross-reference DB (default: localhost)
   --xref-database <db>              Cross-reference database name, e.g. DYNAMICSXREFDB
                                     (no default: without it cross-references are off)
+  --axdb-server <server>            Enable separate, lazy, read-only AxDB SQL debug access (Windows integrated authentication)
+  --axdb-database <db>              SQL debug database (default: AxDB)
+  --axdb-trust-certificate          Trust the SQL certificate (encryption remains enabled)
+  --axdb-timeout <seconds>          Per-command timeout, 1..30 (default: 30)
+  --axdb-max-rows <rows>            Default SQL query row cap, 1..1000 (default: 100)
   --log-file <path>                 Write all diagnostic logs to this file (append mode)
   --help                            Show this help
 

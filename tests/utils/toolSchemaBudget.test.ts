@@ -16,7 +16,7 @@
  * its request/extra args, so a direct call returns the exact wire payload.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createXppMcpServer } from '../../src/server/mcpServer';
 
 // ~4 chars/token is the usual rough conversion for English+JSON; only used for
@@ -197,6 +197,12 @@ const CHARS_PER_TOKEN = 4;
 // They took 63 of them (#1067): the two enum values and the "Table.Name" form in
 // targetType's description. Measured payload after: 45_078.
 const TOTAL_BUDGET = 45_100;
+// axdb_sql is published only once SQL is configured, so TOTAL_BUDGET above —
+// the payload every default install sends — does not carry it. A configured
+// install does: measured 324 chars for the tool (its schema, description and
+// annotations), 45,078 -> 45,402. That is an allowance for an opt-in surface,
+// not headroom for the default one: it is asserted separately below.
+const SQL_CONFIGURED_ALLOWANCE = 330;
 const LARGEST_TOOL_BUDGET = 5_780;
 
 async function getTools(): Promise<Array<{ name: string }>> {
@@ -209,6 +215,19 @@ async function getTools(): Promise<Array<{ name: string }>> {
 }
 
 describe('tool schema token budget', () => {
+  it('adds no more than the SQL allowance once AxDB SQL is configured', async () => {
+    vi.stubEnv('D365FO_SQL_ENABLED', 'true');
+    vi.stubEnv('D365FO_SQL_SERVER', 'localhost');
+    try {
+      const tools = await getTools();
+      expect(tools.map(t => t.name)).toContain('axdb_sql');
+      expect(tools.length).toBe(21);
+      expect(JSON.stringify(tools).length).toBeLessThan(TOTAL_BUDGET + SQL_CONFIGURED_ALLOWANCE);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('total ListTools payload stays within the token budget', async () => {
     const tools = await getTools();
     const chars = JSON.stringify(tools).length;

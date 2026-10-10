@@ -90,6 +90,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
 
   // Diagnostics
   get_workspace_info:               read('Read workspace configuration'),
+  axdb_sql:                         read('Query AxDB (SQL)'),
   verify_d365fo_project:            read('Verify D365FO project'),
   run_bp_check:                     read('Run Best Practices check'),
 

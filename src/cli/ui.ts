@@ -25,12 +25,16 @@ export function ensure<T>(value: T): Exclude<T, symbol> {
   return value as Exclude<T, symbol>;
 }
 
-export async function askText(opts: { message: string; placeholder?: string; initialValue?: string; required?: boolean }): Promise<string> {
+export async function askText(opts: { message: string; placeholder?: string; initialValue?: string; required?: boolean; validate?: (value: string) => string | undefined }): Promise<string> {
   const v = ensure(await p.text({
     message: opts.message,
     placeholder: opts.placeholder,
     initialValue: opts.initialValue,
-    validate: opts.required ? (s?: string) => (s?.trim() ? undefined : 'Required') : undefined,
+    validate: (s?: string) => {
+      const value = (s ?? '').trim();
+      if (opts.required && !value) return 'Required';
+      return opts.validate?.(value);
+    },
   }));
   return (v ?? '').trim();
 }

@@ -55,6 +55,8 @@ import type {
   BridgeApiUsageCallersResult,
 } from './bridgeTypes.js';
 import { packagesRoots } from '../utils/packagesRoot.js';
+import type { AxDbConfig } from '../config/axdbSql.js';
+import type { AxDbMethod } from './bridgeTypes.js';
 
 // Re-export types for convenience
 export type { BridgeReadyPayload, BridgeInfoPayload } from './bridgeTypes.js';
@@ -152,6 +154,7 @@ async function settledWithin(promise: Promise<unknown>, ms: number): Promise<boo
 }
 
 export interface BridgeClientOptions {
+  axdb?: AxDbConfig;
   /** Path to the D365MetadataBridge.exe (auto-detected if omitted) */
   bridgeExePath?: string;
   /** e.g. K:\AosService\PackagesLocalDirectory — the volume varies by VM image */
@@ -221,6 +224,7 @@ export class BridgeClient extends EventEmitter {
 
   /** Whether the bridge process is running and the metadata provider initialized */
   get isReady(): boolean { return this._isReady && !this._disposed; }
+  get axdbSqlAvailable(): boolean { return this.readyPayload?.axdbSqlAvailable ?? false; }
 
   /** Whether the MS metadata API is available (set after ready) */
   get metadataAvailable(): boolean { return this.readyPayload?.metadataAvailable ?? false; }
@@ -267,6 +271,13 @@ export class BridgeClient extends EventEmitter {
     }
     if (this.options.logFile) {
       args.push('--log-file', this.options.logFile);
+    }
+
+    const sql = this.options.axdb;
+    if (sql) {
+      args.push('--axdb-server', sql.server, '--axdb-database', sql.database,
+        '--axdb-timeout', String(sql.commandTimeoutSeconds), '--axdb-max-rows', String(sql.maxRows));
+      if (sql.trustServerCertificate) args.push('--axdb-trust-certificate');
     }
 
     console.error(`[BridgeClient] Spawning: ${exePath} ${args.join(' ')}`);
@@ -424,6 +435,12 @@ export class BridgeClient extends EventEmitter {
         await this.ensureHealthy();
       }
     }
+  }
+
+  /** Live SQL is never replayed, including reads. Server SQL budget is at most 45s. */
+  async callAxDb(method: AxDbMethod, params: Record<string, unknown>): Promise<unknown> {
+    if (this.restartPromise) await this.restartPromise;
+    return this.callOnce(method, params, 50_000);
   }
 
   /** Single-shot RPC send with no retry. */
@@ -1046,6 +1063,7 @@ export class BridgeClient extends EventEmitter {
  * This is a non-throwing factory — safe to call during server startup.
  */
 export async function createBridgeClient(options: {
+  axdb?: AxDbConfig;
   packagesPath?: string;
   referencePackagesPath?: string;
   binPath?: string;

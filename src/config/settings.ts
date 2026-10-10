@@ -16,6 +16,8 @@
  * inputs, not configuration.
  */
 
+import { SQL_SETTINGS } from './sqlSettings.js';
+
 export type SettingType = 'string' | 'path' | 'boolean' | 'int' | 'list' | 'enum';
 
 /**
@@ -32,6 +34,7 @@ export type SectionId =
   | 'index'
   | 'server'
   | 'bridge'
+  | 'sql'
   | 'behavior'
   | 'azure';
 
@@ -76,6 +79,8 @@ export interface Setting {
   placeholder?: string;
   /** Wizard refuses an empty answer. */
   required?: boolean;
+  /** Optional text validation in the interactive configuration prompts. */
+  validate?: (value: string) => string | undefined;
 }
 
 export interface Section {
@@ -114,6 +119,11 @@ export const SECTIONS: Section[] = [
     id: 'bridge',
     title: 'C# bridge',
     description: 'The metadata-provider child process — the only write path to the AOT.',
+  },
+  {
+    id: 'sql',
+    title: 'AxDB SQL (optional)',
+    description: 'Windows-authenticated SQL access to AxDB on a development VM, for debugging.',
   },
   {
     id: 'behavior',
@@ -533,15 +543,15 @@ export const SETTINGS: Setting[] = [
     type: 'enum',
     label: 'Tool profile',
     description:
-      'How many tools this server advertises. "full" publishes all 20. "core" publishes only the plan → discover → ' +
-      'write → build → verify loop (15 tools) and leaves out the specialist ones (extension_info, analyze_code, ' +
+      'How many tools this server advertises. "full" publishes all 21 (axdb_sql only once SQL is configured). "core" publishes only the plan → discover → ' +
+      'write → build → verify loop (16 tools) and leaves out the specialist ones (extension_info, analyze_code, ' +
       'validate_code, security_info, run_systest_class). Worth switching ' +
       'when the workspace runs several MCP servers at once: hosts stop sending the tool catalogue inline past a ' +
       'limit (VS Code: ~100 tools) and make the model search for tools first, which costs a round trip per tool.',
     default: 'full',
     choices: [
-      { value: 'full', hint: 'all 20 tools' },
-      { value: 'core', hint: '15-tool create-and-build loop' },
+      { value: 'full', hint: 'all 21 tools' },
+      { value: 'core', hint: '16-tool create-and-build loop' },
     ],
   },
   {
@@ -973,6 +983,8 @@ export const SETTINGS: Setting[] = [
       'Set the SAME random string on both halves of a hybrid deployment (and on every scaled-out App Service ' +
       'instance) so tokens issued by one process validate in another. Without it, tokens are memory-local.',
   },
+  // ── sql ──────────────────────────────────────────────────────────────────
+  ...SQL_SETTINGS,
 ];
 
 const BY_PATH = new Map(SETTINGS.flatMap(s => (s.path ? [[s.path, s] as const] : [])));

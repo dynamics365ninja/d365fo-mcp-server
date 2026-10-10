@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>11</LangVersion>
+    <Nullable>enable</Nullable>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.SqlServer.TransactSql.ScriptDom" Version="161.8901.0" />
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+    <Compile Include="../../bridge/D365MetadataBridge/Services/AxDb*.cs" Link="Production/%(Filename)%(Extension)" />
+    <Compile Include="../../bridge/D365MetadataBridge/Models/AxDb*.cs" Link="Production/%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

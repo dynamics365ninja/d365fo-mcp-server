@@ -1,4 +1,6 @@
-# Tool Reference — 20 tools
+# Tool Reference — 21 tools
+
+The optional `axdb_sql` counts toward that total but is published only once SQL is configured — see SDLC & Build below.
 
 Every tool the server exposes, grouped by purpose. The AI agent picks tools automatically — the *example prompts* show what to ask to trigger them; you never name tools yourself.
 
@@ -6,7 +8,7 @@ Every tool the server exposes, grouped by purpose. The AI agent picks tools auto
 
 > **C# bridge first:** on Windows D365FO VMs, the bridge-backed read tools (marked †) query the live `IMetadataProvider` (always-fresh metadata) and `DYNAMICSXREFDB` (compiler-resolved cross-references), falling back to SQLite transparently on Azure/Linux. All write operations go exclusively through the bridge. See [ARCHITECTURE.md](ARCHITECTURE.md).
 >
-> **Server modes:** `full` = all 20 tools · `read-only` (Azure) = everything except the six local build/verify tools · `write-only` (hybrid companion) = those six local tools plus the three always-on ones (`get_object_info`, `labels`, `d365fo_file`). Independently, **`MCP_TOOL_PROFILE=core`** publishes only the 15-tool create-and-build loop, for workspaces that already run other MCP servers. See [MCP_CONFIG.md](MCP_CONFIG.md).
+> **Server modes:** `full` = all 21 tools · `read-only` (Azure) = everything except the seven local build/verify tools · `write-only` (hybrid companion) = those seven local tools plus the three always-on ones (`get_object_info`, `labels`, `d365fo_file`). Independently, **`MCP_TOOL_PROFILE=core`** publishes only the 16-tool create-and-build loop, for workspaces that already run other MCP servers. See [MCP_CONFIG.md](MCP_CONFIG.md).
 
 ---
 
@@ -159,7 +161,7 @@ Two things shared by `create` and `modify`:
 | `get_workspace_info` | Detected paths, model, project, server mode + **index staleness warning** — call first in every session · `diagnostics: true` additionally lists the model's `<ModuleReferences>` — the packages xppc will resolve types against · `changes: true` returns the uncommitted X++ diff (`git diff HEAD`) plus per-file rollback hints instead of the configuration, and says so plainly when the workspace is not a git work tree | *"Check my workspace configuration"* · *"Review my changes"* |
 | `verify_d365fo_project` | Objects exist on disk and in the `.rnrproj` | *"Verify everything we created is in the project"* |
 
-## 🏗️ SDLC & Build (4)
+## 🏗️ SDLC & Build (5)
 
 `build_d365fo_project` also accepts `restartAos: true`, with the local environment root in `aosUrl` — optional on a classic AOSService VM, where it defaults to `Infrastructure.HostUrl` from `AosService\WebRoot\web.config`. After successful compilation, runtime metadata generation and requested database synchronization, it restarts the matching IIS/IIS Express AOS and checks host readiness. This is opt-in; the default `wait: true` behavior is unchanged. Collecting a completed result does not repeat the restart, and a blocked or unsuccessful restart is reported explicitly. See [Optional AOS restart](AOS_RUNTIME_RESTART.md) for requirements and limitations.
 
@@ -170,6 +172,7 @@ Two things shared by `create` and `modify`:
 | `build_d365fo_project` | MSBuild compilation with structured xppc diagnostics (severity, object, line, fix hints for the first errors). `bpCheck: true` appends the best-practice report to a GREEN build, saving the usual follow-up `run_bp_check`; advisory, never fails the build. `dbSync: true` runs the database sync (SyncEngine.exe) on a GREEN build — partial over the project's syncable objects, full-model when it has none; `dbSync: ["CustTable"]` syncs exactly those. Also advisory. A green build returns its diagnostics and summary rather than the raw phase-timing table | *"Build the project and show the errors"* · *"Build and sync the database"* |
 | `run_bp_check` | Microsoft Best Practices (xppbp.exe) analysis — `objects: [{objectType, objectName}]` checks several objects in one call (shared preamble once, findings grouped per object) | *"Run a BP check on my model"* · *"BP check the table, its extension class and the enum"* |
 | `run_systest_class` | Execute SysTest unit tests via SysTestConsole.exe, run with `/unattended` and reported per method. Reads the red-first phase off the results rather than asking for a flag: while the scaffold's `this.fail(...)` lines are still there it reports **Red phase confirmed**, and if every method passes on a class created in this session it warns that a test passing on its first run has proven nothing about its assertion. When the runner cannot start at all, it names the assembly-binding fault behind it instead of blaming the test model | *"Run the MyServiceTest class"* |
+| `axdb_sql` | **Optional — published only once SQL is configured.** Read-only live SQL against AxDB on the development VM, through the bridge with Windows authentication: `contract` (strict schema and rules), `status`, `schema` (physical columns, keys, defaults), `query` (one parameterized SELECT, bounded rows, run in a transaction that is always rolled back). For debugging persisted data — data is changed through the application or X++. [Setup and policy](AXDB_SQL.md) | *"What did my posting class write to CUSTTRANS for USMF?"* |
 | `update_symbol_index` | Re-index file(s) changed **outside** this server, without a restart — `d365fo_file` create/modify already refresh the index themselves, so no follow-up call is needed after a write | *"I edited that table in Visual Studio — re-index it"* |
 
 ## ✅ Quality & Grounding (2)

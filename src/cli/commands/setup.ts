@@ -25,6 +25,7 @@ import { findPackagesRoot } from '../../utils/packagesRoot.js';
 import { rootTarget } from '../target.js';
 import { askConfirm, askSelect, askText, p, requireFullInstall } from '../ui.js';
 import { listXppConfigs } from '../xppConfig.js';
+import { configureSqlForEnvironment } from '../sqlEnvironmentSetup.js';
 import { rebuildIndex } from './indexCmd.js';
 import { instanceAddCommand } from './instance.js';
 
@@ -197,6 +198,7 @@ async function configureEnvironment(store: SettingsStore, scenario: Scenario): P
     } else {
       p.log.info('No XPP configs found — the server will auto-detect at runtime.');
     }
+    await configureSqlForEnvironment(store, 'ude');
     return 'ude';
   }
 
@@ -205,8 +207,9 @@ async function configureEnvironment(store: SettingsStore, scenario: Scenario): P
   // rest of setup into "no namespaces found" (#769).
   const detected = findPackagesRoot();
   if (detected) p.log.success(`Found PackagesLocalDirectory at ${detected}`);
-  await askSetting(store, setting('environment.packagePath'), { required: true, initial: detected ?? undefined });
+  const packagesRoot = await askSetting(store, setting('environment.packagePath'), { required: true, initial: detected ?? undefined });
   await askSetting(store, setting('environment.customModels'), { required: true });
+  await configureSqlForEnvironment(store, 'traditional', typeof packagesRoot === 'string' ? packagesRoot : undefined);
   return 'traditional';
 }
 

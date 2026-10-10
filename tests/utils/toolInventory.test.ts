@@ -37,8 +37,9 @@ describe('tool inventory contract', () => {
     // build_d365fo_project(dbSync). Before that, get_method and suggest_edt were
     // unpublished into get_object_info(options.method) and prepare(fieldsHint).
     // Every one of those handlers stays routable under its old name.
-    expect(mcpServerToolNames).toHaveLength(20);
-    expect(startupCatalogToolNames).toHaveLength(20);
+    // 21 with axdb_sql, which is published only once SQL is configured.
+    expect(mcpServerToolNames).toHaveLength(21);
+    expect(startupCatalogToolNames).toHaveLength(21);
   });
 
   it('never states a tool count that disagrees with the published inventory', () => {
@@ -162,8 +163,9 @@ describe('tool inventory contract', () => {
     // 6, not 9: review_workspace_changes and undo_last_modification and
     // trigger_db_sync left the published surface, and each fold landed in a tool
     // whose locality already covered it (get_workspace_info and
-    // build_d365fo_project are LOCAL; d365fo_file is in ALWAYS_TOOLS).
-    expect(LOCAL_TOOLS.size).toBe(6);
+    // build_d365fo_project are LOCAL; d365fo_file is in ALWAYS_TOOLS). 7 with
+    // axdb_sql, which needs the local bridge.
+    expect(LOCAL_TOOLS.size).toBe(7);
     expect(mcpServerToolNames.filter(name => !LOCAL_TOOLS.has(name))).toHaveLength(14);
   });
 

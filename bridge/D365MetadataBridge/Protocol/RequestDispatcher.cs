@@ -15,12 +15,14 @@ namespace D365MetadataBridge.Protocol
         private readonly MetadataReadService? _metadataService;
         private readonly MetadataWriteService? _writeService;
         private readonly CrossReferenceService? _xrefService;
+        private readonly AxDbSqlService _axdbService;
 
-        public RequestDispatcher(MetadataReadService? metadataService, MetadataWriteService? writeService, CrossReferenceService? xrefService)
+        public RequestDispatcher(MetadataReadService? metadataService, MetadataWriteService? writeService, CrossReferenceService? xrefService, AxDbSqlService? axdbService = null)
         {
             _metadataService = metadataService;
             _writeService = writeService;
             _xrefService = xrefService;
+            _axdbService = axdbService ?? new AxDbSqlService(new AxDbSqlOptions());
         }
 
         public Task<BridgeResponse> Dispatch(BridgeRequest request)
@@ -32,6 +34,12 @@ namespace D365MetadataBridge.Protocol
                     // === Health ===
                     case "ping":
                         return Task.FromResult(BridgeResponse.CreateSuccess(request.Id, "pong"));
+
+                    // Standalone, read-only AxDB SQL debug operations; they never touch the metadata provider.
+                    case "axdbstatus":
+                    case "axdbschema":
+                    case "axdbquery":
+                        return HandleAxDb(request);
 
                     // === Metadata Read ===
                     case "readtable":
@@ -266,6 +274,7 @@ namespace D365MetadataBridge.Protocol
                             metadataAvailable = _metadataService != null,
                             xrefAvailable = _xrefService != null,
                             writeAvailable = _writeService != null,
+                            axdbSqlAvailable = _axdbService.Enabled,
                             capabilities = new[]
                             {
                                 "ping", "readTable", "readClass", "readEnum", "readEdt",
@@ -282,7 +291,7 @@ namespace D365MetadataBridge.Protocol
                                 "setProperty", "replaceCode",
                                 "getCapabilities", "discoverFormPatterns",
                                 "findExtensionClasses", "findEventSubscribers", "findApiUsageCallers"
-                            }
+                            }.Concat(_axdbService.Enabled ? new[] { "axdbSql", "axdbStatus", "axdbSchema", "axdbQuery" } : Array.Empty<string>()).ToArray()
                         }));
 
                     // === Write-support (validate / resolve / refresh) ===
@@ -813,6 +822,12 @@ namespace D365MetadataBridge.Protocol
             }
         }
 
+        private async Task<BridgeResponse> HandleAxDb(BridgeRequest request)
+        {
+            var result = await _axdbService.Handle(request.Method, request.Params).ConfigureAwait(false);
+            return BridgeResponse.CreateSuccess(request.Id, result);
+        }
+
         /// <summary>
         /// Methods that only READ metadata, and may therefore run concurrently with
         /// each other.
@@ -845,6 +860,9 @@ namespace D365MetadataBridge.Protocol
                 // Cross-reference queries
                 "findreferences", "findeventsubscribers", "findextensionclasses",
                 "findapiusagecallers", "samplexrefrows",
+                // AxDB SQL: its own connection per call, no metadata provider, read-only. A query may
+                // run up to its 45 s budget; exclusive, it would hold every metadata call behind it.
+                "axdbstatus", "axdbschema", "axdbquery",
             };
 
         /// <summary>True when <paramref name="method"/> may run alongside other reads.</summary>

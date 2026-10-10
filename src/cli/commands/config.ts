@@ -11,6 +11,8 @@ import { readSetting, saveStore, writeSetting, type SettingsStore } from '../set
 import { pickTarget } from '../target.js';
 import { askSelect, p } from '../ui.js';
 import { listXppConfigs, xppConfigDir } from '../xppConfig.js';
+import { readAosWebConfig } from '../aosWebConfig.js';
+import { configureSql } from '../sqlSetup.js';
 
 const xppConfigNameSetting = settingByPath('environment.xppConfigName')!;
 const envTypeSetting = settingByPath('environment.type')!;
@@ -82,6 +84,18 @@ export async function configCommand(
     }
   }
 
+  if (section === 'sql') {
+    // Asked for explicitly, so offered on UDE too — but only a classic VM's
+    // own web.config can suggest the server and database.
+    const packagesRoot = readSetting(store, settingByPath('environment.packagePath')!);
+    await configureSql(store, readSetting(store, envTypeSetting) === 'ude'
+      ? null
+      : readAosWebConfig(typeof packagesRoot === 'string' ? packagesRoot : undefined));
+    saveStore(store);
+    p.log.success(`Saved ${store.configPath}`);
+    p.outro('Restart the server for SQL configuration changes to take effect.');
+    return;
+  }
   await askSettings(store, [
     ...settingsInSection(section, 'basic').filter(s => !skip.has(s)),
     ...settingsInSection(section, 'advanced'),

@@ -7,6 +7,8 @@
 // Protocol types
 // ===========================
 
+export type AxDbMethod = 'axdbStatus' | 'axdbSchema' | 'axdbQuery';
+
 export interface BridgeRequest {
   id: string;
   method: string;
@@ -25,6 +27,7 @@ export interface BridgeError {
 }
 
 export interface BridgeReadyPayload {
+  axdbSqlAvailable?: boolean;
   version: string;
   status: 'ready';
   packagesPath: string;

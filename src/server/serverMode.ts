@@ -29,7 +29,10 @@
  * IMetadataProvider without SQLite, so Copilot can verify objects it just
  * created without an Azure re-deploy.
  */
+import { isAxDbConfigured } from '../config/axdbSql.js';
+
 export const LOCAL_TOOLS = new Set([
+  'axdb_sql',
   'verify_d365fo_project',
   'update_symbol_index',
   'build_d365fo_project',
@@ -190,6 +193,7 @@ export const CORE_TOOLS = new Set([
   'build_d365fo_project',
   'run_bp_check',
   'verify_d365fo_project',
+  'axdb_sql',
 ]);
 
 /**
@@ -242,5 +246,7 @@ export function isToolEnabled(
   profile: ToolProfile = TOOL_PROFILE,
   extras: ReadonlySet<string> = EXTRA_TOOLS,
 ): boolean {
-  return isToolAllowedInMode(mode, toolName) && isToolInProfile(profile, toolName, extras);
+  // axdb_sql is published only once SQL is configured: an unconfigured install pays nothing for it.
+  return (toolName !== 'axdb_sql' || isAxDbConfigured())
+    && isToolAllowedInMode(mode, toolName) && isToolInProfile(profile, toolName, extras);
 }

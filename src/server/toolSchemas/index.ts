@@ -23,6 +23,7 @@ import { runSystestClassTool } from './runSystestClass.js';
 import { getKnowledgeTool } from './getKnowledge.js';
 import { validateCodeTool } from './validateCode.js';
 import { prepareTool } from './prepare.js';
+import { axdbSqlTool } from './axdbSql.js';
 
 export const toolSchemas = [
   searchTool,
@@ -45,4 +46,5 @@ export const toolSchemas = [
   getKnowledgeTool,
   validateCodeTool,
   prepareTool,
+  axdbSqlTool,
 ];

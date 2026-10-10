@@ -55,6 +55,7 @@ const TOOL_CAP_SIZES: Record<string, number | 'uncapped'> = {
   // whole point is the full dump — truncating that at 5000 hid the stdio
   // handshake section behind the project table.
   get_workspace_info:               20000,
+  axdb_sql:                         'uncapped', // the handler bounds its own JSON; a cut here would drop the commit outcome
   default:                          5000,
 };
 

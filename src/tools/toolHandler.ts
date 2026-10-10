@@ -34,6 +34,7 @@ import { updateSymbolIndexTool } from './sdlc/updateSymbolIndex.js';
 import { buildProjectTool } from './sdlc/buildProject.js';
 import { dbSyncTool } from './sdlc/dbSync.js';
 import { runBpCheckTool } from './sdlc/runBpCheck.js';
+import { axdbSqlTool } from './sdlc/axdbSql.js';
 import { sysTestRunnerTool } from './sdlc/sysTestRunner.js';
 import { reviewWorkspaceChangesTool } from './sdlc/reviewWorkspaceChanges.js';
 import { undoLastModificationTool } from './sdlc/undoLastModification.js';
@@ -372,8 +373,8 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
         return await buildProjectTool(request.params.arguments as any, context, reportProgress);
       case 'trigger_db_sync':
         return await dbSyncTool(request.params.arguments as any, context);
-      case 'run_bp_check':
-        return await runBpCheckTool(request.params.arguments as any, context);
+      case 'run_bp_check':          return await runBpCheckTool(request.params.arguments as any, context);
+      case 'axdb_sql':              return await axdbSqlTool(request.params.arguments, context);
       case 'run_systest_class':
         return await sysTestRunnerTool(request.params.arguments as any, context);
       case 'review_workspace_changes':

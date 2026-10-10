@@ -536,7 +536,12 @@ async function initializeBridge(targetContext: import('./types/context.js').XppS
     const xrefServer = await configMgr.getXrefDbServer() ?? undefined;
     const xrefDatabase = await configMgr.getXrefDbName() ?? undefined;
 
+    const { resolveAxDbConfig } = await import('./config/axdbSql.js');
+    let axdb;
+    try { axdb = resolveAxDbConfig(); }
+    catch (error) { console.error(`[AxDB] SQL configuration unavailable: ${error}`); }
     const bridge = await createBridgeClient({
+      axdb,
       packagesPath,
       referencePackagesPath,
       binPath,
@@ -953,6 +958,7 @@ async function main() {
           { name: 'update_symbol_index',          desc: 'Re-index a file changed outside this server (create/modify refresh it themselves)' },
           { name: 'build_d365fo_project',         desc: 'Compile the model locally; bpCheck/dbSync fold the BP check and the database sync into the same call' },
           { name: 'run_bp_check',                 desc: 'Run Microsoft Best Practices (xppbp.exe) analysis' },
+          { name: 'axdb_sql',                     desc: 'Optional: query AxDB on the dev VM (shown only when SQL is configured)' },
           { name: 'run_systest_class',            desc: 'Execute unit tests using SysTestConsole.exe' },
         ]},
         { icon: '🧪', category: 'Code Quality & Grounding', tools: [

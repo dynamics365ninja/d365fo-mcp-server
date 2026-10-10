@@ -66,6 +66,7 @@ export function trackBridgeStartup(attempt: Promise<unknown>): BridgeStartup {
  * the bridge without being listed here.
  */
 export const BRIDGE_BACKED_TOOLS = new Set([
+  'axdb_sql',
   'search',
   'get_object_info',
   'get_method',

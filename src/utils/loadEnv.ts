@@ -181,6 +181,14 @@ export function loadEnv(callerImportMetaUrl: string): void {
     : new Set<string>();
 
   const files = resolveConfigFiles(envDir);
+  // SQL must not borrow another installation's database when an explicit config
+  // selects a different instance. Deliberate shell/ENV_FILE overrides still
+  // apply; only the other installation's ambient fallback is dropped.
+  if (!process.env.ENV_FILE && resolve(files.baseDir) !== resolve(envDir)) {
+    for (const key of Object.keys(process.env).filter(key => key.startsWith('D365FO_SQL_'))) {
+      if (!fromRealEnv.has(key)) delete process.env[key];
+    }
+  }
   for (const [key, value] of Object.entries(toEnvRecord(files))) {
     if (!fromRealEnv.has(key) && !pinnedByEnvFile.has(key)) process.env[key] = value;
   }
