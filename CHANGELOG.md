@@ -42,6 +42,13 @@ those are called out explicitly below.
   the element, and an ambiguous or unknown control name writes nothing.
 
 ### Fixed
+- **`workspace.projectPath` / `D365FO_PROJECT_PATH` pins the project again.**
+  The config file loads its settings as `D365FO_*` environment variables, but
+  `getProjectPath()`, `getSolutionPath()` and `get_workspace_info` read only the
+  `.mcp.json` context — so the documented "Pinned .rnrproj file" setting did
+  nothing: `Project : (not detected)`, and no write could register a file in the
+  project. Both are read now, the environment first (the order `getContext()`
+  already used); the same holds for `workspace.solutionPath`.
 - **`d365fo_file(action="create")` keeps an extension class name that already
   carries the model's token after its base.** `SalesTableMcpCreditHold_Extension`
   with `[ExtensionOf(tableStr(SalesTable))]` was written as

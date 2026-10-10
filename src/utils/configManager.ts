@@ -1235,12 +1235,13 @@ class ConfigManager {
     let projectPath: string | null = null;
     let projectSource = '(not detected)';
 
+    const pinnedProject = this.pinnedPath('projectPath');
     if (this.runtimeContext.projectPath) {
       projectPath = this.runtimeContext.projectPath;
       projectSource = 'runtime context (from VS Code)';
-    } else if (this.config?.servers?.context?.projectPath) {
-      projectPath = this.config?.servers?.context?.projectPath ?? null;
-      projectSource = '.mcp.json';
+    } else if (pinnedProject) {
+      projectPath = pinnedProject.path;
+      projectSource = pinnedProject.source;
     } else if (this.autoDetectedProject?.projectPath) {
       projectPath = this.autoDetectedProject.projectPath;
       projectSource = 'auto-detected from .rnrproj';
@@ -1492,22 +1493,39 @@ class ConfigManager {
   }
 
   /**
+   * A pinned project / solution: D365FO_PROJECT_PATH / D365FO_SOLUTION_PATH, else
+   * the .mcp.json context — the same env-over-file order getContext() uses.
+   *
+   * The env var is also what `workspace.projectPath` in the config file becomes
+   * (configFile.ts loads settings into process.env), so reading only the .mcp.json
+   * context made that documented setting a no-op: the server reported
+   * "Project : (not detected)" and registered nothing, with the path configured.
+   */
+  private pinnedPath(key: 'projectPath' | 'solutionPath'): { path: string; source: string } | null {
+    const envName = key === 'projectPath' ? 'D365FO_PROJECT_PATH' : 'D365FO_SOLUTION_PATH';
+    const fromEnv = process.env[envName]?.trim();
+    if (fromEnv) return { path: fromEnv, source: `${envName} (env var or config file)` };
+    const fileContext = this.config?.context || this.config?.servers?.context || null;
+    const fromFile = fileContext?.[key];
+    return fromFile ? { path: fromFile, source: '.mcp.json' } : null;
+  }
+
+  /**
    * Get project path
-   * Priority: 1) Runtime context 2) .mcp.json config 3) Auto-detection from workspace
+   * Priority: 1) Runtime context 2) D365FO_PROJECT_PATH / .mcp.json 3) Auto-detection from workspace
    */
   async getProjectPath(): Promise<string | null> {
     // Priority 1: Runtime context
     if (this.runtimeContext.projectPath) {
       return this.runtimeContext.projectPath;
     }
-    
-    // Priority 2: Config file
-    const context = this.config?.servers?.context;
-    if (context?.projectPath) {
-      return context.projectPath;
-    }
+
+    // Priority 2: Pinned in the environment or the config file
+    const pinned = this.pinnedPath('projectPath');
+    if (pinned) return pinned.path;
 
     // Priority 3: Auto-detection
+    const context = this.config?.servers?.context;
     await this.ensureProjectDetection(this.runtimeContext.workspacePath || context?.workspacePath);
 
     return this.autoDetectedProject?.projectPath || null;
@@ -1515,19 +1533,18 @@ class ConfigManager {
 
   /**
    * Get solution path
-   * Priority: 1) Runtime context 2) .mcp.json config 3) Auto-detection from workspace
+   * Priority: 1) Runtime context 2) D365FO_SOLUTION_PATH / .mcp.json 3) Auto-detection from workspace
    */
   async getSolutionPath(): Promise<string | null> {
     // Priority 1: Runtime context
     if (this.runtimeContext.solutionPath) {
       return this.runtimeContext.solutionPath;
     }
-    
-    // Priority 2: Config file
+
+    // Priority 2: Pinned in the environment or the config file
+    const pinned = this.pinnedPath('solutionPath');
+    if (pinned) return pinned.path;
     const context = this.config?.servers?.context;
-    if (context?.solutionPath) {
-      return context.solutionPath;
-    }
 
     // Priority 3: Auto-detection
     await this.ensureProjectDetection(this.runtimeContext.workspacePath || context?.workspacePath);
@@ -1552,10 +1569,10 @@ class ConfigManager {
       source,
       projectPath:  this.runtimeContext.projectPath  ??
                     this.autoDetectedProject?.projectPath  ??
-                    this.config?.servers?.context?.projectPath  ?? null,
+                    this.pinnedPath('projectPath')?.path  ?? null,
       solutionPath: this.runtimeContext.solutionPath ??
                     this.autoDetectedProject?.solutionPath ??
-                    this.config?.servers?.context?.solutionPath ?? null,
+                    this.pinnedPath('solutionPath')?.path ?? null,
       workspacePath: this.runtimeContext.workspacePath ??
                      this.config?.servers?.context?.workspacePath ?? null,
     };
