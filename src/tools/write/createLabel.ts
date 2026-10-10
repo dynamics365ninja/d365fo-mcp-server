@@ -90,7 +90,10 @@ export const CreateLabelArgsSchema = z.object({
     .min(1)
     .describe(
       'Label text for each language. At minimum provide en-US. ' +
-        'For languages without a translation the en-US text is used as fallback.',
+        'Matches locales case-insensitively (it_IT reads as it-IT), then uses the nearest supplied parent ' +
+        'locale (it for it-IT), or for a bare-language folder its one supplied regional translation ' +
+        '(de-DE for de). Otherwise uses en-US, or the first supplied translation. Every fallback is ' +
+        'reported, in bulk mode too.',
     ),
   languages: z
     .array(z.string())
@@ -380,6 +383,9 @@ export async function createLabelsBulk(
     } else {
       created++;
       lines.push(`🟢 ${labelId}: ${text.split('\n')[0]}`);
+      // The summary keeps one line per label; a fallback is the part of the
+      // detail that must not be dropped with the rest.
+      lines.push(...text.split('\n').filter((l: string) => l.trimStart().startsWith('⚠ Translation fallback')).map((l: string) => `    ${l.trim()}`));
     }
   }
 
@@ -918,11 +924,57 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
     const labelResourcesDir = path.join(axLabelDir, 'LabelResources');
 
     // Build a quick lookup: language → translation entry
+    // `it_IT` is how agents spell `it-IT` often enough; no label folder uses `_`.
     const translationMap = new Map<string, { text: string; comment?: string }>();
     for (const tr of translations) {
-      translationMap.set(tr.language, { text: tr.text, comment: tr.comment ?? defaultComment ?? effectiveDescription });
+      translationMap.set(tr.language.replace(/_/g, '-'), { text: tr.text, comment: tr.comment ?? defaultComment ?? effectiveDescription });
     }
-    const enUsText = translationMap.get('en-US')?.text ?? translations[0].text;
+    // Case-insensitive view. The FIRST spelling of a locale keeps the key, so a
+    // later case variant (`IT-it` after `it-IT`) cannot overwrite it.
+    const translationsByLocale = new Map<string, { language: string; entry: { text: string; comment?: string } }>();
+    for (const [language, entry] of translationMap) {
+      const key = language.toLowerCase();
+      if (!translationsByLocale.has(key)) translationsByLocale.set(key, { language, entry });
+    }
+    const resolveTranslation = (language: string) => {
+      const exactSpelling = translationMap.get(language);
+      if (exactSpelling) return { language, entry: exactSpelling, fallback: '' };
+      const locale = language.toLowerCase();
+      const exact = translationsByLocale.get(locale);
+      if (exact) return { ...exact, fallback: '' };
+
+      // Walk only the target's parent chain: zh-Hant-TW → zh-Hant → zh.
+      // Never choose a sibling such as it-CH for it-IT. Strip dangling BCP-47
+      // extension singletons along with their final subtag during truncation.
+      const parts = locale.split('-');
+      while (parts.length > 1) {
+        parts.pop();
+        if (parts[parts.length - 1].length === 1) parts.pop();
+        const parent = translationsByLocale.get(parts.join('-'));
+        if (parent) return { ...parent, fallback: 'parent locale' };
+      }
+
+      // The other direction, which is the common one: label folders are mostly
+      // bare languages (Microsoft's `de`, `cs`, `it`) while agents supply a
+      // region (`de-DE`). A bare target takes the supplied regional translation
+      // of its language — but only when there is exactly one, so `de-AT` and
+      // `de-CH` together never pick for `de`, and a sibling never lands in a
+      // sibling (`de-AT` is not a bare target).
+      if (!locale.includes('-')) {
+        const regional = [...translationsByLocale].filter(([key]) => key.startsWith(`${locale}-`));
+        if (regional.length === 1) return { ...regional[0][1], fallback: 'regional locale' };
+      }
+
+      const english = translationsByLocale.get('en-us');
+      const source = english ?? { language: translations[0].language, entry: translations[0] };
+      return {
+        language: source.language,
+        // Preserve the existing last-resort comment behavior: use the target's
+        // default description rather than a comment specific to another locale.
+        entry: { text: source.entry.text, comment: defaultComment ?? effectiveDescription },
+        fallback: english ? 'en-US' : 'first supplied locale',
+      };
+    };
 
     // 2. Discover the language folders that already exist in the model.
     //    NOTE: LabelResources/ is shared by EVERY label file in the model, so this lists
@@ -1051,6 +1103,11 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
 
     // 4. Process each existing language
     const written: string[] = [];
+    const writtenDetails: string[] = [];
+    const translationWarnings: string[] = [];
+    // Last-resort fallbacks, grouped by source: on a model with seven locales and
+    // only en-US supplied that is the documented default, worth one line, not six.
+    const lastResort = new Map<string, { kind: string; targets: string[] }>();
     const skipped: string[] = [];
     type LabelEntry = Parameters<XppSymbolIndex['bulkAddLabels']>[0][number];
     const indexEntries: LabelEntry[] = [];
@@ -1078,7 +1135,8 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       }
 
       // Determine text for this language
-      const entry = translationMap.get(lang) ?? { text: enUsText, comment: defaultComment ?? effectiveDescription };
+      const resolved = resolveTranslation(lang);
+      const { entry } = resolved;
       labelMap.set(labelId, entry);
 
       // Ensure the directory exists
@@ -1088,6 +1146,16 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       const newContent = serializeLabelMap(labelMap, shouldSort, eol);
       await writeFileWithBom(txtPath, newContent);
       written.push(lang);
+      writtenDetails.push(`  ✔ ${lang}  → ${entry.text}`);
+      if (resolved.fallback === 'en-US' || resolved.fallback === 'first supplied locale') {
+        const group = lastResort.get(resolved.language) ?? { kind: resolved.fallback, targets: [] };
+        group.targets.push(lang);
+        lastResort.set(resolved.language, group);
+      } else if (resolved.fallback) {
+        translationWarnings.push(
+          `  ⚠ Translation fallback (${resolved.fallback}): ${resolved.language} → ${lang}; wrote "${entry.text}".`,
+        );
+      }
 
       // Prepare index update
       if (updateIndex) {
@@ -1236,7 +1304,10 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       `Location   : ${labelResourcesDir}`,
       '',
       'Written to languages:',
-      ...written.map(l => `  ✔ ${l}  → ${translationMap.get(l)?.text ?? enUsText}`),
+      ...writtenDetails,
+      ...translationWarnings,
+      ...[...lastResort].map(([source, g]) =>
+        `  ⚠ Translation fallback (${g.kind}): ${source} text written to ${g.targets.join(', ')} — no translation supplied for ${g.targets.length === 1 ? 'it' : 'them'}.`),
     ];
     if (skipped.length > 0) {
       lines.push('');

@@ -42,6 +42,21 @@ those are called out explicitly below.
   the element, and an ambiguous or unknown control name writes nothing.
 
 ### Fixed
+- **A label could land in English in a language folder, without a word.**
+  `labels(action="create")` looked up each existing language folder's
+  translation by exact, case-sensitive name, and fell back to the en-US text
+  for anything else — so `it` for an `it-IT` folder, `it-it`, and above all
+  `de-DE` for the bare `de` folders Microsoft's own models use all wrote
+  English, listed as written with nothing saying it was a substitute. Locales
+  now match case-insensitively (`it_IT` reads as `it-IT`; the exact spelling,
+  then the first case variant, wins), then fall back along the target's parent
+  chain (`it-IT` → `it`; `zh-Hant-TW` → `zh-Hant` → `zh`), then — for a
+  bare-language folder — to the one supplied regional translation of that
+  language (`de-DE` → `de`; two candidates such as `de-AT` and `de-CH` fall
+  through, and a sibling region is never used), and only then to en-US or the
+  first supplied translation. Each parent or regional fallback is reported on
+  its own line, the last-resort ones in one line per source, and bulk mode
+  (`labels[]`) forwards those lines instead of dropping them.
 - **`get_workspace_info` no longer waits 5 s for a `.rnrproj` scan it does not
   need.** When `D365FO_MODEL_NAME` or the config names the model, the first call
   answered only after the background project scan — and with the server started

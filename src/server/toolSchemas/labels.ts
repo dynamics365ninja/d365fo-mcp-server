@@ -79,7 +79,7 @@ export const labelsTool = {
         },
         translations: {
           type: 'array',
-          description: '[create] REQUIRED for single-label create (omit when using labels[]). Translations for each language. Provide at least en-US.',
+          description: '[create] REQUIRED for single-label create (omit with labels[]). Translations for each language. Provide at least en-US.',
           items: {
             type: 'object',
             properties: {
