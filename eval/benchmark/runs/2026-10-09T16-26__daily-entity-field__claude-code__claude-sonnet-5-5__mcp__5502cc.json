@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T16-26__daily-entity-field__claude-code__claude-sonnet-5-5__mcp__5502cc",
+  "timestamp": "2026-10-09T16:26:52.947Z",
+  "promptId": "daily-entity-field",
+  "promptHash": "2d1c1d8cd270",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "mcpServers": [
+    "d365fo-eval"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "ab892668",
+  "label": "v3",
+  "durationMs": 97783,
+  "apiMs": 45896,
+  "requests": 17,
+  "toolCalls": 16,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 3,
+    "Bash": 6,
+    "Grep": 2,
+    "Write": 5
+  },
+  "inputTokens": 543447,
+  "cachedTokens": 505370,
+  "outputTokens": 5977,
+  "hostCost": {
+    "value": 0.31310400000000005,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 31.3104,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches CustCustomerV3Entity",
+      "passed": true
+    },
+    {
+      "name": "file EDT ConCustSegmentCode, 15 characters",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: field + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Entity extension maps the field",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Staging extension: the field",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1132,
+  "resultExcerpt": "The build passed with 0 errors.\n\nI extended **CustCustomerV3Entity** (public name `CustomerV3`, collection `CustomersV3`), the current customers entity. `CustCustomerV2Entity` is the older version, so I left it alone. Nothing under the standard model folders was modified.\n\nObjects created or changed in `fm-mcp`:\n- Label file `fm-mcp` (en-US): added labels `ConCustSegmentCode` (\"Segment code\"), `Co",
+  "notes": "2 permission denial(s): PowerShell, Bash",
+  "evidence": {
+    "sessionId": "cc4ad7ec-3658-48eb-9b98-f80df1b56235",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxDataEntityViewExtension/CustCustomerV3Entity.ConSegment.xml",
+    "fm-mcp/AxEdt/ConCustSegmentCode.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxTableExtension/CustCustomerV3Staging.ConSegment.xml",
+    "fm-mcp/AxTableExtension/CustTable.ConSegment.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 15207
+  },
+  "rework": {
+    "toolErrors": 2,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Bash": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 5,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 2,
+      "findings": [
+        "Warning BPErrorHelpIsText EdtString/ConCustSegmentCode",
+        "Warning BPErrorLabelIsText EdtString/ConCustSegmentCode"
+      ]
+    }
+  }
+}

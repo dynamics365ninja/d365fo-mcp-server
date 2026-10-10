@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T07-18__daily-invoice-field-flow__claude-code__claude-opus-5-5__mcp__f4c712",
+  "timestamp": "2026-10-10T07:18:10.512Z",
+  "promptId": "daily-invoice-field-flow",
+  "promptHash": "7767b21431ec",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": true,
+  "mcpServers": [
+    "d365fo-eval"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "09cbb862",
+  "label": "v3",
+  "durationMs": 174290,
+  "apiMs": 119109,
+  "requests": 40,
+  "toolCalls": 39,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 3,
+    "Glob": 5,
+    "Read": 13,
+    "Grep": 10,
+    "Bash": 1,
+    "Write": 7
+  },
+  "inputTokens": 1146957,
+  "cachedTokens": 1099752,
+  "outputTokens": 12363,
+  "hostCost": {
+    "value": 0.8446423999999999,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 84.46424,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches initFromSalesTable|initFromSalesParmTable|initInvoiceHeaderFromSourceTable|initJournalHeader",
+      "passed": true
+    },
+    {
+      "name": "file EDT ConProjectCode, 20 characters",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable extension: the field",
+      "passed": true
+    },
+    {
+      "name": "file CustInvoiceJour extension: the field",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable form extension shows it",
+      "passed": true
+    },
+    {
+      "name": "file CustInvoiceJournal form extension shows it",
+      "passed": true
+    },
+    {
+      "name": "file CoC on the method that initializes the invoice header",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 2054,
+  "resultExcerpt": "The model now builds cleanly: the exact build command reported \"Build succeeded in 16 s — 0 errors.\"\n\n**Objects created or changed in `fm-mcp`:**\n- `AxLabelFile` fm-mcp (en-US) — changed: added labels `ConProjectCode` (\"Project code\") and `ConProjectCodeHelp` (help text)\n- `AxEdt` **ConProjectCode** — new: string EDT, 20 characters, with label `@fm-mcp:ConProjectCode` and help text `@fm-mcp:ConPro",
+  "notes": "2 permission denial(s): PowerShell, Bash",
+  "evidence": {
+    "sessionId": "1ca68905-274f-4bb7-a895-109f39579d23",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxClass/ConCustInvoiceJour_Extension.xml",
+    "fm-mcp/AxEdt/ConProjectCode.xml",
+    "fm-mcp/AxFormExtension/CustInvoiceJournal.ConExtension.xml",
+    "fm-mcp/AxFormExtension/SalesTable.ConExtension.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxTableExtension/CustInvoiceJour.ConExtension.xml",
+    "fm-mcp/AxTableExtension/SalesTable.ConExtension.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 16120
+  },
+  "rework": {
+    "toolErrors": 4,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Bash": 1,
+      "Read": 1,
+      "Grep": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 7,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 2,
+      "findings": [
+        "Warning BPErrorHelpIsText EdtString/ConProjectCode",
+        "Warning BPErrorLabelIsText EdtString/ConProjectCode"
+      ]
+    }
+  }
+}

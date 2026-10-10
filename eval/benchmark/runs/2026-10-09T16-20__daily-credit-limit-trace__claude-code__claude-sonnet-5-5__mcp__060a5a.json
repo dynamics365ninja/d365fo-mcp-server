@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T16-20__daily-credit-limit-trace__claude-code__claude-sonnet-5-5__mcp__060a5a",
+  "timestamp": "2026-10-09T16:20:51.824Z",
+  "promptId": "daily-credit-limit-trace",
+  "promptHash": "48edfe0c4c84",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "mcpServers": [
+    "d365fo-eval"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "ab892668",
+  "label": "v3",
+  "durationMs": 51912,
+  "apiMs": 41432,
+  "requests": 22,
+  "toolCalls": 21,
+  "mcpToolCalls": 0,
+  "tools": {
+    "Grep": 10,
+    "Read": 11
+  },
+  "inputTokens": 283435,
+  "cachedTokens": 257222,
+  "outputTokens": 5208,
+  "hostCost": {
+    "value": 0.20834439999999999,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 20.83444,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches \\bCustCreditLimit\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(checkAgainstCreditLimit|checkCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\bSalesFormletterProvider\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(creditMaxOk|mustCheckCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches (CustCreditLimit\\W{1,3}(check|checkGivenBalances)\\b|\\bcheckGivenBalances\\b)",
+      "passed": true
+    }
+  ],
+  "resultChars": 3693,
+  "resultExcerpt": "**1. Credit limit class and deciding method**\n- The class is `CustCreditLimit`. It has subclasses `CustCreditLimit_SalesTable`, `CustCreditLimit_SalesParmTable` (extends `_SalesTable`) and `CustCreditLimit_CustInvoiceTable`. The factory `CustCreditLimit::construct(Common _buffer, SalesTotals)` picks the subclass from the buffer type. There is also a `constructDelegate`.\n- `public boolean check()` ",
+  "notes": null,
+  "evidence": {
+    "sessionId": "aa098772-2d4e-4f1e-bda0-e373ce4477e7",
+    "logPath": null
+  },
+  "rework": {
+    "toolErrors": 0,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {},
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 0,
+    "rewrites": 0
+  }
+}

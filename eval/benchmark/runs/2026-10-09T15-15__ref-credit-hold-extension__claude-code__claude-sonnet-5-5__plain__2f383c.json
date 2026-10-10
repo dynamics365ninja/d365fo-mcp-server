@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T15-15__ref-credit-hold-extension__claude-code__claude-sonnet-5-5__plain__2f383c",
+  "timestamp": "2026-10-09T15:15:25.634Z",
+  "promptId": "ref-credit-hold-extension",
+  "promptHash": "c3ecaa796b4e",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v3",
+  "durationMs": 260261,
+  "apiMs": 125604,
+  "requests": 44,
+  "toolCalls": 43,
+  "mcpToolCalls": 0,
+  "tools": {
+    "Bash": 4,
+    "Grep": 6,
+    "Read": 5,
+    "Write": 6,
+    "PowerShell": 7,
+    "Edit": 14,
+    "Glob": 1
+  },
+  "inputTokens": 1041892,
+  "cachedTokens": 1002362,
+  "outputTokens": 16005,
+  "hostCost": {
+    "value": 0.5185464,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 51.85464,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches ConCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "matches SalesTableConCreditHold_Extension",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum ConCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: 3 fields + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustTable form extension shows the group",
+      "passed": true
+    },
+    {
+      "name": "file ModifiedField event handler",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable CoC on validateWrite",
+      "passed": true
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1807,
+  "resultExcerpt": "The `fm-mcp` model now builds with the exact build command and reports 0 errors. I haven't run any of it in a live environment, so the hold logic itself is untested.\n\nOne thing differs from what you'd expect. The compiler rejected `ConCreditHoldReason::None` in both classes. I couldn't tell why, but `enumNum(ConCreditHoldReason)` resolved fine. Both classes now compare against a local `ConCreditHo",
+  "notes": "1 permission denial(s): Bash",
+  "evidence": {
+    "sessionId": "49293851-41fc-4957-9fce-24bd8e5e5c9b",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxClass/ConCustTableEventHandler.xml",
+    "fm-mcp/AxClass/SalesTableConCreditHold_Extension.xml",
+    "fm-mcp/AxEnum/ConCreditHoldReason.xml",
+    "fm-mcp/AxFormExtension/CustTable.ConCreditHold_Extension.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxTableExtension/CustTable.ConCreditHold_Extension.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 16810
+  },
+  "rework": {
+    "toolErrors": 7,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "Bash": 1,
+      "PowerShell": 6
+    },
+    "buildAttempts": 7,
+    "buildFailures": 6,
+    "writeOps": 20,
+    "rewrites": 6
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 4,
+      "findings": [
+        "Warning BPErrorLabelIsText Enum/ConCreditHoldReason",
+        "Warning BPErrorLabelIsText Class/SalesTableConCreditHold_Extension/Method/validateWrite",
+        "BestPractices Warning: AxClass dynamics://Class/SalesTableConCreditHold_Extension/Method/validateWrite: [(23,21),(23,37)]: The placeholder '%2' to strFmt is not",
+        "BestPractices Warning: AxClass dynamics://Class/SalesTableConCreditHold_Extension/Method/validateWrite: [(24,21),(24,60)]: The placeholder '%2' to strFmt is not"
+      ]
+    }
+  }
+}

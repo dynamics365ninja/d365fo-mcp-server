@@ -1,0 +1,147 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T09-01__ref-vendor-certificate-register__claude-code__claude-opus-5-5__plain__0fd2ea",
+  "timestamp": "2026-10-10T09:01:12.084Z",
+  "promptId": "ref-vendor-certificate-register",
+  "promptHash": "274a0c3364a6",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v3",
+  "durationMs": 266211,
+  "apiMs": 194159,
+  "requests": 52,
+  "toolCalls": 51,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 3,
+    "Read": 17,
+    "Grep": 10,
+    "Write": 12,
+    "Edit": 3,
+    "Bash": 5
+  },
+  "inputTokens": 1738541,
+  "cachedTokens": 1683833,
+  "outputTokens": 24338,
+  "hostCost": {
+    "value": 1.2609266,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 126.09266,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 0.8571428571428571,
+  "checks": [
+    {
+      "name": "matches ConVendCertificate",
+      "passed": true
+    },
+    {
+      "name": "file string EDT ConVendCertificateId",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum ConVendCertificateType",
+      "passed": true
+    },
+    {
+      "name": "file table: fields, primary index, VendTable relation, find/exist/validateWrite",
+      "passed": true
+    },
+    {
+      "name": "file SimpleList form over the table",
+      "passed": true
+    },
+    {
+      "name": "file display menu item",
+      "passed": true
+    },
+    {
+      "name": "file ProcurementAndSourcing menu extension",
+      "passed": true
+    },
+    {
+      "name": "file maintain privilege (delete)",
+      "passed": true
+    },
+    {
+      "name": "file view privilege (read only)",
+      "passed": true
+    },
+    {
+      "name": "file VendTable form extension opens the register",
+      "passed": true
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": false
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": false
+    }
+  ],
+  "resultChars": 2364,
+  "resultExcerpt": "The build doesn't pass yet: it fails with 3 metadata errors. They come from two leftover files that I need deleted, and my permissions don't let me delete or rename files. Shell commands other than the build are blocked here.\n\n**What went wrong:** I first named the two extensions after the model (`VendTable.fm-mcp`, `ProcurementAndSourcing.fm-mcp`). The compiler rejects the hyphen as an invalid id",
+  "notes": "3 permission denial(s): PowerShell, Bash, Bash",
+  "evidence": {
+    "sessionId": "88401836-7e45-48dd-98c6-8a92256a3e0c",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxEdt/ConVendCertificateId.xml",
+    "fm-mcp/AxEnum/ConVendCertificateType.xml",
+    "fm-mcp/AxForm/ConVendCertificate.xml",
+    "fm-mcp/AxFormExtension/VendTable.ConVendCertificate.xml",
+    "fm-mcp/AxFormExtension/VendTable.fm-mcp.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxMenuExtension/ProcurementAndSourcing.ConVendCertificate.xml",
+    "fm-mcp/AxMenuExtension/ProcurementAndSourcing.fm-mcp.xml",
+    "fm-mcp/AxMenuItemDisplay/ConVendCertificate.xml",
+    "fm-mcp/AxSecurityPrivilege/ConVendCertificateMaintain.xml",
+    "fm-mcp/AxSecurityPrivilege/ConVendCertificateView.xml",
+    "fm-mcp/AxTable/ConVendCertificate.xml"
+  ],
+  "build": {
+    "ok": false,
+    "errorCount": 3,
+    "errors": [
+      "Metadata Error: AxMenuExtension/ProcurementAndSourcing.fm-mcp/Name: The object's name property does not match the object's container's name (e.g. filename).",
+      "Metadata Error: AxMenuExtension/ProcurementAndSourcing.ConVendCertificate/Elements/ConVendCertificate/MenuElement/ConVendCertificate/Name: The duplicate name 'ConVendCertificate' was detected. The duplication is either in the base element that extension applies to or in other sibling extensions.",
+      "Metadata Error: AxFormExtension/VendTable.fm-mcp/Name: The object's name property does not match the object's container's name (e.g. filename)."
+    ],
+    "durationMs": 15410
+  },
+  "rework": {
+    "toolErrors": 6,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Bash": 5
+    },
+    "buildAttempts": 3,
+    "buildFailures": 3,
+    "writeOps": 15,
+    "rewrites": 2
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": null
+  }
+}

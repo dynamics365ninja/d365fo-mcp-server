@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T16-21__daily-credit-limit-trace__claude-code__claude-sonnet-5-5__plain__627de5",
+  "timestamp": "2026-10-09T16:21:48.166Z",
+  "promptId": "daily-credit-limit-trace",
+  "promptHash": "48edfe0c4c84",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v3",
+  "durationMs": 89284,
+  "apiMs": 53481,
+  "requests": 30,
+  "toolCalls": 29,
+  "mcpToolCalls": 0,
+  "tools": {
+    "Grep": 12,
+    "PowerShell": 1,
+    "Glob": 4,
+    "Read": 12
+  },
+  "inputTokens": 547082,
+  "cachedTokens": 509225,
+  "outputTokens": 6193,
+  "hostCost": {
+    "value": 0.315151,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 31.5151,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches \\bCustCreditLimit\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(checkAgainstCreditLimit|checkCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\bSalesFormletterProvider\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(creditMaxOk|mustCheckCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches (CustCreditLimit\\W{1,3}(check|checkGivenBalances)\\b|\\bcheckGivenBalances\\b)",
+      "passed": true
+    }
+  ],
+  "resultChars": 3586,
+  "resultExcerpt": "Everything below comes from reading the metadata under `ApplicationSuite\\Foundation`. I didn't write or change any file.\n\n**1. The checking class**\n- The class is `CustCreditLimit`.\n- `CustCreditLimit::construct(Common, SalesTotals)` picks the subclass. The subclasses are `CustCreditLimit_SalesTable`, `CustCreditLimit_SalesParmTable` and `CustCreditLimit_CustInvoiceTable`. It also raises the `cons",
+  "notes": "1 permission denial(s): PowerShell",
+  "evidence": {
+    "sessionId": "d8d11eed-466b-46e9-9a23-06e7659b98f2",
+    "logPath": null
+  },
+  "rework": {
+    "toolErrors": 2,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "Grep": 1,
+      "PowerShell": 1
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 0,
+    "rewrites": 0
+  }
+}

@@ -1,0 +1,151 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T08-31__ref-overdue-batch-ssrs__claude-code__claude-sonnet-5-5__plain__655584",
+  "timestamp": "2026-10-10T08:31:26.217Z",
+  "promptId": "ref-overdue-batch-ssrs",
+  "promptHash": "20ed5d295c76",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v3",
+  "durationMs": 242618,
+  "apiMs": 229081,
+  "requests": 42,
+  "toolCalls": 41,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 7,
+    "Read": 10,
+    "Grep": 8,
+    "Bash": 1,
+    "Write": 11,
+    "Edit": 3
+  },
+  "inputTokens": 1221822,
+  "cachedTokens": 1138463,
+  "outputTokens": 40758,
+  "hostCost": {
+    "value": 0.8547823000000001,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 85.47823,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 0.8666666666666667,
+  "checks": [
+    {
+      "name": "matches ConCustOverdueSnapshotService",
+      "passed": true
+    },
+    {
+      "name": "matches ConCustOverdueReport",
+      "passed": true
+    },
+    {
+      "name": "file snapshot table",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation data contract",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation service over CustTransOpen",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation controller with main",
+      "passed": true
+    },
+    {
+      "name": "file action menu item for the batch job",
+      "passed": true
+    },
+    {
+      "name": "file TempDB report table",
+      "passed": true
+    },
+    {
+      "name": "file report data contract",
+      "passed": true
+    },
+    {
+      "name": "file report data provider",
+      "passed": true
+    },
+    {
+      "name": "file report with a DP dataset and a design",
+      "passed": true
+    },
+    {
+      "name": "file output menu item for the report",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": false
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": false
+    }
+  ],
+  "resultChars": 2927,
+  "resultExcerpt": "All the objects are written, but I could not run the build. The shell tools (PowerShell and Bash) were denied in this session (\"don't ask\" mode), so `benchmarkSandboxBuild.mjs` never ran. The model has not been compiled, and nothing has been verified.\n\nObjects created in `fm-mcp`, all as extensions with the `Con` prefix:\n\n- `AxLabelFile` `fm-mcp_en-US`: changed, 25 labels added to `fm-mcp.en-US.la",
+  "notes": "2 permission denial(s): PowerShell, Bash",
+  "evidence": {
+    "sessionId": "ef4371a9-360e-46ca-b2ad-5984f090151b",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxClass/ConCustOverdueReportContract.xml",
+    "fm-mcp/AxClass/ConCustOverdueReportDP.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotContract.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotController.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotService.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxMenuItemAction/ConCustOverdueSnapshot.xml",
+    "fm-mcp/AxMenuItemOutput/ConCustOverdueReport.xml",
+    "fm-mcp/AxReport/ConCustOverdueReport.xml",
+    "fm-mcp/AxTable/ConCustOverdueReportTmp.xml",
+    "fm-mcp/AxTable/ConCustOverdueSnapshot.xml"
+  ],
+  "build": {
+    "ok": false,
+    "errorCount": 4,
+    "errors": [
+      "Metadata Error: AxTable/ConCustOverdueSnapshot/Relations/CustTable/RelatedTable: Property cannot be empty.",
+      "Compile Fatal Error: Class Method dynamics://Class/ConCustOverdueSnapshotService/Method/process: [(31,22),(31,53)]: Illegal table specification.",
+      "Metadata Error: AxReport/ConCustOverdueReport/Designs/Design/Expression: Design: Unidentifiable substring 'mcp' in expression. The parser reported error message: Unrecognized identifier.",
+      "Metadata Error: AxReport/ConCustOverdueReport/Designs/Design/Expression: Design: Label @fm does not exist in the resx file."
+    ],
+    "durationMs": 12297
+  },
+  "rework": {
+    "toolErrors": 2,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Bash": 1
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 14,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": null
+  }
+}

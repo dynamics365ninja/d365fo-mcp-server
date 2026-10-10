@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T14-46__daily-credit-limit-trace__claude-code__claude-opus-5-5__mcp__ae5745",
+  "timestamp": "2026-10-09T14:46:03.064Z",
+  "promptId": "daily-credit-limit-trace",
+  "promptHash": "48edfe0c4c84",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": true,
+  "mcpServers": [
+    "d365fo-eval"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "ab892668",
+  "label": "v3",
+  "durationMs": 104486,
+  "apiMs": 63021,
+  "requests": 22,
+  "toolCalls": 21,
+  "mcpToolCalls": 0,
+  "tools": {
+    "Grep": 9,
+    "Read": 11,
+    "PowerShell": 1
+  },
+  "inputTokens": 578283,
+  "cachedTokens": 539255,
+  "outputTokens": 6056,
+  "hostCost": {
+    "value": 0.5410830000000001,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 54.1083,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches \\bCustCreditLimit\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(checkAgainstCreditLimit|checkCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\bSalesFormletterProvider\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(creditMaxOk|mustCheckCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches (CustCreditLimit\\W{1,3}(check|checkGivenBalances)\\b|\\bcheckGivenBalances\\b)",
+      "passed": true
+    }
+  ],
+  "resultChars": 3378,
+  "resultExcerpt": "I traced this in ApplicationSuite (`Foundation` model) and changed no files.\n\n**1. The class that performs the check**\n\n`CustCreditLimit` is the base class. `CustCreditLimit::construct(Common _buffer, SalesTotals _salesTotals)` returns `CustCreditLimit_SalesTable` for a `SalesTable` record and `CustCreditLimit_SalesParmTable` for a `SalesParmTable` record (the latter extends `CustCreditLimit_Sales",
+  "notes": "1 permission denial(s): PowerShell",
+  "evidence": {
+    "sessionId": "1861145d-4f80-4f14-8005-324d004b52ad",
+    "logPath": null
+  },
+  "rework": {
+    "toolErrors": 1,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 0,
+    "rewrites": 0
+  }
+}

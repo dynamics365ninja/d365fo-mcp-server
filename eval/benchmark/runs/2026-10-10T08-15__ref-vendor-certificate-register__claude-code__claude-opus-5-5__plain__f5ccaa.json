@@ -1,0 +1,147 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T08-15__ref-vendor-certificate-register__claude-code__claude-opus-5-5__plain__f5ccaa",
+  "timestamp": "2026-10-10T08:15:20.114Z",
+  "promptId": "ref-vendor-certificate-register",
+  "promptHash": "274a0c3364a6",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v3",
+  "durationMs": 269892,
+  "apiMs": 201711,
+  "requests": 53,
+  "toolCalls": 52,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 7,
+    "Read": 13,
+    "Grep": 11,
+    "Write": 12,
+    "Edit": 4,
+    "Bash": 4
+  },
+  "inputTokens": 1775314,
+  "cachedTokens": 1711003,
+  "outputTokens": 24965,
+  "hostCost": {
+    "value": 1.3557246000000007,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 135.57246,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 0.8571428571428571,
+  "checks": [
+    {
+      "name": "matches ConVendCertificate",
+      "passed": true
+    },
+    {
+      "name": "file string EDT ConVendCertificateId",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum ConVendCertificateType",
+      "passed": true
+    },
+    {
+      "name": "file table: fields, primary index, VendTable relation, find/exist/validateWrite",
+      "passed": true
+    },
+    {
+      "name": "file SimpleList form over the table",
+      "passed": true
+    },
+    {
+      "name": "file display menu item",
+      "passed": true
+    },
+    {
+      "name": "file ProcurementAndSourcing menu extension",
+      "passed": true
+    },
+    {
+      "name": "file maintain privilege (delete)",
+      "passed": true
+    },
+    {
+      "name": "file view privilege (read only)",
+      "passed": true
+    },
+    {
+      "name": "file VendTable form extension opens the register",
+      "passed": true
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": false
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": false
+    }
+  ],
+  "resultChars": 2239,
+  "resultExcerpt": "I couldn't get the build to zero errors, and the only thing blocking it is two leftover files I'm not allowed to delete. The last build failed with 3 errors:\n\n```\nAxFormExtension/VendTable.fm-mcp: name property does not match filename\nAxMenuExtension/ProcurementAndSourcing.fm-mcp: name property does not match filename\nAxMenuExtension/ProcurementAndSourcing.ConFmMcp/.../ConVendCertificate: duplicat",
+  "notes": "2 permission denial(s): PowerShell, Bash",
+  "evidence": {
+    "sessionId": "e24ded9a-4e34-43e3-b509-f4bcd24943e9",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxEdt/ConVendCertificateId.xml",
+    "fm-mcp/AxEnum/ConVendCertificateType.xml",
+    "fm-mcp/AxForm/ConVendCertificate.xml",
+    "fm-mcp/AxFormExtension/VendTable.ConFmMcp.xml",
+    "fm-mcp/AxFormExtension/VendTable.fm-mcp.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxMenuExtension/ProcurementAndSourcing.ConFmMcp.xml",
+    "fm-mcp/AxMenuExtension/ProcurementAndSourcing.fm-mcp.xml",
+    "fm-mcp/AxMenuItemDisplay/ConVendCertificate.xml",
+    "fm-mcp/AxSecurityPrivilege/ConVendCertificateMaintain.xml",
+    "fm-mcp/AxSecurityPrivilege/ConVendCertificateView.xml",
+    "fm-mcp/AxTable/ConVendCertificate.xml"
+  ],
+  "build": {
+    "ok": false,
+    "errorCount": 3,
+    "errors": [
+      "Metadata Error: AxFormExtension/VendTable.fm-mcp/Name: The object's name property does not match the object's container's name (e.g. filename).",
+      "Metadata Error: AxMenuExtension/ProcurementAndSourcing.fm-mcp/Name: The object's name property does not match the object's container's name (e.g. filename).",
+      "Metadata Error: AxMenuExtension/ProcurementAndSourcing.ConFmMcp/Elements/ConVendCertificate/MenuElement/ConVendCertificate/Name: The duplicate name 'ConVendCertificate' was detected. The duplication is either in the base element that extension applies to or in other sibling extensions."
+    ],
+    "durationMs": 15287
+  },
+  "rework": {
+    "toolErrors": 5,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Bash": 4
+    },
+    "buildAttempts": 3,
+    "buildFailures": 3,
+    "writeOps": 16,
+    "rewrites": 3
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": null
+  }
+}

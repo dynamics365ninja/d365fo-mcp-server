@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T07-32__ref-credit-hold-extension__claude-code__claude-opus-5-5__mcp__f649e1",
+  "timestamp": "2026-10-10T07:32:40.836Z",
+  "promptId": "ref-credit-hold-extension",
+  "promptHash": "c3ecaa796b4e",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": true,
+  "mcpServers": [
+    "d365fo-eval"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "09cbb862",
+  "label": "v3",
+  "durationMs": 110693,
+  "apiMs": 80182,
+  "requests": 26,
+  "toolCalls": 25,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 2,
+    "Glob": 3,
+    "Read": 8,
+    "Grep": 5,
+    "Write": 6,
+    "Bash": 1
+  },
+  "inputTokens": 581390,
+  "cachedTokens": 530874,
+  "outputTokens": 10039,
+  "hostCost": {
+    "value": 0.7109708,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 71.09708,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches ConCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "matches SalesTableConCreditHold_Extension",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum ConCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: 3 fields + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustTable form extension shows the group",
+      "passed": true
+    },
+    {
+      "name": "file ModifiedField event handler",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable CoC on validateWrite",
+      "passed": true
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1447,
+  "resultExcerpt": "I built the model with the `benchmarkSandboxBuild.mjs` command and it finished with 0 errors. I haven't tested any of it in a running environment.\n\nObjects created or changed in `fm-mcp`:\n\n- **AxEnum `ConCreditHoldReason`** (created): extensible, values None (the default), OverdueInvoices, DisputedBalance and ManualReview.\n- **AxTableExtension `CustTable.ConCreditHold`** (created): adds the fields",
+  "notes": "1 permission denial(s): PowerShell",
+  "evidence": {
+    "sessionId": "6bef977a-10d6-4d86-a621-39a0e5d13a11",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxClass/ConCustTableEventHandler.xml",
+    "fm-mcp/AxClass/SalesTableConCreditHold_Extension.xml",
+    "fm-mcp/AxEnum/ConCreditHoldReason.xml",
+    "fm-mcp/AxFormExtension/CustTable.ConCreditHold.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxTableExtension/CustTable.ConCreditHold.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 15920
+  },
+  "rework": {
+    "toolErrors": 1,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 6,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 4,
+      "findings": [
+        "Warning BPErrorLabelIsText Enum/ConCreditHoldReason",
+        "Warning BPErrorLabelIsText Class/SalesTableConCreditHold_Extension/Method/validateWrite",
+        "BestPractices Warning: AxClass dynamics://Class/SalesTableConCreditHold_Extension/Method/validateWrite: [(22,21),(22,41)]: The placeholder '%2' to strFmt is not",
+        "BestPractices Warning: AxClass dynamics://Class/SalesTableConCreditHold_Extension/Method/validateWrite: [(23,21),(23,60)]: The placeholder '%2' to strFmt is not"
+      ]
+    }
+  }
+}

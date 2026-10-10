@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T14-50__daily-entity-field__claude-code__claude-sonnet-5-5__mcp__6f1e11",
+  "timestamp": "2026-10-09T14:50:08.084Z",
+  "promptId": "daily-entity-field",
+  "promptHash": "2d1c1d8cd270",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "mcpServers": [
+    "d365fo-eval"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "ab892668",
+  "label": "v3",
+  "durationMs": 85712,
+  "apiMs": 51631,
+  "requests": 22,
+  "toolCalls": 21,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 2,
+    "Read": 7,
+    "Grep": 3,
+    "Glob": 3,
+    "Write": 5,
+    "Bash": 1
+  },
+  "inputTokens": 417239,
+  "cachedTokens": 377526,
+  "outputTokens": 5528,
+  "hostCost": {
+    "value": 0.2896012,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 28.96012,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches CustCustomerV3Entity",
+      "passed": true
+    },
+    {
+      "name": "file EDT ConCustSegmentCode, 15 characters",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: field + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Entity extension maps the field",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Staging extension: the field",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1129,
+  "resultExcerpt": "The build passed with 0 errors. The new objects are in `fm-mcp`, and I extended the data entity `CustCustomerV3Entity` (\"Customers V3\"). I didn't extend the older `CustCustomerV2Entity`. I haven't tested an actual Data management import or OData call.\n\n- `ConCustSegmentCode` (EDT): string, 15 characters, with a label and a help text.\n- `CustTable.ConSegment` (table extension): adds the field `ConC",
+  "notes": "1 permission denial(s): PowerShell",
+  "evidence": {
+    "sessionId": "0f81012a-8b4b-49d2-8b59-78c691289358",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxDataEntityViewExtension/CustCustomerV3Entity.ConSegment.xml",
+    "fm-mcp/AxEdt/ConCustSegmentCode.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxTableExtension/CustCustomerV3Staging.ConSegment.xml",
+    "fm-mcp/AxTableExtension/CustTable.ConSegment.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 15477
+  },
+  "rework": {
+    "toolErrors": 1,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 5,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 2,
+      "findings": [
+        "Warning BPErrorHelpIsText EdtString/ConCustSegmentCode",
+        "Warning BPErrorLabelIsText EdtString/ConCustSegmentCode"
+      ]
+    }
+  }
+}

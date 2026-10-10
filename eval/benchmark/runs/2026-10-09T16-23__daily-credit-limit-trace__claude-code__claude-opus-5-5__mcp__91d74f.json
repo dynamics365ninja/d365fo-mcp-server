@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T16-23__daily-credit-limit-trace__claude-code__claude-opus-5-5__mcp__91d74f",
+  "timestamp": "2026-10-09T16:23:19.429Z",
+  "promptId": "daily-credit-limit-trace",
+  "promptHash": "48edfe0c4c84",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": true,
+  "mcpServers": [
+    "d365fo-eval"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "ab892668",
+  "label": "v3",
+  "durationMs": 77447,
+  "apiMs": 55493,
+  "requests": 22,
+  "toolCalls": 21,
+  "mcpToolCalls": 0,
+  "tools": {
+    "Grep": 7,
+    "Read": 13,
+    "Bash": 1
+  },
+  "inputTokens": 425266,
+  "cachedTokens": 392614,
+  "outputTokens": 5410,
+  "hostCost": {
+    "value": 0.4478508,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 44.78508,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches \\bCustCreditLimit\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(checkAgainstCreditLimit|checkCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\bSalesFormletterProvider\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(creditMaxOk|mustCheckCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches (CustCreditLimit\\W{1,3}(check|checkGivenBalances)\\b|\\bcheckGivenBalances\\b)",
+      "passed": true
+    }
+  ],
+  "resultChars": 3434,
+  "resultExcerpt": "I traced the whole path in the ApplicationSuite source. Nothing was written or changed.\n\n**1. Credit limit class and the deciding method**\n\n`CustCreditLimit` does the check. `CustCreditLimit::construct(_buffer, _salesTotals)` returns a subclass based on the record type:\n- `CustCreditLimit_SalesTable` for a `SalesTable` (the sales order itself).\n- `CustCreditLimit_SalesParmTable` for a `SalesParmTa",
+  "notes": "1 permission denial(s): Bash",
+  "evidence": {
+    "sessionId": "080bb112-c5be-4d34-b980-1d6ac6e80688",
+    "logPath": null
+  },
+  "rework": {
+    "toolErrors": 1,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "Bash": 1
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 0,
+    "rewrites": 0
+  }
+}
