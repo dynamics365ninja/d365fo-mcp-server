@@ -154,3 +154,19 @@ describe('writeFilteredMcpConfig', () => {
     expect(() => writeFilteredMcpConfig(src, ['d365fo-evl'], out)).toThrow(/d365fo-evl not in .*it has: d365fo-mcp-tools, d365fo-eval/);
   });
 });
+
+describe('warm-up', () => {
+  it('reports a server the config does not list instead of throwing', async () => {
+    const { warmUpServer } = await import('../../src/benchmark/warmup.js');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bench-warm-'));
+    try {
+      const file = path.join(dir, 'mcp.json');
+      fs.writeFileSync(file, JSON.stringify({ mcpServers: { a: { command: 'node', args: [] } } }));
+      const r = await warmUpServer(file, 'missing');
+      expect(r.error).toMatch(/no server 'missing'/);
+      expect(r.calls).toEqual([]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

@@ -59,6 +59,7 @@ cells get neither.
 | `--no-bp` | — | skip the xppbp best-practice check after a clean build |
 | `--no-web` | — | do not allow WebFetch/WebSearch (both variants get them by default) |
 | `--no-agent-build` | — | do not give sandbox cells the build command (both variants get it by default) |
+| `--no-warm-up` | — | skip starting each MCP server once before the first cell. The warm-up pages the server's index into the OS cache: on the VM the index is 2.5 GB, and the first v4 cell after an hour of other work spent 476 s in three MCP calls that took 0.4 s once cached — a cost an editor pays once per session |
 | `--allow-dirty-baseline` | — | run although the sandbox does not build clean before the first cell |
 | `--cwd <dir>` | current dir | run claude from your solution folder so `CLAUDE.md` / the workspace apply (not with `--sandbox`) |
 | `--timeout s` | prompt's `timeoutSeconds`, else 900 | a cell that overruns is killed and recorded as `timeout` |

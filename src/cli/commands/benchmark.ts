@@ -43,6 +43,7 @@ import {
 import { renderHtml } from '../../benchmark/report/html.js';
 import { renderMarkdown } from '../../benchmark/report/markdown.js';
 import { buildReportModel } from '../../benchmark/report/model.js';
+import { warmUpServer } from '../../benchmark/warmup.js';
 import {
   benchmarkPaths,
   countRunFiles,
@@ -130,6 +131,8 @@ interface RunOptions extends CommonOptions {
   bp?: boolean;
   /** false with --no-web: no WebFetch/WebSearch for either variant. */
   web?: boolean;
+  /** false with --no-warm-up: no warm-up call to each MCP server before the first cell. */
+  warmUp?: boolean;
   /** false with --no-agent-build: the cells get no build command. */
   agentBuild?: boolean;
 }
@@ -456,6 +459,18 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
       fs.rmSync(scratch, { recursive: true, force: true });
       fail(err instanceof Error ? err.message : String(err));
       return;
+    }
+  }
+
+  // Start each MCP server once and touch its index, so a cold page cache is not
+  // charged to whichever cell happens to run first (v4: 476 s in three calls).
+  if (!opts.dryRun && mcpConfig && variants.includes(true) && opts.warmUp !== false) {
+    const names = splitList(opts.mcpServers, '');
+    const servers = names.length > 0 ? names : resolveMcpTargets(mcpConfig).map(t => t.name);
+    for (const name of servers) {
+      const w = await warmUpServer(mcpConfig, name);
+      if (w.error) p.log.warn(`Warm-up of '${name}' failed after ${formatMetric('durationMs', w.ms)}: ${w.error} — the first with-MCP cell may pay the cold start`);
+      else p.log.info(`Warm-up of '${name}': ${formatMetric('durationMs', w.ms)} (${w.calls.map(c => `${c.tool} ${formatMetric('durationMs', c.ms)}${c.ok ? '' : ' ✗'}`).join(', ')})`);
     }
   }
 
@@ -884,6 +899,7 @@ export function registerBenchmarkCommands(program: Command): void {
     .option('--no-bp', 'skip the xppbp best-practice check after a clean build')
     .option('--no-web', 'do not allow WebFetch/WebSearch (both variants get them by default)')
     .option('--no-agent-build', 'do not give sandbox cells the build command (both variants get it by default)')
+    .option('--no-warm-up', 'skip starting each MCP server once before the first cell (it pages the index in)')
     .option('--allow-dirty-baseline', 'run even when the sandbox does not build clean before the first cell')
     .option('--cwd <dir>', 'working directory for claude (default: current directory; the sandbox package with --sandbox)')
     .option('--label <text>', 'tag these runs ("release 1.20", "VM contoso")')
