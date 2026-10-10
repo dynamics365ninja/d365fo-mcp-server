@@ -81,7 +81,7 @@ export function normalizeObjectName(
   objectType: string,
   modelName: string | undefined,
   onNote?: (note: string) => void,
-  options?: { knownBase?: boolean },
+  options?: { knownBase?: boolean; extendedBase?: string },
 ): string {
   const objectPrefix = resolveObjectPrefix(modelName ?? '');
   // Elements and classes carry their own style: a convention may spell one with the
@@ -161,7 +161,7 @@ export function normalizeObjectName(
       : `Bare class-extension name auto-converted to _Extension form: ${objectName} → ${effective}`);
   }
 
-  let finalName = applyObjectPrefix(effective, objectPrefix, modelName, { knownBase });
+  let finalName = applyObjectPrefix(effective, objectPrefix, modelName, { knownBase, extendedBase: options?.extendedBase });
 
   // EXTENSION_SUFFIX applies to NEW objects only — never to extensions. The
   // model-name style's "Base.ModelName" form has no "Extension" word, so

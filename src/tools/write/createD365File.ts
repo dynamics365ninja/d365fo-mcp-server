@@ -45,6 +45,8 @@ import { recordCreatedArtifact } from '../../workspace/createdArtifactLedger.js'
 import { resolveOrCreateLabelRef, type AutoLabelTarget } from './createLabel.js';
 import { isRawLabelText } from '../../utils/labelReference.js';
 import { sayOncePerSession } from '../../utils/repeatedNotes.js';
+import { ensureFormMetadataNamespace, FORM_METADATA_NAMESPACE } from '../../utils/formMetadataNamespace.js';
+import { parseExtensionOfAttribute } from '../../metadata/xppDeclaration.js';
 import {
   reconcileTableCreateProperties,
   renderTableCreateHonestyReport,
@@ -970,11 +972,19 @@ export async function handleCreateD365File(
     // Name normalisation lives in utils/objectNaming so that modify resolves the
     // very same name from the very same arguments — the ninety lines that used to
     // sit here inline were the reason it did not. See normalizeObjectName.
+    // The base an extension class names in [ExtensionOf] (or properties.baseClass)
+    // tells "SalesTable + Mcp + CreditHold" — a name that already carries the token —
+    // apart from a base that merely contains it. See ApplyObjectPrefixOptions.extendedBase.
+    const statedBaseClass = (args.properties as Record<string, unknown> | undefined)?.baseClass;
+    const extendedBase =
+      parseExtensionOfAttribute(args.sourceCode ?? args.xmlContent ?? '')?.baseObjectName ??
+      (typeof statedBaseClass === 'string' && statedBaseClass ? statedBaseClass : undefined);
     const finalObjectName = normalizeObjectName(
       args.objectName,
       args.objectType,
       actualModelName,
       (note: string) => console.error(`[create_d365fo_file] ${note}`),
+      { extendedBase },
     );
     if (finalObjectName !== args.objectName) {
       console.error(`[create_d365fo_file] Applied naming: ${args.objectName} → ${finalObjectName}`);
@@ -1921,6 +1931,22 @@ export async function handleCreateD365File(
       xmlContent = XmlTemplateGenerator.sanitizeEnumXml(xmlContent);
     }
 
+    // Forms and form extensions are the only AOT roots in the metadata namespace,
+    // and their grandchildren must leave it again. Caller XML without it builds
+    // clean and then fails xppbp ("Error reading FormExtension") — so fix it here
+    // and say so. See formMetadataNamespace.ts for the census.
+    let namespaceNote = '';
+    if ((args.objectType === 'form' || args.objectType === 'form-extension') && args.xmlContent) {
+      const ns = ensureFormMetadataNamespace(xmlContent);
+      if (ns.changed) {
+        xmlContent = ns.xml;
+        namespaceNote =
+          `\n🔧 Added xmlns="${FORM_METADATA_NAMESPACE}" to the root and xmlns="" to its grandchildren — ` +
+          `the layout every shipped ${args.objectType === 'form' ? 'AxForm' : 'AxFormExtension'} has. ` +
+          `Without it the file builds but xppbp cannot read it.`;
+      }
+    }
+
     // Safety net: ensure every pair of adjacent </Method>…<Method> is separated by
     // exactly one blank line. This guards against xmlContent supplied by callers
     // (e.g. from generate or generate_d365fo_xml) that might already be
@@ -2244,6 +2270,7 @@ export async function handleCreateD365File(
             `${finalObjectName !== args.objectName ? ` (prefixed from "${args.objectName}")` : ''}` +
             `${crossModelNotice}\n📁 ${normalizedFullPath}\n` +
             bridgeValidation +
+            namespaceNote +
             formPatternWarnings +
             bridgeFallbackNote +
             tableHonestyReport +
