@@ -389,7 +389,8 @@ function scopeOf(id: string, label: string, runs: BenchmarkRun[], promptIds: str
   for (const [k, c] of plain) {
     if (!lifts.some(l => `${l.host}\u0000${l.model}` === k)) lifts.push({ model: c.model, host: c.host, setup: null, with: null, without: c });
   }
-  lifts.sort((a, b) => a.model.localeCompare(b.model) || a.host.localeCompare(b.host) || (a.setup ?? '').localeCompare(b.setup ?? ''));
+  // Per model, the documented setup (server + instructions) first, the server alone after it.
+  lifts.sort((a, b) => a.model.localeCompare(b.model) || a.host.localeCompare(b.host) || Number(b.setup !== null) - Number(a.setup !== null) || (a.setup ?? '').localeCompare(b.setup ?? ''));
   return { id, label, promptIds, runs: runs.length, configs, lifts };
 }
 

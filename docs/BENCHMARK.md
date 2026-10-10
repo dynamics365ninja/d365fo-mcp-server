@@ -63,7 +63,8 @@ cells get neither.
 | `--cwd <dir>` | current dir | run claude from your solution folder so `CLAUDE.md` / the workspace apply (not with `--sandbox`) |
 | `--timeout s` | prompt's `timeoutSeconds`, else 900 | a cell that overruns is killed and recorded as `timeout` |
 | `--max-turns`, `--max-budget-usd`, `--effort`, `--tools`, `--append-system-prompt-file` | — | passed through to claude (every cell) |
-| `--mcp-instructions <file>` | — | appended to the **with-MCP cells only** and recorded as the run's `setup` — the documented Claude Code setup installs `.github/copilot-instructions.md` as `CLAUDE.md`. The leaderboard shows it as its own configuration ("MCP + instructions") |
+| `--mcp-instructions <file>` | `.github/copilot-instructions.md` | appended to the **with-MCP cells only** and recorded as the run's `setup` — what an editor with the solution folder open loads (Claude Code: the same file as `CLAUDE.md`). The leaderboard shows it as "MCP + instructions" |
+| `--no-mcp-instructions` | — | the with-MCP cells get the server alone — a diagnostic, not the documented setup |
 | `--permission-mode` | `dontAsk` | nothing may prompt in a benchmark; the MCP tools are allowed explicitly |
 | `--label`, `--notes` | — | stored on every record of the batch |
 | `--no-excerpt` | — | leave the first 400 chars of the answer out of the record |
@@ -374,13 +375,15 @@ neither Sonnet nor Opus made a single MCP call on two of the three daily tasks;
 in "reference v2" they reached for the server mainly because it was the only
 way to build. The documented setup (docs/SETUP.md, Claude Code step 3) installs
 `.github/copilot-instructions.md` as `CLAUDE.md`, which tells the agent to use
-the MCP tools for D365FO objects. Measure that as its own configuration, against
-the same runs without MCP:
+the MCP tools for D365FO objects. An editor with the solution folder open loads
+it; a headless cell in the sandbox package loads nothing. So the with-MCP cells
+get that file **by default**; `--no-mcp-instructions` measures the server alone,
+which the report shows as a separate configuration. To compare the two:
 
 ```powershell
 npm run cli -- benchmark run all --tag reference,daily --models sonnet,opus --repeat 3 --variants mcp `
-  --mcp-instructions .github\copilot-instructions.md `
-  --sandbox K:\AosService\PackagesLocalDirectory\fm-mcp --mcp-servers d365fo-eval --label "v3 + instructions"
+  --no-mcp-instructions `
+  --sandbox K:\AosService\PackagesLocalDirectory\fm-mcp --mcp-servers d365fo-eval --label "server alone"
 npm run cli -- benchmark report --label "v3,v3 + instructions" --open   # a comma list compares labels
 ```
 

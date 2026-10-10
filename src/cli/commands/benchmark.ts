@@ -109,8 +109,12 @@ interface RunOptions extends CommonOptions {
   tools?: string;
   effort?: string;
   appendSystemPromptFile?: string;
-  /** Appended to the system prompt of the with-MCP cells only — the documented setup's instructions file. */
-  mcpInstructions?: string;
+  /**
+   * Appended to the system prompt of the with-MCP cells only. Default: the
+   * repo's .github/copilot-instructions.md (the documented setup); false with
+   * --no-mcp-instructions measures the server alone.
+   */
+  mcpInstructions?: string | false;
   claudeBin?: string;
   prompt?: string;
   excerpt?: boolean;
@@ -238,6 +242,25 @@ export function sandboxBuildRules(command: string): string[] {
   return [`Bash(${command})`, `PowerShell(${command})`];
 }
 const NO_BUILD_COMMAND = '(no build command is available in this run)';
+
+/**
+ * The instructions file the with-MCP cells get. An editor with the solution
+ * folder open loads .github/copilot-instructions.md (Claude Code: the same file
+ * as CLAUDE.md, docs/SETUP.md); a headless cell in the sandbox package loads
+ * nothing. Without it the agent has the MCP tools but no reason to use them —
+ * in the first v3 cells Sonnet made no MCP call in 16 of 18 runs. So the
+ * documented setup is the default, and the server alone is the opt-out.
+ */
+export function resolveMcpInstructions(option: string | false | undefined, repo: string): string | null {
+  if (option === false) return null;
+  if (typeof option === 'string' && option.length > 0) {
+    const file = path.resolve(option);
+    if (!fs.existsSync(file)) throw new Error(`--mcp-instructions: ${file} does not exist.`);
+    return file;
+  }
+  const fallback = path.join(repo, '.github', 'copilot-instructions.md');
+  return fs.existsSync(fallback) ? fallback : null;
+}
 const BUILD_TIMEOUT_MS = 20 * 60 * 1000;
 
 export async function benchmarkRunCommand(promptArg: string | undefined, opts: RunOptions): Promise<void> {
@@ -342,6 +365,13 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
   const cells = specs.length * models.length * variants.length * repeat;
   const wantBuild = opts.build !== false;
   const wantBp = wantBuild && opts.bp !== false;
+  let mcpInstructions: string | null;
+  try {
+    mcpInstructions = variants.includes(true) ? resolveMcpInstructions(opts.mcpInstructions, repoRoot) : null;
+  } catch (err) {
+    fail(err instanceof Error ? err.message : String(err));
+    return;
+  }
   const timeoutFor = (spec: PromptSpec) => timeoutS ?? spec.timeoutSeconds ?? DEFAULT_TIMEOUT_S;
 
   p.intro(`d365fo-mcp benchmark run — ${cells} cell${cells === 1 ? '' : 's'}`);
@@ -351,6 +381,7 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
       `models      ${models.join(', ')}`,
       `variants    ${variants.map(v => (v ? 'with MCP' : 'without MCP')).join(', ')}`,
       `repeat      ${repeat}×`,
+      `MCP setup   ${variants.includes(true) ? (mcpInstructions ? `server + instructions ${path.relative(repoRoot, mcpInstructions) || mcpInstructions}` : 'server alone (--no-mcp-instructions)') : '—'}`,
       `MCP config  ${mcpConfig ?? '(none needed)'}${sandbox && sandbox.targets.length ? ` — ${sandbox.targets.map(t => `${t.name} → ${t.workspacePath}`).join(', ')}` : ''}`,
       `cwd         ${cwd}`,
       sandbox
@@ -454,8 +485,8 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
             maxTurns,
             maxBudgetUsd: maxBudget,
             effort: opts.effort ?? null,
-            appendSystemPromptFile: mcp && opts.mcpInstructions
-              ? path.resolve(opts.mcpInstructions)
+            appendSystemPromptFile: mcp && mcpInstructions
+              ? mcpInstructions
               : opts.appendSystemPromptFile ? path.resolve(opts.appendSystemPromptFile) : null,
             addDirs: sandbox ? [sandbox.info.packagesRoot] : [],
             timeoutMs: timeoutFor(spec) * 1000,
@@ -483,7 +514,7 @@ export async function benchmarkRunCommand(promptArg: string | undefined, opts: R
             spec,
             modelRequested: model,
             mcp,
-            setup: mcp && opts.mcpInstructions ? `instructions: ${path.basename(opts.mcpInstructions)}` : null,
+            setup: mcp && mcpInstructions ? `instructions: ${path.basename(mcpInstructions)}` : null,
             serverVersion: VERSION,
             serverGitSha: sha,
             label: opts.label ?? null,
@@ -865,7 +896,8 @@ export function registerBenchmarkCommands(program: Command): void {
     .option('--tools <list>', 'claude --tools: restrict the built-in set ("" = none, for a pure MCP cell)')
     .option('--effort <level>', 'claude --effort')
     .option('--append-system-prompt-file <file>', 'claude --append-system-prompt-file for every cell')
-    .option('--mcp-instructions <file>', 'append this file to the with-MCP cells only — the documented setup (.github/copilot-instructions.md installed as CLAUDE.md); recorded as the run\'s setup')
+    .option('--mcp-instructions <file>', 'instructions appended to the with-MCP cells only, recorded as the run\'s setup (default: .github/copilot-instructions.md — the documented setup)')
+    .option('--no-mcp-instructions', 'with-MCP cells get the server alone, no instructions file')
     .option('--claude-bin <path>', 'the claude executable (default: claude / claude.cmd on PATH)')
     .option('--no-excerpt', 'do not store the opening of the answer in the record')
     .option('--dry-run', 'print the matrix and each claude command without running anything')

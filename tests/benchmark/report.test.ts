@@ -241,7 +241,8 @@ describe('leaderboard across tasks', () => {
     const m = buildReportModel(rs, [], { credits: DEFAULT_CREDITS });
     expect(m.configKeys.map(k => `${k.mcp}/${k.setup}`)).toEqual(['true/instructions: copilot-instructions.md', 'true/null', 'false/null']);
     const lifts = m.scopes[0].lifts;
-    expect(lifts.map(l => l.setup)).toEqual([null, 'instructions: copilot-instructions.md']);
+    // The documented setup leads; the server alone follows.
+    expect(lifts.map(l => l.setup)).toEqual(['instructions: copilot-instructions.md', null]);
     expect(lifts.every(l => l.without?.mcp === false)).toBe(true);
     // The per-model aggregates keep the setup apart instead of pooling it into "with MCP".
     expect(m.overview.map(o => o.model)).toContain('claude-sonnet-5-5 + instructions');

@@ -5,7 +5,10 @@
  * was refused. Found in the reference v2 run on the VM, 2026-10-09.
  */
 import { describe, it, expect } from 'vitest';
-import { sandboxBuildCommand, sandboxBuildRules, sandboxEditRule } from '../../src/cli/commands/benchmark.js';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { resolveMcpInstructions, sandboxBuildCommand, sandboxBuildRules, sandboxEditRule } from '../../src/cli/commands/benchmark.js';
 
 describe('sandboxEditRule', () => {
   it('turns a Windows package path into the absolute //drive/… form', () => {
@@ -33,5 +36,29 @@ describe('sandbox build command', () => {
     const cmd = sandboxBuildCommand('K:\\repos\\d365fo-mcp-server', 'K:\\AosService\\PackagesLocalDirectory\\fm-mcp\\');
     expect(cmd).toBe('node K:/repos/d365fo-mcp-server/scripts/benchmarkSandboxBuild.mjs K:/AosService/PackagesLocalDirectory/fm-mcp');
     expect(sandboxBuildRules(cmd)).toEqual([`Bash(${cmd})`, `PowerShell(${cmd})`]);
+  });
+});
+
+/**
+ * An editor with the solution folder open loads .github/copilot-instructions.md;
+ * a headless cell in the sandbox loads nothing, and the agent then rarely uses
+ * the MCP tools at all. The documented setup is the default; --no-mcp-instructions
+ * measures the server alone.
+ */
+describe('MCP instructions', () => {
+  it('defaults to the repo instructions file, honours an explicit file and the opt-out', () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'bench-instr-'));
+    try {
+      expect(resolveMcpInstructions(undefined, repo)).toBeNull();
+      fs.mkdirSync(path.join(repo, '.github'));
+      const file = path.join(repo, '.github', 'copilot-instructions.md');
+      fs.writeFileSync(file, '# rules');
+      expect(resolveMcpInstructions(undefined, repo)).toBe(file);
+      expect(resolveMcpInstructions(false, repo)).toBeNull();
+      expect(resolveMcpInstructions(file, repo)).toBe(file);
+      expect(() => resolveMcpInstructions(path.join(repo, 'missing.md'), repo)).toThrow(/does not exist/);
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
   });
 });
