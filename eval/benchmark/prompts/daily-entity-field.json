@@ -1,7 +1,7 @@
 {
   "id": "daily-entity-field",
   "title": "Daily 2: expose a new customer field in the standard data entity — find the entity and its staging table",
-  "prompt": "You are a Dynamics 365 Finance & Operations X++ developer. Work in the model `{{model}}`: its metadata folder is `{{modelDir}}` and its package descriptor is under `{{packageDir}}\\Descriptor`. The standard application's metadata (ApplicationSuite, ApplicationPlatform, ApplicationFoundation, …) is under `{{packagesRoot}}` — read it, never change it. Extensions only, no overlayering. Every new object name starts with the prefix Con. Every user-facing text (labels, help texts) is a label in the model's label file `{{model}}`, never a hardcoded string.\n\nBusiness requirement: every customer gets a segment code. It is maintained on the customer, and the data migration team imports and exports it with the standard customers data entity that Data management and OData use today (the current version of that entity, not an older one).\n\nImplement:\n1. A new string EDT ConCustSegmentCode, 15 characters, with a label.\n2. A field ConCustSegmentCode (that EDT) on the customer table, in a new field group ConSegment.\n3. The field on the standard customers data entity, mapped to the customer table's field, so it is imported, exported and visible through OData — including everything Data management needs for the import to work.\n\nThe model must build (xppc full build) with zero errors. To build it, run exactly `{{buildCommand}}` in the shell — it compiles the labels and the model and prints every error. When you are done, reply with the list of objects you created or changed, one line each, and name the data entity you extended.",
+  "prompt": "You are a Dynamics 365 Finance & Operations X++ developer. Work in the model `{{model}}`: its metadata folder is `{{modelDir}}` and its package descriptor is under `{{packageDir}}\\Descriptor`. The standard application's metadata (ApplicationSuite, ApplicationPlatform, ApplicationFoundation, …) is under `{{packagesRoot}}` — read it, never change it. Extensions only, no overlayering. Every new object name starts with the prefix Mcp. Every user-facing text (labels, help texts) is a label in the model's label file `{{model}}`, never a hardcoded string.\n\nBusiness requirement: every customer gets a segment code. It is maintained on the customer, and the data migration team imports and exports it with the standard customers data entity that Data management and OData use today (the current version of that entity, not an older one).\n\nImplement:\n1. A new string EDT McpCustSegmentCode, 15 characters, with a label.\n2. A field McpCustSegmentCode (that EDT) on the customer table, in a new field group McpSegment.\n3. The field on the standard customers data entity, mapped to the customer table's field, so it is imported, exported and visible through OData — including everything Data management needs for the import to work.\n\nThe model must build (xppc full build) with zero errors. To build it, run exactly `{{buildCommand}}` in the shell — it compiles the labels and the model and prints every error. When you are done, reply with the list of objects you created or changed, one line each, and name the data entity you extended.",
   "tags": ["daily", "discovery", "edt", "table-extension", "data-entity", "staging", "labels", "L3"],
   "workspace": { "build": true },
   "timeoutSeconds": 1800,
@@ -9,24 +9,24 @@
     "mustMatch": ["CustCustomerV3Entity"],
     "files": [
       {
-        "name": "EDT ConCustSegmentCode, 15 characters",
-        "path": "/AxEdt/ConCustSegmentCode\\.xml$",
+        "name": "EDT McpCustSegmentCode, 15 characters",
+        "path": "/AxEdt/McpCustSegmentCode\\.xml$",
         "contains": ["AxEdtString", "<StringSize>15</StringSize>"]
       },
       {
         "name": "CustTable extension: field + field group",
         "path": "/AxTableExtension/CustTable\\.[^/]+\\.xml$",
-        "contains": ["<Name>ConCustSegmentCode</Name>", "<Name>ConSegment</Name>"]
+        "contains": ["<Name>McpCustSegmentCode</Name>", "<Name>McpSegment</Name>"]
       },
       {
         "name": "CustCustomerV3Entity extension maps the field",
         "path": "/AxDataEntityViewExtension/CustCustomerV3Entity\\.[^/]+\\.xml$",
-        "contains": ["<Name>ConCustSegmentCode</Name>", "<DataField>ConCustSegmentCode</DataField>", "<DataSource>CustTable</DataSource>"]
+        "contains": ["<Name>McpCustSegmentCode</Name>", "<DataField>McpCustSegmentCode</DataField>", "<DataSource>CustTable</DataSource>"]
       },
       {
         "name": "CustCustomerV3Staging extension: the field",
         "path": "/AxTableExtension/CustCustomerV3Staging\\.[^/]+\\.xml$",
-        "contains": ["<Name>ConCustSegmentCode</Name>"]
+        "contains": ["<Name>McpCustSegmentCode</Name>"]
       }
     ]
   },

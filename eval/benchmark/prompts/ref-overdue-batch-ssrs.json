@@ -1,70 +1,70 @@
 {
   "id": "ref-overdue-batch-ssrs",
   "title": "Reference 3: overdue snapshot — SysOperation batch job + SSRS report (RDP)",
-  "prompt": "You are a Dynamics 365 Finance & Operations X++ developer. Work in the model `{{model}}`: its metadata folder is `{{modelDir}}` and its package descriptor is under `{{packageDir}}\\Descriptor`. The standard application's metadata (ApplicationSuite, ApplicationPlatform, ApplicationFoundation, …) is under `{{packagesRoot}}` — read it, never change it. Extensions only, no overlayering. Every new object name starts with the prefix Con. Every user-facing text (labels, help texts, info/warning/error messages) is a label in the model's label file `{{model}}`, never a hardcoded string. Never use today(); use DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone()).\n\nBusiness requirement: every night collections wants a snapshot of overdue customer balances, and a printable report over a snapshot.\n\nImplement:\n1. A regular table ConCustOverdueSnapshot with the fields AccountNum (EDT CustAccount), AsOfDate (EDT TransDate), OverdueAmountMST (EDT AmountMST), OldestDueDate (EDT DueDate) and OpenTransCount (integer), a unique index on AccountNum + AsOfDate, and a relation to CustTable.\n2. A SysOperation batch job:\n   - data contract ConCustOverdueSnapshotContract with the parameters AsOfDate (default: the session date), MinDaysOverdue (integer, default 30) and an optional customer group (EDT CustGroupId);\n   - service ConCustOverdueSnapshotService (extends SysOperationServiceBase) whose process method replaces the snapshot rows of that AsOfDate with one row per customer that has open customer transactions (CustTransOpen) due more than MinDaysOverdue days before AsOfDate — set-based where possible, in one transaction;\n   - controller ConCustOverdueSnapshotController (extends SysOperationServiceController) with a static main that runs the service, usable in batch;\n   - an action menu item ConCustOverdueSnapshot that starts the controller.\n3. An SSRS report over the snapshot with a report data provider:\n   - TempDB table ConCustOverdueReportTmp with AccountNum, CustName (EDT DirPartyName), OverdueAmountMST, OldestDueDate and OpenTransCount;\n   - data contract ConCustOverdueReportContract with an AsOfDate parameter;\n   - data provider class ConCustOverdueReportDP (extends SRSReportDataProviderBase) that fills the temp table from the snapshot rows of that date;\n   - report ConCustOverdueReport with a dataset over the data provider and one design that lists the rows in a table;\n   - an output menu item ConCustOverdueReport that runs the report.\n\nThe model must build (xppc full build) with zero errors. To build it, run exactly `{{buildCommand}}` in the shell — it compiles the labels and the model and prints every error. When you are done, reply with the list of objects you created or changed, one line each.",
+  "prompt": "You are a Dynamics 365 Finance & Operations X++ developer. Work in the model `{{model}}`: its metadata folder is `{{modelDir}}` and its package descriptor is under `{{packageDir}}\\Descriptor`. The standard application's metadata (ApplicationSuite, ApplicationPlatform, ApplicationFoundation, …) is under `{{packagesRoot}}` — read it, never change it. Extensions only, no overlayering. Every new object name starts with the prefix Mcp. Every user-facing text (labels, help texts, info/warning/error messages) is a label in the model's label file `{{model}}`, never a hardcoded string. Never use today(); use DateTimeUtil::getToday(DateTimeUtil::getUserPreferredTimeZone()).\n\nBusiness requirement: every night collections wants a snapshot of overdue customer balances, and a printable report over a snapshot.\n\nImplement:\n1. A regular table McpCustOverdueSnapshot with the fields AccountNum (EDT CustAccount), AsOfDate (EDT TransDate), OverdueAmountMST (EDT AmountMST), OldestDueDate (EDT DueDate) and OpenTransCount (integer), a unique index on AccountNum + AsOfDate, and a relation to CustTable.\n2. A SysOperation batch job:\n   - data contract McpCustOverdueSnapshotContract with the parameters AsOfDate (default: the session date), MinDaysOverdue (integer, default 30) and an optional customer group (EDT CustGroupId);\n   - service McpCustOverdueSnapshotService (extends SysOperationServiceBase) whose process method replaces the snapshot rows of that AsOfDate with one row per customer that has open customer transactions (CustTransOpen) due more than MinDaysOverdue days before AsOfDate — set-based where possible, in one transaction;\n   - controller McpCustOverdueSnapshotController (extends SysOperationServiceController) with a static main that runs the service, usable in batch;\n   - an action menu item McpCustOverdueSnapshot that starts the controller.\n3. An SSRS report over the snapshot with a report data provider:\n   - TempDB table McpCustOverdueReportTmp with AccountNum, CustName (EDT DirPartyName), OverdueAmountMST, OldestDueDate and OpenTransCount;\n   - data contract McpCustOverdueReportContract with an AsOfDate parameter;\n   - data provider class McpCustOverdueReportDP (extends SRSReportDataProviderBase) that fills the temp table from the snapshot rows of that date;\n   - report McpCustOverdueReport with a dataset over the data provider and one design that lists the rows in a table;\n   - an output menu item McpCustOverdueReport that runs the report.\n\nThe model must build (xppc full build) with zero errors. To build it, run exactly `{{buildCommand}}` in the shell — it compiles the labels and the model and prints every error. When you are done, reply with the list of objects you created or changed, one line each.",
   "tags": ["reference", "table", "sysoperation", "batch", "ssrs", "report", "temp-table", "menu-item", "labels", "L4"],
   "workspace": { "build": true },
   "timeoutSeconds": 2400,
   "expects": {
-    "mustMatch": ["ConCustOverdueSnapshotService", "ConCustOverdueReport"],
+    "mustMatch": ["McpCustOverdueSnapshotService", "McpCustOverdueReport"],
     "files": [
       {
         "name": "snapshot table",
-        "path": "/AxTable/ConCustOverdueSnapshot\\.xml$",
+        "path": "/AxTable/McpCustOverdueSnapshot\\.xml$",
         "contains": ["<Name>OverdueAmountMST</Name>", "<Name>OldestDueDate</Name>", "<Name>OpenTransCount</Name>", "<RelatedTable>CustTable</RelatedTable>"]
       },
       {
         "name": "SysOperation data contract",
-        "path": "/AxClass/ConCustOverdueSnapshotContract\\.xml$",
+        "path": "/AxClass/McpCustOverdueSnapshotContract\\.xml$",
         "contains": ["DataContract(Attribute)?\\b", "DataMember(Attribute)?\\b", "MinDaysOverdue", "AsOfDate"],
         "notContains": ["\\btoday\\s*\\(\\s*\\)"]
       },
       {
         "name": "SysOperation service over CustTransOpen",
-        "path": "/AxClass/ConCustOverdueSnapshotService\\.xml$",
-        "contains": ["extends\\s+SysOperationServiceBase", "CustTransOpen", "ConCustOverdueSnapshot\\b"],
+        "path": "/AxClass/McpCustOverdueSnapshotService\\.xml$",
+        "contains": ["extends\\s+SysOperationServiceBase", "CustTransOpen", "McpCustOverdueSnapshot\\b"],
         "notContains": ["\\btoday\\s*\\(\\s*\\)"]
       },
       {
         "name": "SysOperation controller with main",
-        "path": "/AxClass/ConCustOverdueSnapshotController\\.xml$",
+        "path": "/AxClass/McpCustOverdueSnapshotController\\.xml$",
         "contains": ["extends\\s+SysOperationServiceController", "static\\s+void\\s+main\\s*\\("]
       },
       {
         "name": "action menu item for the batch job",
-        "path": "/AxMenuItemAction/ConCustOverdueSnapshot\\.xml$",
-        "contains": ["ConCustOverdueSnapshotController"]
+        "path": "/AxMenuItemAction/McpCustOverdueSnapshot\\.xml$",
+        "contains": ["McpCustOverdueSnapshotController"]
       },
       {
         "name": "TempDB report table",
-        "path": "/AxTable/ConCustOverdueReportTmp\\.xml$",
+        "path": "/AxTable/McpCustOverdueReportTmp\\.xml$",
         "contains": ["<TableType>TempDB</TableType>", "<Name>CustName</Name>"]
       },
       {
         "name": "report data contract",
-        "path": "/AxClass/ConCustOverdueReportContract\\.xml$",
+        "path": "/AxClass/McpCustOverdueReportContract\\.xml$",
         "contains": ["DataContract(Attribute)?\\b", "AsOfDate"]
       },
       {
         "name": "report data provider",
-        "path": "/AxClass/ConCustOverdueReportDP\\.xml$",
+        "path": "/AxClass/McpCustOverdueReportDP\\.xml$",
         "contains": [
           "extends\\s+SRSReportDataProviderBase",
-          "SRSReportParameterAttribute\\s*\\(\\s*classStr\\s*\\(\\s*ConCustOverdueReportContract\\s*\\)\\s*\\)",
+          "SRSReportParameterAttribute\\s*\\(\\s*classStr\\s*\\(\\s*McpCustOverdueReportContract\\s*\\)\\s*\\)",
           "SRSReportDataSetAttribute",
           "processReport",
-          "ConCustOverdueReportTmp"
+          "McpCustOverdueReportTmp"
         ]
       },
       {
         "name": "report with a DP dataset and a design",
-        "path": "/AxReport/ConCustOverdueReport\\.xml$",
-        "contains": ["<DataSourceType>ReportDataProvider</DataSourceType>", "ConCustOverdueReportDP", "<AxReportDesign\\b"]
+        "path": "/AxReport/McpCustOverdueReport\\.xml$",
+        "contains": ["<DataSourceType>ReportDataProvider</DataSourceType>", "McpCustOverdueReportDP", "<AxReportDesign\\b"]
       },
       {
         "name": "output menu item for the report",
-        "path": "/AxMenuItemOutput/ConCustOverdueReport\\.xml$",
-        "contains": ["ConCustOverdueReport"]
+        "path": "/AxMenuItemOutput/McpCustOverdueReport\\.xml$",
+        "contains": ["McpCustOverdueReport"]
       }
     ]
   },

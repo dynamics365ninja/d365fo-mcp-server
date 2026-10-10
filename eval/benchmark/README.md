@@ -19,7 +19,7 @@ eval/benchmark/
 npm run cli -- benchmark prompts                                   # the catalogue
 npm run cli -- benchmark run all --models sonnet,opus --repeat 3    # headless matrix via claude -p
 npm run cli -- benchmark run all --tag reference,daily --models sonnet,opus --repeat 3 \
-  --sandbox 'K:\AosService\PackagesLocalDirectory\fm-mcp' --mcp-servers d365fo-eval   # the sandbox suites
+  --sandbox 'K:\AosService\PackagesLocalDirectory\BenchmarkTestMcp' --mcp-config config/benchmark.mcp.json --mcp-servers d365fo-benchmark   # the sandbox suites
 npm run cli -- benchmark ingest <main.jsonl> --prompt <id>          # a Copilot Chat session
 npm run cli -- benchmark report --open                              # the report
 ```

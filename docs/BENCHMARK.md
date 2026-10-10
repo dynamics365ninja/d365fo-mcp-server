@@ -80,7 +80,13 @@ folder.
 
 A prompt with a `workspace` block (all three reference prompts) creates AOT
 objects, and only runs with `--sandbox <package folder>` — a throwaway package
-such as `K:\AosService\PackagesLocalDirectory\fm-mcp`, never a customer model.
+such as `K:\AosService\PackagesLocalDirectory\BenchmarkTestMcp`, never a customer model.
+Give it a name without a hyphen: on the first sandbox, `fm-mcp`, every extension
+an agent named by the standard convention (`SalesTable.fm-mcp`) was an invalid
+identifier and failed the build, and the label file id `fm-mcp` broke SSRS label
+expressions — failures a customer model never has. The VM's benchmark sandbox is
+`BenchmarkTestMcp` (object prefix `Mcp`) with its own server entry,
+`d365fo-benchmark` in `config/benchmark.mcp.json` (gitignored, like the eval config).
 Around the matrix and every cell the runner:
 
 1. **Checks the write target.** `--mcp-servers` selects the servers the with-MCP
@@ -204,9 +210,9 @@ would measure an older server than the `serverGitSha` on their records. Run
 # the write targets and every command without running a cell
 Remove-Item Env:D365FO_WORKSPACE_PATH -ErrorAction SilentlyContinue
 npm run cli -- benchmark run all --tag reference --dry-run `
-  --sandbox K:\AosService\PackagesLocalDirectory\fm-mcp --mcp-servers d365fo-eval
+  --sandbox K:\AosService\PackagesLocalDirectory\BenchmarkTestMcp --mcp-config config/benchmark.mcp.json --mcp-servers d365fo-benchmark
 npm run cli -- benchmark run all --tag reference,daily --models sonnet,opus --repeat 3 `
-  --sandbox K:\AosService\PackagesLocalDirectory\fm-mcp --mcp-servers d365fo-eval --label "v3"
+  --sandbox K:\AosService\PackagesLocalDirectory\BenchmarkTestMcp --mcp-config config/benchmark.mcp.json --mcp-servers d365fo-benchmark --label "v4"
 ```
 
 ### Recording a Copilot Chat session (`benchmark ingest`)
@@ -383,8 +389,8 @@ which the report shows as a separate configuration. To compare the two:
 ```powershell
 npm run cli -- benchmark run all --tag reference,daily --models sonnet,opus --repeat 3 --variants mcp `
   --no-mcp-instructions `
-  --sandbox K:\AosService\PackagesLocalDirectory\fm-mcp --mcp-servers d365fo-eval --label "server alone"
-npm run cli -- benchmark report --label "v3,v3 + instructions" --open   # a comma list compares labels
+  --sandbox K:\AosService\PackagesLocalDirectory\BenchmarkTestMcp --mcp-config config/benchmark.mcp.json --mcp-servers d365fo-benchmark --label "server alone"
+npm run cli -- benchmark report --label "v4,server alone" --open   # a comma list compares labels
 ```
 
 Open questions to settle there, in order: the `creditsPerUsd` reading against
