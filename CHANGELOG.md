@@ -95,6 +95,17 @@ those are called out explicitly below.
   the element, and an ambiguous or unknown control name writes nothing.
 
 ### Fixed
+- **`get_workspace_info` no longer waits 5 s for a `.rnrproj` scan it does not
+  need.** When `D365FO_MODEL_NAME` or the config names the model, the first call
+  answered only after the background project scan — and with the server started
+  in a folder that holds no `.rnrproj` (a package folder, a CLI session outside
+  the solution), that scan fell back to every package under
+  PackagesLocalDirectory (7.5 s on the dev VM, nothing found), so the call hit
+  its 5 s cap on every session. It now answers at once (0.2 s, measured) and
+  reports the project as still being detected; the scan finishes in the
+  background. When nothing names the model the call still waits, since the scan
+  is how the model is found. The fallback scan itself now covers only the
+  detected model's package instead of the whole root.
 - **The form element-order check no longer reports an empty element as unknown
   (#1093).** Microsoft's own `CustInvoiceJournal.ApplicationSuite_Extension`
   (ApplicationSuite 10.36) writes an empty `<Items />` on a string control, so

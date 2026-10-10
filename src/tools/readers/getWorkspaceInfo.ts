@@ -86,6 +86,7 @@ export async function getWorkspaceInfoTool(
     projectPath, projectSource, ambiguousProjects,
     packagePath, packageSource,
     customPackagesPath, customPackagesSource,
+    projectDetectionPending,
   } = await configManager.getWorkspaceInfoDiagnostics();
   const envType = await configManager.getDevEnvironmentType();
   const frameworkDirectory = await configManager.getMicrosoftPackagesPath();
@@ -136,7 +137,11 @@ export async function getWorkspaceInfoTool(
   // to spend another call on diagnostics=true just to learn what to pass.
   const projectDisplay = projectPath ?? (ambiguousProjects.length > 1
     ? `(not selected — ${ambiguousProjects.length} projects build this model; pass projectName to pick one)`
-    : '(not detected)');
+    : projectDetectionPending
+      // Not a problem to fix: the model is configured, so writes are already
+      // targeted; the .rnrproj scan is still running in the background.
+      ? '(still detecting — writes do not need it; the model is configured)'
+      : '(not detected)');
 
   const lines: string[] = diagnostics
     ? [
