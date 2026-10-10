@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T10-24__ref-credit-hold-extension__claude-code__claude-opus-5-5__plain__b81749",
+  "timestamp": "2026-10-10T10:24:52.541Z",
+  "promptId": "ref-credit-hold-extension",
+  "promptHash": "4019f14c8d09",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v4",
+  "durationMs": 148206,
+  "apiMs": 120583,
+  "requests": 27,
+  "toolCalls": 26,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 3,
+    "Read": 8,
+    "Grep": 7,
+    "Write": 6,
+    "Bash": 1
+  },
+  "inputTokens": 736175,
+  "cachedTokens": 697590,
+  "outputTokens": 10364,
+  "hostCost": {
+    "value": 0.655334,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 65.5334,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches McpCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "matches SalesTableMcpCreditHold_Extension",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum McpCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: 3 fields + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustTable form extension shows the group",
+      "passed": true
+    },
+    {
+      "name": "file ModifiedField event handler",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable CoC on validateWrite",
+      "passed": true
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1475,
+  "resultExcerpt": "The model builds with 0 errors (xppc full build plus labels, 16 s). The script only prints errors, so I haven't seen any warnings. I also haven't run anything in a live environment.\n\nObjects created or changed:\n- `AxEnum\\McpCreditHoldReason`: new extensible enum with None (the default, value 0), OverdueInvoices, DisputedBalance and ManualReview.\n- `AxTableExtension\\CustTable.BenchmarkTestMcp`: new",
+  "notes": "1 permission denial(s): PowerShell",
+  "evidence": {
+    "sessionId": "609dcbaf-4d05-4e3d-9904-ee6968b441a5",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxClass/McpCustTableEventHandler.xml",
+    "BenchmarkTestMcp/AxClass/SalesTableMcpCreditHold_Extension.xml",
+    "BenchmarkTestMcp/AxEnum/McpCreditHoldReason.xml",
+    "BenchmarkTestMcp/AxFormExtension/CustTable.BenchmarkTestMcp.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.BenchmarkTestMcp.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 15373
+  },
+  "rework": {
+    "toolErrors": 1,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 6,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

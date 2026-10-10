@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T11-10__daily-credit-limit-trace__claude-code__claude-opus-5-5__mcp__5d0793",
+  "timestamp": "2026-10-10T11:10:25.825Z",
+  "promptId": "daily-credit-limit-trace",
+  "promptHash": "48edfe0c4c84",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "ecf7da5b",
+  "label": "v4",
+  "durationMs": 104177,
+  "apiMs": 76329,
+  "requests": 26,
+  "toolCalls": 25,
+  "mcpToolCalls": 7,
+  "tools": {
+    "ToolSearch": 1,
+    "mcp__d365fo-benchmark__get_workspace_info": 1,
+    "mcp__d365fo-benchmark__search": 1,
+    "mcp__d365fo-benchmark__get_object_info": 3,
+    "mcp__d365fo-benchmark__find_references": 2,
+    "Grep": 9,
+    "Read": 8
+  },
+  "inputTokens": 580119,
+  "cachedTokens": 540306,
+  "outputTokens": 6115,
+  "hostCost": {
+    "value": 0.5487692,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 54.87692,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches \\bCustCreditLimit\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(checkAgainstCreditLimit|checkCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\bSalesFormletterProvider\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(creditMaxOk|mustCheckCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches (CustCreditLimit\\W{1,3}(check|checkGivenBalances)\\b|\\bcheckGivenBalances\\b)",
+      "passed": true
+    }
+  ],
+  "resultChars": 3311,
+  "resultExcerpt": "I traced the standard path in ApplicationSuite\\Foundation. I wrote or changed nothing.\n\n**1. Class and deciding method**\n- The class is **`CustCreditLimit`**. `CustCreditLimit::construct(_buffer, _salesTotals)` returns a subclass based on the buffer: `CustCreditLimit_SalesTable`, `CustCreditLimit_SalesParmTable`, `CustCreditLimit_CustInvoiceTable`, or `CustCreditLimit` itself for `CustTable`. When",
+  "notes": null,
+  "evidence": {
+    "sessionId": "9d5e9be1-a422-4ec6-859b-b8e18fe787af",
+    "logPath": null
+  },
+  "rework": {
+    "toolErrors": 0,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {},
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 0,
+    "rewrites": 0
+  }
+}

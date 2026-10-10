@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T10-05__daily-entity-field__claude-code__claude-opus-5-5__mcp__e4a28e",
+  "timestamp": "2026-10-10T10:05:56.048Z",
+  "promptId": "daily-entity-field",
+  "promptHash": "4576bc73488d",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "ecf7da5b",
+  "label": "v4",
+  "durationMs": 81764,
+  "apiMs": 55933,
+  "requests": 21,
+  "toolCalls": 20,
+  "mcpToolCalls": 9,
+  "tools": {
+    "ToolSearch": 1,
+    "mcp__d365fo-benchmark__get_workspace_info": 1,
+    "mcp__d365fo-benchmark__search": 1,
+    "Bash": 3,
+    "mcp__d365fo-benchmark__get_object_info": 1,
+    "mcp__d365fo-benchmark__get_knowledge": 1,
+    "mcp__d365fo-benchmark__labels": 1,
+    "mcp__d365fo-benchmark__d365fo_file": 4,
+    "Read": 4,
+    "PowerShell": 3
+  },
+  "inputTokens": 664825,
+  "cachedTokens": 629967,
+  "outputTokens": 5368,
+  "hostCost": {
+    "value": 0.5121054,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 51.21054,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches CustCustomerV3Entity",
+      "passed": true
+    },
+    {
+      "name": "file EDT McpCustSegmentCode, 15 characters",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: field + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Entity extension maps the field",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Staging extension: the field",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1885,
+  "resultExcerpt": "The model builds with 0 errors (the full xppc build of labels and model passed in 14 s). The data entity I extended is **`CustCustomerV3Entity`**, the current customers entity: public collection `CustomersV3`, enabled for Data management and OData, with staging table `CustCustomerV3Staging`.\n\nObjects created or changed in `BenchmarkTestMcp`:\n- `BenchmarkTestMcp` label file (changed): added labels ",
+  "notes": "2 permission denial(s): Bash, PowerShell",
+  "evidence": {
+    "sessionId": "14f293f3-a081-4c34-868d-6de8e165a678",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxDataEntityViewExtension/CustCustomerV3Entity.McpExtension.xml",
+    "BenchmarkTestMcp/AxDataEntityViewExtension/CustCustomerV3Entity.McpExtension.xml.backup-2026-10-10T10-06-42-678",
+    "BenchmarkTestMcp/AxEdt/McpCustSegmentCode.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustCustomerV3Staging.McpExtension.xml",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpExtension.xml",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpExtension.xml.backup-2026-10-10T10-06-40-327"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 13420
+  },
+  "rework": {
+    "toolErrors": 2,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "Bash": 1,
+      "PowerShell": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 4,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

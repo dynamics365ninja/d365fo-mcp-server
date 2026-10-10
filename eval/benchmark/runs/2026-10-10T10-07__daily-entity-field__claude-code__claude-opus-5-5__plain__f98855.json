@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T10-07__daily-entity-field__claude-code__claude-opus-5-5__plain__f98855",
+  "timestamp": "2026-10-10T10:07:42.656Z",
+  "promptId": "daily-entity-field",
+  "promptHash": "4576bc73488d",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v4",
+  "durationMs": 78092,
+  "apiMs": 49744,
+  "requests": 17,
+  "toolCalls": 16,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 4,
+    "Read": 4,
+    "Grep": 1,
+    "Write": 5,
+    "Bash": 1
+  },
+  "inputTokens": 249861,
+  "cachedTokens": 230191,
+  "outputTokens": 4528,
+  "hostCost": {
+    "value": 0.2938942,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 29.38942,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches CustCustomerV3Entity",
+      "passed": true
+    },
+    {
+      "name": "file EDT McpCustSegmentCode, 15 characters",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: field + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Entity extension maps the field",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Staging extension: the field",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1438,
+  "resultExcerpt": "I extended **CustCustomerV3Entity**, the standard customers entity (public name `CustomerV3`, OData collection `CustomersV3`). It's the current version; the only other one is the older V2. The model builds with 0 errors. I haven't run an actual import, export or OData call, only the build.\n\nObjects created or changed:\n- `AxEdt\\McpCustSegmentCode`: new string EDT, 15 characters, with a label and he",
+  "notes": "1 permission denial(s): PowerShell",
+  "evidence": {
+    "sessionId": "0d6f149e-ed21-47b6-9926-ab8a506d7954",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxDataEntityViewExtension/CustCustomerV3Entity.BenchmarkTestMcp.xml",
+    "BenchmarkTestMcp/AxEdt/McpCustSegmentCode.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustCustomerV3Staging.BenchmarkTestMcp.xml",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.BenchmarkTestMcp.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 15001
+  },
+  "rework": {
+    "toolErrors": 1,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 5,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

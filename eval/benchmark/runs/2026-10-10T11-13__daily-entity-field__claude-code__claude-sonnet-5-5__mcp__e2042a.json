@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T11-13__daily-entity-field__claude-code__claude-sonnet-5-5__mcp__e2042a",
+  "timestamp": "2026-10-10T11:13:52.668Z",
+  "promptId": "daily-entity-field",
+  "promptHash": "4576bc73488d",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "ecf7da5b",
+  "label": "v4",
+  "durationMs": 75440,
+  "apiMs": 41924,
+  "requests": 24,
+  "toolCalls": 23,
+  "mcpToolCalls": 14,
+  "tools": {
+    "ToolSearch": 1,
+    "mcp__d365fo-benchmark__get_workspace_info": 1,
+    "mcp__d365fo-benchmark__search": 2,
+    "Bash": 2,
+    "mcp__d365fo-benchmark__get_object_info": 2,
+    "Glob": 1,
+    "mcp__d365fo-benchmark__labels": 2,
+    "mcp__d365fo-benchmark__get_knowledge": 2,
+    "mcp__d365fo-benchmark__d365fo_file": 5,
+    "Read": 3,
+    "Grep": 1,
+    "PowerShell": 1
+  },
+  "inputTokens": 805634,
+  "cachedTokens": 765333,
+  "outputTokens": 5212,
+  "hostCost": {
+    "value": 0.2897933,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 28.97933,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches CustCustomerV3Entity",
+      "passed": true
+    },
+    {
+      "name": "file EDT McpCustSegmentCode, 15 characters",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: field + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Entity extension maps the field",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Staging extension: the field",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1167,
+  "resultExcerpt": "The build ran with 0 errors and the model compiled. The entity I extended is **`CustCustomerV3Entity`** (Customers V3, the current version; V2 is the older one).\n\n**Created**\n- `McpCustSegmentCode`: string EDT, 15 characters, with label and help text.\n- `CustTable.McpExtension`: table extension on `CustTable` with field `McpCustSegmentCode` and new field group `McpSegment` containing it.\n- `CustCu",
+  "notes": "1 permission denial(s): Bash",
+  "evidence": {
+    "sessionId": "7e47ca85-3090-417a-831a-6b688fd9e610",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxDataEntityViewExtension/CustCustomerV3Entity.McpExtension.xml",
+    "BenchmarkTestMcp/AxEdt/McpCustSegmentCode.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustCustomerV3Staging.McpExtension.xml",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpExtension.xml",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpExtension.xml.backup-2026-10-10T11-14-32-646"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 13936
+  },
+  "rework": {
+    "toolErrors": 3,
+    "mcpToolErrors": 2,
+    "toolErrorsByTool": {
+      "Bash": 1,
+      "mcp__d365fo-benchmark__labels": 1,
+      "mcp__d365fo-benchmark__get_object_info": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 5,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

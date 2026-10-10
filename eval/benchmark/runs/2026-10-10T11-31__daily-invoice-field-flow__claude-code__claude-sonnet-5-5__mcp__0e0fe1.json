@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T11-31__daily-invoice-field-flow__claude-code__claude-sonnet-5-5__mcp__0e0fe1",
+  "timestamp": "2026-10-10T11:31:01.710Z",
+  "promptId": "daily-invoice-field-flow",
+  "promptHash": "90cb6da31899",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "ecf7da5b",
+  "label": "v4",
+  "durationMs": 231112,
+  "apiMs": 54955,
+  "requests": 26,
+  "toolCalls": 25,
+  "mcpToolCalls": 19,
+  "tools": {
+    "ToolSearch": 1,
+    "mcp__d365fo-benchmark__get_workspace_info": 1,
+    "mcp__d365fo-benchmark__search": 1,
+    "mcp__d365fo-benchmark__get_object_info": 5,
+    "Grep": 2,
+    "mcp__d365fo-benchmark__get_knowledge": 1,
+    "mcp__d365fo-benchmark__labels": 3,
+    "mcp__d365fo-benchmark__d365fo_file": 8,
+    "Bash": 1,
+    "PowerShell": 2
+  },
+  "inputTokens": 1210126,
+  "cachedTokens": 1145262,
+  "outputTokens": 6294,
+  "hostCost": {
+    "value": 0.43685419999999997,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 43.68542,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches initFromSalesTable|initFromSalesParmTable|initInvoiceHeaderFromSourceTable|initJournalHeader",
+      "passed": true
+    },
+    {
+      "name": "file EDT McpProjectCode, 20 characters",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable extension: the field",
+      "passed": true
+    },
+    {
+      "name": "file CustInvoiceJour extension: the field",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable form extension shows it",
+      "passed": true
+    },
+    {
+      "name": "file CustInvoiceJournal form extension shows it",
+      "passed": true
+    },
+    {
+      "name": "file CoC on the method that initializes the invoice header",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1614,
+  "resultExcerpt": "The build passes with 0 errors, and I'm leaving the two backup files alone because deleting them was denied.\n\n**Objects created (all in model `BenchmarkTestMcp`):**\n- `@BenchmarkTestMcp:ProjectCode`: new label \"Project code\" in label file `BenchmarkTestMcp`.\n- `McpProjectCode` (AxEdt): string EDT, 20 characters, labelled with `@BenchmarkTestMcp:ProjectCode`.\n- `SalesTable.McpExtension` (AxTableExt",
+  "notes": "2 permission denial(s): Bash, PowerShell",
+  "evidence": {
+    "sessionId": "c1cbff91-78c9-4c6d-978c-af314c6b763d",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxClass/CustInvoiceJourMcp_Extension.xml",
+    "BenchmarkTestMcp/AxEdt/McpProjectCode.xml",
+    "BenchmarkTestMcp/AxFormExtension/CustInvoiceJournal.McpExtension.xml",
+    "BenchmarkTestMcp/AxFormExtension/CustInvoiceJournal.McpExtension.xml.backup-2026-10-10T11-32-24-541",
+    "BenchmarkTestMcp/AxFormExtension/SalesTable.McpExtension.xml",
+    "BenchmarkTestMcp/AxFormExtension/SalesTable.McpExtension.xml.backup-2026-10-10T11-32-19-213",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustInvoiceJour.McpExtension.xml",
+    "BenchmarkTestMcp/AxTableExtension/SalesTable.McpExtension.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 167767
+  },
+  "rework": {
+    "toolErrors": 4,
+    "mcpToolErrors": 2,
+    "toolErrorsByTool": {
+      "mcp__d365fo-benchmark__labels": 2,
+      "Bash": 1,
+      "PowerShell": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 8,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

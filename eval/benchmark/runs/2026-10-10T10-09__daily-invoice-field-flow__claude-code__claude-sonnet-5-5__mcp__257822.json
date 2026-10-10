@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T10-09__daily-invoice-field-flow__claude-code__claude-sonnet-5-5__mcp__257822",
+  "timestamp": "2026-10-10T10:09:25.129Z",
+  "promptId": "daily-invoice-field-flow",
+  "promptHash": "90cb6da31899",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "ecf7da5b",
+  "label": "v4",
+  "durationMs": 77303,
+  "apiMs": 44108,
+  "requests": 25,
+  "toolCalls": 24,
+  "mcpToolCalls": 18,
+  "tools": {
+    "ToolSearch": 1,
+    "mcp__d365fo-benchmark__get_workspace_info": 1,
+    "mcp__d365fo-benchmark__search": 1,
+    "mcp__d365fo-benchmark__get_object_info": 3,
+    "Grep": 1,
+    "mcp__d365fo-benchmark__get_knowledge": 1,
+    "mcp__d365fo-benchmark__labels": 3,
+    "mcp__d365fo-benchmark__d365fo_file": 9,
+    "Read": 1,
+    "PowerShell": 1,
+    "Bash": 2
+  },
+  "inputTokens": 931075,
+  "cachedTokens": 882458,
+  "outputTokens": 5478,
+  "hostCost": {
+    "value": 0.3374298,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 33.74298,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches initFromSalesTable|initFromSalesParmTable|initInvoiceHeaderFromSourceTable|initJournalHeader",
+      "passed": true
+    },
+    {
+      "name": "file EDT McpProjectCode, 20 characters",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable extension: the field",
+      "passed": true
+    },
+    {
+      "name": "file CustInvoiceJour extension: the field",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable form extension shows it",
+      "passed": true
+    },
+    {
+      "name": "file CustInvoiceJournal form extension shows it",
+      "passed": true
+    },
+    {
+      "name": "file CoC on the method that initializes the invoice header",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1242,
+  "resultExcerpt": "The full build finished with 0 errors.\n\n**Objects created** (all in `BenchmarkTestMcp`):\n- Label file `BenchmarkTestMcp`: `ProjectCode` (\"Project code\") and `ProjectCodeHelp` (\"The customer's project code.\").\n- `McpProjectCode` (EDT): string, 20 characters, with the label and help text above.\n- `SalesTable.McpExtension` (table extension): adds field `McpProjectCode`.\n- `CustInvoiceJour.McpExtensio",
+  "notes": "2 permission denial(s): PowerShell, Bash",
+  "evidence": {
+    "sessionId": "3e9dab55-0ee6-4434-b52d-ea79ff09ecfd",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxClass/CustInvoiceJourMcp_Extension.xml",
+    "BenchmarkTestMcp/AxClass/CustInvoiceJourMcp_Extension.xml.backup-2026-10-10T10-10-13-749",
+    "BenchmarkTestMcp/AxEdt/McpProjectCode.xml",
+    "BenchmarkTestMcp/AxFormExtension/CustInvoiceJournal.McpExtension.xml",
+    "BenchmarkTestMcp/AxFormExtension/CustInvoiceJournal.McpExtension.xml.backup-2026-10-10T10-10-16-095",
+    "BenchmarkTestMcp/AxFormExtension/SalesTable.McpExtension.xml",
+    "BenchmarkTestMcp/AxFormExtension/SalesTable.McpExtension.xml.backup-2026-10-10T10-10-15-262",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustInvoiceJour.McpExtension.xml",
+    "BenchmarkTestMcp/AxTableExtension/SalesTable.McpExtension.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 16003
+  },
+  "rework": {
+    "toolErrors": 4,
+    "mcpToolErrors": 2,
+    "toolErrorsByTool": {
+      "mcp__d365fo-benchmark__labels": 2,
+      "PowerShell": 1,
+      "Bash": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 9,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}
