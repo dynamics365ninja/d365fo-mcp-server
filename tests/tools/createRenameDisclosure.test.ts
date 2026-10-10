@@ -232,3 +232,60 @@ class ${name} extends SysTestCase
     expect([...files.keys()].filter(k => k.endsWith('.xml'))).toEqual([]);
   });
 });
+
+/**
+ * Two defects the model × MCP benchmark found on 2026-10-10 (ref-credit-hold-extension),
+ * both of which cost the with-MCP cells a check the cells without MCP passed.
+ */
+describe('create, as the benchmark agents called it', () => {
+  it('writes {Base}{Token}{Feature}_Extension as asked when [ExtensionOf] names the base', async () => {
+    // Was renamed to SalesTableCtsoCreditHoldCtso_Extension — on every create.
+    const result = await handleCreateD365File(
+      req('class', 'SalesTableCtsoCreditHold_Extension', {
+        sourceCode:
+          '[ExtensionOf(tableStr(SalesTable))]\n' +
+          'final class SalesTableCtsoCreditHold_Extension\n{\n}',
+      }),
+      buildContext(),
+    );
+
+    const text = result.content[0].text as string;
+    expect(result.isError).toBeFalsy();
+    expect(createObject).toHaveBeenCalledWith(
+      expect.objectContaining({ objectName: 'SalesTableCtsoCreditHold_Extension' }),
+    );
+    expect(text).not.toContain('🔖');
+  });
+
+  it('gives caller XML for a form extension the metadata namespace, and says so', async () => {
+    const asSent = `<?xml version="1.0" encoding="utf-8"?>
+<AxFormExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+\t<Name>CustTable.CtsoExtension</Name>
+\t<Controls>
+\t\t<AxFormExtensionControl>
+\t\t\t<Name>CtsoCreditHold</Name>
+\t\t\t<FormControl xmlns="" i:type="AxFormGroupControl">
+\t\t\t\t<Name>CtsoCreditHold</Name>
+\t\t\t\t<Type>Group</Type>
+\t\t\t\t<FormControlExtension i:nil="true" />
+\t\t\t\t<DataGroup>CtsoCreditHold</DataGroup>
+\t\t\t\t<DataSource>CustTable</DataSource>
+\t\t\t</FormControl>
+\t\t\t<Parent>TabCredit</Parent>
+\t\t</AxFormExtensionControl>
+\t</Controls>
+\t<DataSources />
+</AxFormExtension>`;
+    const result = await handleCreateD365File(
+      req('form-extension', 'CustTable.CtsoExtension', { xmlContent: asSent }),
+      buildContext(),
+    );
+
+    const text = result.content[0].text as string;
+    expect(result.isError).toBeFalsy();
+    const written = [...files.entries()].find(([p]) => p.endsWith('CustTable.CtsoExtension.xml'))?.[1] ?? '';
+    expect(written).toContain('xmlns="Microsoft.Dynamics.AX.Metadata.V6"');
+    expect(written).toContain('<AxFormExtensionControl xmlns="">');
+    expect(text).toMatch(/🔧 Added xmlns="Microsoft\.Dynamics\.AX\.Metadata\.V6"/);
+  });
+});
