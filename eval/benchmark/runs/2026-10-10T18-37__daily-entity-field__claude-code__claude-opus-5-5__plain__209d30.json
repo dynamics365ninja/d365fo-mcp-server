@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T18-37__daily-entity-field__claude-code__claude-opus-5-5__plain__209d30",
+  "timestamp": "2026-10-10T18:37:50.094Z",
+  "promptId": "daily-entity-field",
+  "promptHash": "4576bc73488d",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v4",
+  "durationMs": 93729,
+  "apiMs": 53666,
+  "requests": 24,
+  "toolCalls": 23,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 6,
+    "Read": 8,
+    "Grep": 2,
+    "Write": 5,
+    "Bash": 1
+  },
+  "inputTokens": 495332,
+  "cachedTokens": 463283,
+  "outputTokens": 5693,
+  "hostCost": {
+    "value": 0.4628046,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 46.28046,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches CustCustomerV3Entity",
+      "passed": true
+    },
+    {
+      "name": "file EDT McpCustSegmentCode, 15 characters",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: field + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Entity extension maps the field",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Staging extension: the field",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1547,
+  "resultExcerpt": "I added the segment code to customers and to the current standard customers entity, and the model builds with 0 errors. The full xppc build ran on the first try. I haven't tested an import, export or OData call against a running environment.\n\n**Entity extended:** `CustCustomerV3Entity` (OData: `CustomerV3` / `CustomersV3`). It's the current version; `CustCustomerV2Entity` is the older one.\n\n**Obje",
+  "notes": "1 permission denial(s): PowerShell",
+  "evidence": {
+    "sessionId": "ba9a45aa-7472-4988-8dc3-11bc1b970e94",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxDataEntityViewExtension/CustCustomerV3Entity.BenchmarkTestMcp.xml",
+    "BenchmarkTestMcp/AxEdt/McpCustSegmentCode.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustCustomerV3Staging.BenchmarkTestMcp.xml",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.BenchmarkTestMcp.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 15101
+  },
+  "rework": {
+    "toolErrors": 1,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 5,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T18-48__ref-credit-hold-extension__claude-code__claude-sonnet-5-5__mcp__e2ec89",
+  "timestamp": "2026-10-10T18:48:07.037Z",
+  "promptId": "ref-credit-hold-extension",
+  "promptHash": "4019f14c8d09",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "ec79b368",
+  "label": "v4",
+  "durationMs": 99247,
+  "apiMs": 69320,
+  "requests": 26,
+  "toolCalls": 25,
+  "mcpToolCalls": 18,
+  "tools": {
+    "ToolSearch": 1,
+    "mcp__d365fo-benchmark__get_workspace_info": 1,
+    "mcp__d365fo-benchmark__get_knowledge": 2,
+    "mcp__d365fo-benchmark__labels": 2,
+    "mcp__d365fo-benchmark__d365fo_file": 11,
+    "mcp__d365fo-benchmark__prepare": 1,
+    "Read": 3,
+    "mcp__d365fo-benchmark__get_object_info": 1,
+    "Grep": 1,
+    "PowerShell": 1,
+    "Bash": 1
+  },
+  "inputTokens": 1202810,
+  "cachedTokens": 1158373,
+  "outputTokens": 9305,
+  "hostCost": {
+    "value": 0.3865432999999999,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 38.65433,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 0.9090909090909091,
+  "checks": [
+    {
+      "name": "matches McpCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "matches SalesTableMcpCreditHold_Extension",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum McpCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: 3 fields + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustTable form extension shows the group",
+      "passed": true
+    },
+    {
+      "name": "file ModifiedField event handler",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable CoC on validateWrite",
+      "passed": false
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1687,
+  "resultExcerpt": "The model builds with 0 errors, but the CoC class is named `SalesTableMcpCreditHoldMcp_Extension` instead of the required `SalesTableMcpCreditHold_Extension`, and it needs your decision.\n\nThe `d365fo_file` tool injects the `Mcp` prefix into extension class names and ignores the requested name, even when the XML is supplied verbatim. I tried to rename the file with PowerShell, which was denied in t",
+  "notes": "1 permission denial(s): PowerShell",
+  "evidence": {
+    "sessionId": "612eaea2-613a-46a1-bedc-6b1c4edbad8c",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxClass/McpCustTableEventHandler.xml",
+    "BenchmarkTestMcp/AxClass/SalesTableMcpCreditHoldMcp_Extension.xml",
+    "BenchmarkTestMcp/AxEnum/McpCreditHoldReason.xml",
+    "BenchmarkTestMcp/AxFormExtension/CustTable.McpExtension.xml",
+    "BenchmarkTestMcp/AxFormExtension/CustTable.McpExtension.xml.backup-2026-10-10T18-48-42-644",
+    "BenchmarkTestMcp/AxFormExtension/CustTable.McpExtension.xml.backup-2026-10-10T18-48-48-047",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpExtension.xml",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpExtension.xml.backup-2026-10-10T18-48-34-598",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpExtension.xml.backup-2026-10-10T18-48-34-621"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 16393
+  },
+  "rework": {
+    "toolErrors": 4,
+    "mcpToolErrors": 3,
+    "toolErrorsByTool": {
+      "mcp__d365fo-benchmark__labels": 1,
+      "mcp__d365fo-benchmark__prepare": 1,
+      "mcp__d365fo-benchmark__d365fo_file": 1,
+      "PowerShell": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 9,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

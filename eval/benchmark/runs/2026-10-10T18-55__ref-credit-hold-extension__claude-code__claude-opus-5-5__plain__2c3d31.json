@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T18-55__ref-credit-hold-extension__claude-code__claude-opus-5-5__plain__2c3d31",
+  "timestamp": "2026-10-10T18:55:32.119Z",
+  "promptId": "ref-credit-hold-extension",
+  "promptHash": "4019f14c8d09",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v4",
+  "durationMs": 118126,
+  "apiMs": 90004,
+  "requests": 20,
+  "toolCalls": 19,
+  "mcpToolCalls": 0,
+  "tools": {
+    "Bash": 8,
+    "Read": 3,
+    "Grep": 1,
+    "Write": 6,
+    "PowerShell": 1
+  },
+  "inputTokens": 521454,
+  "cachedTokens": 488313,
+  "outputTokens": 10465,
+  "hostCost": {
+    "value": 0.5719786,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 57.19786,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches McpCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "matches SalesTableMcpCreditHold_Extension",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum McpCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: 3 fields + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustTable form extension shows the group",
+      "passed": true
+    },
+    {
+      "name": "file ModifiedField event handler",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable CoC on validateWrite",
+      "passed": true
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1753,
+  "resultExcerpt": "The model builds with xppc: **0 errors**, using the build command you gave.\n\nObjects created or changed in `BenchmarkTestMcp`:\n\n- **AxLabelFile `BenchmarkTestMcp` (en-US)** (changed): added the labels McpCreditHold, McpCreditHoldReason, McpCreditHoldReasonHelp, McpCreditHoldNone, McpCreditHoldOverdueInvoices, McpCreditHoldDisputedBalance, McpCreditHoldManualReview, McpCreditHoldNote, McpCreditHold",
+  "notes": "2 permission denial(s): Bash, PowerShell",
+  "evidence": {
+    "sessionId": "f4e43330-f528-4cd1-9b13-ab6304ec83f0",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxClass/McpCustTableEventHandler.xml",
+    "BenchmarkTestMcp/AxClass/SalesTableMcpCreditHold_Extension.xml",
+    "BenchmarkTestMcp/AxEnum/McpCreditHoldReason.xml",
+    "BenchmarkTestMcp/AxFormExtension/CustTable.BenchmarkTestMcp.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.BenchmarkTestMcp.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 15882
+  },
+  "rework": {
+    "toolErrors": 2,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "Bash": 1,
+      "PowerShell": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 6,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T19-38__ref-credit-hold-extension__claude-code__claude-sonnet-5-5__mcp__adeada",
+  "timestamp": "2026-10-10T19:38:09.928Z",
+  "promptId": "ref-credit-hold-extension",
+  "promptHash": "4019f14c8d09",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "ec79b368",
+  "label": "v4",
+  "durationMs": 79758,
+  "apiMs": 72788,
+  "requests": 25,
+  "toolCalls": 24,
+  "mcpToolCalls": 18,
+  "tools": {
+    "ToolSearch": 1,
+    "Bash": 4,
+    "mcp__d365fo-benchmark__get_workspace_info": 1,
+    "mcp__d365fo-benchmark__get_knowledge": 3,
+    "mcp__d365fo-benchmark__labels": 2,
+    "mcp__d365fo-benchmark__d365fo_file": 11,
+    "mcp__d365fo-benchmark__get_object_info": 1,
+    "Read": 1
+  },
+  "inputTokens": 972296,
+  "cachedTokens": 931583,
+  "outputTokens": 10305,
+  "hostCost": {
+    "value": 0.3589883,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 35.89883,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 0.8181818181818182,
+  "checks": [
+    {
+      "name": "matches McpCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "matches SalesTableMcpCreditHold_Extension",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum McpCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: 3 fields + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustTable form extension shows the group",
+      "passed": true
+    },
+    {
+      "name": "file ModifiedField event handler",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable CoC on validateWrite",
+      "passed": false
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": false
+    }
+  ],
+  "resultChars": 2062,
+  "resultExcerpt": "I couldn't run the build, so the model is not verified to compile. The shell denied the command (don't-ask mode) that deletes the two backup files and then runs `benchmarkSandboxBuild.mjs`. I did not retry it through PowerShell, because that would sidestep the denial.\n\nOne requirement is also not met: the Chain of Command class is named `SalesTableMcpCreditHoldMcp_Extension`, not `SalesTableMcpCre",
+  "notes": "1 permission denial(s): Bash",
+  "evidence": {
+    "sessionId": "f85343bf-862b-4b71-b33c-ae6e46560041",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxClass/McpCustTableEventHandler.xml",
+    "BenchmarkTestMcp/AxClass/SalesTableMcpCreditHoldMcp_Extension.xml",
+    "BenchmarkTestMcp/AxEnum/McpCreditHoldReason.xml",
+    "BenchmarkTestMcp/AxFormExtension/CustTable.McpExtension.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpExtension.xml",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpExtension.xml.backup-2026-10-10T19-38-37-754",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpExtension.xml.backup-2026-10-10T19-38-38-149"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 13408
+  },
+  "rework": {
+    "toolErrors": 3,
+    "mcpToolErrors": 2,
+    "toolErrorsByTool": {
+      "mcp__d365fo-benchmark__labels": 1,
+      "mcp__d365fo-benchmark__d365fo_file": 1,
+      "Bash": 1
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 8,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 2,
+      "warnings": 0,
+      "findings": [
+        "BestPractices Error: Error reading FormExtension 'CustTable.McpExtension'.",
+        "BestPractices Error: FormExtension 'CustTable.McpExtension' not found."
+      ]
+    }
+  }
+}

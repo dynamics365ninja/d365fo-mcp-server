@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T18-43__daily-invoice-field-flow__claude-code__claude-opus-5-5__mcp__f4b7a0",
+  "timestamp": "2026-10-10T18:43:21.478Z",
+  "promptId": "daily-invoice-field-flow",
+  "promptHash": "90cb6da31899",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "ec79b368",
+  "label": "v4",
+  "durationMs": 100917,
+  "apiMs": 72091,
+  "requests": 25,
+  "toolCalls": 24,
+  "mcpToolCalls": 12,
+  "tools": {
+    "ToolSearch": 1,
+    "Glob": 2,
+    "mcp__d365fo-benchmark__get_workspace_info": 1,
+    "Read": 6,
+    "mcp__d365fo-benchmark__get_object_info": 3,
+    "Grep": 1,
+    "mcp__d365fo-benchmark__get_knowledge": 1,
+    "mcp__d365fo-benchmark__labels": 1,
+    "mcp__d365fo-benchmark__d365fo_file": 6,
+    "PowerShell": 1,
+    "Bash": 1
+  },
+  "inputTokens": 1284281,
+  "cachedTokens": 1215803,
+  "outputTokens": 6752,
+  "hostCost": {
+    "value": 0.9258806000000002,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 92.58806,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches initFromSalesTable|initFromSalesParmTable|initInvoiceHeaderFromSourceTable|initJournalHeader",
+      "passed": true
+    },
+    {
+      "name": "file EDT McpProjectCode, 20 characters",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable extension: the field",
+      "passed": true
+    },
+    {
+      "name": "file CustInvoiceJour extension: the field",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable form extension shows it",
+      "passed": true
+    },
+    {
+      "name": "file CustInvoiceJournal form extension shows it",
+      "passed": true
+    },
+    {
+      "name": "file CoC on the method that initializes the invoice header",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1964,
+  "resultExcerpt": "The model builds with zero errors. I ran the sandbox build script you gave me: \"Build succeeded in 16 s — 0 errors.\"\n\n**Objects created or changed** (all in `BenchmarkTestMcp`):\n- **Label file `BenchmarkTestMcp`** (changed): added `@BenchmarkTestMcp:ProjectCode` (\"Project code\") and `@BenchmarkTestMcp:ProjectCodeHelp` (\"The customer's project code for the order.\").\n- **EDT `McpProjectCode`** (new)",
+  "notes": "1 permission denial(s): PowerShell",
+  "evidence": {
+    "sessionId": "51bcaab7-5468-4dd2-873e-b778a3f0618c",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxClass/CustInvoiceJourMcp_Extension.xml",
+    "BenchmarkTestMcp/AxEdt/McpProjectCode.xml",
+    "BenchmarkTestMcp/AxFormExtension/CustInvoiceJournal.McpExtension.xml",
+    "BenchmarkTestMcp/AxFormExtension/CustInvoiceJournal.McpExtension.xml.backup-2026-10-10T18-44-19-511",
+    "BenchmarkTestMcp/AxFormExtension/CustInvoiceJournal.McpExtension.xml.backup-2026-10-10T18-44-20-154",
+    "BenchmarkTestMcp/AxFormExtension/SalesTable.McpExtension.xml",
+    "BenchmarkTestMcp/AxFormExtension/SalesTable.McpExtension.xml.backup-2026-10-10T18-44-17-853",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustInvoiceJour.McpExtension.xml",
+    "BenchmarkTestMcp/AxTableExtension/SalesTable.McpExtension.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 16400
+  },
+  "rework": {
+    "toolErrors": 1,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 6,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

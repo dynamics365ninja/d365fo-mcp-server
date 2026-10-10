@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T18-34__daily-entity-field__claude-code__claude-sonnet-5-5__plain__f3c363",
+  "timestamp": "2026-10-10T18:34:26.592Z",
+  "promptId": "daily-entity-field",
+  "promptHash": "4576bc73488d",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v4",
+  "durationMs": 85495,
+  "apiMs": 40796,
+  "requests": 21,
+  "toolCalls": 20,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 6,
+    "Bash": 4,
+    "Read": 4,
+    "Write": 4,
+    "Edit": 1
+  },
+  "inputTokens": 456811,
+  "cachedTokens": 415703,
+  "outputTokens": 5803,
+  "hostCost": {
+    "value": 0.2639883,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 26.39883,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches CustCustomerV3Entity",
+      "passed": true
+    },
+    {
+      "name": "file EDT McpCustSegmentCode, 15 characters",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: field + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Entity extension maps the field",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Staging extension: the field",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1068,
+  "resultExcerpt": "The model builds with 0 errors. I extended the data entity `CustCustomerV3Entity` (Customers V3, the current version; V2 is older). The build was the exact `benchmarkSandboxBuild.mjs` command you specified.\n\nObjects created or changed:\n- `McpCustSegmentCode` (EDT): string, 15 characters, label and help text from the label file.\n- `CustTable.McpSegment` (table extension): adds field `McpCustSegment",
+  "notes": "2 permission denial(s): PowerShell, Bash",
+  "evidence": {
+    "sessionId": "3a2fd306-1976-4565-850c-9d8e5ed47151",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxDataEntityViewExtension/CustCustomerV3Entity.McpSegment.xml",
+    "BenchmarkTestMcp/AxEdt/McpCustSegmentCode.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustCustomerV3Staging.McpSegment.xml",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpSegment.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 13668
+  },
+  "rework": {
+    "toolErrors": 2,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Bash": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 5,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

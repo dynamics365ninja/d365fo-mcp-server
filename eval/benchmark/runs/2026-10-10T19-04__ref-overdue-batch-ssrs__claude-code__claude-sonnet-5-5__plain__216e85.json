@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T19-04__ref-overdue-batch-ssrs__claude-code__claude-sonnet-5-5__plain__216e85",
+  "timestamp": "2026-10-10T19:04:39.075Z",
+  "promptId": "ref-overdue-batch-ssrs",
+  "promptHash": "1aa28deeabed",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v4",
+  "durationMs": 270552,
+  "apiMs": 247809,
+  "requests": 50,
+  "toolCalls": 49,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 4,
+    "Read": 12,
+    "Bash": 1,
+    "Grep": 19,
+    "Write": 11,
+    "Edit": 1
+  },
+  "inputTokens": 2086270,
+  "cachedTokens": 1986926,
+  "outputTokens": 41647,
+  "hostCost": {
+    "value": 1.0124186,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 101.24186,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 0.8666666666666667,
+  "checks": [
+    {
+      "name": "matches McpCustOverdueSnapshotService",
+      "passed": true
+    },
+    {
+      "name": "matches McpCustOverdueReport",
+      "passed": true
+    },
+    {
+      "name": "file snapshot table",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation data contract",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation service over CustTransOpen",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation controller with main",
+      "passed": true
+    },
+    {
+      "name": "file action menu item for the batch job",
+      "passed": true
+    },
+    {
+      "name": "file TempDB report table",
+      "passed": true
+    },
+    {
+      "name": "file report data contract",
+      "passed": true
+    },
+    {
+      "name": "file report data provider",
+      "passed": true
+    },
+    {
+      "name": "file report with a DP dataset and a design",
+      "passed": true
+    },
+    {
+      "name": "file output menu item for the report",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": false
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": false
+    }
+  ],
+  "resultChars": 2634,
+  "resultExcerpt": "I've written all the objects, but I could not build the model. Both the Bash and PowerShell tools were denied in this session (\"don't ask\" mode), so `benchmarkSandboxBuild.mjs` never ran. Nothing has been compiled or tested, and the metadata is written by hand against the standard-model XML. Please run the build command yourself, or approve shell access and I'll run it and fix whatever it reports.",
+  "notes": "2 permission denial(s): PowerShell, Bash",
+  "evidence": {
+    "sessionId": "f0f5882d-05cd-46d3-84b8-f3714c4f8a13",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxClass/McpCustOverdueReportContract.xml",
+    "BenchmarkTestMcp/AxClass/McpCustOverdueReportDP.xml",
+    "BenchmarkTestMcp/AxClass/McpCustOverdueSnapshotContract.xml",
+    "BenchmarkTestMcp/AxClass/McpCustOverdueSnapshotController.xml",
+    "BenchmarkTestMcp/AxClass/McpCustOverdueSnapshotService.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxMenuItemAction/McpCustOverdueSnapshot.xml",
+    "BenchmarkTestMcp/AxMenuItemOutput/McpCustOverdueReport.xml",
+    "BenchmarkTestMcp/AxReport/McpCustOverdueReport.xml",
+    "BenchmarkTestMcp/AxTable/McpCustOverdueReportTmp.xml",
+    "BenchmarkTestMcp/AxTable/McpCustOverdueSnapshot.xml"
+  ],
+  "build": {
+    "ok": false,
+    "errorCount": 1,
+    "errors": [
+      "Compile Fatal Error: Class Method dynamics://Class/McpCustOverdueSnapshotService/Method/process: [(29,24),(29,65)]: Illegal table specification."
+    ],
+    "durationMs": 13183
+  },
+  "rework": {
+    "toolErrors": 4,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Bash": 1,
+      "Read": 1,
+      "Grep": 1
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 12,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": null
+  }
+}
