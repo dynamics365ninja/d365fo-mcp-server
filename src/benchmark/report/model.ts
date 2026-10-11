@@ -453,9 +453,25 @@ export function buildReportModel(runs: BenchmarkRun[], specs: PromptSpec[], opts
   const slots = assignModelSlots(models);
   const sortedAll = [...runs].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   // The per-model aggregates (overview, effects, trends) pair "with" and "without"
-  // by model. A with-MCP setup beyond the server alone is a separate series there,
-  // named after it, so it is never pooled into the plain server's numbers.
-  const legacy = (rs: BenchmarkRun[]) => rs.map(r => (r.mcp && r.setup ? { ...r, model: `${r.model} + ${r.setup.split(':')[0]}` } : r));
+  // by model. When one model ran with MCP under more than one setup (the server
+  // alone AND with instructions), each extra setup is a separate series there,
+  // named after it, so the two are never pooled. With a single with-MCP setup —
+  // the default since instructions became it — nothing is renamed: renaming then
+  // left every model without a pair and the "MCP effect" sections empty.
+  const legacy = (rs: BenchmarkRun[]) => {
+    const setups = new Map<string, Set<string>>();
+    for (const r of rs) {
+      if (!r.mcp) continue;
+      const k = `${r.host}\u0000${r.model}`;
+      const s = setups.get(k) ?? new Set<string>();
+      s.add(r.setup ?? '');
+      setups.set(k, s);
+    }
+    return rs.map(r =>
+      r.mcp && r.setup && (setups.get(`${r.host}\u0000${r.model}`)?.size ?? 0) > 1
+        ? { ...r, model: `${r.model} + ${r.setup.split(':')[0]}` }
+        : r);
+  };
 
   // Overview: every (host, model, mcp) cell across all prompts.
   const overviewMap = new Map<string, BenchmarkRun[]>();

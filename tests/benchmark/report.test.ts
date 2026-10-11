@@ -250,6 +250,21 @@ describe('leaderboard across tasks', () => {
     expect(html).toContain('<span class="badge mcp" title="instructions: copilot-instructions.md">MCP + instructions</span>');
   });
 
+  it('pairs the only with-MCP setup with the run without it in the per-model aggregates', () => {
+    // Instructions are the default setup, so a whole round carries one. Renaming it
+    // anyway left every model without a pair: "MCP effect" read "no model has both
+    // cells yet" over 72 complete runs (label v5).
+    const setup = 'instructions: copilot-instructions.md';
+    const rs = [
+      run({ promptId: 'a', mcp: false, durationMs: 100_000 }),
+      run({ promptId: 'a', mcp: true, setup, durationMs: 50_000 }),
+    ];
+    const m = buildReportModel(rs, [], { credits: DEFAULT_CREDITS });
+    expect(m.overview.map(o => o.model)).toEqual(['claude-sonnet-5-5', 'claude-sonnet-5-5']);
+    expect(m.overviewEffects.length).toBeGreaterThan(0);
+    expect(renderMarkdown(m)).not.toContain('no model has both cells yet');
+  });
+
   it('splits the leaderboard by suite and groups the task matrix', () => {
     const suiteSpecs: PromptSpec[] = [
       { id: 'r1', title: 'Reference 1: a', prompt: 'a', tags: ['reference'] },
