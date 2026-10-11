@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T10-56__ref-vendor-certificate-register__claude-code__claude-sonnet-5-5__mcp__76bab2",
+  "timestamp": "2026-10-09T10:56:04.055Z",
+  "promptId": "ref-vendor-certificate-register",
+  "promptHash": "f04876b5d381",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "mcpServers": [
+    "d365fo-eval"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "59a52766",
+  "label": "reference v1",
+  "durationMs": 220172,
+  "apiMs": 143271,
+  "requests": 49,
+  "toolCalls": 48,
+  "mcpToolCalls": 2,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 11,
+    "Read": 14,
+    "Grep": 7,
+    "Bash": 1,
+    "Write": 10,
+    "ToolSearch": 1,
+    "mcp__d365fo-eval__build_d365fo_project": 2,
+    "Edit": 1
+  },
+  "inputTokens": 1613997,
+  "cachedTokens": 1548536,
+  "outputTokens": 19635,
+  "hostCost": {
+    "value": 0.7677972000000001,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 76.77972,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches ConVendCertificate",
+      "passed": true
+    },
+    {
+      "name": "file string EDT ConVendCertificateId",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum ConVendCertificateType",
+      "passed": true
+    },
+    {
+      "name": "file table: fields, primary index, VendTable relation, find/exist/validateWrite",
+      "passed": true
+    },
+    {
+      "name": "file SimpleList form over the table",
+      "passed": true
+    },
+    {
+      "name": "file display menu item",
+      "passed": true
+    },
+    {
+      "name": "file ProcurementAndSourcing menu extension",
+      "passed": true
+    },
+    {
+      "name": "file maintain privilege (delete)",
+      "passed": true
+    },
+    {
+      "name": "file view privilege (read only)",
+      "passed": true
+    },
+    {
+      "name": "file VendTable form extension opens the register",
+      "passed": true
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1725,
+  "resultExcerpt": "The full xppc build of `fm-mcp` succeeded with 0 errors and 0 warnings. The first build failed because the SimpleList pattern requires an action pane on the form. I added an empty one. I haven't run the form or the vendor details button, and I didn't run a database sync, so the new table isn't in the database yet.\n\nObjects created or changed:\n- `AxLabelFile/fm-mcp_en-US` (changed): added the label",
+  "notes": "2 permission denial(s): PowerShell, Bash",
+  "evidence": {
+    "sessionId": "34a0489b-d1b5-4d7f-8d8a-33e4bd1c77d6",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxEdt/ConVendCertificateId.xml",
+    "fm-mcp/AxEnum/ConVendCertificateType.xml",
+    "fm-mcp/AxForm/ConVendCertificate.xml",
+    "fm-mcp/AxFormExtension/VendTable.ConVendCertificate.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxMenuExtension/ProcurementAndSourcing.ConVendCertificate.xml",
+    "fm-mcp/AxMenuItemDisplay/ConVendCertificate.xml",
+    "fm-mcp/AxSecurityPrivilege/ConVendCertificateMaintain.xml",
+    "fm-mcp/AxSecurityPrivilege/ConVendCertificateView.xml",
+    "fm-mcp/AxTable/ConVendCertificate.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 15706
+  }
+}

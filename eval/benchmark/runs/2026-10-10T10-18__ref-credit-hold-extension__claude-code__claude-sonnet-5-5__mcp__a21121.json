@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T10-18__ref-credit-hold-extension__claude-code__claude-sonnet-5-5__mcp__a21121",
+  "timestamp": "2026-10-10T10:18:07.494Z",
+  "promptId": "ref-credit-hold-extension",
+  "promptHash": "4019f14c8d09",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "ecf7da5b",
+  "label": "v4",
+  "durationMs": 70354,
+  "apiMs": 46449,
+  "requests": 21,
+  "toolCalls": 20,
+  "mcpToolCalls": 15,
+  "tools": {
+    "ToolSearch": 1,
+    "mcp__d365fo-benchmark__get_workspace_info": 1,
+    "mcp__d365fo-benchmark__get_knowledge": 3,
+    "mcp__d365fo-benchmark__labels": 1,
+    "mcp__d365fo-benchmark__get_object_info": 1,
+    "mcp__d365fo-benchmark__d365fo_file": 9,
+    "Read": 2,
+    "Write": 1,
+    "Bash": 1
+  },
+  "inputTokens": 809123,
+  "cachedTokens": 770673,
+  "outputTokens": 6977,
+  "hostCost": {
+    "value": 0.3005733,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 30.05733,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches McpCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "matches SalesTableMcpCreditHold_Extension",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum McpCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: 3 fields + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustTable form extension shows the group",
+      "passed": true
+    },
+    {
+      "name": "file ModifiedField event handler",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable CoC on validateWrite",
+      "passed": true
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1539,
+  "resultExcerpt": "The model `BenchmarkTestMcp` builds with 0 errors using the requested build command.\n\n- `McpCreditHoldReason` (AxEnum): extensible, values None, OverdueInvoices, DisputedBalance, ManualReview.\n- `CustTable.McpExtension` (AxTableExtension): fields `McpCreditHoldReason`, `McpCreditHoldNote` (Description), `McpCreditHoldSince` (TransDate, AllowEdit=No), and field group `McpCreditHold`.\n- `CustTable.M",
+  "notes": null,
+  "evidence": {
+    "sessionId": "3920012a-ea19-4a3a-8452-83444679782a",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxClass/McpCustTableEventHandler.xml",
+    "BenchmarkTestMcp/AxClass/SalesTableMcpCreditHold_Extension.xml",
+    "BenchmarkTestMcp/AxEnum/McpCreditHoldReason.xml",
+    "BenchmarkTestMcp/AxFormExtension/CustTable.McpExtension.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpExtension.xml",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpExtension.xml.backup-2026-10-10T10-18-28-567",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpExtension.xml.backup-2026-10-10T10-18-32-409"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 16605
+  },
+  "rework": {
+    "toolErrors": 0,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {},
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 9,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

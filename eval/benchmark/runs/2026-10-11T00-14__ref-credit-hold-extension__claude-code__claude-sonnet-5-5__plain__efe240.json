@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-11T00-14__ref-credit-hold-extension__claude-code__claude-sonnet-5-5__plain__efe240",
+  "timestamp": "2026-10-11T00:14:23.522Z",
+  "promptId": "ref-credit-hold-extension",
+  "promptHash": "4019f14c8d09",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v5",
+  "durationMs": 488491,
+  "apiMs": 68645,
+  "requests": 35,
+  "toolCalls": 34,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 8,
+    "Read": 8,
+    "Grep": 7,
+    "Write": 7,
+    "Edit": 1,
+    "Bash": 2
+  },
+  "inputTokens": 713624,
+  "cachedTokens": 678073,
+  "outputTokens": 10685,
+  "hostCost": {
+    "value": 0.31678930000000005,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 31.67893,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches McpCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "matches SalesTableMcpCreditHold_Extension",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum McpCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: 3 fields + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustTable form extension shows the group",
+      "passed": true
+    },
+    {
+      "name": "file ModifiedField event handler",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable CoC on validateWrite",
+      "passed": true
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1457,
+  "resultExcerpt": "The model builds with 0 errors. Objects created or changed in `BenchmarkTestMcp`:\n\n- `McpCreditHoldReason`: new extensible enum with None (default), OverdueInvoices, DisputedBalance and ManualReview.\n- `CustTable.McpCreditHold`: table extension of `CustTable` that adds the fields `McpCreditHoldReason`, `McpCreditHoldNote` (EDT Description) and `McpCreditHoldSince` (EDT TransDate, AllowEdit No), pl",
+  "notes": "1 permission denial(s): PowerShell",
+  "evidence": {
+    "sessionId": "0857aff8-5c63-4310-9c45-3b5bcb1babea",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxClass/McpCustTableEventHandler.xml",
+    "BenchmarkTestMcp/AxClass/SalesTableMcpCreditHold_Extension.xml",
+    "BenchmarkTestMcp/AxEnum/McpCreditHoldReason.xml",
+    "BenchmarkTestMcp/AxFormExtension/CustTable.McpCreditHold.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpCreditHold.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 15824
+  },
+  "rework": {
+    "toolErrors": 6,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Glob": 4,
+      "Grep": 1
+    },
+    "buildAttempts": 2,
+    "buildFailures": 1,
+    "writeOps": 8,
+    "rewrites": 1
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

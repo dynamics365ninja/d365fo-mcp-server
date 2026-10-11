@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T18-39__daily-invoice-field-flow__claude-code__claude-sonnet-5-5__mcp__ab25be",
+  "timestamp": "2026-10-10T18:39:49.133Z",
+  "promptId": "daily-invoice-field-flow",
+  "promptHash": "90cb6da31899",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "ec79b368",
+  "label": "v4",
+  "durationMs": 57294,
+  "apiMs": 46132,
+  "requests": 24,
+  "toolCalls": 23,
+  "mcpToolCalls": 21,
+  "tools": {
+    "ToolSearch": 1,
+    "mcp__d365fo-benchmark__get_workspace_info": 1,
+    "mcp__d365fo-benchmark__search": 2,
+    "mcp__d365fo-benchmark__get_object_info": 6,
+    "mcp__d365fo-benchmark__labels": 3,
+    "mcp__d365fo-benchmark__get_knowledge": 1,
+    "mcp__d365fo-benchmark__d365fo_file": 8,
+    "Bash": 1
+  },
+  "inputTokens": 979647,
+  "cachedTokens": 913621,
+  "outputTokens": 5853,
+  "hostCost": {
+    "value": 0.41394010000000003,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 41.39401,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches initFromSalesTable|initFromSalesParmTable|initInvoiceHeaderFromSourceTable|initJournalHeader",
+      "passed": true
+    },
+    {
+      "name": "file EDT McpProjectCode, 20 characters",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable extension: the field",
+      "passed": true
+    },
+    {
+      "name": "file CustInvoiceJour extension: the field",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable form extension shows it",
+      "passed": true
+    },
+    {
+      "name": "file CustInvoiceJournal form extension shows it",
+      "passed": true
+    },
+    {
+      "name": "file CoC on the method that initializes the invoice header",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1863,
+  "resultExcerpt": "The objects are created, but I couldn't run the build you specified, so the model is not verified as building with zero errors.\n\nThe Bash tool was denied permission in this session (don't-ask mode), and I didn't try the PowerShell tool as a workaround. I also didn't try the MCP `build_d365fo_project` tool, since you asked for that exact script. Tell me if you want me to run the build another way, ",
+  "notes": "1 permission denial(s): Bash",
+  "evidence": {
+    "sessionId": "4457d2cd-3365-493a-8dcb-348cd019d3ab",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxClass/CustInvoiceJourMcp_Extension.xml",
+    "BenchmarkTestMcp/AxEdt/McpProjectCode.xml",
+    "BenchmarkTestMcp/AxFormExtension/CustInvoiceJournal.McpExtension.xml",
+    "BenchmarkTestMcp/AxFormExtension/CustInvoiceJournal.McpExtension.xml.backup-2026-10-10T18-40-41-865",
+    "BenchmarkTestMcp/AxFormExtension/SalesTable.McpExtension.xml",
+    "BenchmarkTestMcp/AxFormExtension/SalesTable.McpExtension.xml.backup-2026-10-10T18-40-41-085",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustInvoiceJour.McpExtension.xml",
+    "BenchmarkTestMcp/AxTableExtension/SalesTable.McpExtension.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 17291
+  },
+  "rework": {
+    "toolErrors": 3,
+    "mcpToolErrors": 2,
+    "toolErrorsByTool": {
+      "mcp__d365fo-benchmark__labels": 2,
+      "Bash": 1
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 8,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

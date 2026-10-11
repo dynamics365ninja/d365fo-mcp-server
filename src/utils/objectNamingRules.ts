@@ -406,7 +406,8 @@ export async function checkObjectNaming(
           // would not make. Skipped once an error stands, so a rejected name is not
           // also told what it would have been written as.
           if (!explicitPrefix && resolution.prefix && errors.length === 0) {
-            const wouldWrite = normalizeObjectName(name, 'class-extension', modelName || undefined);
+            // The base is known here, as it is to the writer from [ExtensionOf].
+            const wouldWrite = normalizeObjectName(name, 'class-extension', modelName || undefined, undefined, { extendedBase: baseObjectName });
             if (wouldWrite !== name) {
               warnings.push(
                 `The write path will not use this name as given.

@@ -1,0 +1,158 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T14-02__ref-vendor-certificate-register__claude-code__claude-sonnet-5-5__plain__1538ee",
+  "timestamp": "2026-10-09T14:02:50.157Z",
+  "promptId": "ref-vendor-certificate-register",
+  "promptHash": "f04876b5d381",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "reference v2",
+  "durationMs": 173847,
+  "apiMs": 139366,
+  "requests": 47,
+  "toolCalls": 46,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 9,
+    "Read": 15,
+    "Grep": 7,
+    "Write": 10,
+    "Edit": 2,
+    "Bash": 2
+  },
+  "inputTokens": 848123,
+  "cachedTokens": 789036,
+  "outputTokens": 18161,
+  "hostCost": {
+    "value": 0.5756972,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 57.56972,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 0.9285714285714286,
+  "checks": [
+    {
+      "name": "matches ConVendCertificate",
+      "passed": true
+    },
+    {
+      "name": "file string EDT ConVendCertificateId",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum ConVendCertificateType",
+      "passed": true
+    },
+    {
+      "name": "file table: fields, primary index, VendTable relation, find/exist/validateWrite",
+      "passed": true
+    },
+    {
+      "name": "file SimpleList form over the table",
+      "passed": true
+    },
+    {
+      "name": "file display menu item",
+      "passed": true
+    },
+    {
+      "name": "file ProcurementAndSourcing menu extension",
+      "passed": true
+    },
+    {
+      "name": "file maintain privilege (delete)",
+      "passed": true
+    },
+    {
+      "name": "file view privilege (read only)",
+      "passed": true
+    },
+    {
+      "name": "file VendTable form extension opens the register",
+      "passed": true
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": false
+    }
+  ],
+  "resultChars": 1988,
+  "resultExcerpt": "I wrote all the objects, but I haven't built the model, so the zero-errors requirement is not verified. Both shell tools (PowerShell and Bash) are denied in this session. That means I can't run `xppc.exe`, which is at `K:\\AosService\\PackagesLocalDirectory\\Bin`. I wrote the metadata XML by hand, modelled on standard examples. Please run the full build, or allow shell access and I'll run it and fix ",
+  "notes": "2 permission denial(s): PowerShell, Bash",
+  "evidence": {
+    "sessionId": "ebd89e71-d72b-47d6-aca5-498959277736",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxEdt/ConVendCertificateId.xml",
+    "fm-mcp/AxEnum/ConVendCertificateType.xml",
+    "fm-mcp/AxForm/ConVendCertificate.xml",
+    "fm-mcp/AxFormExtension/VendTable.ConExtension.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxMenuExtension/ProcurementAndSourcing.ConExtension.xml",
+    "fm-mcp/AxMenuItemDisplay/ConVendCertificate.xml",
+    "fm-mcp/AxSecurityPrivilege/ConVendCertificateMaintain.xml",
+    "fm-mcp/AxSecurityPrivilege/ConVendCertificateView.xml",
+    "fm-mcp/AxTable/ConVendCertificate.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 8415
+  },
+  "rework": {
+    "toolErrors": 2,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Bash": 1
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 12,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 5,
+      "warnings": 7,
+      "findings": [
+        "Warning BPErrorLabelIsText SecurityPrivilege/ConVendCertificateMaintain",
+        "Warning BPErrorPrivilegeNotCoveredByDuty SecurityPrivilege/ConVendCertificateMaintain",
+        "Warning BPErrorLabelIsText SecurityPrivilege/ConVendCertificateView",
+        "Warning BPErrorPrivilegeNotCoveredByDuty SecurityPrivilege/ConVendCertificateView",
+        "BestPractices Error: Error reading ExtendedDataType 'ConVendCertificateId'.",
+        "BestPractices Error: ExtendedDataType 'ConVendCertificateId' not found.",
+        "BestPractices Error: Error reading Enum 'ConVendCertificateType'.",
+        "BestPractices Error: Enum 'ConVendCertificateType' not found.",
+        "Warning BPErrorLabelIsText Form/ConVendCertificate/FormDesign/FormDesign",
+        "BestPractices Warning: Form dynamics://Form/ConVendCertificate: The element 'ConVendCertificate' in module 'fm-mcp' appears not to have been compiled. Ensure th",
+        "BestPractices Warning: Table dynamics://Table/ConVendCertificate: The element 'ConVendCertificate' in module 'fm-mcp' appears not to have been compiled. Ensure ",
+        "BestPractices Error: BPFrameworkFatalException: A fatal exception occured in the Best Practices framework. Exception Key: 0c3cc61a-7f60-440a-ae75-338e9d0ebe33. "
+      ]
+    }
+  }
+}

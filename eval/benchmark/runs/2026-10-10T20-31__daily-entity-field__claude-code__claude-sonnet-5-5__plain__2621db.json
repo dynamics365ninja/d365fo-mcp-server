@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T20-31__daily-entity-field__claude-code__claude-sonnet-5-5__plain__2621db",
+  "timestamp": "2026-10-10T20:31:58.008Z",
+  "promptId": "daily-entity-field",
+  "promptHash": "4576bc73488d",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v5",
+  "durationMs": 71005,
+  "apiMs": 44929,
+  "requests": 29,
+  "toolCalls": 28,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 7,
+    "Read": 9,
+    "Grep": 5,
+    "Write": 5,
+    "Bash": 1
+  },
+  "inputTokens": 427821,
+  "cachedTokens": 390542,
+  "outputTokens": 6782,
+  "hostCost": {
+    "value": 0.2559462,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 25.59462,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches CustCustomerV3Entity",
+      "passed": true
+    },
+    {
+      "name": "file EDT McpCustSegmentCode, 15 characters",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: field + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Entity extension maps the field",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Staging extension: the field",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1231,
+  "resultExcerpt": "The model builds (xppc full build, 0 errors). I extended the data entity **CustCustomerV3Entity** (public entity `CustomerV3`, collection `CustomersV3`), the current customers entity. I did not open `CustTable` to check for other customer entities beyond the V2/V3 files, so V3 being the newest is based on the file list.\n\nObjects created (all under `BenchmarkTestMcp\\BenchmarkTestMcp`):\n- `AxEdt\\Mcp",
+  "notes": "1 permission denial(s): PowerShell",
+  "evidence": {
+    "sessionId": "025b40c8-0fb7-4ce5-9bf4-bf5da347a0dd",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxDataEntityViewExtension/CustCustomerV3Entity.McpSegmentExtension.xml",
+    "BenchmarkTestMcp/AxEdt/McpCustSegmentCode.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustCustomerV3Staging.McpSegmentExtension.xml",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpSegmentExtension.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 13921
+  },
+  "rework": {
+    "toolErrors": 3,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Glob": 1,
+      "Read": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 5,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

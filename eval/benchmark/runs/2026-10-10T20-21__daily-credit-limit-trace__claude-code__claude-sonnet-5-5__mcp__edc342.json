@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T20-21__daily-credit-limit-trace__claude-code__claude-sonnet-5-5__mcp__edc342",
+  "timestamp": "2026-10-10T20:21:50.119Z",
+  "promptId": "daily-credit-limit-trace",
+  "promptHash": "48edfe0c4c84",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "619ce773",
+  "label": "v5",
+  "durationMs": 56691,
+  "apiMs": 31267,
+  "requests": 19,
+  "toolCalls": 18,
+  "mcpToolCalls": 0,
+  "tools": {
+    "Grep": 8,
+    "Glob": 1,
+    "Read": 9
+  },
+  "inputTokens": 326421,
+  "cachedTokens": 298473,
+  "outputTokens": 4760,
+  "hostCost": {
+    "value": 0.18920729999999997,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 18.92073,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches \\bCustCreditLimit\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(checkAgainstCreditLimit|checkCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\bSalesFormletterProvider\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(creditMaxOk|mustCheckCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches (CustCreditLimit\\W{1,3}(check|checkGivenBalances)\\b|\\bcheckGivenBalances\\b)",
+      "passed": true
+    }
+  ],
+  "resultChars": 3589,
+  "resultExcerpt": "The credit limit check lives in `CustCreditLimit` and is reached through two separate entry paths: the order-entry path on `SalesTable` and the posting path in `SalesFormletterProvider`.\n\n**1. Check class and deciding method**\n- The class is `CustCreditLimit`, built with `CustCreditLimit::construct(Common _buffer, SalesTotals _salesTotals)`.\n- `CustCreditLimit.check()` runs the check. If `shouldCh",
+  "notes": null,
+  "evidence": {
+    "sessionId": "604d9a6f-1d81-4c0f-bc60-2ff10ab81250",
+    "logPath": null
+  },
+  "rework": {
+    "toolErrors": 0,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {},
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 0,
+    "rewrites": 0
+  }
+}

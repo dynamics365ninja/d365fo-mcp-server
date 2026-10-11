@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T23-13__daily-credit-limit-trace__claude-code__claude-opus-5-5__plain__8ca610",
+  "timestamp": "2026-10-10T23:13:55.402Z",
+  "promptId": "daily-credit-limit-trace",
+  "promptHash": "48edfe0c4c84",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v5",
+  "durationMs": 113798,
+  "apiMs": 64609,
+  "requests": 22,
+  "toolCalls": 21,
+  "mcpToolCalls": 0,
+  "tools": {
+    "Grep": 9,
+    "Read": 12
+  },
+  "inputTokens": 491625,
+  "cachedTokens": 461119,
+  "outputTokens": 6283,
+  "hostCost": {
+    "value": 0.4618277999999999,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 46.18278,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches \\bCustCreditLimit\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(checkAgainstCreditLimit|checkCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\bSalesFormletterProvider\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(creditMaxOk|mustCheckCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches (CustCreditLimit\\W{1,3}(check|checkGivenBalances)\\b|\\bcheckGivenBalances\\b)",
+      "passed": true
+    }
+  ],
+  "resultChars": 3471,
+  "resultExcerpt": "I traced the standard code without changing any files. All objects below are in ApplicationSuite.\n\n**1. Class that does the check**\n\nThe class is **`CustCreditLimit`**. Its factory `CustCreditLimit::construct(Common _buffer, SalesTotals _salesTotals)` returns `CustCreditLimit_SalesTable` for a `SalesTable` buffer and `CustCreditLimit_SalesParmTable` for a `SalesParmTable` buffer. Other record type",
+  "notes": null,
+  "evidence": {
+    "sessionId": "8bbd1ae9-2fa4-4b5b-b078-343d5689879d",
+    "logPath": null
+  },
+  "rework": {
+    "toolErrors": 1,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "Grep": 1
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 0,
+    "rewrites": 0
+  }
+}

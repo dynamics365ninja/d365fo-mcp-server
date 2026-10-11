@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T11-05__daily-credit-limit-trace__claude-code__claude-sonnet-5-5__mcp__1073d9",
+  "timestamp": "2026-10-10T11:05:35.217Z",
+  "promptId": "daily-credit-limit-trace",
+  "promptHash": "48edfe0c4c84",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "ecf7da5b",
+  "label": "v4",
+  "durationMs": 199333,
+  "apiMs": 37119,
+  "requests": 29,
+  "toolCalls": 28,
+  "mcpToolCalls": 18,
+  "tools": {
+    "ToolSearch": 1,
+    "mcp__d365fo-benchmark__get_workspace_info": 1,
+    "mcp__d365fo-benchmark__search": 2,
+    "mcp__d365fo-benchmark__get_object_info": 13,
+    "mcp__d365fo-benchmark__find_references": 2,
+    "Grep": 6,
+    "Read": 3
+  },
+  "inputTokens": 595489,
+  "cachedTokens": 560167,
+  "outputTokens": 5524,
+  "hostCost": {
+    "value": 0.25249269999999996,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 25.24927,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches \\bCustCreditLimit\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(checkAgainstCreditLimit|checkCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\bSalesFormletterProvider\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(creditMaxOk|mustCheckCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches (CustCreditLimit\\W{1,3}(check|checkGivenBalances)\\b|\\bcheckGivenBalances\\b)",
+      "passed": true
+    }
+  ],
+  "resultChars": 3180,
+  "resultExcerpt": "Traced from `PackagesLocalDirectory` metadata (Foundation model). Nothing was written or changed.\n\n**1. The class that performs the check**\n- `CustCreditLimit` is the class, and `CustCreditLimit.check()` decides whether the check passes. It returns `false` when the limit is exceeded.\n- Inside, it runs `shouldCheckCreditAvailable()`, then `balance()`, then `checkGivenBalances(balance, orderBalance)",
+  "notes": null,
+  "evidence": {
+    "sessionId": "71cfc868-4f2f-4a0d-814b-bafac360dd8a",
+    "logPath": null
+  },
+  "rework": {
+    "toolErrors": 0,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {},
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 0,
+    "rewrites": 0
+  }
+}

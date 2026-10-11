@@ -1,0 +1,169 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T15-35__ref-overdue-batch-ssrs__claude-code__claude-sonnet-5-5__plain__3c2046",
+  "timestamp": "2026-10-09T15:35:37.821Z",
+  "promptId": "ref-overdue-batch-ssrs",
+  "promptHash": "20ed5d295c76",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v3",
+  "durationMs": 797058,
+  "apiMs": 563487,
+  "requests": 113,
+  "toolCalls": 112,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Bash": 19,
+    "Glob": 6,
+    "Read": 21,
+    "Grep": 19,
+    "Write": 12,
+    "Edit": 34
+  },
+  "inputTokens": 4926957,
+  "cachedTokens": 4805744,
+  "outputTokens": 70953,
+  "hostCost": {
+    "value": 2.1553068000000004,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 215.53068,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches ConCustOverdueSnapshotService",
+      "passed": true
+    },
+    {
+      "name": "matches ConCustOverdueReport",
+      "passed": true
+    },
+    {
+      "name": "file snapshot table",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation data contract",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation service over CustTransOpen",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation controller with main",
+      "passed": true
+    },
+    {
+      "name": "file action menu item for the batch job",
+      "passed": true
+    },
+    {
+      "name": "file TempDB report table",
+      "passed": true
+    },
+    {
+      "name": "file report data contract",
+      "passed": true
+    },
+    {
+      "name": "file report data provider",
+      "passed": true
+    },
+    {
+      "name": "file report with a DP dataset and a design",
+      "passed": true
+    },
+    {
+      "name": "file output menu item for the report",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 2416,
+  "resultExcerpt": "The model builds with 0 errors on the last run of the prescribed command. I did not run the batch job or the report, so both are untested at runtime.\n\n**Report headers:** the report's column headers and title are literal label ids like `@fm-mcp:ConCustName`. The SSRS expression syntax `=Labels!@fm-mcp:…` doesn't parse because of the hyphen in `fm-mcp`, and bracketed forms failed the build too. I d",
+  "notes": "6 permission denial(s): PowerShell, Bash, Write gen.mjs, Bash, Bash, Bash",
+  "evidence": {
+    "sessionId": "a8504f24-dd1d-421d-9bbd-73db2f66180c",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxClass/ConCustOverdueReportContract.xml",
+    "fm-mcp/AxClass/ConCustOverdueReportDP.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotContract.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotController.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotService.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxMenuItemAction/ConCustOverdueSnapshot.xml",
+    "fm-mcp/AxMenuItemOutput/ConCustOverdueReport.xml",
+    "fm-mcp/AxReport/ConCustOverdueReport.xml",
+    "fm-mcp/AxTable/ConCustOverdueReportTmp.xml",
+    "fm-mcp/AxTable/ConCustOverdueSnapshot.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 13775
+  },
+  "rework": {
+    "toolErrors": 9,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Bash": 4,
+      "Grep": 1,
+      "Write": 1,
+      "Edit": 2
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 46,
+    "rewrites": 2
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 33,
+      "findings": [
+        "Warning BPErrorLabelIsText Report/ConCustOverdueReport/ReportDataSet/ConCustOverdueReportDS/ReportDataSetField/CustName",
+        "Warning BPErrorLabelIsText Report/ConCustOverdueReport/ReportDataSet/ConCustOverdueReportDS/ReportDataSetField/OverdueAmountMST",
+        "Warning BPErrorLabelIsText Report/ConCustOverdueReport/ReportDataSet/ConCustOverdueReportDS/ReportDataSetField/OldestDueDate",
+        "Warning BPErrorLabelIsText Report/ConCustOverdueReport/ReportDataSet/ConCustOverdueReportDS/ReportDataSetField/OpenTransCount",
+        "Warning BPErrorMenuItemNotCoveredByPrivilege MenuItemOutput/ConCustOverdueReport",
+        "Warning BPErrorMenuItemNotCoveredByPrivilege MenuItemAction/ConCustOverdueSnapshot",
+        "Warning BPErrorEDTNotMigrated Table/ConCustOverdueSnapshot/TableFieldString/AccountNum",
+        "Warning BPErrorTableFieldNotDefinedUsingType Table/ConCustOverdueSnapshot/TableFieldInt/OpenTransCount",
+        "Warning BPErrorTableMissingGroupAutoReport Table/ConCustOverdueSnapshot",
+        "Warning BPErrorLabelIsText Table/ConCustOverdueSnapshot",
+        "Warning BPErrorLabelIsText Table/ConCustOverdueSnapshot/TableFieldDate/AsOfDate",
+        "Warning BPErrorLabelIsText Table/ConCustOverdueSnapshot/TableFieldReal/OverdueAmountMST",
+        "Warning BPErrorLabelIsText Table/ConCustOverdueSnapshot/TableFieldDate/OldestDueDate",
+        "Warning BPErrorLabelIsText Table/ConCustOverdueSnapshot/TableFieldInt/OpenTransCount",
+        "Warning BPErrorLabelNotDefined Table/ConCustOverdueSnapshot/TableFieldGroup/Overview"
+      ]
+    }
+  }
+}

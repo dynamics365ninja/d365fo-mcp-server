@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T21-58__ref-credit-hold-extension__claude-code__claude-opus-5-5__mcp__cd6798",
+  "timestamp": "2026-10-10T21:58:23.718Z",
+  "promptId": "ref-credit-hold-extension",
+  "promptHash": "4019f14c8d09",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "619ce773",
+  "label": "v5",
+  "durationMs": 99918,
+  "apiMs": 68913,
+  "requests": 25,
+  "toolCalls": 24,
+  "mcpToolCalls": 13,
+  "tools": {
+    "ToolSearch": 1,
+    "mcp__d365fo-benchmark__get_workspace_info": 1,
+    "PowerShell": 2,
+    "Glob": 2,
+    "mcp__d365fo-benchmark__get_knowledge": 2,
+    "mcp__d365fo-benchmark__get_object_info": 2,
+    "Read": 4,
+    "mcp__d365fo-benchmark__labels": 1,
+    "mcp__d365fo-benchmark__d365fo_file": 5,
+    "mcp__d365fo-benchmark__validate_code": 2,
+    "Bash": 2
+  },
+  "inputTokens": 978011,
+  "cachedTokens": 935905,
+  "outputTokens": 8156,
+  "hostCost": {
+    "value": 0.686997,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 68.6997,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches McpCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "matches SalesTableMcpCreditHold_Extension",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum McpCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: 3 fields + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustTable form extension shows the group",
+      "passed": true
+    },
+    {
+      "name": "file ModifiedField event handler",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable CoC on validateWrite",
+      "passed": true
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1623,
+  "resultExcerpt": "I've implemented everything you asked for, and the model builds with 0 errors (xppc full build, labels included, via the sandbox build script).\n\nObjects created or changed:\n- `McpCreditHoldReason`: new extensible enum (None = 0 is the default, OverdueInvoices, DisputedBalance, ManualReview).\n- `CustTable.McpExtension` (table extension): adds the fields `McpCreditHoldReason`, `McpCreditHoldNote` (E",
+  "notes": "2 permission denial(s): PowerShell, Bash",
+  "evidence": {
+    "sessionId": "c03fa0ac-da9c-41a8-8f59-6e32e0649169",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp.rnrproj",
+    "BenchmarkTestMcp/AxClass/McpCustTableEventHandler.xml",
+    "BenchmarkTestMcp/AxClass/SalesTableMcpCreditHold_Extension.xml",
+    "BenchmarkTestMcp/AxEnum/McpCreditHoldReason.xml",
+    "BenchmarkTestMcp/AxFormExtension/CustTable.McpExtension.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpExtension.xml",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpExtension.xml.backup-2026-10-10T21-59-02-765",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpExtension.xml.backup-2026-10-10T21-59-03-497",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpExtension.xml.backup-2026-10-10T21-59-04-113",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpExtension.xml.backup-2026-10-10T21-59-04-733"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 15719
+  },
+  "rework": {
+    "toolErrors": 2,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Bash": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 5,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T23-15__daily-entity-field__claude-code__claude-sonnet-5-5__mcp__71a87d",
+  "timestamp": "2026-10-10T23:15:53.172Z",
+  "promptId": "daily-entity-field",
+  "promptHash": "4576bc73488d",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "619ce773",
+  "label": "v5",
+  "durationMs": 82743,
+  "apiMs": 35236,
+  "requests": 18,
+  "toolCalls": 17,
+  "mcpToolCalls": 12,
+  "tools": {
+    "ToolSearch": 1,
+    "mcp__d365fo-benchmark__get_workspace_info": 1,
+    "mcp__d365fo-benchmark__search": 2,
+    "mcp__d365fo-benchmark__get_knowledge": 1,
+    "mcp__d365fo-benchmark__get_object_info": 1,
+    "mcp__d365fo-benchmark__labels": 3,
+    "mcp__d365fo-benchmark__d365fo_file": 4,
+    "PowerShell": 1,
+    "Bash": 1,
+    "Read": 2
+  },
+  "inputTokens": 580836,
+  "cachedTokens": 550148,
+  "outputTokens": 4444,
+  "hostCost": {
+    "value": 0.2221548,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 22.21548,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches CustCustomerV3Entity",
+      "passed": true
+    },
+    {
+      "name": "file EDT McpCustSegmentCode, 15 characters",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: field + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Entity extension maps the field",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Staging extension: the field",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1551,
+  "resultExcerpt": "All the objects are created, but I could not run the build, so the model is not verified. Both Bash and PowerShell were denied in this session's don't-ask mode, and you asked for that exact `node ...benchmarkSandboxBuild.mjs` command, so I did not substitute another build path.\n\nThe two extension XMLs that I read back look right. The EDT and the staging extension were not re-read.\n\n**Data entity e",
+  "notes": "2 permission denial(s): PowerShell, Bash",
+  "evidence": {
+    "sessionId": "bde57ba6-e1df-450e-89fa-e0ee37d3d2e7",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp.rnrproj",
+    "BenchmarkTestMcp/AxDataEntityViewExtension/CustCustomerV3Entity.McpExtension.xml",
+    "BenchmarkTestMcp/AxDataEntityViewExtension/CustCustomerV3Entity.McpExtension.xml.backup-2026-10-10T23-17-31-151",
+    "BenchmarkTestMcp/AxEdt/McpCustSegmentCode.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustCustomerV3Staging.McpExtension.xml",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpExtension.xml",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpExtension.xml.backup-2026-10-10T23-17-04-888",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpExtension.xml.backup-2026-10-10T23-17-07-381"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 110368
+  },
+  "rework": {
+    "toolErrors": 4,
+    "mcpToolErrors": 2,
+    "toolErrorsByTool": {
+      "mcp__d365fo-benchmark__labels": 2,
+      "PowerShell": 1,
+      "Bash": 1
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 4,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

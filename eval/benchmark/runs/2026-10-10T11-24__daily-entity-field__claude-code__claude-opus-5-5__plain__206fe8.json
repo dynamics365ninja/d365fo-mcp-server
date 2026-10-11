@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T11-24__daily-entity-field__claude-code__claude-opus-5-5__plain__206fe8",
+  "timestamp": "2026-10-10T11:24:18.381Z",
+  "promptId": "daily-entity-field",
+  "promptHash": "4576bc73488d",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v4",
+  "durationMs": 273875,
+  "apiMs": 59214,
+  "requests": 25,
+  "toolCalls": 24,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 7,
+    "Read": 6,
+    "Grep": 2,
+    "Bash": 3,
+    "Write": 5
+  },
+  "inputTokens": 460541,
+  "cachedTokens": 430538,
+  "outputTokens": 5965,
+  "hostCost": {
+    "value": 0.4453276,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 44.53276,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches CustCustomerV3Entity",
+      "passed": true
+    },
+    {
+      "name": "file EDT McpCustSegmentCode, 15 characters",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: field + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Entity extension maps the field",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Staging extension: the field",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1682,
+  "resultExcerpt": "The segment code is now on the customer and on the standard customers data entity, and the model builds with 0 errors (the build script, 147 s).\n\nThe data entity I extended is **`CustCustomerV3Entity`** (OData name `CustomersV3` / `CustomerV3`). It's the current version: only V2 and V3 exist in ApplicationSuite, and V3 is the one that has Data management turned on.\n\nObjects created or changed in `",
+  "notes": "1 permission denial(s): PowerShell",
+  "evidence": {
+    "sessionId": "5d2f805d-150f-4293-8dc3-f647571e8cff",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxDataEntityViewExtension/CustCustomerV3Entity.BenchmarkTestMcp.xml",
+    "BenchmarkTestMcp/AxEdt/McpCustSegmentCode.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustCustomerV3Staging.BenchmarkTestMcp.xml",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.BenchmarkTestMcp.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 96748
+  },
+  "rework": {
+    "toolErrors": 5,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Glob": 4
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 5,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

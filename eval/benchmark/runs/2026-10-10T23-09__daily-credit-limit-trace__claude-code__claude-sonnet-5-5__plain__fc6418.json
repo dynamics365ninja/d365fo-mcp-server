@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T23-09__daily-credit-limit-trace__claude-code__claude-sonnet-5-5__plain__fc6418",
+  "timestamp": "2026-10-10T23:09:19.873Z",
+  "promptId": "daily-credit-limit-trace",
+  "promptHash": "48edfe0c4c84",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v5",
+  "durationMs": 205710,
+  "apiMs": 65031,
+  "requests": 31,
+  "toolCalls": 30,
+  "mcpToolCalls": 0,
+  "tools": {
+    "Grep": 15,
+    "Read": 12,
+    "Glob": 2,
+    "Bash": 1
+  },
+  "inputTokens": 970519,
+  "cachedTokens": 905070,
+  "outputTokens": 7817,
+  "hostCost": {
+    "value": 0.43040899999999993,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 43.0409,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches \\bCustCreditLimit\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(checkAgainstCreditLimit|checkCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\bSalesFormletterProvider\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(creditMaxOk|mustCheckCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches (CustCreditLimit\\W{1,3}(check|checkGivenBalances)\\b|\\bcheckGivenBalances\\b)",
+      "passed": true
+    }
+  ],
+  "resultChars": 3085,
+  "resultExcerpt": "**Credit limit check in standard D365 F&O (traced in `ApplicationSuite\\Foundation`)**\n\n1. **Checker class:** `CustCreditLimit`. Its `check()` is the decision method: `public boolean check()`. It returns true when `shouldCheckCreditAvailable()` is false. Otherwise it takes `[balance, orderBalance] = this.balance()` and calls `checkGivenBalances(balance, orderBalance)`. That method tests `_balance +",
+  "notes": "1 permission denial(s): Bash",
+  "evidence": {
+    "sessionId": "fbc75e46-8eb8-440f-a9a0-3d77506f2685",
+    "logPath": null
+  },
+  "rework": {
+    "toolErrors": 4,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "Grep": 3,
+      "Bash": 1
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 0,
+    "rewrites": 0
+  }
+}

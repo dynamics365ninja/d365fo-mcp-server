@@ -101,6 +101,9 @@ data/
 # Machine-specific eval-sandbox wiring: absolute VM paths + the throwaway model
 # name, same category as config/d365fo-mcp.json above.
 config/d365fo-mcp-eval.json
+# The same for the benchmark sandbox (BenchmarkTestMcp) and its MCP config.
+config/d365fo-mcp-benchmark.json
+config/benchmark.mcp.json
 
 # Oracle harness outputs (scripts/oracles) — measurements, not artefacts.
 # The scripts are committed so anyone can re-measure; the results are a snapshot
@@ -114,3 +117,12 @@ config/d365fo-mcp-eval.json
 # is the repo root, so it lands here. Holds a copy of the tracked
 # .github/copilot-instructions.md plus a README with this machine's absolute paths.
 copilot-setup/
+
+# Benchmark reports are derived from eval/benchmark/runs/*.json — regenerate with
+# `d365fo-mcp benchmark report`; only the records are committed.
+eval/benchmark/reports/
+# The files each sandbox cell wrote, kept so a corrected check can re-score
+# them (the sandbox itself is restored after every cell). Local evidence only.
+eval/benchmark/artifacts/
+# A run's working folder: filtered MCP config, the sandbox snapshot, build logs.
+eval/benchmark/.work/

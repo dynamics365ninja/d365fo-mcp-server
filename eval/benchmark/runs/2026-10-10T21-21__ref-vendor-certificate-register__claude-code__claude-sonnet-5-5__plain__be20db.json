@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T21-21__ref-vendor-certificate-register__claude-code__claude-sonnet-5-5__plain__be20db",
+  "timestamp": "2026-10-10T21:21:02.780Z",
+  "promptId": "ref-vendor-certificate-register",
+  "promptHash": "c6816b54a7d2",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v5",
+  "durationMs": 183047,
+  "apiMs": 135169,
+  "requests": 61,
+  "toolCalls": 60,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 7,
+    "Read": 21,
+    "Grep": 17,
+    "Write": 10,
+    "Edit": 3,
+    "Bash": 1
+  },
+  "inputTokens": 2128183,
+  "cachedTokens": 2042500,
+  "outputTokens": 22289,
+  "hostCost": {
+    "value": 0.769748,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 76.9748,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches McpVendCertificate",
+      "passed": true
+    },
+    {
+      "name": "file string EDT McpVendCertificateId",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum McpVendCertificateType",
+      "passed": true
+    },
+    {
+      "name": "file table: fields, primary index, VendTable relation, find/exist/validateWrite",
+      "passed": true
+    },
+    {
+      "name": "file SimpleList form over the table",
+      "passed": true
+    },
+    {
+      "name": "file display menu item",
+      "passed": true
+    },
+    {
+      "name": "file ProcurementAndSourcing menu extension",
+      "passed": true
+    },
+    {
+      "name": "file maintain privilege (delete)",
+      "passed": true
+    },
+    {
+      "name": "file view privilege (read only)",
+      "passed": true
+    },
+    {
+      "name": "file VendTable form extension opens the register",
+      "passed": true
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1599,
+  "resultExcerpt": "The model builds with zero errors (labels and xppc full build, 16 s). I did not open the form or run it, so the vendor filter and the form extension button are untested at runtime.\n\nObjects created or changed:\n\n- Label file `BenchmarkTestMcp` (en-US): added labels for all texts below, including the validity error message.\n- EDT `McpVendCertificateId`: string, size 20.\n- Enum `McpVendCertificateTyp",
+  "notes": "1 permission denial(s): PowerShell",
+  "evidence": {
+    "sessionId": "5bc71edf-2e03-4316-b70c-d90bca0772ac",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxEdt/McpVendCertificateId.xml",
+    "BenchmarkTestMcp/AxEnum/McpVendCertificateType.xml",
+    "BenchmarkTestMcp/AxForm/McpVendCertificate.xml",
+    "BenchmarkTestMcp/AxFormExtension/VendTable.McpVendCertificate.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxMenuExtension/ProcurementAndSourcing.McpVendCertificate.xml",
+    "BenchmarkTestMcp/AxMenuItemDisplay/McpVendCertificate.xml",
+    "BenchmarkTestMcp/AxSecurityPrivilege/McpVendCertificateMaintain.xml",
+    "BenchmarkTestMcp/AxSecurityPrivilege/McpVendCertificateView.xml",
+    "BenchmarkTestMcp/AxTable/McpVendCertificate.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 17626
+  },
+  "rework": {
+    "toolErrors": 5,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Grep": 2,
+      "Read": 2
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 13,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 9,
+      "findings": [
+        "Warning BPErrorPrivilegeNotCoveredByDuty SecurityPrivilege/McpVendCertificateMaintain",
+        "Warning BPErrorPrivilegeNotCoveredByDuty SecurityPrivilege/McpVendCertificateView",
+        "BestPractices Warning: AxTable dynamics://Table/McpVendCertificate: The index 'VendCertificateIdx' specified as Primary key on table 'McpVendCertificate' is not",
+        "Warning BPErrorEDTNotMigrated Table/McpVendCertificate/TableFieldString/VendAccount",
+        "Warning BPErrorTableMissingGroupAutoReport Table/McpVendCertificate",
+        "Warning BPErrorTablePrimaryKeyEditable Table/McpVendCertificate/TableIndex/VendCertificateIdx/TableIndexField/VendAccount",
+        "Warning BPErrorTablePrimaryKeyEditable Table/McpVendCertificate/TableIndex/VendCertificateIdx/TableIndexField/CertificateId",
+        "Warning BPErrorTableNoCaching Table/McpVendCertificate",
+        "BestPractices Warning: AxTable dynamics://Table/McpVendCertificate: EDT relation found in field VendAccount of table McpVendCertificate. It should be migrated t"
+      ]
+    }
+  }
+}

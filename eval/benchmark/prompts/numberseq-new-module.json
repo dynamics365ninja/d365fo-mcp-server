@@ -1,0 +1,11 @@
+{
+  "id": "numberseq-new-module",
+  "title": "Number sequence for a new module",
+  "prompt": "A new Dynamics 365 Finance & Operations module 'Rental' (custom model, prefix Con) needs its own number sequence for rental agreement ids, EDT ConRentAgreementId. Describe, step by step and with X++ where code is needed, everything required so that the number sequence appears under the module's parameters form and is allocated in a NumberSeqFormHandler on the agreement form: the NumberSeqModule enum extension, the NumberSeqApplicationModule subclass (which methods it must implement and what loadModule does), the parameters table method that returns the reference, and the form handler wiring. Keep it concrete; name the base classes and methods exactly.",
+  "tags": ["numberseq", "knowledge", "L2"],
+  "expects": {
+    "mustMatch": ["NumberSeqApplicationModule", "loadModule", "NumberSeqModule", "NumberSeqFormHandler", "numberSeqModule\\s*\\("],
+    "mustNotMatch": []
+  },
+  "notes": "Knowledge-heavy prompt; the MCP server's get_knowledge(topic=number-sequence) is the grounded path. Checks name the API surface the answer must mention."
+}

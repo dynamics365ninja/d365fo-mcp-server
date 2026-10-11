@@ -300,6 +300,33 @@ export interface ApplyObjectPrefixOptions {
    * base is never mistaken for one already carrying the infix or model token.
    */
   knownBase?: boolean;
+  /**
+   * The object the class extends, read from its `[ExtensionOf(...)]` attribute.
+   * With it, a stem that is that base followed by this model's token as its own
+   * word — SalesTable|Mcp|CreditHold — is recognised as already prefixed and kept,
+   * whatever follows the token. Without it, the token is only looked for at either
+   * end of the stem, and SalesTableMcpCreditHold_Extension became
+   * SalesTableMcpCreditHoldMcp_Extension: the name the caller asked for could not
+   * be written at all, and a delete + re-create renamed it again.
+   */
+  extendedBase?: string;
+}
+
+/**
+ * Does `stem` start with `base` and continue with one of `tokens` as its own word
+ * (an optional "_" before it, and an uppercase letter, "_" or the end after it)?
+ * The base is compared case-insensitively, as X++ names are.
+ */
+export function tokenFollowsBase(stem: string, base: string, tokens: string[]): boolean {
+  if (!base || stem.length <= base.length) return false;
+  if (stem.slice(0, base.length).toLowerCase() !== base.toLowerCase()) return false;
+  const rest = stem.slice(base.length).replace(/^_+/, '');
+  return tokens.some(token => {
+    if (!token || rest.length < token.length) return false;
+    if (rest.slice(0, token.length).toLowerCase() !== token.toLowerCase()) return false;
+    const after = rest[token.length];
+    return after === undefined || after === '_' || /[A-Z]/.test(after);
+  });
 }
 
 /**
@@ -480,6 +507,16 @@ export function applyObjectPrefix(
   // objectName must be the base class name + "_Extension" without any prefix infix.
   if (objectName.endsWith('_Extension')) {
     const baseName = objectName.slice(0, -'_Extension'.length);
+
+    // The class names its base in [ExtensionOf], and this model's token follows
+    // that base as a word: the caller already placed it. Every style keeps it —
+    // moving the token would only append a second one.
+    if (
+      options?.extendedBase &&
+      tokenFollowsBase(baseName, options.extendedBase, [extensionInfix, modelToken, prefix])
+    ) {
+      return objectName;
+    }
 
     // Strip any trailing model-name token first so re-running stays idempotent
     // (avoids Base_ModelName_ModelName_Extension).

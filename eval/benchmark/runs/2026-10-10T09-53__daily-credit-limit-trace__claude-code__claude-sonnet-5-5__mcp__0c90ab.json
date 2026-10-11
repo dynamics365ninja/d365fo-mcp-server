@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T09-53__daily-credit-limit-trace__claude-code__claude-sonnet-5-5__mcp__0c90ab",
+  "timestamp": "2026-10-10T09:53:08.812Z",
+  "promptId": "daily-credit-limit-trace",
+  "promptHash": "48edfe0c4c84",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "ecf7da5b",
+  "label": "v4",
+  "durationMs": 319712,
+  "apiMs": 32041,
+  "requests": 24,
+  "toolCalls": 23,
+  "mcpToolCalls": 22,
+  "tools": {
+    "ToolSearch": 1,
+    "mcp__d365fo-benchmark__get_workspace_info": 1,
+    "mcp__d365fo-benchmark__search": 3,
+    "mcp__d365fo-benchmark__get_object_info": 12,
+    "mcp__d365fo-benchmark__find_references": 6
+  },
+  "inputTokens": 439775,
+  "cachedTokens": 402949,
+  "outputTokens": 4689,
+  "hostCost": {
+    "value": 0.2344489,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 23.44489,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches \\bCustCreditLimit\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(checkAgainstCreditLimit|checkCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\bSalesFormletterProvider\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(creditMaxOk|mustCheckCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches (CustCreditLimit\\W{1,3}(check|checkGivenBalances)\\b|\\bcheckGivenBalances\\b)",
+      "passed": true
+    }
+  ],
+  "resultChars": 3287,
+  "resultExcerpt": "The core classes and methods are confirmed from the source. Two points rest on the reference scan alone: who calls `creditMaxExceededLimit`, and who calls `creditMaxOk` beyond the two in-class hits. The xref bridge was unavailable, so that scan is name-based.\n\n**1. Class that performs the check**\n- `CustCreditLimit` (Foundation) is built with `CustCreditLimit::construct(Common _buffer, SalesTotals",
+  "notes": "cold start: first cell after the 2.5 GB server index left the OS cache; search 88 s and find_references + get_object_info 187 s (in parallel) of its 320 s; replayed, the same 22 calls take 14 s cold and 0.4 s warm. The runner warms servers up before the first cell since this run.",
+  "evidence": {
+    "sessionId": "86dd3b0f-8e4b-4975-b453-c3b6ce059763",
+    "logPath": null
+  },
+  "rework": {
+    "toolErrors": 0,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {},
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 0,
+    "rewrites": 0
+  }
+}

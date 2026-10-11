@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T10-15__daily-invoice-field-flow__claude-code__claude-opus-5-5__plain__a1dd54",
+  "timestamp": "2026-10-10T10:15:57.542Z",
+  "promptId": "daily-invoice-field-flow",
+  "promptHash": "90cb6da31899",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v4",
+  "durationMs": 101589,
+  "apiMs": 68576,
+  "requests": 24,
+  "toolCalls": 23,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 3,
+    "Read": 7,
+    "Grep": 4,
+    "Write": 7,
+    "Bash": 1
+  },
+  "inputTokens": 573475,
+  "cachedTokens": 543679,
+  "outputTokens": 7217,
+  "hostCost": {
+    "value": 0.4913158000000001,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 49.13158,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches initFromSalesTable|initFromSalesParmTable|initInvoiceHeaderFromSourceTable|initJournalHeader",
+      "passed": true
+    },
+    {
+      "name": "file EDT McpProjectCode, 20 characters",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable extension: the field",
+      "passed": true
+    },
+    {
+      "name": "file CustInvoiceJour extension: the field",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable form extension shows it",
+      "passed": true
+    },
+    {
+      "name": "file CustInvoiceJournal form extension shows it",
+      "passed": true
+    },
+    {
+      "name": "file CoC on the method that initializes the invoice header",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1524,
+  "resultExcerpt": "The model builds with 0 errors (`xppc` full build, labels included). I haven't run a sales order through invoicing to check that the value actually copies across; the only check so far is the build.\n\n**Standard method extended:** `CustInvoiceJour.initFromSalesTable(SalesTable, SalesParmTable)`. During invoice posting, `SalesInvoiceJournalCreate.initInvoiceHeaderFromSourceTable()` calls it to fill ",
+  "notes": "1 permission denial(s): PowerShell",
+  "evidence": {
+    "sessionId": "b6bdf84a-69b5-45eb-9dba-302ea3ec37ff",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxClass/McpCustInvoiceJour_Extension.xml",
+    "BenchmarkTestMcp/AxEdt/McpProjectCode.xml",
+    "BenchmarkTestMcp/AxFormExtension/CustInvoiceJournal.BenchmarkTestMcp.xml",
+    "BenchmarkTestMcp/AxFormExtension/SalesTable.BenchmarkTestMcp.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustInvoiceJour.BenchmarkTestMcp.xml",
+    "BenchmarkTestMcp/AxTableExtension/SalesTable.BenchmarkTestMcp.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 16424
+  },
+  "rework": {
+    "toolErrors": 1,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 7,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

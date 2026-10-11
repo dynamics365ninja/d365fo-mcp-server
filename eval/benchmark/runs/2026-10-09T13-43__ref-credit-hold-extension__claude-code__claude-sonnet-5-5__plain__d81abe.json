@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T13-43__ref-credit-hold-extension__claude-code__claude-sonnet-5-5__plain__d81abe",
+  "timestamp": "2026-10-09T13:43:45.035Z",
+  "promptId": "ref-credit-hold-extension",
+  "promptHash": "ad7da9adf05a",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "reference v2",
+  "durationMs": 86394,
+  "apiMs": 69132,
+  "requests": 33,
+  "toolCalls": 32,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 4,
+    "Read": 12,
+    "Grep": 5,
+    "Write": 6,
+    "Edit": 2,
+    "Bash": 2
+  },
+  "inputTokens": 673685,
+  "cachedTokens": 637816,
+  "outputTokens": 9654,
+  "hostCost": {
+    "value": 0.36751120000000004,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 36.75112,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 0.8181818181818182,
+  "checks": [
+    {
+      "name": "matches ConCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "matches SalesTableConCreditHold_Extension",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum ConCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: 3 fields + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustTable form extension shows the group",
+      "passed": true
+    },
+    {
+      "name": "file ModifiedField event handler",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable CoC on validateWrite",
+      "passed": true
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": false
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": false
+    }
+  ],
+  "resultChars": 1993,
+  "resultExcerpt": "I've written all the objects, but I couldn't run the xppc full build because the shell was denied in this session. The model has not been compiled or tested.\n\nTo build it yourself, run `xppc.exe` from `K:\\AosService\\PackagesLocalDirectory\\bin` with `-modelmodule=fm-mcp`. The `BuildModelResult.log` currently in the model folder is an older build (0 errors, 0 warnings) and does not cover these chang",
+  "notes": "2 permission denial(s): PowerShell, Bash",
+  "evidence": {
+    "sessionId": "664fab98-fe85-4ff9-8518-3da440b280a9",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxClass/ConCustTableEventHandler.xml",
+    "fm-mcp/AxClass/SalesTableConCreditHold_Extension.xml",
+    "fm-mcp/AxEnum/ConCreditHoldReason.xml",
+    "fm-mcp/AxFormExtension/CustTable.ConCreditHold.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxTableExtension/CustTable.ConCreditHold.xml"
+  ],
+  "build": {
+    "ok": false,
+    "errorCount": 5,
+    "errors": [
+      "Compile Error: Class Method dynamics://Class/SalesTableConCreditHold_Extension/Method/validateWrite: [(19,50),(19,75)]: The qualifier 'ConCreditHoldReason' is not valid for field 'None'.",
+      "Compile Error: Class Method dynamics://Class/ConCustTableEventHandler/Method/custTable_onModifiedField: [(15,9),(15,33)]: The name 'ModifyFieldDataEventArgs' does not denote a class, a table, or an extended data type.",
+      "Compile Error: Class Method dynamics://Class/ConCustTableEventHandler/Method/custTable_onModifiedField: [(15,41),(15,71)]: For the operators 'is' and 'as', the operand on the right side must be a table or class.",
+      "Compile Error: Class Method dynamics://Class/ConCustTableEventHandler/Method/custTable_onModifiedField: [(19,50),(19,75)]: The qualifier 'ConCreditHoldReason' is not valid for field 'None'.",
+      "Metadata Error: AxEnum/ConCreditHoldReason/UseEnumValue: UseEnumValue property must be set to 'No' when the IsExtensible property is 'True'."
+    ],
+    "durationMs": 15658
+  },
+  "rework": {
+    "toolErrors": 2,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Bash": 1
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 8,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": null
+  }
+}

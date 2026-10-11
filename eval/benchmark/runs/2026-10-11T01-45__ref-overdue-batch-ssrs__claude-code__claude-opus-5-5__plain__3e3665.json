@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-11T01-45__ref-overdue-batch-ssrs__claude-code__claude-opus-5-5__plain__3e3665",
+  "timestamp": "2026-10-11T01:45:12.074Z",
+  "promptId": "ref-overdue-batch-ssrs",
+  "promptHash": "1aa28deeabed",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v5",
+  "durationMs": 464008,
+  "apiMs": 289567,
+  "requests": 47,
+  "toolCalls": 46,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 4,
+    "Read": 9,
+    "Bash": 6,
+    "Grep": 9,
+    "Glob": 2,
+    "Write": 11,
+    "Edit": 5
+  },
+  "inputTokens": 2490133,
+  "cachedTokens": 2408351,
+  "outputTokens": 35034,
+  "hostCost": {
+    "value": 1.8363021999999998,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 183.63022,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches McpCustOverdueSnapshotService",
+      "passed": true
+    },
+    {
+      "name": "matches McpCustOverdueReport",
+      "passed": true
+    },
+    {
+      "name": "file snapshot table",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation data contract",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation service over CustTransOpen",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation controller with main",
+      "passed": true
+    },
+    {
+      "name": "file action menu item for the batch job",
+      "passed": true
+    },
+    {
+      "name": "file TempDB report table",
+      "passed": true
+    },
+    {
+      "name": "file report data contract",
+      "passed": true
+    },
+    {
+      "name": "file report data provider",
+      "passed": true
+    },
+    {
+      "name": "file report with a DP dataset and a design",
+      "passed": true
+    },
+    {
+      "name": "file output menu item for the report",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1934,
+  "resultExcerpt": "The model builds with **0 errors** (xppc full build plus labels, 96 s). I haven't run any of it on live data — the build is the only check so far.\n\nThe build gives two compiler warnings, both in `McpCustOverdueSnapshotService.process`: the transaction count is a 64-bit number written into the integer field `OpenTransCount`. It can't overflow in practice. To clear the warning you'd have to make the",
+  "notes": "2 permission denial(s): PowerShell, Bash",
+  "evidence": {
+    "sessionId": "0188de1e-5839-4a04-bd4c-c3b0b5aa0636",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxClass/McpCustOverdueReportContract.xml",
+    "BenchmarkTestMcp/AxClass/McpCustOverdueReportDP.xml",
+    "BenchmarkTestMcp/AxClass/McpCustOverdueSnapshotContract.xml",
+    "BenchmarkTestMcp/AxClass/McpCustOverdueSnapshotController.xml",
+    "BenchmarkTestMcp/AxClass/McpCustOverdueSnapshotService.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxMenuItemAction/McpCustOverdueSnapshot.xml",
+    "BenchmarkTestMcp/AxMenuItemOutput/McpCustOverdueReport.xml",
+    "BenchmarkTestMcp/AxReport/McpCustOverdueReport.xml",
+    "BenchmarkTestMcp/AxTable/McpCustOverdueReportTmp.xml",
+    "BenchmarkTestMcp/AxTable/McpCustOverdueSnapshot.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 104926
+  },
+  "rework": {
+    "toolErrors": 3,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Bash": 1,
+      "Grep": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 16,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 4,
+      "findings": [
+        "Warning BPErrorMenuItemNotCoveredByPrivilege MenuItemOutput/McpCustOverdueReport",
+        "Warning BPErrorMenuItemNotCoveredByPrivilege MenuItemAction/McpCustOverdueSnapshot",
+        "Warning BPErrorTableFieldNotDefinedUsingType Table/McpCustOverdueReportTmp/TableFieldInt/OpenTransCount",
+        "Warning BPErrorTableFieldNotDefinedUsingType Table/McpCustOverdueSnapshot/TableFieldInt/OpenTransCount"
+      ]
+    }
+  }
+}

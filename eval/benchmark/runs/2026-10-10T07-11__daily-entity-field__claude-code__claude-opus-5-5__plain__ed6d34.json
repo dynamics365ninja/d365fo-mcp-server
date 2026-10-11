@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T07-11__daily-entity-field__claude-code__claude-opus-5-5__plain__ed6d34",
+  "timestamp": "2026-10-10T07:11:58.616Z",
+  "promptId": "daily-entity-field",
+  "promptHash": "2d1c1d8cd270",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v3",
+  "durationMs": 95743,
+  "apiMs": 60110,
+  "requests": 26,
+  "toolCalls": 25,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 7,
+    "Read": 9,
+    "Grep": 2,
+    "Write": 5,
+    "Bash": 1
+  },
+  "inputTokens": 483268,
+  "cachedTokens": 456407,
+  "outputTokens": 6474,
+  "hostCost": {
+    "value": 0.4355374,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 43.55374,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches CustCustomerV3Entity",
+      "passed": true
+    },
+    {
+      "name": "file EDT ConCustSegmentCode, 15 characters",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: field + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Entity extension maps the field",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Staging extension: the field",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1578,
+  "resultExcerpt": "The segment code is now on the customer and on the standard customers data entity. The full build of `fm-mcp` passed with 0 errors, and the build log has no warnings about the new objects. I haven't tested an actual import, export or OData call.\n\n**Data entity extended:** `CustCustomerV3Entity` (OData: `CustomersV3`), which is the current customers entity. `CustCustomerV2Entity` is the older versi",
+  "notes": "1 permission denial(s): PowerShell",
+  "evidence": {
+    "sessionId": "627ee67f-80ed-43a8-b41e-79c29c354bb9",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxDataEntityViewExtension/CustCustomerV3Entity.ConFmMcp.xml",
+    "fm-mcp/AxEdt/ConCustSegmentCode.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxTableExtension/CustCustomerV3Staging.ConFmMcp.xml",
+    "fm-mcp/AxTableExtension/CustTable.ConFmMcp.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 14187
+  },
+  "rework": {
+    "toolErrors": 1,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 5,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 2,
+      "findings": [
+        "Warning BPErrorHelpIsText EdtString/ConCustSegmentCode",
+        "Warning BPErrorLabelIsText EdtString/ConCustSegmentCode"
+      ]
+    }
+  }
+}

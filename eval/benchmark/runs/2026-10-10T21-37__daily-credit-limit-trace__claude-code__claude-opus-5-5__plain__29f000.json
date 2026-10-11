@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T21-37__daily-credit-limit-trace__claude-code__claude-opus-5-5__plain__29f000",
+  "timestamp": "2026-10-10T21:37:09.171Z",
+  "promptId": "daily-credit-limit-trace",
+  "promptHash": "48edfe0c4c84",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v5",
+  "durationMs": 91726,
+  "apiMs": 69153,
+  "requests": 25,
+  "toolCalls": 24,
+  "mcpToolCalls": 0,
+  "tools": {
+    "Grep": 13,
+    "Read": 10,
+    "Bash": 1
+  },
+  "inputTokens": 619611,
+  "cachedTokens": 585451,
+  "outputTokens": 6927,
+  "hostCost": {
+    "value": 0.5287902,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 52.87902,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches \\bCustCreditLimit\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(checkAgainstCreditLimit|checkCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\bSalesFormletterProvider\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(creditMaxOk|mustCheckCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches (CustCreditLimit\\W{1,3}(check|checkGivenBalances)\\b|\\bcheckGivenBalances\\b)",
+      "passed": true
+    }
+  ],
+  "resultChars": 3279,
+  "resultExcerpt": "I read the standard code only and changed no files.\n\n**1. The class that performs the check**\n- **`CustCreditLimit`** does the check. `CustCreditLimit::construct(Common _buffer, SalesTotals _salesTotals)` returns a subclass based on the buffer's table:\n  - `SalesTable` → `CustCreditLimit_SalesTable`\n  - `SalesParmTable` → `CustCreditLimit_SalesParmTable` (which extends `CustCreditLimit_SalesTable`",
+  "notes": "1 permission denial(s): Bash",
+  "evidence": {
+    "sessionId": "67341c36-d35f-442e-ba64-663d3c362b64",
+    "logPath": null
+  },
+  "rework": {
+    "toolErrors": 1,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "Bash": 1
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 0,
+    "rewrites": 0
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T18-24__daily-credit-limit-trace__claude-code__claude-sonnet-5-5__mcp__d60c1a",
+  "timestamp": "2026-10-10T18:24:10.324Z",
+  "promptId": "daily-credit-limit-trace",
+  "promptHash": "48edfe0c4c84",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "ec79b368",
+  "label": "v4",
+  "durationMs": 263257,
+  "apiMs": 74182,
+  "requests": 35,
+  "toolCalls": 34,
+  "mcpToolCalls": 5,
+  "tools": {
+    "ToolSearch": 1,
+    "mcp__d365fo-benchmark__get_workspace_info": 1,
+    "mcp__d365fo-benchmark__search": 1,
+    "mcp__d365fo-benchmark__get_object_info": 1,
+    "mcp__d365fo-benchmark__find_references": 2,
+    "Grep": 18,
+    "Read": 10
+  },
+  "inputTokens": 1129260,
+  "cachedTokens": 1074324,
+  "outputTokens": 10837,
+  "hostCost": {
+    "value": 0.4354623999999999,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 43.54624,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches \\bCustCreditLimit\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(checkAgainstCreditLimit|checkCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\bSalesFormletterProvider\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(creditMaxOk|mustCheckCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches (CustCreditLimit\\W{1,3}(check|checkGivenBalances)\\b|\\bcheckGivenBalances\\b)",
+      "passed": true
+    }
+  ],
+  "resultChars": 3557,
+  "resultExcerpt": "Standard code traced, nothing changed (all paths under `ApplicationSuite\\Foundation`).\n\n**1. Check class and deciding method**\n- `CustCreditLimit` does the check. `CustCreditLimit::construct(_buffer, _salesTotals)` returns `CustCreditLimit_SalesTable` for a `SalesTable`/`SalesLine` buffer, or `CustCreditLimit_SalesParmTable` for a `SalesParmTable` buffer. Credit Management adds `CredManCustCreditL",
+  "notes": null,
+  "evidence": {
+    "sessionId": "6db173ed-867f-4f58-9af3-bdcc384b25ab",
+    "logPath": null
+  },
+  "rework": {
+    "toolErrors": 1,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "Grep": 1
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 0,
+    "rewrites": 0
+  }
+}

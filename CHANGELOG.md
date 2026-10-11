@@ -29,6 +29,59 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`d365fo-mcp benchmark` — model × MCP benchmark with a graphical report.**
+  `benchmark run <prompt|all>` drives a matrix of models × {with MCP, without
+  MCP} × repeats through headless `claude -p` (stream-json, so per-tool call
+  counts are captured; `--strict-mcp-config` so the plain cells really have no
+  server), `benchmark ingest <main.jsonl>` records a Copilot Chat session through
+  the same reader `session` uses, and `benchmark report` renders one
+  self-contained HTML page (+ markdown twin) that leads with the difference:
+  per model, the MCP effect on run time, output tokens, AI Credits, round
+  trips and checks as signed bars from a zero baseline, and the same effect
+  over time as one line per model; the absolute medians (dumbbells), absolute
+  trends and the tables behind every chart sit under a collapsed Details.
+  Records live in `eval/benchmark/runs/` and are committed; the
+  prompt catalogue is `eval/benchmark/prompts/` (three starter prompts with
+  regex checks); AIC pricing is `eval/benchmark/credits.json`, and every credit
+  figure carries whether the host billed it or it was derived. Guide:
+  [docs/BENCHMARK.md](docs/BENCHMARK.md).
+  Prompts that write AOT objects run against a **sandbox package**
+  (`--sandbox …\PackagesLocalDirectory\fm-mcp`): the package is snapshotted
+  after a clean baseline build, every cell may edit nothing but it (an absolute `Edit(//k/…/fm-mcp/**)` rule
+  in `dontAsk` mode, standard metadata readable through `--add-dir`), is scored
+  on the files it wrote (`expects.files`) and an xppc full build, and is
+  restored byte for byte afterwards — with the symbol-index rows its writes
+  upserted taken back out, so the next with-MCP cell cannot `search` its way to
+  the previous cell's objects. `--mcp-servers` picks the servers a cell gets, and
+  a run refuses any server whose effective workspace is not the sandbox model —
+  including the case where `D365FO_WORKSPACE_PATH` in the launching shell
+  outranks the server's own config. Three **reference prompts** (`--tag
+  reference`) cover the common F&O change types: CustTable credit hold (enum,
+  table + form extension, data-event handler, CoC), a vendor certificate register
+  (EDT, table, SimpleList form, menu extension, privileges, VendTable form
+  extension) and an overdue snapshot (SysOperation batch job + RDP SSRS report).
+  Each sandbox cell is judged on what it left behind — well-formed XML, a clean
+  xppc build (labels compiled first), no xppbp error the clean sandbox did not
+  already have — and on how it got there: tool errors (MCP ones counted
+  separately), failed builds inside the cell, rewrites of one object. The raw
+  stream and the written files are kept per run, and `benchmark rederive`
+  recomputes rework and the answer/file checks from them when a parser or check
+  is fixed later. The report page opens with a verdict (valid output, time,
+  credits, rework — with vs without, in one sentence), a per-prompt scoreboard
+  and per prompt a with/without table, a check heat strip and the recurring
+  errors; charts and tables sit under Details; motion is off under
+  `prefers-reduced-motion`.
+  Both variants now get the same means to check their work — the web tools
+  and one shell command, the sandbox build (`scripts/benchmarkSandboxBuild.mjs`)
+  — so the only difference is the MCP server (`--no-web`, `--no-agent-build`
+  restore the old setup). Three `daily` prompts name no standard object, so
+  the agent has to find it: carry a sales order field to the posted invoice,
+  expose a customer field on the current customers data entity and its
+  staging table, and trace the sales credit limit check (read-only). The page
+  is now a leaderboard: suite tabs, an MCP-effect card per model, configurations
+  ranked by valid output with a 95 % Wilson interval and AIC per valid output,
+  a valid-output-vs-cost chart with one arrow per model, and a tasks ×
+  configurations matrix; `report.md` carries the same leaderboard.
 - **`modify-property` sets properties on a form's own controls.** With
   `controlName` (or a dotted `propertyPath`, `"PostButton.NeedsRecord"`), it now
   reaches a control of an `objectType="form"` and a control a form extension
@@ -42,6 +95,32 @@ those are called out explicitly below.
   the element, and an ambiguous or unknown control name writes nothing.
 
 ### Fixed
+- **`workspace.projectPath` / `D365FO_PROJECT_PATH` pins the project again.**
+  The config file loads its settings as `D365FO_*` environment variables, but
+  `getProjectPath()`, `getSolutionPath()` and `get_workspace_info` read only the
+  `.mcp.json` context — so the documented "Pinned .rnrproj file" setting did
+  nothing: `Project : (not detected)`, and no write could register a file in the
+  project. Both are read now, the environment first (the order `getContext()`
+  already used); the same holds for `workspace.solutionPath`.
+- **`d365fo_file(action="create")` keeps an extension class name that already
+  carries the model's token after its base.** `SalesTableMcpCreditHold_Extension`
+  with `[ExtensionOf(tableStr(SalesTable))]` was written as
+  `SalesTableMcpCreditHoldMcp_Extension` — the token was only looked for at
+  either end of the name — and a delete + re-create renamed it again, so the name
+  a task asked for could not be written through the server at all. The base named
+  in `[ExtensionOf]` (or `properties.baseClass`) now decides: base, then the
+  token as its own word, means already prefixed. Without a stated base nothing
+  changes. `validate_object_naming` predicts the same name. Found by the model ×
+  MCP benchmark (`ref-credit-hold-extension`), where it cost three with-MCP runs
+  a check the runs without MCP passed.
+- **Form and form-extension XML passed as `xmlContent` gets the metadata
+  namespace.** Written without `xmlns="Microsoft.Dynamics.AX.Metadata.V6"`, an
+  `AxFormExtension` builds clean and then fails xppbp ("Error reading
+  FormExtension … not found"); create now adds it to the root and `xmlns=""` to
+  the grandchildren — the layout every one of the 10,530 shipped `AxForm` /
+  `AxFormExtension` files has (no other root type carries the namespace) — and
+  says so in the response. Matched pair on the benchmark's own files: as written,
+  2 xppbp errors; fixed, 0.
 - **`get_workspace_info` no longer waits 5 s for a `.rnrproj` scan it does not
   need.** When `D365FO_MODEL_NAME` or the config names the model, the first call
   answered only after the background project scan — and with the server started

@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T18-30__daily-credit-limit-trace__claude-code__claude-opus-5-5__mcp__703cd0",
+  "timestamp": "2026-10-10T18:30:19.050Z",
+  "promptId": "daily-credit-limit-trace",
+  "promptHash": "48edfe0c4c84",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "ec79b368",
+  "label": "v4",
+  "durationMs": 80896,
+  "apiMs": 63799,
+  "requests": 24,
+  "toolCalls": 23,
+  "mcpToolCalls": 5,
+  "tools": {
+    "ToolSearch": 1,
+    "mcp__d365fo-benchmark__get_workspace_info": 1,
+    "mcp__d365fo-benchmark__search": 1,
+    "mcp__d365fo-benchmark__get_object_info": 2,
+    "mcp__d365fo-benchmark__find_references": 1,
+    "Grep": 8,
+    "Read": 8,
+    "PowerShell": 1
+  },
+  "inputTokens": 654734,
+  "cachedTokens": 607879,
+  "outputTokens": 6455,
+  "hostCost": {
+    "value": 0.6254118000000001,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 62.54118,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches \\bCustCreditLimit\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(checkAgainstCreditLimit|checkCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\bSalesFormletterProvider\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(creditMaxOk|mustCheckCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches (CustCreditLimit\\W{1,3}(check|checkGivenBalances)\\b|\\bcheckGivenBalances\\b)",
+      "passed": true
+    }
+  ],
+  "resultChars": 3739,
+  "resultExcerpt": "I traced this through the standard code in ApplicationSuite\\Foundation without changing any files.\n\n**1. The class that performs the check**\n\nThe class is **`CustCreditLimit`**. `CustCreditLimit::construct(_buffer, _salesTotals)` creates the right subclass for the buffer: `CustCreditLimit_SalesTable` for SalesTable and `CustCreditLimit_SalesParmTable` for SalesParmTable.\n\n- **`CustCreditLimit.chec",
+  "notes": "1 permission denial(s): PowerShell",
+  "evidence": {
+    "sessionId": "72ca1145-eea8-48e6-9ffa-8b3e0a510057",
+    "logPath": null
+  },
+  "rework": {
+    "toolErrors": 1,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 0,
+    "rewrites": 0
+  }
+}

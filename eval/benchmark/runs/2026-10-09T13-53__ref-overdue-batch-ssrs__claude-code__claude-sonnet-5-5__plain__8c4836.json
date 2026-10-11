@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T13-53__ref-overdue-batch-ssrs__claude-code__claude-sonnet-5-5__plain__8c4836",
+  "timestamp": "2026-10-09T13:53:23.570Z",
+  "promptId": "ref-overdue-batch-ssrs",
+  "promptHash": "9e347753ed7b",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "reference v2",
+  "durationMs": 285804,
+  "apiMs": 278304,
+  "requests": 46,
+  "toolCalls": 45,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 4,
+    "Read": 13,
+    "Grep": 10,
+    "Write": 11,
+    "Edit": 5,
+    "Bash": 1
+  },
+  "inputTokens": 1801875,
+  "cachedTokens": 1697107,
+  "outputTokens": 44156,
+  "hostCost": {
+    "value": 1.1999534,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 119.99534,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 0.8666666666666667,
+  "checks": [
+    {
+      "name": "matches ConCustOverdueSnapshotService",
+      "passed": true
+    },
+    {
+      "name": "matches ConCustOverdueReport",
+      "passed": true
+    },
+    {
+      "name": "file snapshot table",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation data contract",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation service over CustTransOpen",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation controller with main",
+      "passed": true
+    },
+    {
+      "name": "file action menu item for the batch job",
+      "passed": true
+    },
+    {
+      "name": "file TempDB report table",
+      "passed": true
+    },
+    {
+      "name": "file report data contract",
+      "passed": true
+    },
+    {
+      "name": "file report data provider",
+      "passed": true
+    },
+    {
+      "name": "file report with a DP dataset and a design",
+      "passed": true
+    },
+    {
+      "name": "file output menu item for the report",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": false
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": false
+    }
+  ],
+  "resultChars": 2578,
+  "resultExcerpt": "I wrote all the objects, but I couldn't run the xppc full build. Both shell tools (PowerShell and Bash) were denied in this session, so the zero-errors requirement is unverified. Please run the build, or allow a shell and I'll run it and fix whatever it reports.\n\nObjects created in `fm-mcp`:\n- Labels (`fm-mcp.en-US.label.txt`, changed): all labels and help texts for the objects below. This include",
+  "notes": "2 permission denial(s): PowerShell, Bash",
+  "evidence": {
+    "sessionId": "e32a321d-5f59-4b2d-9cb4-1c42b02832f5",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxClass/ConCustOverdueReportContract.xml",
+    "fm-mcp/AxClass/ConCustOverdueReportDP.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotContract.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotController.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotService.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxMenuItemAction/ConCustOverdueSnapshot.xml",
+    "fm-mcp/AxMenuItemOutput/ConCustOverdueReport.xml",
+    "fm-mcp/AxReport/ConCustOverdueReport.xml",
+    "fm-mcp/AxTable/ConCustOverdueReportTmp.xml",
+    "fm-mcp/AxTable/ConCustOverdueSnapshot.xml"
+  ],
+  "build": {
+    "ok": false,
+    "errorCount": 4,
+    "errors": [
+      "Compile Error: Class Method dynamics://Class/ConCustOverdueReportDP/Method/processReport: [(30,33),(30,58)]: ClassDoesNotContainMethod: Class 'ConCustOverdueReportDP' does not contain a definition for method 'parmUserConnection' and no extension method 'parmUserConnection' accepting a first argument",
+      "Compile Fatal Error: Class Method dynamics://Class/ConCustOverdueSnapshotService/Method/process: [(27,20),(27,61)]: Illegal table specification.",
+      "Metadata Error: AxReport/ConCustOverdueReport/Designs/Report/Expression: Report: Unidentifiable substring 'mcp' in expression. The parser reported error message: Unrecognized identifier.",
+      "Metadata Error: AxReport/ConCustOverdueReport/Designs/Report/Expression: Report: Label @fm does not exist in the resx file."
+    ],
+    "durationMs": 11998
+  },
+  "rework": {
+    "toolErrors": 4,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Read": 1,
+      "Grep": 1,
+      "Bash": 1
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 16,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": null
+  }
+}

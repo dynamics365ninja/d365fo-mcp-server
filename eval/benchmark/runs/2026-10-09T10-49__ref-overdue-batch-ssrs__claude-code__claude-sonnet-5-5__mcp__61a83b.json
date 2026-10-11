@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T10-49__ref-overdue-batch-ssrs__claude-code__claude-sonnet-5-5__mcp__61a83b",
+  "timestamp": "2026-10-09T10:49:45.397Z",
+  "promptId": "ref-overdue-batch-ssrs",
+  "promptHash": "9e347753ed7b",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "mcpServers": [
+    "d365fo-eval"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "59a52766",
+  "label": "reference v1",
+  "durationMs": 292207,
+  "apiMs": 167072,
+  "requests": 55,
+  "toolCalls": 54,
+  "mcpToolCalls": 27,
+  "tools": {
+    "ToolSearch": 1,
+    "Bash": 8,
+    "mcp__d365fo-eval__get_workspace_info": 1,
+    "Glob": 1,
+    "Read": 8,
+    "Write": 2,
+    "Grep": 1,
+    "mcp__d365fo-eval__get_knowledge": 3,
+    "mcp__d365fo-eval__d365fo_file": 17,
+    "mcp__d365fo-eval__generate_object": 1,
+    "mcp__d365fo-eval__labels": 3,
+    "Edit": 6,
+    "mcp__d365fo-eval__build_d365fo_project": 2
+  },
+  "inputTokens": 1812778,
+  "cachedTokens": 1738529,
+  "outputTokens": 23798,
+  "hostCost": {
+    "value": 0.8825698000000001,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 88.25698,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches ConCustOverdueSnapshotService",
+      "passed": true
+    },
+    {
+      "name": "matches ConCustOverdueReport",
+      "passed": true
+    },
+    {
+      "name": "file snapshot table",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation data contract",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation service over CustTransOpen",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation controller with main",
+      "passed": true
+    },
+    {
+      "name": "file action menu item for the batch job",
+      "passed": true
+    },
+    {
+      "name": "file TempDB report table",
+      "passed": true
+    },
+    {
+      "name": "file report data contract",
+      "passed": true
+    },
+    {
+      "name": "file report data provider",
+      "passed": true
+    },
+    {
+      "name": "file report with a DP dataset and a design",
+      "passed": true
+    },
+    {
+      "name": "file output menu item for the report",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    }
+  ],
+  "resultChars": 2093,
+  "resultExcerpt": "The full build of `fm-mcp` finishes with 0 errors and 2 warnings, but the report's column headers are still hardcoded text. I couldn't fix that because the Edit and Write tools were denied partway through. I didn't run the report, the snapshot job, or database sync. No object was added to a Visual Studio project, since the tools couldn't find a project path.\n\n**Open issues**\n- **Hardcoded headers:",
+  "notes": null,
+  "evidence": {
+    "sessionId": "108b3a40-dd98-4473-a192-224aa2b410cf",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxClass/ConCustOverdueReportContract.xml",
+    "fm-mcp/AxClass/ConCustOverdueReportContract.xml.backup-2026-10-09T10-51-44-836",
+    "fm-mcp/AxClass/ConCustOverdueReportDP.xml",
+    "fm-mcp/AxClass/ConCustOverdueReportDP.xml.backup-2026-10-09T10-51-58-957",
+    "fm-mcp/AxClass/ConCustOverdueReportDP.xml.backup-2026-10-09T10-52-03-124",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotContract.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotContract.xml.backup-2026-10-09T10-51-44-130",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotController.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotService.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxMenuItemAction/ConCustOverdueSnapshot.xml",
+    "fm-mcp/AxMenuItemOutput/ConCustOverdueReport.xml",
+    "fm-mcp/AxReport/ConCustOverdueReport.xml",
+    "fm-mcp/AxTable/ConCustOverdueReportTmp.xml",
+    "fm-mcp/AxTable/ConCustOverdueReportTmp.xml.backup-2026-10-09T10-53-05-172",
+    "fm-mcp/AxTable/ConCustOverdueSnapshot.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 12630
+  }
+}

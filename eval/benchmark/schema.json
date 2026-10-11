@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/dynamics365ninja/d365fo-mcp-server/eval/benchmark/schema.json",
+  "title": "Benchmark run record",
+  "description": "One record per (prompt, host, model, with/without MCP, moment). Written by `d365fo-mcp benchmark run` and `benchmark ingest`; read by `benchmark report`. Mirrors BenchmarkRun in src/benchmark/types.ts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "runId", "timestamp", "promptId", "promptHash", "host", "model", "mcp", "durationMs", "requests", "toolCalls", "inputTokens", "cachedTokens", "outputTokens", "outcome"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "runId": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "promptId": { "type": "string" },
+    "promptHash": { "type": "string", "description": "First 12 hex of sha256 over the prompt text — an edited prompt is a different experiment." },
+    "host": { "type": "string", "description": "claude-code | copilot-chat | another reader's id." },
+    "model": { "type": "string" },
+    "modelRequested": { "type": ["string", "null"] },
+    "mcp": { "type": "boolean" },
+    "setup": { "type": ["string", "null"], "description": "What a with-MCP cell got besides the server (e.g. instructions: copilot-instructions.md); absent = the server alone." },
+    "mcpServers": { "type": "array", "items": { "type": "string" } },
+    "serverVersion": { "type": ["string", "null"] },
+    "serverGitSha": { "type": ["string", "null"] },
+    "label": { "type": ["string", "null"] },
+    "durationMs": { "type": "number", "minimum": 0 },
+    "apiMs": { "type": ["number", "null"] },
+    "requests": { "type": "integer", "minimum": 0 },
+    "toolCalls": { "type": "integer", "minimum": 0 },
+    "mcpToolCalls": { "type": "integer", "minimum": 0 },
+    "tools": { "type": "object", "additionalProperties": { "type": "integer" } },
+    "inputTokens": { "type": "integer", "minimum": 0 },
+    "cachedTokens": { "type": "integer", "minimum": 0 },
+    "outputTokens": { "type": "integer", "minimum": 0 },
+    "hostCost": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["value", "unit"],
+      "properties": { "value": { "type": "number" }, "unit": { "type": "string" } }
+    },
+    "aic": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["value", "source"],
+      "properties": {
+        "value": { "type": "number" },
+        "source": { "type": "string", "enum": ["host", "host-cost", "rates"] },
+        "rates": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "cached": { "type": "number" }, "uncached": { "type": "number" }, "output": { "type": "number" } }
+        }
+      }
+    },
+    "outcome": { "type": "string", "enum": ["completed", "error", "timeout", "max_turns", "budget_exceeded"] },
+    "score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "passed"],
+        "properties": { "name": { "type": "string" }, "passed": { "type": "boolean" } }
+      }
+    },
+    "resultChars": { "type": ["integer", "null"] },
+    "resultExcerpt": { "type": ["string", "null"] },
+    "notes": { "type": ["string", "null"] },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "sessionId": { "type": ["string", "null"] }, "logPath": { "type": ["string", "null"] } }
+    },
+    "artifacts": {
+      "type": "array",
+      "description": "Sandbox runs: files the cell added or changed in the sandbox package, relative, forward slashes, build output left out.",
+      "items": { "type": "string" }
+    },
+    "build": {
+      "type": ["object", "null"],
+      "description": "Sandbox runs of a prompt with workspace.build: the xppc full build after the cell; null when the cell wrote nothing to build.",
+      "additionalProperties": false,
+      "required": ["ok", "errorCount", "errors", "durationMs"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "errorCount": { "type": "integer", "minimum": 0 },
+        "errors": { "type": "array", "items": { "type": "string" } },
+        "durationMs": { "type": "number", "minimum": 0 }
+      }
+    },
+    "rework": {
+      "type": "object",
+      "description": "How much repair the cell needed on the way, from the host's stream: tool errors, failed builds inside the cell, and rewrites — a target written again after a failure since its previous write (building an object in steps is not counted).",
+      "additionalProperties": false,
+      "required": ["toolErrors", "mcpToolErrors", "toolErrorsByTool", "buildAttempts", "buildFailures", "writeOps", "rewrites"],
+      "properties": {
+        "toolErrors": { "type": "integer", "minimum": 0 },
+        "mcpToolErrors": { "type": "integer", "minimum": 0 },
+        "toolErrorsByTool": { "type": "object", "additionalProperties": { "type": "integer" } },
+        "buildAttempts": { "type": "integer", "minimum": 0 },
+        "buildFailures": { "type": "integer", "minimum": 0 },
+        "writeOps": { "type": "integer", "minimum": 0 },
+        "rewrites": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "description": "Sandbox runs: validity of what the cell left behind beyond the build — malformed XML files and xppbp findings the clean sandbox did not have.",
+      "additionalProperties": false,
+      "required": ["xmlInvalid", "bp"],
+      "properties": {
+        "xmlInvalid": { "type": "array", "items": { "type": "string" } },
+        "bp": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["errors", "warnings", "findings"],
+          "properties": {
+            "errors": { "type": "integer", "minimum": 0 },
+            "warnings": { "type": "integer", "minimum": 0 },
+            "findings": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    }
+  }
+}

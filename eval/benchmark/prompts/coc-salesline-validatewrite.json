@@ -1,0 +1,17 @@
+{
+  "id": "coc-salesline-validatewrite",
+  "title": "CoC wrapper: SalesLine.validateWrite",
+  "prompt": "In a Dynamics 365 Finance & Operations custom model, write a Chain-of-Command extension class for the standard table SalesLine that wraps validateWrite(). The wrapper must call next first and, when the base result is true and the line's SalesQty is greater than 1000, show a warning (the text must be a label reference, never a hardcoded string) and still return the base result. Follow best practices: final class, [ExtensionOf(tableStr(SalesLine))], no default parameter values copied into the wrapper signature, never use today(). Return only the complete X++ class in one code block, followed by at most three sentences on how you verified it.",
+  "tags": ["coc", "write", "L2"],
+  "expects": {
+    "mustMatch": [
+      "\\[ExtensionOf\\(tableStr\\(SalesLine\\)\\)\\]",
+      "final\\s+class",
+      "next\\s+validateWrite\\s*\\(",
+      "SalesQty",
+      "@[A-Za-z0-9_]+:[A-Za-z0-9_]+"
+    ],
+    "mustNotMatch": ["\\btoday\\s*\\(\\)", "warning\\s*\\(\\s*\""]
+  },
+  "notes": "Code-generation prompt with mechanical checks for the rules the repo's copilot-instructions enforce (label reference, no today(), CoC attribute). A full verdict still needs the build + BP oracle from the eval loop."
+}

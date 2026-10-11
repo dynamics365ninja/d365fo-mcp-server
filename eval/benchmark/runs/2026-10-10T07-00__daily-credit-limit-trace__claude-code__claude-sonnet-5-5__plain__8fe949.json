@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T07-00__daily-credit-limit-trace__claude-code__claude-sonnet-5-5__plain__8fe949",
+  "timestamp": "2026-10-10T07:00:58.220Z",
+  "promptId": "daily-credit-limit-trace",
+  "promptHash": "48edfe0c4c84",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v3",
+  "durationMs": 71912,
+  "apiMs": 32368,
+  "requests": 19,
+  "toolCalls": 18,
+  "mcpToolCalls": 0,
+  "tools": {
+    "Grep": 8,
+    "Read": 10
+  },
+  "inputTokens": 323684,
+  "cachedTokens": 290594,
+  "outputTokens": 4670,
+  "hostCost": {
+    "value": 0.23714679999999996,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 23.71468,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches \\bCustCreditLimit\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(checkAgainstCreditLimit|checkCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\bSalesFormletterProvider\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(creditMaxOk|mustCheckCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches (CustCreditLimit\\W{1,3}(check|checkGivenBalances)\\b|\\bcheckGivenBalances\\b)",
+      "passed": true
+    }
+  ],
+  "resultChars": 3155,
+  "resultExcerpt": "All paths are under `ApplicationSuite\\Foundation`. No file was changed.\n\n**1. The check class**\n- The class is `CustCreditLimit`. It is built by `CustCreditLimit::construct(Common, SalesTotals)`, which returns `CustCreditLimit_SalesTable`, `CustCreditLimit_SalesParmTable` or `CustCreditLimit_CustInvoiceTable` depending on the buffer, with a `constructDelegate` fallback.\n- The deciding method is `p",
+  "notes": null,
+  "evidence": {
+    "sessionId": "6dd980b5-7cb6-4523-95d1-b3748b7bf068",
+    "logPath": null
+  },
+  "rework": {
+    "toolErrors": 0,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {},
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 0,
+    "rewrites": 0
+  }
+}

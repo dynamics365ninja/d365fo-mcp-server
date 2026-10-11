@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T10-45__ref-credit-hold-extension__claude-code__claude-sonnet-5-5__mcp__2df033",
+  "timestamp": "2026-10-09T10:45:06.612Z",
+  "promptId": "ref-credit-hold-extension",
+  "promptHash": "ad7da9adf05a",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "mcpServers": [
+    "d365fo-eval"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "59a52766",
+  "label": "reference v1",
+  "durationMs": 243602,
+  "apiMs": 118646,
+  "requests": 46,
+  "toolCalls": 45,
+  "mcpToolCalls": 16,
+  "tools": {
+    "PowerShell": 1,
+    "ToolSearch": 2,
+    "mcp__d365fo-eval__get_workspace_info": 1,
+    "mcp__d365fo-eval__labels": 2,
+    "mcp__d365fo-eval__get_knowledge": 2,
+    "Grep": 6,
+    "Read": 6,
+    "Glob": 1,
+    "Edit": 10,
+    "mcp__d365fo-eval__d365fo_file": 6,
+    "Write": 2,
+    "mcp__d365fo-eval__build_d365fo_project": 4,
+    "Bash": 1,
+    "mcp__d365fo-eval__run_bp_check": 1
+  },
+  "inputTokens": 1820478,
+  "cachedTokens": 1765976,
+  "outputTokens": 14425,
+  "hostCost": {
+    "value": 0.7153252000000001,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 71.53252,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches ConCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "matches SalesTableConCreditHold_Extension",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum ConCreditHoldReason",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: 3 fields + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustTable form extension shows the group",
+      "passed": true
+    },
+    {
+      "name": "file ModifiedField event handler",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable CoC on validateWrite",
+      "passed": true
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    }
+  ],
+  "resultChars": 2474,
+  "resultExcerpt": "The model builds with a full xppc build: 0 errors, 1 compiler warning. I haven't run any of it in a running AOS, so the credit-hold behavior itself is untested. The 1 compiler warning is about the form extension's field group, and the BP check adds one warning on the enum label. The other BP warnings are on the existing `ConDemoNoteHeader` table, not on anything I added.\n\n**Label file ID changed.*",
+  "notes": null,
+  "evidence": {
+    "sessionId": "66b189e9-81b6-493e-94d9-0341f8692285",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxClass/ConCustTableEventHandler.xml",
+    "fm-mcp/AxClass/SalesTableConCreditHold_Extension.xml",
+    "fm-mcp/AxEnum/ConCreditHoldReason.xml",
+    "fm-mcp/AxFormExtension/CustTable.ConCreditHold.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxLabelFile/fm-mcp_en-US.xml",
+    "fm-mcp/AxTableExtension/CustTable.ConCreditHold.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 15906
+  }
+}

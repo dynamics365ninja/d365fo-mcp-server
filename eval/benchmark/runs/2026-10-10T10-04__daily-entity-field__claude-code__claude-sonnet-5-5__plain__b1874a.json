@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T10-04__daily-entity-field__claude-code__claude-sonnet-5-5__plain__b1874a",
+  "timestamp": "2026-10-10T10:04:40.827Z",
+  "promptId": "daily-entity-field",
+  "promptHash": "4576bc73488d",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v4",
+  "durationMs": 53199,
+  "apiMs": 34515,
+  "requests": 20,
+  "toolCalls": 19,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 3,
+    "Read": 6,
+    "Grep": 3,
+    "Write": 5,
+    "Bash": 1
+  },
+  "inputTokens": 272988,
+  "cachedTokens": 248898,
+  "outputTokens": 5288,
+  "hostCost": {
+    "value": 0.17409780000000002,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 17.40978,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches CustCustomerV3Entity",
+      "passed": true
+    },
+    {
+      "name": "file EDT McpCustSegmentCode, 15 characters",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: field + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Entity extension maps the field",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Staging extension: the field",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 969,
+  "resultExcerpt": "The model builds with 0 errors (`benchmarkSandboxBuild.mjs`: labels + xppc full build, 13 s).\n\n**Data entity extended:** `CustCustomerV3Entity` (public name `CustomerV3`), the current version of the standard customers entity. I extended it rather than the older `CustCustomerV2Entity`.\n\nObjects created or changed:\n- `AxEdt\\McpCustSegmentCode`: new string EDT, 15 characters, with a label and help te",
+  "notes": "1 permission denial(s): PowerShell",
+  "evidence": {
+    "sessionId": "959c4973-e376-4d14-9d6b-e2a367672f4c",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxDataEntityViewExtension/CustCustomerV3Entity.McpExtension.xml",
+    "BenchmarkTestMcp/AxEdt/McpCustSegmentCode.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustCustomerV3Staging.McpExtension.xml",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpExtension.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 13316
+  },
+  "rework": {
+    "toolErrors": 1,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 5,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

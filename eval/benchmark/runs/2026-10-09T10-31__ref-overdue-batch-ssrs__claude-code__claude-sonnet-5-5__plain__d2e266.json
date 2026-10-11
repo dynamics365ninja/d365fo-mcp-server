@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T10-31__ref-overdue-batch-ssrs__claude-code__claude-sonnet-5-5__plain__d2e266",
+  "timestamp": "2026-10-09T10:31:19.498Z",
+  "promptId": "ref-overdue-batch-ssrs",
+  "promptHash": "9e347753ed7b",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "reference v1",
+  "durationMs": 284558,
+  "apiMs": 262781,
+  "requests": 49,
+  "toolCalls": 48,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 5,
+    "Read": 14,
+    "Bash": 2,
+    "Grep": 12,
+    "Write": 12,
+    "Edit": 2
+  },
+  "inputTokens": 1837690,
+  "cachedTokens": 1742205,
+  "outputTokens": 43893,
+  "hostCost": {
+    "value": 1.1691950000000002,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 116.9195,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 0.9230769230769231,
+  "checks": [
+    {
+      "name": "matches ConCustOverdueSnapshotService",
+      "passed": true
+    },
+    {
+      "name": "matches ConCustOverdueReport",
+      "passed": true
+    },
+    {
+      "name": "file snapshot table",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation data contract",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation service over CustTransOpen",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation controller with main",
+      "passed": true
+    },
+    {
+      "name": "file action menu item for the batch job",
+      "passed": true
+    },
+    {
+      "name": "file TempDB report table",
+      "passed": true
+    },
+    {
+      "name": "file report data contract",
+      "passed": true
+    },
+    {
+      "name": "file report data provider",
+      "passed": true
+    },
+    {
+      "name": "file report with a DP dataset and a design",
+      "passed": true
+    },
+    {
+      "name": "file output menu item for the report",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": false
+    }
+  ],
+  "resultChars": 3173,
+  "resultExcerpt": "I created all the objects, but I couldn't run the xppc build or any other check. The shell tools were denied in this session. That means the \"zero errors\" requirement is unverified, and none of the object XML has been compiled or opened in Visual Studio. I wrote the XML by hand, copying the structure of standard objects (`CustBalanceList` report, `CustBalanceListDP`, `CustBalanceListTmp` and the m",
+  "notes": null,
+  "evidence": {
+    "sessionId": "a610468e-e981-49b8-9b84-b8936809ca2a",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxClass/ConCustOverdueReportContract.xml",
+    "fm-mcp/AxClass/ConCustOverdueReportDP.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotContract.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotController.xml",
+    "fm-mcp/AxClass/ConCustOverdueSnapshotService.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxMenuItemAction/ConCustOverdueSnapshot.xml",
+    "fm-mcp/AxMenuItemOutput/ConCustOverdueReport.xml",
+    "fm-mcp/AxReport/ConCustOverdueReport.xml",
+    "fm-mcp/AxTable/ConCustOverdueReportTmp.xml",
+    "fm-mcp/AxTable/ConCustOverdueSnapshot.xml"
+  ],
+  "build": {
+    "ok": false,
+    "errorCount": 3,
+    "errors": [
+      "Compile Fatal Error: Class Method dynamics://Class/ConCustOverdueSnapshotService/Method/process: [(29,24),(29,55)]: Illegal table specification.",
+      "Metadata Error: AxReport/ConCustOverdueReport/Designs/Report/Expression: Report: Unidentifiable substring 'mcp' in expression. The parser reported error message: Unrecognized identifier.",
+      "Metadata Error: AxReport/ConCustOverdueReport/Designs/Report/Expression: Report: Label @fm does not exist in the resx file."
+    ],
+    "durationMs": 12085
+  }
+}

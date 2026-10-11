@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T20-35__daily-entity-field__claude-code__claude-opus-5-5__plain__4aefb6",
+  "timestamp": "2026-10-10T20:35:27.877Z",
+  "promptId": "daily-entity-field",
+  "promptHash": "4576bc73488d",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v5",
+  "durationMs": 97374,
+  "apiMs": 54102,
+  "requests": 23,
+  "toolCalls": 22,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 5,
+    "Read": 7,
+    "Grep": 3,
+    "Write": 5,
+    "Bash": 1
+  },
+  "inputTokens": 490884,
+  "cachedTokens": 464329,
+  "outputTokens": 5508,
+  "hostCost": {
+    "value": 0.41535379999999994,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 41.53538,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches CustCustomerV3Entity",
+      "passed": true
+    },
+    {
+      "name": "file EDT McpCustSegmentCode, 15 characters",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: field + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Entity extension maps the field",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Staging extension: the field",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1318,
+  "resultExcerpt": "I extended **CustCustomerV3Entity** (public name `CustomerV3`, collection `CustomersV3`). It's the customers entity Data management and OData use today; CustCustomerV2Entity is marked obsolete. The model builds with the build script you gave: 0 errors.\n\nObjects created or changed (all in `BenchmarkTestMcp\\BenchmarkTestMcp\\`):\n\n- **Label file `BenchmarkTestMcp` (en-US)** – changed: added `@Benchmar",
+  "notes": "1 permission denial(s): PowerShell",
+  "evidence": {
+    "sessionId": "c1fbaa67-3a22-4d19-8dbe-44743436b7aa",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxDataEntityViewExtension/CustCustomerV3Entity.BenchmarkTestMcp.xml",
+    "BenchmarkTestMcp/AxEdt/McpCustSegmentCode.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustCustomerV3Staging.BenchmarkTestMcp.xml",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.BenchmarkTestMcp.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 14017
+  },
+  "rework": {
+    "toolErrors": 1,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 5,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

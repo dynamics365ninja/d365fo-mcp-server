@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T21-33__daily-credit-limit-trace__claude-code__claude-sonnet-5-5__mcp__8d8194",
+  "timestamp": "2026-10-10T21:33:15.668Z",
+  "promptId": "daily-credit-limit-trace",
+  "promptHash": "48edfe0c4c84",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "619ce773",
+  "label": "v5",
+  "durationMs": 99687,
+  "apiMs": 39430,
+  "requests": 19,
+  "toolCalls": 18,
+  "mcpToolCalls": 10,
+  "tools": {
+    "ToolSearch": 1,
+    "mcp__d365fo-benchmark__get_workspace_info": 1,
+    "mcp__d365fo-benchmark__search": 3,
+    "mcp__d365fo-benchmark__get_object_info": 4,
+    "mcp__d365fo-benchmark__find_references": 2,
+    "Grep": 3,
+    "Read": 4
+  },
+  "inputTokens": 518983,
+  "cachedTokens": 479424,
+  "outputTokens": 5782,
+  "hostCost": {
+    "value": 0.2639544,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 26.39544,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches \\bCustCreditLimit\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(checkAgainstCreditLimit|checkCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\bSalesFormletterProvider\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(creditMaxOk|mustCheckCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches (CustCreditLimit\\W{1,3}(check|checkGivenBalances)\\b|\\bcheckGivenBalances\\b)",
+      "passed": true
+    }
+  ],
+  "resultChars": 3557,
+  "resultExcerpt": "## Credit limit check trace (standard application, Foundation model)\n\n**1. Class and deciding method**\n- `CustCreditLimit` does the check, and `CustCreditLimit.check()` (`public boolean`) decides pass or fail.\n- `check()` runs only if `shouldCheckCreditAvailable()` is true. It then gets `[balance, orderBalance] = this.balance()` and returns `this.checkGivenBalances(balance, orderBalance)`.\n- `chec",
+  "notes": null,
+  "evidence": {
+    "sessionId": "1df7fdb4-8982-4800-839e-c8744a605460",
+    "logPath": null
+  },
+  "rework": {
+    "toolErrors": 0,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {},
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 0,
+    "rewrites": 0
+  }
+}

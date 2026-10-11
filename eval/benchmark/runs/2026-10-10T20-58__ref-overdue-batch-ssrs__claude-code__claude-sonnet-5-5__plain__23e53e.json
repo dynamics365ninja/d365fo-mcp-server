@@ -1,0 +1,166 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T20-58__ref-overdue-batch-ssrs__claude-code__claude-sonnet-5-5__plain__23e53e",
+  "timestamp": "2026-10-10T20:58:51.852Z",
+  "promptId": "ref-overdue-batch-ssrs",
+  "promptHash": "1aa28deeabed",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v5",
+  "durationMs": 353662,
+  "apiMs": 244507,
+  "requests": 59,
+  "toolCalls": 58,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 2,
+    "Read": 9,
+    "Bash": 11,
+    "Grep": 14,
+    "Write": 11,
+    "Edit": 10
+  },
+  "inputTokens": 2588882,
+  "cachedTokens": 2510155,
+  "outputTokens": 36591,
+  "hostCost": {
+    "value": 0.9316734999999999,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 93.16735,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches McpCustOverdueSnapshotService",
+      "passed": true
+    },
+    {
+      "name": "matches McpCustOverdueReport",
+      "passed": true
+    },
+    {
+      "name": "file snapshot table",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation data contract",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation service over CustTransOpen",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation controller with main",
+      "passed": true
+    },
+    {
+      "name": "file action menu item for the batch job",
+      "passed": true
+    },
+    {
+      "name": "file TempDB report table",
+      "passed": true
+    },
+    {
+      "name": "file report data contract",
+      "passed": true
+    },
+    {
+      "name": "file report data provider",
+      "passed": true
+    },
+    {
+      "name": "file report with a DP dataset and a design",
+      "passed": true
+    },
+    {
+      "name": "file output menu item for the report",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 2013,
+  "resultExcerpt": "The model builds with 0 errors (full xppc build, labels compiled).\n\nCreated in `BenchmarkTestMcp`:\n- Labels: 21 new labels in `BenchmarkTestMcp.en-US.label.txt` (changed file)\n- Table `McpCustOverdueSnapshot`: the five fields, unique index `AccountNumAsOfDateIdx` on AccountNum + AsOfDate, relation to `CustTable`\n- TempDB table `McpCustOverdueReportTmp`: AccountNum, CustName, OverdueAmountMST, Olde",
+  "notes": "2 permission denial(s): PowerShell, Bash",
+  "evidence": {
+    "sessionId": "efa75a06-ca0a-45e5-948d-550c1017460c",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxClass/McpCustOverdueReportContract.xml",
+    "BenchmarkTestMcp/AxClass/McpCustOverdueReportDP.xml",
+    "BenchmarkTestMcp/AxClass/McpCustOverdueSnapshotContract.xml",
+    "BenchmarkTestMcp/AxClass/McpCustOverdueSnapshotController.xml",
+    "BenchmarkTestMcp/AxClass/McpCustOverdueSnapshotService.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxMenuItemAction/McpCustOverdueSnapshot.xml",
+    "BenchmarkTestMcp/AxMenuItemOutput/McpCustOverdueReport.xml",
+    "BenchmarkTestMcp/AxReport/McpCustOverdueReport.xml",
+    "BenchmarkTestMcp/AxTable/McpCustOverdueReportTmp.xml",
+    "BenchmarkTestMcp/AxTable/McpCustOverdueSnapshot.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 13222
+  },
+  "rework": {
+    "toolErrors": 6,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Bash": 5
+    },
+    "buildAttempts": 6,
+    "buildFailures": 4,
+    "writeOps": 21,
+    "rewrites": 4
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 20,
+      "findings": [
+        "Warning BPErrorMenuItemNotCoveredByPrivilege MenuItemOutput/McpCustOverdueReport",
+        "Warning BPErrorMenuItemNotCoveredByPrivilege MenuItemAction/McpCustOverdueSnapshot",
+        "Warning BPErrorEDTNotMigrated Table/McpCustOverdueReportTmp/TableFieldString/AccountNum",
+        "Warning BPErrorTableFieldNotDefinedUsingType Table/McpCustOverdueReportTmp/TableFieldInt/OpenTransCount",
+        "BestPractices Warning: AxTable dynamics://Table/McpCustOverdueReportTmp: EDT relation found in field AccountNum of table McpCustOverdueReportTmp. It should be m",
+        "BestPractices Warning: AxTable dynamics://Table/McpCustOverdueSnapshot: The index 'AccountNumAsOfDateIdx' specified as Primary key on table 'McpCustOverdueSnaps",
+        "Warning BPErrorEDTNotMigrated Table/McpCustOverdueSnapshot/TableFieldString/AccountNum",
+        "Warning BPErrorTableFieldNotDefinedUsingType Table/McpCustOverdueSnapshot/TableFieldInt/OpenTransCount",
+        "Warning BPErrorTableMissingGroupAutoReport Table/McpCustOverdueSnapshot",
+        "Warning BPErrorTablePrimaryKeyEditable Table/McpCustOverdueSnapshot/TableIndex/AccountNumAsOfDateIdx/TableIndexField/AccountNum",
+        "Warning BPErrorTablePrimaryKeyEditable Table/McpCustOverdueSnapshot/TableIndex/AccountNumAsOfDateIdx/TableIndexField/AsOfDate",
+        "Warning BPErrorTablePrimaryKeyNotMandatory Table/McpCustOverdueSnapshot/TableIndex/AccountNumAsOfDateIdx/TableIndexField/AccountNum",
+        "Warning BPErrorTableFieldNotInFieldGroup Table/McpCustOverdueSnapshot/TableFieldString/AccountNum",
+        "Warning BPErrorTableFieldNotInFieldGroup Table/McpCustOverdueSnapshot/TableFieldDate/AsOfDate",
+        "Warning BPErrorTableFieldNotInFieldGroup Table/McpCustOverdueSnapshot/TableFieldReal/OverdueAmountMST"
+      ]
+    }
+  }
+}

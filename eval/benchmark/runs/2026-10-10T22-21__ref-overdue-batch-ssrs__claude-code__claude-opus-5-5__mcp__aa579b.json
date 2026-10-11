@@ -1,0 +1,172 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T22-21__ref-overdue-batch-ssrs__claude-code__claude-opus-5-5__mcp__aa579b",
+  "timestamp": "2026-10-10T22:21:44.153Z",
+  "promptId": "ref-overdue-batch-ssrs",
+  "promptHash": "1aa28deeabed",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "619ce773",
+  "label": "v5",
+  "durationMs": 357168,
+  "apiMs": 317038,
+  "requests": 40,
+  "toolCalls": 39,
+  "mcpToolCalls": 22,
+  "tools": {
+    "ToolSearch": 1,
+    "mcp__d365fo-benchmark__get_workspace_info": 1,
+    "mcp__d365fo-benchmark__get_knowledge": 4,
+    "Bash": 13,
+    "mcp__d365fo-benchmark__labels": 2,
+    "Read": 3,
+    "mcp__d365fo-benchmark__d365fo_file": 13,
+    "mcp__d365fo-benchmark__generate_object": 1,
+    "mcp__d365fo-benchmark__get_object_info": 1
+  },
+  "inputTokens": 2556118,
+  "cachedTokens": 2455999,
+  "outputTokens": 42483,
+  "hostCost": {
+    "value": 2.1415477999999997,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 214.15478,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches McpCustOverdueSnapshotService",
+      "passed": true
+    },
+    {
+      "name": "matches McpCustOverdueReport",
+      "passed": true
+    },
+    {
+      "name": "file snapshot table",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation data contract",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation service over CustTransOpen",
+      "passed": true
+    },
+    {
+      "name": "file SysOperation controller with main",
+      "passed": true
+    },
+    {
+      "name": "file action menu item for the batch job",
+      "passed": true
+    },
+    {
+      "name": "file TempDB report table",
+      "passed": true
+    },
+    {
+      "name": "file report data contract",
+      "passed": true
+    },
+    {
+      "name": "file report data provider",
+      "passed": true
+    },
+    {
+      "name": "file report with a DP dataset and a design",
+      "passed": true
+    },
+    {
+      "name": "file output menu item for the report",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 2480,
+  "resultExcerpt": "The model builds with zero errors (labels plus the full xppc build, using the build script you gave).\n\n**Created** (all in `BenchmarkTestMcp`):\n- Table `McpCustOverdueSnapshot`: has the five fields, a unique key on AccountNum + AsOfDate, and the relation to `CustTable`.\n- Table `McpCustOverdueReportTmp` (TempDB).\n- Class `McpCustOverdueSnapshotContract`: AsOfDate defaults to the session date and M",
+  "notes": "1 permission denial(s): Bash",
+  "evidence": {
+    "sessionId": "d18de856-513d-4668-863a-68ceb16f0950",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp.rnrproj",
+    "BenchmarkTestMcp/AxClass/McpCustOverdueReportContract.xml",
+    "BenchmarkTestMcp/AxClass/McpCustOverdueReportDP.xml",
+    "BenchmarkTestMcp/AxClass/McpCustOverdueSnapshotContract.xml",
+    "BenchmarkTestMcp/AxClass/McpCustOverdueSnapshotController.xml",
+    "BenchmarkTestMcp/AxClass/McpCustOverdueSnapshotService.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxMenuItemAction/McpCustOverdueSnapshot.xml",
+    "BenchmarkTestMcp/AxMenuItemOutput/McpCustOverdueReport.xml",
+    "BenchmarkTestMcp/AxReport/McpCustOverdueReport.xml",
+    "BenchmarkTestMcp/AxReport/McpCustOverdueReport.xml.backup-2026-10-10T22-26-05-258",
+    "BenchmarkTestMcp/AxTable/McpCustOverdueReportTmp.xml",
+    "BenchmarkTestMcp/AxTable/McpCustOverdueSnapshot.xml",
+    "BenchmarkTestMcp/AxTable/McpCustOverdueSnapshot.xml.backup-2026-10-10T22-22-16-051",
+    "BenchmarkTestMcp/AxTable/McpCustOverdueSnapshot.xml.backup-2026-10-10T22-22-20-413"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 13370
+  },
+  "rework": {
+    "toolErrors": 4,
+    "mcpToolErrors": 2,
+    "toolErrorsByTool": {
+      "mcp__d365fo-benchmark__d365fo_file": 2,
+      "Bash": 2
+    },
+    "buildAttempts": 2,
+    "buildFailures": 1,
+    "writeOps": 14,
+    "rewrites": 3
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 12,
+      "findings": [
+        "Warning BPErrorMenuItemNotCoveredByPrivilege MenuItemOutput/McpCustOverdueReport",
+        "Warning BPErrorMenuItemNotCoveredByPrivilege MenuItemAction/McpCustOverdueSnapshot",
+        "Warning BPErrorEDTNotMigrated Table/McpCustOverdueReportTmp/TableFieldString/AccountNum",
+        "Warning BPErrorTableFieldNotDefinedUsingType Table/McpCustOverdueReportTmp/TableFieldInt/OpenTransCount",
+        "Warning BPErrorTableMissingFormRef Table/McpCustOverdueReportTmp",
+        "BestPractices Warning: AxTable dynamics://Table/McpCustOverdueReportTmp: EDT relation found in field AccountNum of table McpCustOverdueReportTmp. It should be m",
+        "Warning BPErrorEDTNotMigrated Table/McpCustOverdueSnapshot/TableFieldString/AccountNum",
+        "Warning BPErrorTableFieldNotDefinedUsingType Table/McpCustOverdueSnapshot/TableFieldInt/OpenTransCount",
+        "Warning BPErrorTablePrimaryKeyEditable Table/McpCustOverdueSnapshot/TableIndex/AccountAsOfDateIdx/TableIndexField/AccountNum",
+        "Warning BPErrorTablePrimaryKeyEditable Table/McpCustOverdueSnapshot/TableIndex/AccountAsOfDateIdx/TableIndexField/AsOfDate",
+        "Warning BPErrorDeveloperDocumentationNotDefined Table/McpCustOverdueSnapshot",
+        "BestPractices Warning: AxTable dynamics://Table/McpCustOverdueSnapshot: EDT relation found in field AccountNum of table McpCustOverdueSnapshot. It should be mig"
+      ]
+    }
+  }
+}

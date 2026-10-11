@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T21-41__daily-entity-field__claude-code__claude-sonnet-5-5__plain__12f14f",
+  "timestamp": "2026-10-10T21:41:02.587Z",
+  "promptId": "daily-entity-field",
+  "promptHash": "4576bc73488d",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v5",
+  "durationMs": 54903,
+  "apiMs": 50508,
+  "requests": 25,
+  "toolCalls": 24,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 5,
+    "Read": 6,
+    "Grep": 6,
+    "Bash": 1,
+    "Write": 5
+  },
+  "inputTokens": 410092,
+  "cachedTokens": 378188,
+  "outputTokens": 8129,
+  "hostCost": {
+    "value": 0.24668079999999998,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 24.66808,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches CustCustomerV3Entity",
+      "passed": true
+    },
+    {
+      "name": "file EDT McpCustSegmentCode, 15 characters",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: field + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Entity extension maps the field",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Staging extension: the field",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1398,
+  "resultExcerpt": "The metadata is written, but I could not run the build. The shell tools (PowerShell and Bash) were denied in this session, so the model has not been compiled and the \"zero errors\" requirement is unverified. To finish, run `node K:/repos/d365fo-mcp-server/scripts/benchmarkSandboxBuild.mjs K:/AosService/PackagesLocalDirectory/BenchmarkTestMcp`, or allow shell access and I'll run it and fix any error",
+  "notes": "2 permission denial(s): PowerShell, Bash",
+  "evidence": {
+    "sessionId": "c578907a-4db8-41fb-b8e0-cb8eecd5f7d3",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxDataEntityViewExtension/CustCustomerV3Entity.McpSegmentExtension.xml",
+    "BenchmarkTestMcp/AxEdt/McpCustSegmentCode.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustCustomerV3Staging.McpSegmentExtension.xml",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.McpSegmentExtension.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 13558
+  },
+  "rework": {
+    "toolErrors": 2,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Bash": 1
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 5,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

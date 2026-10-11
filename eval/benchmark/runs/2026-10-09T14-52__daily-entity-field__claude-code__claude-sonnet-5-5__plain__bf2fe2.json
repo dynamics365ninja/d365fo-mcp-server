@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T14-52__daily-entity-field__claude-code__claude-sonnet-5-5__plain__bf2fe2",
+  "timestamp": "2026-10-09T14:52:03.988Z",
+  "promptId": "daily-entity-field",
+  "promptHash": "2d1c1d8cd270",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v3",
+  "durationMs": 89112,
+  "apiMs": 60362,
+  "requests": 29,
+  "toolCalls": 28,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 6,
+    "Grep": 7,
+    "Read": 8,
+    "Write": 5,
+    "Bash": 1
+  },
+  "inputTokens": 577569,
+  "cachedTokens": 535418,
+  "outputTokens": 6337,
+  "hostCost": {
+    "value": 0.33900559999999996,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 33.90056,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches CustCustomerV3Entity",
+      "passed": true
+    },
+    {
+      "name": "file EDT ConCustSegmentCode, 15 characters",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: field + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Entity extension maps the field",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Staging extension: the field",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1025,
+  "resultExcerpt": "The model builds with zero errors, using the exact build command you gave. I didn't import or export any data, so the Data management behaviour hasn't been tried.\n\n**Objects created or changed:**\n- `fm-mcp.en-US.label.txt`: added labels `ConCustSegmentCode`, `ConCustSegmentCodeHelp` and `ConSegment`.\n- `ConCustSegmentCode` (EDT): a 15-character string with a label and a help text.\n- `CustTable.Con",
+  "notes": "1 permission denial(s): PowerShell",
+  "evidence": {
+    "sessionId": "81f37eb7-7d90-4f16-9ef8-128af5b45dbf",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxDataEntityViewExtension/CustCustomerV3Entity.ConSegmentExtension.xml",
+    "fm-mcp/AxEdt/ConCustSegmentCode.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxTableExtension/CustCustomerV3Staging.ConSegmentExtension.xml",
+    "fm-mcp/AxTableExtension/CustTable.ConSegmentExtension.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 15721
+  },
+  "rework": {
+    "toolErrors": 1,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 5,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 2,
+      "findings": [
+        "Warning BPErrorHelpIsText EdtString/ConCustSegmentCode",
+        "Warning BPErrorLabelIsText EdtString/ConCustSegmentCode"
+      ]
+    }
+  }
+}

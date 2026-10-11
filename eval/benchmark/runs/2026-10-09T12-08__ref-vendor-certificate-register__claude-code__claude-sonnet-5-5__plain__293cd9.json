@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-09T12-08__ref-vendor-certificate-register__claude-code__claude-sonnet-5-5__plain__293cd9",
+  "timestamp": "2026-10-09T12:08:53.949Z",
+  "promptId": "ref-vendor-certificate-register",
+  "promptHash": "f04876b5d381",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "reference v2",
+  "durationMs": 240079,
+  "apiMs": 161738,
+  "requests": 59,
+  "toolCalls": 58,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 2,
+    "Glob": 21,
+    "Read": 18,
+    "Grep": 5,
+    "Write": 10,
+    "Bash": 2
+  },
+  "inputTokens": 1290524,
+  "cachedTokens": 1226753,
+  "outputTokens": 22092,
+  "hostCost": {
+    "value": 0.7212586,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 72.12586,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 0.8571428571428571,
+  "checks": [
+    {
+      "name": "matches ConVendCertificate",
+      "passed": true
+    },
+    {
+      "name": "file string EDT ConVendCertificateId",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum ConVendCertificateType",
+      "passed": true
+    },
+    {
+      "name": "file table: fields, primary index, VendTable relation, find/exist/validateWrite",
+      "passed": true
+    },
+    {
+      "name": "file SimpleList form over the table",
+      "passed": true
+    },
+    {
+      "name": "file display menu item",
+      "passed": true
+    },
+    {
+      "name": "file ProcurementAndSourcing menu extension",
+      "passed": true
+    },
+    {
+      "name": "file maintain privilege (delete)",
+      "passed": true
+    },
+    {
+      "name": "file view privilege (read only)",
+      "passed": true
+    },
+    {
+      "name": "file VendTable form extension opens the register",
+      "passed": true
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": false
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": false
+    }
+  ],
+  "resultChars": 2114,
+  "resultExcerpt": "I created all the objects, but I couldn't run the xppc full build, so I don't know whether the model builds with zero errors. PowerShell and Bash are both denied in this session (don't-ask mode), and xppc needs a shell. I didn't try to work around that.\n\nI wrote the metadata XML by copying the structure of standard objects (`VendGroup` form, `VendGroupMaintain` privilege, `AccountsPayable.Extensio",
+  "notes": "3 permission denial(s): PowerShell, PowerShell, Bash · re-derived 2026-10-09 from kept stream/artifacts: rework 9/1/2/0 → 9/0/0/0 (tool errors/failed/attempted builds/rewrites)",
+  "evidence": {
+    "sessionId": "b9d761c1-d33a-437d-8722-51f29ebaabc7",
+    "logPath": null
+  },
+  "artifacts": [
+    "fm-mcp/AxEdt/ConVendCertificateId.xml",
+    "fm-mcp/AxEnum/ConVendCertificateType.xml",
+    "fm-mcp/AxForm/ConVendCertificate.xml",
+    "fm-mcp/AxFormExtension/VendTable.ConExtension.xml",
+    "fm-mcp/AxLabelFile/LabelResources/en-US/fm-mcp.en-US.label.txt",
+    "fm-mcp/AxMenuExtension/ProcurementAndSourcing.ConExtension.xml",
+    "fm-mcp/AxMenuItemDisplay/ConVendCertificate.xml",
+    "fm-mcp/AxSecurityPrivilege/ConVendCertificateMaintain.xml",
+    "fm-mcp/AxSecurityPrivilege/ConVendCertificateView.xml",
+    "fm-mcp/AxTable/ConVendCertificate.xml"
+  ],
+  "build": {
+    "ok": false,
+    "errorCount": 2,
+    "errors": [
+      "Metadata Error: AxEnum/ConVendCertificateType/UseEnumValue: UseEnumValue property must be set to 'No' when the IsExtensible property is 'True'.",
+      "FormPatternValidation Error: AxForm/ConVendCertificate/Design: Control 'AxForm/ConVendCertificate/Design' is missing child 'Application Bar' required by pattern 'Simple List'."
+    ],
+    "durationMs": 17812
+  },
+  "rework": {
+    "toolErrors": 9,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 2,
+      "Glob": 5,
+      "Read": 1,
+      "Bash": 1
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 10,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": null
+  }
+}
