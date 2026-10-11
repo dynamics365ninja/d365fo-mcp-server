@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T23-59__daily-invoice-field-flow__claude-code__claude-opus-5-5__plain__fcf991",
+  "timestamp": "2026-10-10T23:59:40.600Z",
+  "promptId": "daily-invoice-field-flow",
+  "promptHash": "90cb6da31899",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v5",
+  "durationMs": 180949,
+  "apiMs": 138327,
+  "requests": 37,
+  "toolCalls": 36,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 2,
+    "Glob": 4,
+    "Read": 9,
+    "Grep": 13,
+    "Bash": 1,
+    "Write": 7
+  },
+  "inputTokens": 1014479,
+  "cachedTokens": 967298,
+  "outputTokens": 10649,
+  "hostCost": {
+    "value": 0.7836876,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 78.36876,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches initFromSalesTable|initFromSalesParmTable|initInvoiceHeaderFromSourceTable|initJournalHeader",
+      "passed": true
+    },
+    {
+      "name": "file EDT McpProjectCode, 20 characters",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable extension: the field",
+      "passed": true
+    },
+    {
+      "name": "file CustInvoiceJour extension: the field",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable form extension shows it",
+      "passed": true
+    },
+    {
+      "name": "file CustInvoiceJournal form extension shows it",
+      "passed": true
+    },
+    {
+      "name": "file CoC on the method that initializes the invoice header",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1797,
+  "resultExcerpt": "The model builds with 0 errors. I ran the exact build command and it reported \"Build succeeded in 16 s — 0 errors.\" Nothing has been tested in a running environment, so I haven't checked the forms or an actual invoice posting.\n\n**Objects created or changed in `BenchmarkTestMcp`:**\n- `BenchmarkTestMcp` label file (en-US), changed: added the labels `@BenchmarkTestMcp:McpProjectCode` (\"Customer proje",
+  "notes": "2 permission denial(s): PowerShell, Bash",
+  "evidence": {
+    "sessionId": "a4b26ab9-80fe-493b-afdd-bf72c0f4dcb2",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxClass/McpCustInvoiceJour_Extension.xml",
+    "BenchmarkTestMcp/AxEdt/McpProjectCode.xml",
+    "BenchmarkTestMcp/AxFormExtension/CustInvoiceJournal.McpBenchmarkTestMcp.xml",
+    "BenchmarkTestMcp/AxFormExtension/SalesTable.McpBenchmarkTestMcp.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustInvoiceJour.McpBenchmarkTestMcp.xml",
+    "BenchmarkTestMcp/AxTableExtension/SalesTable.McpBenchmarkTestMcp.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 16400
+  },
+  "rework": {
+    "toolErrors": 2,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Bash": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 7,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

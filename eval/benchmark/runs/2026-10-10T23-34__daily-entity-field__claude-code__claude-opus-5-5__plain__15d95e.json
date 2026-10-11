@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T23-34__daily-entity-field__claude-code__claude-opus-5-5__plain__15d95e",
+  "timestamp": "2026-10-10T23:34:22.759Z",
+  "promptId": "daily-entity-field",
+  "promptHash": "4576bc73488d",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v5",
+  "durationMs": 270158,
+  "apiMs": 69715,
+  "requests": 24,
+  "toolCalls": 23,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 5,
+    "Read": 8,
+    "Grep": 1,
+    "Bash": 2,
+    "Write": 5,
+    "Edit": 1
+  },
+  "inputTokens": 481306,
+  "cachedTokens": 451978,
+  "outputTokens": 7146,
+  "hostCost": {
+    "value": 0.4678276,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 46.78276,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches CustCustomerV3Entity",
+      "passed": true
+    },
+    {
+      "name": "file EDT McpCustSegmentCode, 15 characters",
+      "passed": true
+    },
+    {
+      "name": "file CustTable extension: field + field group",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Entity extension maps the field",
+      "passed": true
+    },
+    {
+      "name": "file CustCustomerV3Staging extension: the field",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1772,
+  "resultExcerpt": "The segment code is now on the customer and on the standard customers entity, and the model builds with 0 errors (`benchmarkSandboxBuild.mjs`, labels plus xppc full build). I haven't run a database sync or tested an actual import, export or OData call.\n\n**Data entity extended:** `CustCustomerV3Entity` (OData: `CustomersV3` / `CustomerV3`; staging table `CustCustomerV3Staging`). It is the newest cu",
+  "notes": "1 permission denial(s): PowerShell",
+  "evidence": {
+    "sessionId": "34e5ffb8-10aa-47f3-b49f-db1f2f13fd68",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp.rnrproj",
+    "BenchmarkTestMcp/AxDataEntityViewExtension/CustCustomerV3Entity.BenchmarkTestMcp.xml",
+    "BenchmarkTestMcp/AxEdt/McpCustSegmentCode.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustCustomerV3Staging.BenchmarkTestMcp.xml",
+    "BenchmarkTestMcp/AxTableExtension/CustTable.BenchmarkTestMcp.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 18445
+  },
+  "rework": {
+    "toolErrors": 4,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Glob": 3
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 6,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

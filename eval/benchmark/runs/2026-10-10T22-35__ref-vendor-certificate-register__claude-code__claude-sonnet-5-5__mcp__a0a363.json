@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T22-35__ref-vendor-certificate-register__claude-code__claude-sonnet-5-5__mcp__a0a363",
+  "timestamp": "2026-10-10T22:35:00.279Z",
+  "promptId": "ref-vendor-certificate-register",
+  "promptHash": "c6816b54a7d2",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "619ce773",
+  "label": "v5",
+  "durationMs": 110838,
+  "apiMs": 71714,
+  "requests": 34,
+  "toolCalls": 33,
+  "mcpToolCalls": 22,
+  "tools": {
+    "ToolSearch": 1,
+    "mcp__d365fo-benchmark__get_workspace_info": 1,
+    "mcp__d365fo-benchmark__get_knowledge": 3,
+    "mcp__d365fo-benchmark__labels": 2,
+    "mcp__d365fo-benchmark__d365fo_file": 13,
+    "mcp__d365fo-benchmark__object_patterns": 1,
+    "mcp__d365fo-benchmark__generate_object": 1,
+    "Read": 4,
+    "mcp__d365fo-benchmark__get_object_info": 1,
+    "Grep": 2,
+    "Bash": 1,
+    "Glob": 1,
+    "PowerShell": 2
+  },
+  "inputTokens": 1335693,
+  "cachedTokens": 1283635,
+  "outputTokens": 10901,
+  "hostCost": {
+    "value": 0.4455135,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 44.55135,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches McpVendCertificate",
+      "passed": true
+    },
+    {
+      "name": "file string EDT McpVendCertificateId",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum McpVendCertificateType",
+      "passed": true
+    },
+    {
+      "name": "file table: fields, primary index, VendTable relation, find/exist/validateWrite",
+      "passed": true
+    },
+    {
+      "name": "file SimpleList form over the table",
+      "passed": true
+    },
+    {
+      "name": "file display menu item",
+      "passed": true
+    },
+    {
+      "name": "file ProcurementAndSourcing menu extension",
+      "passed": true
+    },
+    {
+      "name": "file maintain privilege (delete)",
+      "passed": true
+    },
+    {
+      "name": "file view privilege (read only)",
+      "passed": true
+    },
+    {
+      "name": "file VendTable form extension opens the register",
+      "passed": true
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1914,
+  "resultExcerpt": "The model builds with zero errors (the build script reported \"Build succeeded in 17 s — 0 errors\"). I did not run a BP check or database sync, and the form extension and menu extension are untested beyond compiling.\n\nObjects created or changed in `BenchmarkTestMcp`:\n\n- Label file `BenchmarkTestMcp`: 14 new labels (field and enum labels, form caption, privilege labels, ValidTo/ValidFrom error)\n- ED",
+  "notes": "2 permission denial(s): Bash, PowerShell",
+  "evidence": {
+    "sessionId": "2ededb9f-2445-46fa-8ab5-f5d5ee0af4cc",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp.rnrproj",
+    "BenchmarkTestMcp/AxEdt/McpVendCertificateId.xml",
+    "BenchmarkTestMcp/AxEnum/McpVendCertificateType.xml",
+    "BenchmarkTestMcp/AxForm/McpVendCertificate.xml",
+    "BenchmarkTestMcp/AxForm/McpVendCertificate.xml.backup-2026-10-10T22-36-23-981",
+    "BenchmarkTestMcp/AxFormExtension/VendTable.McpExtension.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxMenuExtension/ProcurementAndSourcing.McpExtension.xml",
+    "BenchmarkTestMcp/AxMenuExtension/ProcurementAndSourcing.McpExtension.xml.backup-2026-10-10T22-35-55-001",
+    "BenchmarkTestMcp/AxMenuItemDisplay/McpVendCertificate.xml",
+    "BenchmarkTestMcp/AxSecurityPrivilege/McpVendCertificateMaintain.xml",
+    "BenchmarkTestMcp/AxSecurityPrivilege/McpVendCertificateView.xml",
+    "BenchmarkTestMcp/AxTable/McpVendCertificate.xml",
+    "BenchmarkTestMcp/AxTable/McpVendCertificate.xml.backup-2026-10-10T22-35-32-365",
+    "BenchmarkTestMcp/AxTable/McpVendCertificate.xml.backup-2026-10-10T22-35-32-684",
+    "BenchmarkTestMcp/AxTable/McpVendCertificate.xml.backup-2026-10-10T22-35-35-467",
+    "BenchmarkTestMcp/AxTable/McpVendCertificate.xml.backup-2026-10-10T22-35-36-059",
+    "BenchmarkTestMcp/AxTable/McpVendCertificate.xml.backup-2026-10-10T22-35-36-590"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 16773
+  },
+  "rework": {
+    "toolErrors": 4,
+    "mcpToolErrors": 2,
+    "toolErrorsByTool": {
+      "mcp__d365fo-benchmark__labels": 1,
+      "mcp__d365fo-benchmark__d365fo_file": 1,
+      "Bash": 1,
+      "PowerShell": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 14,
+    "rewrites": 1
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 9,
+      "findings": [
+        "Warning BPErrorPrivilegeNotCoveredByDuty SecurityPrivilege/McpVendCertificateMaintain",
+        "Warning BPErrorPrivilegeNotCoveredByDuty SecurityPrivilege/McpVendCertificateView",
+        "Warning BPErrorEDTNotMigrated Table/McpVendCertificate/TableFieldString/VendAccount",
+        "Warning BPErrorTablePrimaryKeyEditable Table/McpVendCertificate/TableIndex/VendCertificateIdx/TableIndexField/VendAccount",
+        "Warning BPErrorTablePrimaryKeyEditable Table/McpVendCertificate/TableIndex/VendCertificateIdx/TableIndexField/CertificateId",
+        "Warning BPErrorLabelNotDefined Table/McpVendCertificate/TableFieldGroup/Overview",
+        "Warning BPErrorDeveloperDocumentationNotDefined Table/McpVendCertificate",
+        "Warning BPErrorTableMissingFormRef Table/McpVendCertificate",
+        "BestPractices Warning: AxTable dynamics://Table/McpVendCertificate: EDT relation found in field VendAccount of table McpVendCertificate. It should be migrated t"
+      ]
+    }
+  }
+}

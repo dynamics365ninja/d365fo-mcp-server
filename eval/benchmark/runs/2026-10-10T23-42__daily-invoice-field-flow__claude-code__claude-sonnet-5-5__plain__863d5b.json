@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T23-42__daily-invoice-field-flow__claude-code__claude-sonnet-5-5__plain__863d5b",
+  "timestamp": "2026-10-10T23:42:58.200Z",
+  "promptId": "daily-invoice-field-flow",
+  "promptHash": "90cb6da31899",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v5",
+  "durationMs": 419028,
+  "apiMs": 73544,
+  "requests": 38,
+  "toolCalls": 37,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 8,
+    "Grep": 4,
+    "Read": 11,
+    "Bash": 5,
+    "Write": 7,
+    "Edit": 1
+  },
+  "inputTokens": 817642,
+  "cachedTokens": 765673,
+  "outputTokens": 10597,
+  "hostCost": {
+    "value": 0.3903413,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 39.03413,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches initFromSalesTable|initFromSalesParmTable|initInvoiceHeaderFromSourceTable|initJournalHeader",
+      "passed": true
+    },
+    {
+      "name": "file EDT McpProjectCode, 20 characters",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable extension: the field",
+      "passed": true
+    },
+    {
+      "name": "file CustInvoiceJour extension: the field",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable form extension shows it",
+      "passed": true
+    },
+    {
+      "name": "file CustInvoiceJournal form extension shows it",
+      "passed": true
+    },
+    {
+      "name": "file CoC on the method that initializes the invoice header",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1447,
+  "resultExcerpt": "The model builds with 0 errors. I ran the exact build command from your brief; the first build failed on a default parameter value in the extension method, which I fixed.\n\nObjects created or changed in `BenchmarkTestMcp`:\n- `McpProjectCode` (AxEdt): string EDT, 20 characters, with label and help text.\n- `BenchmarkTestMcp.en-US.label.txt` (label file): added `McpProjectCode` and `McpProjectCodeHelp",
+  "notes": "2 permission denial(s): PowerShell, Bash",
+  "evidence": {
+    "sessionId": "11b59d4e-ad69-4f7b-baca-18901b776903",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxClass/McpCustInvoiceJour_Extension.xml",
+    "BenchmarkTestMcp/AxEdt/McpProjectCode.xml",
+    "BenchmarkTestMcp/AxFormExtension/CustInvoiceJournal.McpProjectCodeExtension.xml",
+    "BenchmarkTestMcp/AxFormExtension/SalesTable.McpProjectCodeExtension.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustInvoiceJour.McpProjectCodeExtension.xml",
+    "BenchmarkTestMcp/AxTableExtension/SalesTable.McpProjectCodeExtension.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 151529
+  },
+  "rework": {
+    "toolErrors": 4,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Grep": 1,
+      "Bash": 2
+    },
+    "buildAttempts": 2,
+    "buildFailures": 1,
+    "writeOps": 1,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 1,
+      "findings": [
+        "Warning BPXmlDocNoDocumentationComments Class/McpCustInvoiceJour_Extension/Method/initFromSalesTable"
+      ]
+    }
+  }
+}

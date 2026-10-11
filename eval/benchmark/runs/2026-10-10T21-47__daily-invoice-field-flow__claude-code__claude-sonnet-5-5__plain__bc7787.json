@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T21-47__daily-invoice-field-flow__claude-code__claude-sonnet-5-5__plain__bc7787",
+  "timestamp": "2026-10-10T21:47:53.169Z",
+  "promptId": "daily-invoice-field-flow",
+  "promptHash": "90cb6da31899",
+  "host": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "modelRequested": "sonnet",
+  "mcp": false,
+  "mcpServers": [],
+  "serverVersion": null,
+  "serverGitSha": null,
+  "label": "v5",
+  "durationMs": 79315,
+  "apiMs": 67944,
+  "requests": 37,
+  "toolCalls": 36,
+  "mcpToolCalls": 0,
+  "tools": {
+    "PowerShell": 1,
+    "Glob": 5,
+    "Read": 10,
+    "Grep": 11,
+    "Bash": 2,
+    "Write": 7
+  },
+  "inputTokens": 696327,
+  "cachedTokens": 641888,
+  "outputTokens": 11351,
+  "hostCost": {
+    "value": 0.39539480000000005,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 39.53948,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 0.8,
+  "checks": [
+    {
+      "name": "matches initFromSalesTable|initFromSalesParmTable|initInvoiceHeaderFromSourceTable|initJournalHeader",
+      "passed": true
+    },
+    {
+      "name": "file EDT McpProjectCode, 20 characters",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable extension: the field",
+      "passed": true
+    },
+    {
+      "name": "file CustInvoiceJour extension: the field",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable form extension shows it",
+      "passed": true
+    },
+    {
+      "name": "file CustInvoiceJournal form extension shows it",
+      "passed": true
+    },
+    {
+      "name": "file CoC on the method that initializes the invoice header",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": false
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": false
+    }
+  ],
+  "resultChars": 1530,
+  "resultExcerpt": "All the objects are written, but I could not run the build. The shell was denied in this session (\"don't ask\" mode), so the `benchmarkSandboxBuild.mjs` command never executed and the model is unverified. Please run it, or allow the shell and I will run it and fix anything it reports.\n\n**Objects created or changed**\n- Label file `BenchmarkTestMcp` (changed): added `McpProjectCode` (\"Project code\") ",
+  "notes": "2 permission denial(s): PowerShell, Bash",
+  "evidence": {
+    "sessionId": "4c70997c-0ebc-4b83-b56b-d93fe5aa0046",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp/AxClass/McpCustInvoiceJour_Extension.xml",
+    "BenchmarkTestMcp/AxEdt/McpProjectCode.xml",
+    "BenchmarkTestMcp/AxFormExtension/CustInvoiceJournal.McpProjectCodeExtension.xml",
+    "BenchmarkTestMcp/AxFormExtension/SalesTable.McpProjectCodeExtension.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustInvoiceJour.McpProjectCodeExtension.xml",
+    "BenchmarkTestMcp/AxTableExtension/SalesTable.McpProjectCodeExtension.xml"
+  ],
+  "build": {
+    "ok": false,
+    "errorCount": 1,
+    "errors": [
+      "Compile Error: Class Method dynamics://Class/McpCustInvoiceJour_Extension/Method/initFromSalesTable: [(12,59),(12,96)]: Default parameter values on chain of command methods may not be provided on the corresponding extension methods. Make the parameter on the extension method non-default, omitting th"
+    ],
+    "durationMs": 17175
+  },
+  "rework": {
+    "toolErrors": 3,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1,
+      "Grep": 1,
+      "Bash": 1
+    },
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 7,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": null
+  }
+}

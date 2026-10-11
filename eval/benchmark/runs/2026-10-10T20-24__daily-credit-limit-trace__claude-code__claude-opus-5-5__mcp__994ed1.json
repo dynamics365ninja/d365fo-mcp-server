@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T20-24__daily-credit-limit-trace__claude-code__claude-opus-5-5__mcp__994ed1",
+  "timestamp": "2026-10-10T20:24:09.826Z",
+  "promptId": "daily-credit-limit-trace",
+  "promptHash": "48edfe0c4c84",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "619ce773",
+  "label": "v5",
+  "durationMs": 99260,
+  "apiMs": 59388,
+  "requests": 22,
+  "toolCalls": 21,
+  "mcpToolCalls": 14,
+  "tools": {
+    "ToolSearch": 1,
+    "mcp__d365fo-benchmark__get_workspace_info": 1,
+    "mcp__d365fo-benchmark__search": 1,
+    "mcp__d365fo-benchmark__get_object_info": 6,
+    "mcp__d365fo-benchmark__find_references": 6,
+    "Grep": 3,
+    "Read": 3
+  },
+  "inputTokens": 612335,
+  "cachedTokens": 563109,
+  "outputTokens": 6019,
+  "hostCost": {
+    "value": 0.6267138,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 62.67138,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches \\bCustCreditLimit\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(checkAgainstCreditLimit|checkCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\bSalesFormletterProvider\\b",
+      "passed": true
+    },
+    {
+      "name": "matches \\b(creditMaxOk|mustCheckCreditLimit)\\b",
+      "passed": true
+    },
+    {
+      "name": "matches (CustCreditLimit\\W{1,3}(check|checkGivenBalances)\\b|\\bcheckGivenBalances\\b)",
+      "passed": true
+    }
+  ],
+  "resultChars": 3395,
+  "resultExcerpt": "I traced this through the Foundation source with the MCP server; nothing was written.\n\n**1. Check class and deciding method**\n- The class is **`CustCreditLimit`** (Foundation). `CustCreditLimit::construct(_buffer, _salesTotals)` returns a subclass based on the record type: `CustCreditLimit_SalesTable`, `CustCreditLimit_SalesParmTable` or `CustCreditLimit_CustInvoiceTable`.\n- The deciding method is",
+  "notes": null,
+  "evidence": {
+    "sessionId": "f4645336-c928-42c6-9d85-e51a4f07ce30",
+    "logPath": null
+  },
+  "rework": {
+    "toolErrors": 0,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {},
+    "buildAttempts": 0,
+    "buildFailures": 0,
+    "writeOps": 0,
+    "rewrites": 0
+  }
+}

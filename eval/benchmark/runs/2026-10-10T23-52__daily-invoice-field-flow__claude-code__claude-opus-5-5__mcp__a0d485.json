@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-10T23-52__daily-invoice-field-flow__claude-code__claude-opus-5-5__mcp__a0d485",
+  "timestamp": "2026-10-10T23:52:59.491Z",
+  "promptId": "daily-invoice-field-flow",
+  "promptHash": "90cb6da31899",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "619ce773",
+  "label": "v5",
+  "durationMs": 253214,
+  "apiMs": 66978,
+  "requests": 22,
+  "toolCalls": 21,
+  "mcpToolCalls": 11,
+  "tools": {
+    "ToolSearch": 1,
+    "mcp__d365fo-benchmark__get_workspace_info": 1,
+    "mcp__d365fo-benchmark__get_object_info": 2,
+    "Glob": 1,
+    "Grep": 1,
+    "Read": 5,
+    "mcp__d365fo-benchmark__get_knowledge": 1,
+    "mcp__d365fo-benchmark__labels": 1,
+    "mcp__d365fo-benchmark__d365fo_file": 6,
+    "PowerShell": 2
+  },
+  "inputTokens": 1103482,
+  "cachedTokens": 1041806,
+  "outputTokens": 6172,
+  "hostCost": {
+    "value": 0.8250732000000001,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 82.50732,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches initFromSalesTable|initFromSalesParmTable|initInvoiceHeaderFromSourceTable|initJournalHeader",
+      "passed": true
+    },
+    {
+      "name": "file EDT McpProjectCode, 20 characters",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable extension: the field",
+      "passed": true
+    },
+    {
+      "name": "file CustInvoiceJour extension: the field",
+      "passed": true
+    },
+    {
+      "name": "file SalesTable form extension shows it",
+      "passed": true
+    },
+    {
+      "name": "file CustInvoiceJournal form extension shows it",
+      "passed": true
+    },
+    {
+      "name": "file CoC on the method that initializes the invoice header",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1774,
+  "resultExcerpt": "All four parts are in place, and the model builds with zero errors (the build command you gave reported 0 errors in 129 s).\n\nThe standard method I extended with Chain of Command is **`CustInvoiceJour.initFromSalesTable(SalesTable, SalesParmTable)`**. During invoice posting, `SalesInvoiceJournalCreate.initInvoiceHeaderFromSourceTable()` calls it to fill the invoice journal header from the sales ord",
+  "notes": "1 permission denial(s): PowerShell",
+  "evidence": {
+    "sessionId": "f637c88f-83fa-4ba1-bffe-47e990c0c7e2",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp.rnrproj",
+    "BenchmarkTestMcp/AxClass/CustInvoiceJourMcp_Extension.xml",
+    "BenchmarkTestMcp/AxEdt/McpProjectCode.xml",
+    "BenchmarkTestMcp/AxFormExtension/CustInvoiceJournal.McpExtension.xml",
+    "BenchmarkTestMcp/AxFormExtension/CustInvoiceJournal.McpExtension.xml.backup-2026-10-10T23-54-41-740",
+    "BenchmarkTestMcp/AxFormExtension/SalesTable.McpExtension.xml",
+    "BenchmarkTestMcp/AxFormExtension/SalesTable.McpExtension.xml.backup-2026-10-10T23-54-29-737",
+    "BenchmarkTestMcp/AxFormExtension/SalesTable.McpExtension.xml.backup-2026-10-10T23-54-35-027",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxTableExtension/CustInvoiceJour.McpExtension.xml",
+    "BenchmarkTestMcp/AxTableExtension/SalesTable.McpExtension.xml"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 92968
+  },
+  "rework": {
+    "toolErrors": 1,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "PowerShell": 1
+    },
+    "buildAttempts": 1,
+    "buildFailures": 0,
+    "writeOps": 6,
+    "rewrites": 0
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 0,
+      "findings": []
+    }
+  }
+}

@@ -1,0 +1,159 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-10-11T02-24__ref-vendor-certificate-register__claude-code__claude-opus-5-5__mcp__948ebe",
+  "timestamp": "2026-10-11T02:24:36.168Z",
+  "promptId": "ref-vendor-certificate-register",
+  "promptHash": "c6816b54a7d2",
+  "host": "claude-code",
+  "model": "claude-opus-5-5",
+  "modelRequested": "opus",
+  "mcp": true,
+  "setup": "instructions: copilot-instructions.md",
+  "mcpServers": [
+    "d365fo-benchmark"
+  ],
+  "serverVersion": "1.20.0",
+  "serverGitSha": "619ce773",
+  "label": "v5",
+  "durationMs": 698875,
+  "apiMs": 245317,
+  "requests": 37,
+  "toolCalls": 36,
+  "mcpToolCalls": 22,
+  "tools": {
+    "ToolSearch": 1,
+    "mcp__d365fo-benchmark__get_workspace_info": 1,
+    "mcp__d365fo-benchmark__get_knowledge": 2,
+    "Glob": 1,
+    "Read": 6,
+    "mcp__d365fo-benchmark__labels": 2,
+    "mcp__d365fo-benchmark__d365fo_file": 13,
+    "mcp__d365fo-benchmark__object_patterns": 1,
+    "mcp__d365fo-benchmark__get_object_info": 3,
+    "Bash": 4,
+    "Grep": 2
+  },
+  "inputTokens": 1730330,
+  "cachedTokens": 1659493,
+  "outputTokens": 18212,
+  "hostCost": {
+    "value": 1.2626345999999997,
+    "unit": "USD"
+  },
+  "aic": {
+    "value": 126.26346,
+    "source": "host-cost"
+  },
+  "outcome": "completed",
+  "score": 1,
+  "checks": [
+    {
+      "name": "matches McpVendCertificate",
+      "passed": true
+    },
+    {
+      "name": "file string EDT McpVendCertificateId",
+      "passed": true
+    },
+    {
+      "name": "file extensible enum McpVendCertificateType",
+      "passed": true
+    },
+    {
+      "name": "file table: fields, primary index, VendTable relation, find/exist/validateWrite",
+      "passed": true
+    },
+    {
+      "name": "file SimpleList form over the table",
+      "passed": true
+    },
+    {
+      "name": "file display menu item",
+      "passed": true
+    },
+    {
+      "name": "file ProcurementAndSourcing menu extension",
+      "passed": true
+    },
+    {
+      "name": "file maintain privilege (delete)",
+      "passed": true
+    },
+    {
+      "name": "file view privilege (read only)",
+      "passed": true
+    },
+    {
+      "name": "file VendTable form extension opens the register",
+      "passed": true
+    },
+    {
+      "name": "file labels added to the model's label file",
+      "passed": true
+    },
+    {
+      "name": "written XML is well-formed",
+      "passed": true
+    },
+    {
+      "name": "builds clean (xppc)",
+      "passed": true
+    },
+    {
+      "name": "no new best-practice errors (xppbp)",
+      "passed": true
+    }
+  ],
+  "resultChars": 1810,
+  "resultExcerpt": "The model builds with zero errors: the last run of `benchmarkSandboxBuild.mjs` printed \"Build succeeded in 154 s — 0 errors\".\n\nThe first build failed on two files the tool had written. The menu item XML had two `xmlns` attributes, and the enum's `IsExtensible` / `UseEnumValue` elements were in the wrong order. I rewrote both and rebuilt.\n\nThe vendor button doesn't add a filter of its own. It opens",
+  "notes": "1 permission denial(s): Bash",
+  "evidence": {
+    "sessionId": "f06dbddc-4169-4bd0-89bf-05b3d36d53f2",
+    "logPath": null
+  },
+  "artifacts": [
+    "BenchmarkTestMcp.rnrproj",
+    "BenchmarkTestMcp/AxEdt/McpVendCertificateId.xml",
+    "BenchmarkTestMcp/AxEnum/McpVendCertificateType.xml",
+    "BenchmarkTestMcp/AxForm/McpVendCertificate.xml",
+    "BenchmarkTestMcp/AxFormExtension/VendTable.McpExtension.xml",
+    "BenchmarkTestMcp/AxLabelFile/LabelResources/en-US/BenchmarkTestMcp.en-US.label.txt",
+    "BenchmarkTestMcp/AxMenuExtension/ProcurementAndSourcing.McpExtension.xml",
+    "BenchmarkTestMcp/AxMenuItemDisplay/McpVendCertificate.xml",
+    "BenchmarkTestMcp/AxSecurityPrivilege/McpVendCertificateMaintain.xml",
+    "BenchmarkTestMcp/AxSecurityPrivilege/McpVendCertificateView.xml",
+    "BenchmarkTestMcp/AxTable/McpVendCertificate.xml",
+    "BenchmarkTestMcp/AxTable/McpVendCertificate.xml.backup-2026-10-11T02-26-46-980",
+    "BenchmarkTestMcp/AxTable/McpVendCertificate.xml.backup-2026-10-11T02-26-54-513"
+  ],
+  "build": {
+    "ok": true,
+    "errorCount": 0,
+    "errors": [],
+    "durationMs": 150297
+  },
+  "rework": {
+    "toolErrors": 1,
+    "mcpToolErrors": 0,
+    "toolErrorsByTool": {
+      "Bash": 1
+    },
+    "buildAttempts": 2,
+    "buildFailures": 1,
+    "writeOps": 13,
+    "rewrites": 2
+  },
+  "quality": {
+    "xmlInvalid": [],
+    "bp": {
+      "errors": 0,
+      "warnings": 4,
+      "findings": [
+        "Warning BPErrorPrivilegeNotCoveredByDuty SecurityPrivilege/McpVendCertificateMaintain",
+        "Warning BPErrorPrivilegeNotCoveredByDuty SecurityPrivilege/McpVendCertificateView",
+        "Warning BPErrorTablePrimaryKeyEditable Table/McpVendCertificate/TableIndex/VendCertificateIdx/TableIndexField/VendAccount",
+        "Warning BPErrorTablePrimaryKeyEditable Table/McpVendCertificate/TableIndex/VendCertificateIdx/TableIndexField/CertificateId"
+      ]
+    }
+  }
+}
