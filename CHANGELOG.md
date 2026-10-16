@@ -28,6 +28,15 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Fixed
+- **`bpCheck` and `dbSync` were lost when a build was collected by a later call.**
+  A build that outlives its wait window (`wait: false`, or past `waitTimeoutMs`) is
+  collected by another call, usually with the model name alone, and that call's
+  arguments decided the post-build steps — the BP check and sync the build was
+  started with were skipped without a word. The build now records them when it
+  starts (as a restart build already did); a collecting call can still add a
+  `bpCheck`, and a `dbSync` scope given at the start is kept.
+
 ## [1.21.0] — 2026-10-15
 
 ### Added

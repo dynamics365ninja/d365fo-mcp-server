@@ -153,6 +153,27 @@ describe('optional AOS restart build workflow', () => {
     await buildProjectTool(opts, {}); await finish();
     expect(m.restart).toHaveBeenCalledWith(opts.aosUrl);
   });
+  it('runs the bpCheck and dbSync the build was started with, even when it is collected without them', async () => {
+    // A build that outlives its wait window (wait:false, or past waitTimeoutMs) is
+    // collected later, typically with the model name alone.
+    await buildProjectTool({ modelName: 'MyModel', wait: false, bpCheck: true, dbSync: true }, {}); await finish();
+    const response = await buildProjectTool({ modelName: 'MyModel', wait: false }, {});
+    expect(m.bp).toHaveBeenCalledTimes(1); expect(m.sync).toHaveBeenCalledTimes(1);
+    expect(response.content[0].text).toContain('BP checked');
+    expect(response.content[0].text).toContain('Sync succeeded');
+  });
+  it('keeps the dbSync scope the build was started with', async () => {
+    await buildProjectTool({ modelName: 'MyModel', wait: false, dbSync: ['MyTable'] }, {}); await finish();
+    await buildProjectTool({ modelName: 'MyModel', wait: false, dbSync: true }, {});
+    expect(m.sync).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(m.sync.mock.calls[0][0])).toContain('MyTable');
+  });
+  it('still runs a bpCheck that only the collecting call asks for', async () => {
+    await buildProjectTool({ modelName: 'MyModel', wait: false }, {}); await finish();
+    const response = await buildProjectTool({ modelName: 'MyModel', wait: false, bpCheck: true }, {});
+    expect(m.bp).toHaveBeenCalledTimes(1); expect(m.sync).not.toHaveBeenCalled();
+    expect(response.content[0].text).toContain('BP checked');
+  });
   it('keeps ordinary builds free of runtime actions', async () => {
     await buildProjectTool({ modelName: 'MyModel', wait: false }, {}); await finish();
     expect(m.restart).not.toHaveBeenCalled();

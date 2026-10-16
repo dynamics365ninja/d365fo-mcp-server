@@ -273,6 +273,28 @@ interface BuildJobState {
   exitCode?: number;
   endTime?: string;
   fullBuild?: boolean;
+  // The post-build actions the build was STARTED with (a restart build keeps them
+  // in restartWorkflow.request instead). A build that outlives its wait window —
+  // wait:false, or past waitTimeoutMs — is collected by a later call, usually with
+  // the model name alone, and that call's arguments used to decide: the bpCheck
+  // and dbSync asked for at the start were dropped without a word.
+  postBuildRequest?: PostBuildRequest;
+}
+
+const asksFor = (v: unknown): boolean => v === true || v === 'true';
+
+type PostBuildRequest = { bpCheck?: boolean; dbSync?: boolean | string[]; projectPath?: string; packagePath?: string };
+
+/** What the build asked for, plus what the collecting call adds; the start's dbSync scope wins. */
+function postBuildParams(started: PostBuildRequest | undefined, collecting: any): PostBuildRequest & Record<string, unknown> {
+  if (!started) return collecting ?? {};
+  return {
+    ...collecting,
+    bpCheck: started.bpCheck || asksFor(collecting?.bpCheck),
+    dbSync: (Array.isArray(started.dbSync) || started.dbSync === true) ? started.dbSync : collecting?.dbSync,
+    projectPath: collecting?.projectPath ?? started.projectPath,
+    packagePath: collecting?.packagePath ?? started.packagePath,
+  };
 }
 
 // A restart may affect every model hosted by this local AOS. Keep a durable
@@ -1357,14 +1379,15 @@ async function renderFinishedBuildResult(
   // sampled sessions (10 build -> run_bp_check hand-offs). Opt-in, and only on a
   // green build: when the compile failed, the compiler errors ARE the answer and
   // a BP report on half-built metadata is noise.
+  const postParams = postBuildParams(finalState.postBuildRequest, params);
   const bpSection = workflow ? workflow.bpSection ?? ''
-    : succeeded ? await runPostBuildBpCheck(params, targetModel, context, `${finalState.logFile}.bp.txt`) : '';
+    : succeeded ? await runPostBuildBpCheck(postParams, targetModel, context, `${finalState.logFile}.bp.txt`) : '';
   // Same shape, same reason, for the database sync: a table change is not
   // finished until AxDB is synchronised, and that sync always follows a
   // successful build. Gated on `succeeded` for the same reason bpCheck is —
   // syncing metadata the compiler just rejected is worse than not syncing.
   const sync = workflow ? workflow.sync ?? { section: '', failed: false } : succeeded
-    ? await runPostBuildDbSync(params, targetModel, context)
+    ? await runPostBuildDbSync(postParams, targetModel, context)
     : { section: '', failed: false };
   const syncSection = sync.section;
 
@@ -2115,6 +2138,14 @@ const buildProjectInternal = async (params: any, context: any, onProgress: Progr
       tool: 'xppc.exe',
       startTime: jobStartedAt,
       sourcesAsOf: jobStartedAt,
+      ...(params.restartAos !== true && (asksFor(params.bpCheck) || params.dbSync === 'true' || params.dbSync === true || Array.isArray(params.dbSync))
+        ? { postBuildRequest: {
+            bpCheck: asksFor(params.bpCheck),
+            dbSync: Array.isArray(params.dbSync) ? [...params.dbSync] : asksFor(params.dbSync),
+            projectPath: params.projectPath,
+            packagePath: params.packagePath,
+          } }
+        : {}),
       logFile: jobLogFile,
       status: 'running',
       fullBuild,
