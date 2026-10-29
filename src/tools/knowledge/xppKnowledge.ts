@@ -5119,19 +5119,19 @@ str designRef  = ssrsReportStr(MyBonusReport, Report);`,
         label: 'Entry point that only accepts the record it understands',
         code: `public static void main(Args _args)
 {
-    MyOrderTable order;
+    MyOrderTable orderTable;
 
     if (!_args || _args.dataset() != tableNum(MyOrderTable))
     {
         throw error("@MyModel:OpenFromOrderListOnly");
     }
 
-    order = _args.record();
+    orderTable = _args.record();
 
     // The caller is a form only when a user opened it; a batch reaches here too.
     FormRun callerForm = _args.caller() as FormRun;
 
-    MyOrderProcessor::construct().process(order, _args.parm());
+    MyOrderProcessor::construct().process(orderTable, _args.parm());
 }`,
       },
     ],
