@@ -146,62 +146,71 @@ function normalizedInclude(node: any): string {
  */
 export class ProjectFileFinder {
   /**
-   * Find .rnrproj file in solution directory
-   * Recursively searches for .rnrproj files matching the model name (up to 3 levels deep)
+   * Find the .rnrproj of a model in a solution directory (up to 3 levels deep).
+   *
+   * `<Model>.rnrproj` wins wherever it sits. Otherwise a project whose file name
+   * contains the model name is returned only when it is the ONLY one. This used to
+   * return the first substring match in readdir order: in a solution whose projects
+   * are named per feature (ContosoCoreBilling, ContosoCoreClaims, … for model
+   * ContosoCore) every project matched, so every create, modify and label write
+   * that fell back to this scan registered into the alphabetically first project.
+   * That is the same arbitrary pick autoDetectProject stopped making when several
+   * projects share a model (solutionsPathAmbiguity.test.ts), and null is the same
+   * answer: the caller then leaves the project alone and says so.
+   *
+   * With no model name there is nothing to be ambiguous about, so the first
+   * project found is still returned — callers use it to read the model name.
    */
   static async findProjectInSolution(
     solutionPath: string,
     modelName: string
   ): Promise<string | null> {
-    return ProjectFileFinder.findRecursive(solutionPath, modelName, 0, 3);
+    const candidates: string[] = [];
+    await ProjectFileFinder.collectRecursive(solutionPath, modelName, 0, 3, candidates);
+    if (candidates.length === 0) return null;
+    if (!modelName) return candidates[0];
+
+    const exactName = `${modelName}.rnrproj`.toLowerCase();
+    const exact = candidates.filter(p => path.basename(p).toLowerCase() === exactName);
+    if (exact.length === 1) return exact[0];
+    if (exact.length === 0 && candidates.length === 1) return candidates[0];
+
+    console.error(
+      `[ProjectFileFinder] ${exact.length || candidates.length} projects in ${solutionPath} match model ` +
+      `"${modelName}" — not picking one. Set projectPath to the project to write to.`
+    );
+    return null;
   }
 
-  private static async findRecursive(
+  private static async collectRecursive(
     dir: string,
     modelName: string,
     currentDepth: number,
-    maxDepth: number
-  ): Promise<string | null> {
-    if (currentDepth > maxDepth) return null;
+    maxDepth: number,
+    found: string[],
+  ): Promise<void> {
+    if (currentDepth > maxDepth) return;
 
+    // Every candidate is needed now, not just the first, so the whole tree is
+    // walked: entry types come with the listing instead of one stat per file.
+    let entries: Array<{ name: string; isDirectory(): boolean }>;
     try {
-      await fs.access(dir);
+      entries = await fs.readdir(dir, { withFileTypes: true });
     } catch {
-      return null;
+      return;
     }
 
-    let files: string[];
-    try {
-      files = await fs.readdir(dir);
-    } catch {
-      return null;
-    }
-
-    // Check .rnrproj files at this level first
-    const projectFiles = files.filter(file =>
-      file.endsWith('.rnrproj') &&
-      (file.includes(modelName) || file === `${modelName}.rnrproj`)
-    );
-
-    if (projectFiles.length > 0) {
-      return path.join(dir, projectFiles[0]);
-    }
-
-    // Recurse into subdirectories
-    for (const file of files) {
-      const fullPath = path.join(dir, file);
-      try {
-        const stat = await fs.stat(fullPath);
-        if (stat.isDirectory()) {
-          const found = await ProjectFileFinder.findRecursive(fullPath, modelName, currentDepth + 1, maxDepth);
-          if (found) return found;
-        }
-      } catch {
-        continue;
+    for (const entry of entries) {
+      if (entry.name.endsWith('.rnrproj') && entry.name.includes(modelName)) {
+        found.push(path.join(dir, entry.name));
       }
     }
 
-    return null;
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        await ProjectFileFinder.collectRecursive(path.join(dir, entry.name), modelName, currentDepth + 1, maxDepth, found);
+      }
+    }
   }
 }
 
