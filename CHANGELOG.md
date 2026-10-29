@@ -29,6 +29,16 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Fixed
+- **`run_systest_class` lost the result of a class with failing tests.** SysTestConsole
+  exits non-zero when a test fails, and the tool took that for a runner error: it never
+  read the XML result the run had written, replied `❌ Tests failed:` with the raw
+  console log, and the 5,000-char response cap cut that log mid-stack-trace — on a
+  43-test class with two failures, the counts and the second failure never arrived, and
+  the eval oracle scored the run as one that never ran. A run that wrote results is now
+  reported as `❌ Tests FAILED` from the XML: the counts, then each failure with its
+  message, then the passing tests, the path of the result file and the raw log last.
+  The tool has its own 12,000-char cap, and its truncation note no longer suggests
+  paging parameters it does not have.
 - **An incremental build silently removed a data entity's OData actions.** xppc's
   `-incremental` mode rewrites the `bin\Dynamics.AX.<Package>.ODataExtends.runtime`
   entry of every entity it recompiles without its actions, and the AOS reads them from
