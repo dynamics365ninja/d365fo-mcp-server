@@ -29,6 +29,21 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Fixed
+- **`find_references` blamed "this server mode" for a missing setting.** Whenever it fell
+  back to the name-based search it said "the cross-reference bridge is unavailable in this
+  server mode". On a traditional VM the usual cause is a running bridge with no
+  cross-reference database configured, since no XPP config names DYNAMICSXREFDB there.
+  The reply now tells three cases apart. A bridge that is still starting says so and asks for
+  a retry, rather than reporting a configuration problem (#826). A bridge that is not
+  connected says so. A bridge running without a cross-reference database says that, with a
+  separate line on how to configure one: `D365FO_XREF_DB_NAME` (usually DYNAMICSXREFDB),
+  `D365FO_XREF_DB_SERVER` when SQL Server is on another machine, where to set them, and to
+  restart the server. Label where-used gives the same reason and advice. For a type the
+  name-based search cannot serve (EDT, form, query, view, report), a failed query is now told
+  to check the bridge log and a disconnected bridge how to get it running, instead of both
+  being told to set `bridge.xrefDbName`. `doctor` now gives
+  the same advice. It used to name only the config file, although the `env` block of
+  `.mcp.json` takes precedence.
 - **An incremental build silently removed a data entity's OData actions.** xppc's
   `-incremental` mode rewrites the `bin\Dynamics.AX.<Package>.ODataExtends.runtime`
   entry of every entity it recompiles without its actions, and the AOS reads them from

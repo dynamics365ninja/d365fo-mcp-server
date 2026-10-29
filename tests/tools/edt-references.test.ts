@@ -56,8 +56,8 @@ function bridgeThatThrows(): BridgeClient {
   } as unknown as BridgeClient;
 }
 
-/** Bridge that is not in play at all (serverless mode / no xref DB configured). */
-function bridgeUnavailable(): BridgeClient {
+/** Bridge that is running, but without a cross-reference database (none configured, or unreachable). */
+function bridgeWithoutXref(): BridgeClient {
   return { isReady: true, metadataAvailable: true, xrefAvailable: false } as unknown as BridgeClient;
 }
 
@@ -95,7 +95,7 @@ describe('find_references — targetTypes the name-based fallback cannot serve',
   // fallback scan. Before the fix each returned "Total References Found: 0".
   for (const targetType of ['edt', 'form', 'query', 'view', 'report']) {
     it(`does not report a bare "0" for targetType="${targetType}"`, async () => {
-      const text = await runTool({ targetName: 'EcoResDescription', targetType }, bridgeUnavailable());
+      const text = await runTool({ targetName: 'EcoResDescription', targetType }, bridgeWithoutXref());
 
       expect(text).not.toContain('Total References Found:** 0');
       expect(text).not.toContain('Symbol might be unused');
@@ -106,7 +106,7 @@ describe('find_references — targetTypes the name-based fallback cannot serve',
   }
 
   it('points an EDT lookup at the "/Edts/" AOT path that does work', async () => {
-    const text = await runTool({ targetName: 'EcoResDescription', targetType: 'edt' }, bridgeUnavailable());
+    const text = await runTool({ targetName: 'EcoResDescription', targetType: 'edt' }, bridgeWithoutXref());
     // "/Edts/…" (plural, leading slash) is the verified TARGET convention.
     expect(text).toContain('/Edts/EcoResDescription');
     // The concrete-subtype form is a SOURCE-path convention and matches nothing.
@@ -114,13 +114,13 @@ describe('find_references — targetTypes the name-based fallback cannot serve',
   });
 
   it('offers no AOT-path suggestion when the caller already passed one', async () => {
-    const text = await runTool({ targetName: '/Edts/EcoResDescription', targetType: 'edt' }, bridgeUnavailable());
+    const text = await runTool({ targetName: '/Edts/EcoResDescription', targetType: 'edt' }, bridgeWithoutXref());
     expect(text).not.toContain('Or pass the explicit AOT path');
   });
 
   it('still searches the types the fallback does implement', async () => {
     for (const targetType of ['method', 'class', 'table', 'field', 'enum', 'all']) {
-      const text = await runTool({ targetName: 'SomeName', targetType }, bridgeUnavailable());
+      const text = await runTool({ targetName: 'SomeName', targetType }, bridgeWithoutXref());
       expect(text).toContain('Total References Found:');
       expect(text).not.toContain('inconclusive');
     }
@@ -134,13 +134,15 @@ describe('find_references — why the fallback was used', () => {
     const text = await runTool({ targetName: 'SomeName', targetType: 'class' }, bridgeWithNoRows());
 
     expect(text).toContain('returned no rows for this target');
-    expect(text).not.toContain('bridge unavailable');
-    expect(text).not.toContain('xref bridge down');
+    expect(text).not.toContain('not connected');
+    expect(text).not.toContain('runs without a cross-reference database');
   });
 
-  it('says the bridge is unavailable only when it actually is', async () => {
-    const text = await runTool({ targetName: 'SomeName', targetType: 'class' }, bridgeUnavailable());
-    expect(text).toContain('unavailable in this server mode');
+  it('says the cross-reference database is missing when the bridge runs without one', async () => {
+    const text = await runTool({ targetName: 'SomeName', targetType: 'class' }, bridgeWithoutXref());
+    expect(text).toContain('runs without a cross-reference database');
+    // The bridge is up, so this must not read as an outage.
+    expect(text).not.toContain('not connected');
   });
 
   it('carries the same reason into the zero-result caveat', async () => {
@@ -181,8 +183,9 @@ describe('find_references — unsearchable targetType, bridge answered with no r
       expect(text).toContain('C# bridge (DYNAMICSXREFDB)');
       expect(text).not.toContain('inconclusive');
       expect(text).not.toContain('NOT a count of zero');
-      // The advice that made the old text actively wrong in this exact case.
-      expect(text).not.toContain('Re-run once the xref bridge is available');
+      // Advice to fix the bridge, which made the old text actively wrong in this exact case.
+      expect(text).not.toContain('then re-run');
+      expect(text).not.toContain('D365FO_XREF_DB_NAME');
       // Re-running the bare name as an explicit path queries a strict subset of
       // what just ran, so offering it here would be noise.
       expect(text).not.toContain('Or pass the explicit AOT path');
@@ -198,11 +201,20 @@ describe('find_references — unsearchable targetType, bridge answered with no r
   it('still refuses to give a number when the bridge could not answer', async () => {
     // The distinction the whole branch rests on: 'unavailable'/'error' keep the
     // inconclusive wording, so this must not have become a blanket zero.
-    for (const bridge of [bridgeUnavailable(), bridgeThatThrows()]) {
+    // Each cause is told its own fix, and only that one.
+    const advice: Array<[BridgeClient, string]> = [
+      [bridgeWithoutXref(), 'set `D365FO_XREF_DB_NAME`'],
+      [bridgeThatThrows(), 'Check the bridge log'],
+      [undefined as unknown as BridgeClient, 'Ensure the C# bridge exe is built'],
+    ];
+    for (const [bridge, whatToDo] of advice) {
       const text = await runTool({ targetName: 'EcoResDescription', targetType: 'edt' }, bridge);
       expect(text).toContain('inconclusive');
       expect(text).not.toContain('**Total References Found:** 0');
-      expect(text).toContain('Re-run once the xref bridge is available');
+      expect(text).toContain(whatToDo);
+      for (const [, other] of advice) {
+        if (other !== whatToDo) expect(text).not.toContain(other);
+      }
     }
   });
 });
