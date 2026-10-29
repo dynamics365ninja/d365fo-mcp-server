@@ -91,3 +91,27 @@ describe('ProjectFileFinder.findProjectInSolution', () => {
     await expect(ProjectFileFinder.findProjectInSolution(root, 'ContosoCore')).resolves.toBeNull();
   });
 });
+
+describe('ProjectFileFinder.describeNoProject', () => {
+  it('says several projects match rather than that none was found', async () => {
+    // Found live: with 45 matching projects the create reply read
+    // "Could not find .rnrproj for model …", the opposite of what happened.
+    await project('ContosoCoreBilling', 'ContosoCoreBilling.rnrproj');
+    await project('ContosoCoreClaims', 'ContosoCoreClaims.rnrproj');
+
+    const said = await ProjectFileFinder.describeNoProject(root, 'ContosoCore');
+
+    expect(said).toMatch(/^2 projects in .* match model 'ContosoCore', so none was picked\./);
+    expect(said).toContain('projectPath');
+    expect(said).not.toMatch(/could not find|no \.rnrproj/i);
+  });
+
+  it('says no project exists when none matches', async () => {
+    await project('Other', 'FabrikamTools.rnrproj');
+
+    const said = await ProjectFileFinder.describeNoProject(root, 'ContosoCore');
+
+    expect(said).toMatch(/^No \.rnrproj for model 'ContosoCore' in /);
+    expect(said).toContain('projectPath');
+  });
+});

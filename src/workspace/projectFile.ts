@@ -182,6 +182,23 @@ export class ProjectFileFinder {
     return null;
   }
 
+  /**
+   * Why findProjectInSolution returned null, for the reply to the caller.
+   *
+   * "Could not find .rnrproj" was the only wording, and since several matching
+   * projects also give null it read as a missing project when 45 were there.
+   * Scans again, which costs one directory walk on a path that already failed.
+   */
+  static async describeNoProject(solutionPath: string, modelName: string): Promise<string> {
+    const candidates: string[] = [];
+    await ProjectFileFinder.collectRecursive(solutionPath, modelName, 0, 3, candidates);
+    if (candidates.length > 1) {
+      return `${candidates.length} projects in ${solutionPath} match model '${modelName}', so none was picked. ` +
+        `Pass projectPath with the project to add it to.`;
+    }
+    return `No .rnrproj for model '${modelName}' in ${solutionPath}. Pass projectPath with the project to add it to.`;
+  }
+
   private static async collectRecursive(
     dir: string,
     modelName: string,

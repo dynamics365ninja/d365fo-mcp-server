@@ -36,7 +36,8 @@ those are called out explicitly below.
   alphabetically first one, and an exact `<Model>.rnrproj` lost to a shallower substring
   match. The scan now returns `<Model>.rnrproj` wherever it sits, or the only project that
   matches, and otherwise no project, as `autoDetectProject` already does when several
-  projects share a model. The log names the count and asks for `projectPath`.
+  projects share a model. The log names the count and asks for `projectPath`, and the
+  create reply says how many projects matched instead of "Could not find .rnrproj".
 - **An incremental build silently removed a data entity's OData actions.** xppc's
   `-incremental` mode rewrites the `bin\Dynamics.AX.<Package>.ODataExtends.runtime`
   entry of every entity it recompiles without its actions, and the AOS reads them from
