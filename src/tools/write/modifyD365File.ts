@@ -84,6 +84,7 @@ import {
 import { resolveAnchorModel } from './writeAnchorGuard.js';
 import { resolveOrCreateLabelRef, type AutoLabelTarget } from './createLabel.js';
 import { isRawLabelText } from '../../utils/labelReference.js';
+import { methodScopedLines } from '../../utils/methodSourceSpans.js';
 // The direct-XML writers moved to their own module; this file dispatches to them.
 import {
   directXmlReplaceCode,
@@ -356,12 +357,13 @@ export function preflightReplaceCode(
   content: string,
   oldCode: string,
   newCode: string,
+  methodName?: string,
 ): ReplaceCodeVerdict | null {
   const normOld = oldCode.replace(/\r\n/g, '\n');
   const normNew = newCode.replace(/\r\n/g, '\n');
   if (normOld.length === 0) return null;
 
-  const hits = occurrenceLines(content, normOld);
+  const hits = methodScopedLines(content, normOld, methodName) ?? occurrenceLines(content, normOld);
 
   if (hits.length === 0) {
     // Not an error here — the bridge may still reach source this file-level view
@@ -399,8 +401,8 @@ export function preflightReplaceCode(
       message:
         `⛔ replace-code refused — oldCode matches ${hits.length} times (lines ${hits.join(', ')}).\n` +
         `The bridge replaces EVERY occurrence, so this would edit all ${hits.length} of them. ` +
-        `Extend oldCode with surrounding lines until it identifies exactly one site, or scope the call ` +
-        `with methodName="<method>".`,
+        `Extend oldCode with surrounding lines until it identifies exactly one site` +
+        (methodName ? ` inside ${methodName}.` : `, or scope the call with methodName="<method>".`),
     };
   }
 
@@ -2773,7 +2775,7 @@ async function runModify(
           const beforeContent = await readForMatching(actualFilePath);
           if (beforeContent !== null) {
             replaceCodeBefore = beforeContent;
-            const verdict = preflightReplaceCode(beforeContent, args.oldCode!, args.newCode!);
+            const verdict = preflightReplaceCode(beforeContent, args.oldCode!, args.newCode!, args.methodName);
             if (verdict?.kind === 'refuse') throw new Error(verdict.message);
             if (verdict?.kind === 'noop') {
               // An already-correct file is a success; "oldCode not found" would
@@ -2807,6 +2809,7 @@ async function runModify(
             const xmlFallbackResult = await directXmlReplaceCode(
               actualFilePath, args.oldCode!, args.newCode!,
               describeBridgeFallbackReason(context.bridge, objectType, 'replace-code', bridgeResult),
+              args.methodName,
             );
             if (xmlFallbackResult) {
               bridgeResult = viaXmlFallback(xmlFallbackResult);

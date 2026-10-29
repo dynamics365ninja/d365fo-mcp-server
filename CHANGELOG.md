@@ -29,6 +29,14 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Fixed
+- **`replace-code` refused an edit that `methodName` made unambiguous.** The bridge
+  replaces only inside the named method, but the file-level preflight and the direct-XML
+  fallback counted `oldCode` over the whole file: a line such as `ttsbegin;` that also
+  occurs in another method was refused with "matches 2 times … or scope the call with
+  methodName", although the call already had one. Both now count only inside the named
+  method, the class declaration for `classDeclaration`, or the control or data source
+  override for `Owner.method`. The fallback also no longer edits a different method
+  when the named one does not contain `oldCode`.
 - **An incremental build silently removed a data entity's OData actions.** xppc's
   `-incremental` mode rewrites the `bin\Dynamics.AX.<Package>.ODataExtends.runtime`
   entry of every entity it recompiles without its actions, and the AOS reads them from
