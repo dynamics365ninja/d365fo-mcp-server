@@ -138,3 +138,28 @@ export function assertKnownEnumValue(
     `with ${propertyName} silently left at its default.)`,
   );
 }
+
+/**
+ * The value `add-enum-value` gives a new member of a plain enum when the caller
+ * names none: one past the highest value in the enum's XML.
+ *
+ * The op documents "the next available value is assigned automatically", but the
+ * dispatcher passed 0 and the bridge's AddEnumValue writes what it is given. 0 is
+ * the default the serializer leaves out, so the new member read as 0 — the same
+ * as the first member, which in the shipped shape (and generateAxEnumXml's) is the
+ * one WITHOUT a <Value>. xppc reports that as "Duplicate value '0' detected", and
+ * only on a full build.
+ *
+ * A member without <Value> counts as 0. Null XML (the file could not be read)
+ * gives 0, the old behaviour. Not used for enum EXTENSIONS: there the platform
+ * numbers the members of an extensible enum, and shipped extensions carry no
+ * <Value> at all, which is what 0 still writes.
+ */
+export function nextEnumValue(enumXml: string | null): number {
+  if (!enumXml) return 0;
+  const values = [...enumXml.matchAll(/<AxEnumValue\b[^>]*>([\s\S]*?)<\/AxEnumValue>/g)].map(m => {
+    const v = /<Value>\s*(-?\d+)\s*<\/Value>/.exec(m[1]);
+    return v ? Number(v[1]) : 0;
+  });
+  return values.length > 0 ? Math.max(...values) + 1 : 0;
+}

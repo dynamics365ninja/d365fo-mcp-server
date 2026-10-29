@@ -84,6 +84,7 @@ import {
 import { resolveAnchorModel } from './writeAnchorGuard.js';
 import { resolveOrCreateLabelRef, type AutoLabelTarget } from './createLabel.js';
 import { isRawLabelText } from '../../utils/labelReference.js';
+import { nextEnumValue } from '../../utils/axEnumProperties.js';
 // The direct-XML writers moved to their own module; this file dispatches to them.
 import {
   directXmlReplaceCode,
@@ -2829,7 +2830,7 @@ async function runModify(
             context.bridge,
             objectName,
             (args as any).enumValueName,
-            (args as any).enumValueInt ?? 0,
+            (args as any).enumValueInt ?? (objectType === 'enum' ? nextEnumValue(await readForMatching(actualFilePath)) : 0),
             (args as any).enumValueLabel,
             (args as any).enumValueCountryRegionCodes,
           );
