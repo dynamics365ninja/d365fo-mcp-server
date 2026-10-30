@@ -55,6 +55,12 @@ const TOOL_CAP_SIZES: Record<string, number | 'uncapped'> = {
   // whole point is the full dump — truncating that at 5000 hid the stdio
   // handshake section behind the project table.
   get_workspace_info:               20000,
+  // The counts and the failures come first and the raw SysTestConsole log last,
+  // so a cut costs the tail of the log, not the result; the full per-method
+  // results stay in the XML file the response names. A failing class's log runs
+  // to tens of KB of stack traces, so the cap bounds it rather than lifting it,
+  // set high enough that the summary is never what gets cut.
+  run_systest_class:                12000,
   axdb_sql:                         'uncapped', // the handler bounds its own JSON (boundedSqlResult); a cut here would slice it into invalid JSON
   trace_d365fo:                     'uncapped', // bounded by boundedAnalysis, same reason
   default:                          5000,
@@ -101,6 +107,10 @@ const TRUNCATION_ADVICE: Record<string, string> = {
   extension_info:
     'Narrow it: pass `method` to filter to one method/event, `objectType` to skip auto-detection, ' +
     'and one `target` per call.',
+  run_systest_class:
+    'run_systest_class has no paging parameters, and re-running it returns the same cut. The counts and the ' +
+    'failed tests come FIRST, so what was cut is the end: the passing tests and the raw SysTestConsole log. ' +
+    'For the complete per-method results, read the "Result file:" XML named above.',
 };
 
 export function capToolResponse(toolName: string, result: any): any {
