@@ -44,6 +44,14 @@ those are called out explicitly below.
   [Names exactly as given](docs/CUSTOM_EXTENSIONS.md#names-exactly-as-given).
 
 ### Fixed
+- **`undo` deleted a whole object that was merely uncommitted.** Inside a git work tree,
+  any untracked file was deleted, so an undo after a bad modify of an object from an
+  earlier session (common where objects are committed only at PR time) removed the
+  object itself, with no backup to restore and its `.rnrproj` entry left dangling. An
+  untracked file is now deleted only when this session created it, the rule the
+  non-git path already applied. Otherwise undo refuses and says why. The tables, forms
+  and report objects `generate_object(scaffold)` writes to disk are now recorded as
+  created too, so undo can still delete them (it could not outside git before).
 - **TTS001 warned on replace-code fragments and never reached extension classes.** The
   write-time check counted `ttsbegin`/`ttscommit` in the text sent, so adding a line
   after `ttsbegin;` in a balanced method warned "ttsbegin × 1, ttscommit × 0". For a
