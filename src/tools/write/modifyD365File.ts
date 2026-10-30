@@ -1249,6 +1249,10 @@ export interface ModifyOutcome {
    * "3/3 operation(s) applied" did for three writes that never landed.
    */
   skipped?: boolean;
+  /** Set by an atomic operations[] batch: capture the target's bytes before the write. */
+  captureOriginal?: boolean;
+  /** The target's raw bytes before this operation (null: unreadable), when captureOriginal. */
+  originalBytes?: Buffer | null;
 }
 
 export async function modifyD365FileTool(
@@ -1925,6 +1929,7 @@ async function runModify(
      */
     const preImage: string | null = await timer.time('pre-write image',
       async () => readForMatching(actualFilePath).catch(() => null));
+    if (outcome?.captureOriginal && outcome.originalBytes === undefined) outcome.originalBytes = await fs.readFile(actualFilePath).catch(() => null);
     let _bridgeRetried = false;
     const addMethodOrXml = (methodName: string, source: string) =>
       addMethodWithXmlFallback(context.bridge, objectType, objectName, actualFilePath, methodName, source);

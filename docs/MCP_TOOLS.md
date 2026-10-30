@@ -149,7 +149,7 @@ Neither type participates in grounding: `prepare` has no mode that produces a to
 Two things shared by `create` and `modify`:
 
 - **Parameters are fetched, not inlined.** Op-specific parameters go in a single `params` object (flat top-level keys still accepted) and come from `get_knowledge(kind="op-spec", topic="<operation>")` — for `action=create`, the per-objectType `properties` contract from `topic="<objectType>"`. A missing/wrong parameter returns that same complete per-op spec (error-driven guidance, source: `d365foFileOpSpecs.ts`).
-- **Batching.** `operations: [{operation, …}]` (max 20) applies SEVERAL edits to the same object in ONE call — on `action=modify` and on `action=create`, where they run against the object just created under the name it ACTUALLY got. Applied in order, stopped at the first failure, and each section of the report is capped so one call cannot return a context window.
+- **Batching.** `operations: [{operation, …}]` (max 20) applies SEVERAL edits to the same object in ONE call — on `action=modify` and on `action=create`, where they run against the object just created under the name it ACTUALLY got. Applied in order, stopped at the first failure (the entries before it stay applied unless the call passes `atomic: true`, which restores each changed file to its bytes from before the call), and each section of the report is capped so one call cannot return a context window.
 
 ## 🔐 Security & Extensions (5)
 
