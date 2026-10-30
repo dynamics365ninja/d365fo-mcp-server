@@ -265,6 +265,36 @@ describe('#11 XML fallback must name what it could not apply', () => {
     expect(result.content[0].text as string).toContain('NOT by IMetadataProvider');
   });
 
+  it('still falls back when the bridge says a kernel EDT does not exist', async () => {
+    // IMetaEdtProvider.Exists answers "not found" for kernel EDTs with no AOT file
+    // (ValidFromDateTime, UserId, RecId, …), so this -32602 is not proof the input
+    // is wrong: refusing on it would block every date-effective table.
+    const kernelEdt = new Error(
+      "Bridge error [-32602]: Field 'ValidFrom': extended data type 'ValidFromDateTime' does not exist — nothing was written. " +
+      'Check the spelling with search(type="edt"), or create the EDT first.',
+    );
+    const bridge = {
+      ...deadBridge(),
+      createSmartTable: vi.fn(async () => { throw kernelEdt; }),
+      createObject: vi.fn(async () => { throw kernelEdt; }),
+    };
+    const result = await handleCreateD365File(
+      req({
+        objectType: 'table',
+        objectName: 'ConAuditKernelEdtTable',
+        modelName: 'Contoso',
+        packageName: 'Contoso',
+        packagePath: 'K:\\PackagesLocalDirectory',
+        addToProject: false,
+        properties: TABLE_PROPERTIES,
+      }),
+      buildContext(bridge),
+    );
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text as string).toContain('NOT by IMetadataProvider');
+  });
+
   it('stays silent when there was nothing to drop', async () => {
     const result = await handleCreateD365File(
       req({

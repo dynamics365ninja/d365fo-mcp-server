@@ -112,14 +112,22 @@ export function describeBridgeFailure(failure: BridgeFailure): string {
  * unsupported type), but not when the bridge validated a value and rejected it:
  * the template writes the same value unchecked, and the invalid object reaches
  * disk with "⚠️ Written by the local XML template". Seen with tableType
- * "RegularTable" and a field on EDT "Guid" (which does not exist). The C#
- * validators word these as "'X' is not a valid <Property>", "Invalid <Property>
- * 'X'" or "… — nothing was written", all as -32602 (invalid params).
+ * "RegularTable". The C# enum-property validators word these as "'X' is not a
+ * valid <Property>" or "Invalid <Property> 'X'", both as -32602 (invalid params),
+ * and their lists of valid values are complete.
+ *
+ * The field EDT check ("extended data type 'X' does not exist — nothing was
+ * written") is deliberately NOT one of them: it asks IMetaEdtProvider.Exists, which
+ * answers "not found" for the kernel EDTs that have no AOT file — RecId, UserId,
+ * DataAreaId, ValidFromDateTime, ValidToDateTime, TimeOfDay, TableName, FieldId,
+ * CreatedDateTime (probed on 10.0 / 7.0.7996.33; together several thousand shipped
+ * table fields). Refusing on it would turn a valid create (a date-effective table's
+ * ValidFrom/ValidTo) into "Nothing was written", where the template writes it right.
  */
 export function rejectedBridgeInput(failure: BridgeFailure): string | null {
   const m = /Bridge error \[-32602\]: ([\s\S]*)$/.exec(failure.reason);
   if (!m) return null;
-  return /\bis not a valid\b|^Invalid \w+ '|— nothing was written/.test(m[1]) ? m[1].trim() : null;
+  return /\bis not a valid\b|^Invalid \w+ '/.test(m[1]) ? m[1].trim() : null;
 }
 
 /**
