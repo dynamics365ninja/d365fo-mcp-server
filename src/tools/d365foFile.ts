@@ -190,6 +190,7 @@ async function modifyWithExtensionAutoCreate(
   }
 
   const finalName = createOutcome.finalObjectName ?? pending.objectName;
+  outcome.createdExtension = { objectType: pending.objectType, objectName: finalName, filePath: createOutcome.filePath };
   const retry = await modifyD365FileTool(
     subRequest('modify_d365fo_file', {
       ...args,
@@ -258,6 +259,8 @@ async function runModifyBatch(
   const atomic = atomicArg === true || atomicArg === 'true';
   /** First pre-batch image of each file an atomic batch touched, for the rollback. */
   const originals = new Map<string, Buffer>();
+  /** Extensions this batch created before modifying them: a rollback empties them, it does not remove them. */
+  const createdExtensions: NonNullable<ModifyOutcome['createdExtension']>[] = [];
 
   if (operations.length === 0) {
     return {
@@ -361,6 +364,7 @@ async function runModifyBatch(
     if (atomic && outcome.filePath && outcome.originalBytes && !originals.has(outcome.filePath)) {
       originals.set(outcome.filePath, outcome.originalBytes);
     }
+    if (outcome.createdExtension) createdExtensions.push(outcome.createdExtension);
     results.push({
       label: `#${i + 1} ${opName}`,
       ok,
@@ -441,11 +445,18 @@ async function runModifyBatch(
     ? ''
     : rolledBack.length > 0 || rollbackErrors.length > 0
       ? `\n\n> atomic: the batch stopped at #${stoppedAt + 1} and restored ${rolledBack.length} file(s) to how ` +
-        `they were before this call, so none of its operations remain. Fix the failing entry and re-send ` +
-        `the whole batch.` +
+        `they were before its first operation, so none of its operations remain. Fix the failing entry and ` +
+        `re-send the whole batch.` +
         (rollbackErrors.length > 0
           ? `\n> ⚠️ Could not restore: ${rollbackErrors.join('; ')} — that file keeps the operations above.`
-          : '')
+          : '') +
+        createdExtensions
+          .map(c =>
+            `\n> ⚠️ ${c.objectType} "${c.objectName}" did not exist before this call. The batch created it ` +
+            `before its first operation, and the rollback leaves it as created: EMPTY, on disk and registered ` +
+            `in the project (${c.filePath}). Re-send the batch against "${c.objectName}", or remove it with ` +
+            `d365fo_file(action="delete", objectType="${c.objectType}", objectName="${c.objectName}").`)
+          .join('')
       : `\n\n> Operations run in order and stop at the first failure, because a later one usually ` +
         `depends on an earlier one. The ${succeeded} operation(s) above it ARE applied — fix the failing ` +
         `entry and re-send only the remaining ones.` +

@@ -45,6 +45,9 @@ those are called out explicitly below.
   `atomic: true` it writes back each changed file's bytes from before the call,
   refreshes the provider and the index, and reports "0/N operation(s) applied (K rolled
   back)". The default is unchanged, and its failure text now mentions the option.
+  An extension the batch had to create first, because an operation named one that did
+  not exist, is not removed: it is left as created, empty and in the project, and the
+  reply says so and names the delete that removes it.
   `atomic` is a top-level batch option, not published in the schema (which sits at its
   token budget), and it is not passed on to the operations.
 - **`naming.prefixSource=as-given`: the server renames nothing** (#1134). `none` dropped
@@ -135,9 +138,10 @@ those are called out explicitly below.
   accepts (`next insert()` inside `try … finally`, `return next insertFromForm()` inside
   `using`) were refused as SYS10028 errors. Only blocks whose header branches or loops
   (`if`, `else`, `while`, `for`, `do`, `switch`, `case`, `default`, `catch`) now make
-  `next` conditional. Across 3,193 shipped CoC classes that call `next`, COC004 fell
-  from 189 hits to 120. The rest are `[Replaceable]` base methods and data source
-  overrides, which need a lookup of the target method.
+  `next` conditional, also when the header spans several lines (`if (a` / `&& b)` / `{`).
+  Across 3,193 shipped CoC classes that call `next`, COC004 fell from 189 hits to about
+  120. The rest are `[Replaceable]` base methods and data source overrides, which need a
+  lookup of the target method.
 - **A multi-line `replace-code` always missed in the bridge.** The bridge matches with
   `Contains` against method source read through `IMetadataProvider`, which keeps the
   file's CRLF, while clients send `oldCode` with LF. Every multi-line edit therefore
@@ -278,6 +282,13 @@ those are called out explicitly below.
 - **A write said an object outside every `.rnrproj` "will not compile".** xppc compiles
   the whole model folder, project or not; the message now says the object compiles but no
   project shows it in Visual Studio.
+- **`run_bp_check` ignored `D365FO_PACKAGE_PATH` and its own `packagePath`.** With no XPP
+  config it took the metadata root from the drive scan, which finds
+  PackagesLocalDirectory. On a single-root VM whose metadata lives elsewhere (a repo
+  folder with the standard packages linked in) xppbp then failed with "No module with
+  the name … could be found under the source path". The root is now resolved as
+  `build_d365fo_project` resolves it: `D365FO_PACKAGE_PATH` before the drive scan, and an
+  explicit `packagePath` over both.
 - **`run_systest_class` could not find, or ran a stale, `SysTestConsole`** (#1143).
   Current platforms ship the runner as `Bin\SysTestConsole.17.0.exe`; the tool looked
   only for `SysTestConsole.exe`, so on an install without it no test could run, and on

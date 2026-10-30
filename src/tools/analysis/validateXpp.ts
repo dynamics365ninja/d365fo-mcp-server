@@ -896,7 +896,10 @@ function checkCocNextUnconditional(code: string): ValidationViolation[] {
   let depth = 0;
   // One entry per block open inside the current method body: does its header branch?
   const blocks: boolean[] = [];
-  let previousHeader = '';
+  // Text since the last '{', '}' or ';' — the header of the next block, which can span
+  // lines: in `if (a\n && b)\n{` the line above the brace holds no `if`, and taking only
+  // that line made the block unconditional and its `next` pass.
+  let pendingHeader = '';
   let classBodyDepth: number | null = null;
   // The method currently being walked, if any.
   let method: { name: string; bodyDepth: number; nexts: Array<{ line: number; excerpt: string; conditional: boolean }>; earlyReturn: number | null } | null = null;
@@ -989,11 +992,10 @@ function checkCocNextUnconditional(code: string): ValidationViolation[] {
       if (ch === '{') {
         depth++;
         if (method && depth > method.bodyDepth) {
-          // The header is the text before this brace, or the line above for a brace on its own line.
-          const header = clean.slice(segmentStart, c).trim() || previousHeader;
-          blocks.push(COC_CONDITIONAL_BLOCK.test(header));
+          blocks.push(COC_CONDITIONAL_BLOCK.test(`${pendingHeader} ${clean.slice(segmentStart, c)}`));
         }
         segmentStart = c + 1;
+        pendingHeader = '';
       } else if (ch === '}') {
         if (method && depth > method.bodyDepth) blocks.pop();
         depth--;
@@ -1002,11 +1004,13 @@ function checkCocNextUnconditional(code: string): ValidationViolation[] {
           blocks.length = 0;
         }
         segmentStart = c + 1;
+        pendingHeader = '';
       } else if (ch === ';') {
         segmentStart = c + 1;
+        pendingHeader = '';
       }
     }
-    if (clean.trim()) previousHeader = clean.trim();
+    pendingHeader += ` ${clean.slice(segmentStart)}`;
   }
   closeMethod();
 

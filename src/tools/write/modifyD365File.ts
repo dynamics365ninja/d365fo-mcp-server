@@ -1243,6 +1243,12 @@ export interface ModifyOutcome {
    */
   createExtensionFirst?: { objectType: string; objectName: string };
   /**
+   * Set by the dispatcher once it has created that extension. An atomic batch restores
+   * a file to its bytes before the batch's first write to it, which for a file this
+   * call created is the empty extension, not "nothing": the rollback has to say so.
+   */
+  createdExtension?: { objectType: string; objectName: string; filePath: string };
+  /**
    * The bridge declined this operation and wrote nothing (an element of that
    * name is already there). The call did not fail, so it is not counted as a
    * failure — but it must not be counted as applied either, which is what

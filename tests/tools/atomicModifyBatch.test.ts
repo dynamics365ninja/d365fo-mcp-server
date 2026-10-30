@@ -14,10 +14,10 @@ import * as os from 'os';
 import path from 'path';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 
-const { mockModify } = vi.hoisted(() => ({ mockModify: vi.fn() }));
+const { mockModify, mockCreate } = vi.hoisted(() => ({ mockModify: vi.fn(), mockCreate: vi.fn() }));
 
 vi.mock('../../src/tools/write/modifyD365File', () => ({ modifyD365FileTool: mockModify }));
-vi.mock('../../src/tools/write/createD365File', () => ({ handleCreateD365File: vi.fn() }));
+vi.mock('../../src/tools/write/createD365File', () => ({ handleCreateD365File: mockCreate }));
 vi.mock('../../src/tools/xml/generateD365Xml', () => ({ handleGenerateD365Xml: vi.fn() }));
 vi.mock('../../src/tools/write/inlineIndexUpsert', () => ({ upsertWrittenFileIntoIndex: vi.fn(async () => '') }));
 
@@ -33,6 +33,7 @@ beforeEach(async () => {
   file = path.join(dir, 'ContosoSetting.xml');
   await fs.writeFile(file, ORIGINAL, 'utf-8');
   mockModify.mockReset();
+  mockCreate.mockReset();
 });
 
 afterEach(async () => {
@@ -99,5 +100,30 @@ describe('atomic operations[]', () => {
     expect(text).toContain('1/2 operation(s) applied');
     expect(text).toMatch(/ARE applied/);
     expect(text).toContain('atomic: true');
+  });
+
+  it('says an extension the batch created stays, empty, after the rollback', async () => {
+    // The first entry names an extension that does not exist: the dispatcher creates
+    // it, then re-runs the entry against it. Its "pre-batch" image is the empty
+    // extension, so the rollback cannot remove it and must not claim nothing remains.
+    mockModify
+      .mockImplementationOnce(async (_req: unknown, _ctx: unknown, outcome: any) => {
+        outcome.createExtensionFirst = { objectType: 'table-extension', objectName: 'CustTable.Contoso' };
+        return { content: [{ type: 'text', text: 'not found' }], isError: true };
+      })
+      .mockImplementationOnce(writingModify('<!-- A -->\r\n', true))
+      .mockImplementationOnce(failingModify);
+    mockCreate.mockImplementationOnce(async (_req: unknown, _ctx: unknown, createOutcome: any) => {
+      createOutcome.filePath = file;
+      return { content: [{ type: 'text', text: 'created' }] };
+    });
+
+    const result = await d365foFileTool(call({ atomic: true, operations: operations.slice(0, 2) }), {} as any);
+    const text = (result as any).content[0].text as string;
+
+    expect(await fs.readFile(file, 'utf-8')).toBe(ORIGINAL);
+    expect(text).toContain('0/2 operation(s) applied (1 rolled back)');
+    expect(text).toContain('table-extension "CustTable.Contoso" did not exist before this call');
+    expect(text).toContain('objectName="CustTable.Contoso"');
   });
 });
