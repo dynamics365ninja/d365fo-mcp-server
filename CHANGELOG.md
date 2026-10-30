@@ -44,6 +44,12 @@ those are called out explicitly below.
   [Names exactly as given](docs/CUSTOM_EXTENSIONS.md#names-exactly-as-given).
 
 ### Fixed
+- **`undo` and `delete` left the element's compiler-metadata copy behind.** The copy at
+  `<Package>\XppMetadata\<Model>\<AxType>\<Name>.xml` was removed only by the phantom
+  prune of this server's incremental build, so a Visual Studio build or a packaging step
+  in between kept the deleted element in the manifests. Both now remove the copy when
+  they remove the source, by the prune's own rule, and drop the copy's type folder if
+  that left it empty.
 - **`undo` deleted a whole object that was merely uncommitted.** Inside a git work tree,
   any untracked file was deleted, so an undo after a bad modify of an object from an
   earlier session (common where objects are committed only at PR time) removed the

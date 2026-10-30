@@ -120,6 +120,26 @@ describe('undo_last_modification — non-git ledger fallback', () => {
     expect(proj).toContain('Services\\"');
   });
 
+  it('removes the compiler-metadata copy of the created element on the git path', async () => {
+    // <Package>\XppMetadata\<Model>\<AxType>\<Name>.xml is written next to the source
+    // by the metadata provider; deleting only the source left it in the manifests.
+    const repoDir = gitRepoIn(tmpDir);
+    const filePath = path.join(repoDir, 'Contoso', 'Contoso', 'AxClass', 'ConSmoke.xml');
+    const copy = path.join(repoDir, 'Contoso', 'XppMetadata', 'Contoso', 'AxClass', 'ConSmoke.xml');
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.mkdirSync(path.dirname(copy), { recursive: true });
+    fs.writeFileSync(filePath, '<AxClass><Name>ConSmoke</Name></AxClass>', 'utf-8');
+    fs.writeFileSync(copy, '<AxClass><Name>ConSmoke</Name></AxClass>', 'utf-8');
+    recordCreatedArtifact({ filePath, objectType: 'class', objectName: 'ConSmoke' });
+
+    const result = await undoLastModificationTool({ filePath }, {} as any);
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toMatch(/compiler-metadata copy/);
+    expect(fs.existsSync(filePath)).toBe(false);
+    expect(fs.existsSync(copy)).toBe(false);
+  });
+
   it('cleans the .rnrproj on the GIT path too — PackagesLocalDirectory usually is a repo', async () => {
     // The two undo paths did not agree: the ledger one removed the project entry,
     // the git-untracked one deleted the file and stopped there. A model directory
