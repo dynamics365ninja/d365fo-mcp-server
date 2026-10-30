@@ -744,12 +744,20 @@ export async function indexOneFile(
       const result = await parser.parseFormFile(filePath, model);
       if (result.success && result.data) {
         const formData = result.data as any;
-        symbolIndex.addSymbol({
-          name: formData.name ?? objectName,
-          type: objectType,
-          filePath,
+        // Same writer as the full build, so datasources, patterns and the stored source
+        // follow an edit. parseFormFile does not return the XML, hence the second read.
+        let xml: string | undefined;
+        try {
+          xml = fs.readFileSync(filePath, 'utf-8');
+        } catch {
+          xml = undefined;
+        }
+        symbolIndex.writeFormSymbols(
+          { ...formData, name: formData.name ?? objectName },
           model,
-        });
+          filePath,
+          xml,
+        );
         insertedCount++;
       } else {
         tx();

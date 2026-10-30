@@ -14,6 +14,7 @@
  *   3. the same path remapped onto the configured packages root (the DB may store
  *      Azure DevOps build-agent paths)
  *   4. extracted-metadata JSON files, which wrap the XML in a `raw` property
+ *   5. for a form, the gzipped copy the index build stored (form_source)
  */
 
 import * as fs from 'fs';
@@ -24,11 +25,17 @@ import { resolveDbPathLocally, remapDbPathLocally } from './metadataResolver.js'
 import { getConfigManager, fallbackPackagePath } from './configManager.js';
 import { isAotSourcePath } from './packagesRoot.js';
 import { bridgeStartupState, type BridgeReadinessSource } from '../bridge/bridgeReadiness.js';
+import { gunzipSync } from 'node:zlib';
 
 export interface IndexedObjectRef {
   /** Canonical name as stored in the index (may differ in casing from the request). */
   name: string;
   model: string;
+  /**
+   * The model of the symbol row itself. `model` above is the caller's `modelName` when
+   * one was given, so it cannot key a lookup of the stored copy (form_source).
+   */
+  indexedModel: string;
   /** Path recorded in the symbol index — may point at a build agent. */
   indexedPath: string | null;
   /** Readable path on this machine (indexed or remapped), null when unreachable. */
@@ -64,6 +71,7 @@ export async function resolveIndexedObject(
   return {
     name: hit.name,
     model: modelName || hit.model || 'Unknown',
+    indexedModel: hit.model || '',
     indexedPath: hit.file_path,
     localPath,
     sourceFileMissing: await isStaleIndexedPath(hit.file_path, localPath),
@@ -258,17 +266,55 @@ export async function readXmlFile(filePath: string): Promise<string | null> {
   return content;
 }
 
-/** Symbol-index lookup + XML read in one step. Returns null when either step fails. */
+/**
+ * The gzipped AxForm XML the index build stored for a form (form_source), or null.
+ *
+ * Keyed by the symbol row's own model, case-insensitively (the build's model directory
+ * and the model parsed from a path can differ in case). Never falls back to another
+ * model's row: that would render a different form's XML under this one's name. Any
+ * failure — an old database without the table, a stub DB, a corrupt blob — is a miss (null).
+ */
+export function readStoredFormXml(
+  db: unknown,
+  formName: string,
+  model: string,
+): { xml: string; storedAt: string } | null {
+  try {
+    const row = (db as any)
+      .prepare('SELECT xml_gz, indexed_at FROM form_source WHERE form_name = ? AND model = ? COLLATE NOCASE ORDER BY indexed_at DESC LIMIT 1')
+      .get(formName, model) as { xml_gz?: unknown; indexed_at?: unknown } | undefined;
+    if (!row || !(row.xml_gz instanceof Uint8Array)) return null;
+    const xml = gunzipSync(row.xml_gz).toString('utf-8');
+    if (!xml) return null;
+    return { xml, storedAt: typeof row.indexed_at === 'string' ? row.indexed_at : '' };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Symbol-index lookup + XML read in one step. Returns null when either step fails.
+ *
+ * For a form with no readable file, the copy stored in the index (form_source) answers
+ * instead — except when this machine can tell the file was deleted (`sourceFileMissing`):
+ * a leftover row would then present a deleted form as fact. `source` says which one
+ * answered so the reader can label a stored copy.
+ */
 export async function readIndexedXml(
   db: unknown,
   name: string,
   types: readonly string[],
   modelName?: string,
-): Promise<{ ref: IndexedObjectRef; xml: string } | null> {
+): Promise<{ ref: IndexedObjectRef; xml: string; source: 'file' | 'stored'; storedAt?: string } | null> {
   const ref = await resolveIndexedObject(db, name, types, modelName);
-  if (!ref?.localPath) return null;
-  const xml = await readXmlFile(ref.localPath);
-  return xml ? { ref, xml } : null;
+  if (!ref) return null;
+  if (ref.localPath) {
+    const xml = await readXmlFile(ref.localPath);
+    if (xml) return { ref, xml, source: 'file' };
+  }
+  if (!types.includes('form') || ref.sourceFileMissing) return null;
+  const stored = readStoredFormXml(db, ref.name, ref.indexedModel);
+  return stored ? { ref, xml: stored.xml, source: 'stored', storedAt: stored.storedAt } : null;
 }
 
 /**

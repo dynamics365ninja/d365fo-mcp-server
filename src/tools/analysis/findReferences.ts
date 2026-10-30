@@ -600,12 +600,21 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
     // still has code references worth counting, so say what the number leaves out.
     const tableTarget = targetType === 'table' ||
       (!targetType && !isAotPath && resolveXrefContainers(symbolIndex.getReadDb(), ftsName).includes('Tables'));
+    // form_datasources records which base forms bind this table, so the fallback can list
+    // them; form extensions are not indexed.
+    const formsUsingTable = tableTarget ? findFormsUsingTable(symbolIndex.getReadDb(), ftsName, limit) : null;
     if (tableTarget) {
-      output += `> ⚠️ For a table this counts X++ code only. Its declarative references — form data sources, ` +
+      output += `> ⚠️ For a table this counts X++ code only. Its declarative references — ` +
         `relations, data entity mappings, fields bound on forms — are recorded only in the cross-reference ` +
-        `database, and ${bridgeFallbackReason(bridgeOutcome.status, context)}.\n`;
+        `database, and ${bridgeFallbackReason(bridgeOutcome.status, context)}.` +
+        (formsUsingTable?.indexed
+          ? ` Its form data sources are listed below from the index (base forms only: form extensions, ` +
+            `views, maps and code inside forms are not covered).`
+          : ` Its form data sources are not available from this index.`) +
+        `\n`;
     }
     output += `\n`;
+    if (formsUsingTable) output += renderFormsUsingTable(ftsName, formsUsingTable);
 
     // Detect when the caller used a form/table/view name as if it were a class
     const typeMismatchSection = parentObjectName
@@ -619,7 +628,7 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
       // had nothing to match in the first place. Reported live on the VM: an
       // agent read `Total References Found: 0 … Symbol might be unused` for a
       // method with two real call sites, and acted on it.
-      output += `No references found for \`${targetName}\` — **this is not evidence that it is unused.**\n\n`;
+      output += `${formsUsingTable && formsUsingTable.total > 0 ? 'No X++ code references found' : 'No references found'} for \`${targetName}\` — **this is not evidence that it is unused.**\n\n`;
       output += `⚠️ Because ${bridgeFallbackReason(bridgeOutcome.status, context)}, call sites are matched against each method's indexed ` +
         `\`source_snippet\`, which holds only its FIRST TEN LINES. A call on line 11 or later of its ` +
         `caller cannot be seen from here, and long methods are exactly where calls hide. The declaring ` +
@@ -1079,6 +1088,66 @@ function extractInstantiationContext(source: string, className: string): string 
   }
 
   return null;
+}
+
+interface FormsUsingTable {
+  /** False when form_datasources is empty or unreadable — then a zero says nothing. */
+  indexed: boolean;
+  /** Distinct (form, model) pairs, not datasource rows: one form can bind a table twice. */
+  total: number;
+  rows: Array<{ form_name: string; model: string; datasources: string }>;
+}
+
+/**
+ * Forms with a datasource on `tableName`, from the index's form_datasources.
+ *
+ * COLLATE NOCASE on purpose: some rows store a mis-cased table_name (a form's XML names
+ * the table as the author typed it), and a BINARY match on the canonical name misses
+ * them. Any failure — an old database, a stub DB — reads as "not indexed", never as a
+ * confident zero.
+ */
+function findFormsUsingTable(db: any, tableName: string, limit: number): FormsUsingTable {
+  const none: FormsUsingTable = { indexed: false, total: 0, rows: [] };
+  try {
+    const probe = db.prepare('SELECT EXISTS(SELECT 1 FROM form_datasources) AS indexed').get() as { indexed?: number } | undefined;
+    if (!probe?.indexed) return none;
+    const rows = db.prepare(
+      `SELECT form_name, model, group_concat(datasource_name) AS datasources
+         FROM form_datasources
+        WHERE table_name = ? COLLATE NOCASE
+        GROUP BY form_name, model
+        ORDER BY form_name
+        LIMIT ?`,
+    ).all(tableName, limit) as FormsUsingTable['rows'];
+    const count = db.prepare(
+      `SELECT COUNT(*) AS n FROM (
+         SELECT 1 FROM form_datasources WHERE table_name = ? COLLATE NOCASE GROUP BY form_name, model)`,
+    ).get(tableName) as { n?: number } | undefined;
+    return { indexed: true, total: count?.n ?? rows.length, rows };
+  } catch {
+    return none;
+  }
+}
+
+function renderFormsUsingTable(tableName: string, forms: FormsUsingTable): string {
+  let out = `## 🧾 Forms using \`${tableName}\` as a datasource\n\n`;
+  if (!forms.indexed) {
+    out += `No form datasources indexed — this index holds none, so forms cannot be listed from it.\n\n`;
+    return out;
+  }
+  if (forms.total === 0) {
+    out += `No base forms use this table as a datasource (form extensions are not indexed).\n\n`;
+    return out;
+  }
+  out += `**Forms:** ${forms.total}\n\n`;
+  for (const f of forms.rows) {
+    out += `- \`${f.form_name}\` (${f.model}) — datasource${f.datasources.includes(',') ? 's' : ''}: ${f.datasources.split(',').join(', ')}\n`;
+  }
+  if (forms.total > forms.rows.length) {
+    out += `- … and ${forms.total - forms.rows.length} more\n`;
+  }
+  out += `\n`;
+  return out;
 }
 
 function extractTableReferenceContext(source: string, tableName: string): string | null {

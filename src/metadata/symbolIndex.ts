@@ -7,6 +7,7 @@ import Database, { type Statement } from '../database/sqlite.js';
 import { Worker } from 'node:worker_threads';
 import * as fs from 'fs';
 import * as path from 'path';
+import { gzipSync } from 'node:zlib';
 import type { XppSymbol } from './types.js';
 import { renderMethodSignature } from './xppDeclaration.js';
 import { isStandardModel } from '../utils/modelClassifier.js';
@@ -772,6 +773,19 @@ export class XppSymbolIndex {
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_form_patterns_pattern ON form_patterns(pattern, pattern_version);
       CREATE INDEX IF NOT EXISTS idx_form_patterns_model ON form_patterns(model);
+    `);
+
+    // Form Source — the original AxForm XML, gzipped, so a host that has only this
+    // database (no AOT files, no extracted JSON) can still show a form's whole source.
+    // Nothing but the form XML readers queries it, and no symbols row refers to it.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS form_source (
+        form_name TEXT NOT NULL,
+        model TEXT NOT NULL,
+        xml_gz BLOB NOT NULL,
+        indexed_at TEXT NOT NULL,
+        PRIMARY KEY (form_name, model)
+      );
     `);
 
     // EDT Metadata - for EDT suggestion and validation
@@ -1595,10 +1609,31 @@ export class XppSymbolIndex {
     ).all(...forms) as Array<{ name: string }>;
     const objectNames = rows.map(r => r.name);
 
+    // A removed form also owns rows in three side tables that no symbols row points at.
+    // Only a `form` symbol qualifies: a table file named like a form must not wipe the
+    // form's datasources, patterns or stored source.
+    const formRows = this.db.prepare(
+      `SELECT DISTINCT name, model FROM symbols WHERE file_path COLLATE NOCASE IN (${placeholders}) AND type = 'form' AND parent_name IS NULL`
+    ).all(...forms) as Array<{ name: string; model: string }>;
+
     // The FTS trigger (symbols_fts AFTER DELETE) handles FTS cleanup automatically
-    const result = this.db.prepare(`DELETE FROM symbols WHERE file_path COLLATE NOCASE IN (${placeholders})`).run(...forms);
+    const removeAll = this.db.transaction(() => {
+      const result = this.db.prepare(`DELETE FROM symbols WHERE file_path COLLATE NOCASE IN (${placeholders})`).run(...forms);
+      for (const f of formRows) this.deleteFormSideRows(f.name, f.model);
+      return result;
+    });
+    const result = removeAll();
     this.invalidateSymbolCounts();
     return { deletedCount: result.changes, objectNames };
+  }
+
+  /** The three tables keyed by a form's name and model (see writeFormSymbols). */
+  private deleteFormSideRows(formName: string, model: string): void {
+    // NOCASE on model: the reader matches it that way, and the build's model directory
+    // and the model parsed from a path can differ in case.
+    this.db.prepare('DELETE FROM form_datasources WHERE form_name = ? AND model = ? COLLATE NOCASE').run(formName, model);
+    this.db.prepare('DELETE FROM form_patterns WHERE form_name = ? AND model = ? COLLATE NOCASE').run(formName, model);
+    this.db.prepare('DELETE FROM form_source WHERE form_name = ? AND model = ? COLLATE NOCASE').run(formName, model);
   }
 
   /**
@@ -2907,80 +2942,122 @@ export class XppSymbolIndex {
         const sourceFilePath = formData.sourcePath || filePath;
         const formName = formData.name || path.basename(file, '.json');
 
-        this.addSymbol({
-          name: formName,
-          type: 'form',
-          filePath: sourceFilePath,
+        // `raw` (the original XML) is missing from JSON extracted by older versions;
+        // those forms get no form_source row.
+        this.writeFormSymbols(
+          { ...formData, name: formName },
           model,
-          description: formData.caption || formData.label,
-        });
-
-        // Index mined pattern nodes (Design + sub-patterned containers) and
-        // record pattern distribution stats for the advisor/cross-check.
-        if (formData.patternNodes && Array.isArray(formData.patternNodes)) {
-          const patternStmt = this.db.prepare(`
-            INSERT OR REPLACE INTO form_patterns (
-              form_name, model, node_path, control_name, control_type,
-              pattern, pattern_version, child_sequence
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          `);
-          for (const node of formData.patternNodes) {
-            if (!node?.pattern || !node?.nodePath) continue;
-            patternStmt.run(
-              formName,
-              model,
-              node.nodePath,
-              node.controlName ?? '',
-              node.controlType ?? '',
-              node.pattern,
-              node.patternVersion ?? null,
-              JSON.stringify(node.childSequence ?? []),
-            );
-            // form_patterns rows above are per-model FACTS and are stored for every model;
-            // property_stats is a corpus of "what the standard platform does", so the same
-            // gate as recordTablePropertyStats() applies here. Without it our own forms and
-            // ISV forms skew the mined pattern distribution that generateSmartForm's
-            // defaultFormPattern() picks from — on every environment, not just UDE.
-            if (node.nodePath === 'Design' && this.isMineableModel(model)) {
-              this.recordPropertyStat('AxFormDesign', 'Pattern', node.pattern, model);
-              this.recordPropertyStat(
-                'AxFormDesign',
-                `PatternVersion:${node.pattern}`,
-                node.patternVersion ?? '(absent)',
-                model,
-              );
-            }
-          }
-        }
-
-        // Index form datasources to new table
-        if (formData.dataSources && Array.isArray(formData.dataSources)) {
-          const stmt = this.db.prepare(`
-            INSERT OR REPLACE INTO form_datasources (
-              form_name, datasource_name, table_name, 
-              allow_edit, allow_create, allow_delete, model
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-          `);
-
-          for (const ds of formData.dataSources) {
-            if (ds.name && ds.table) {
-              stmt.run(
-                formName,
-                ds.name,
-                ds.table,
-                ds.allowEdit ? 1 : 0,
-                ds.allowCreate ? 1 : 0,
-                ds.allowDelete ? 1 : 0,
-                model
-              );
-            }
-          }
-        }
-      
+          sourceFilePath,
+          typeof formData.raw === 'string' ? formData.raw : undefined,
+          { recordStats: true },
+        );
       } catch (error) {
         log.warn(`Skipped form ${file}: ${error instanceof Error ? error.message : error}`);
       }
     }
+  }
+
+  /**
+   * Everything the index keeps for one form: its `form` symbol, mined pattern nodes,
+   * datasources and, when `xml` is given, the gzipped source. The full build and
+   * update_symbol_index both call this, so the two cannot drift.
+   *
+   * One transaction, starting with a delete by (form_name, model): form_datasources has
+   * no unique key (its INSERT OR REPLACE is a plain INSERT), so a re-index whose
+   * removeSymbolsByFile missed the old row (a path spelling it cannot map) would
+   * otherwise list the datasources twice.
+   *
+   * `recordStats` only from the build: property_stats is flushed per model there.
+   */
+  writeFormSymbols(
+    formData: any,
+    model: string,
+    filePath: string,
+    xml?: string,
+    opts: { recordStats?: boolean } = {},
+  ): void {
+    const formName: string = formData.name;
+
+    const write = this.db.transaction(() => {
+      this.deleteFormSideRows(formName, model);
+
+      this.addSymbol({
+        name: formName,
+        type: 'form',
+        filePath,
+        model,
+        description: formData.caption || formData.label,
+      });
+
+      // Index mined pattern nodes (Design + sub-patterned containers) and
+      // record pattern distribution stats for the advisor/cross-check.
+      if (formData.patternNodes && Array.isArray(formData.patternNodes)) {
+        const patternStmt = this.db.prepare(`
+          INSERT OR REPLACE INTO form_patterns (
+            form_name, model, node_path, control_name, control_type,
+            pattern, pattern_version, child_sequence
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        for (const node of formData.patternNodes) {
+          if (!node?.pattern || !node?.nodePath) continue;
+          patternStmt.run(
+            formName,
+            model,
+            node.nodePath,
+            node.controlName ?? '',
+            node.controlType ?? '',
+            node.pattern,
+            node.patternVersion ?? null,
+            JSON.stringify(node.childSequence ?? []),
+          );
+          // form_patterns rows above are per-model FACTS and are stored for every model;
+          // property_stats is a corpus of "what the standard platform does", so the same
+          // gate as recordTablePropertyStats() applies here. Without it our own forms and
+          // ISV forms skew the mined pattern distribution that generateSmartForm's
+          // defaultFormPattern() picks from — on every environment, not just UDE.
+          if (opts.recordStats && node.nodePath === 'Design' && this.isMineableModel(model)) {
+            this.recordPropertyStat('AxFormDesign', 'Pattern', node.pattern, model);
+            this.recordPropertyStat(
+              'AxFormDesign',
+              `PatternVersion:${node.pattern}`,
+              node.patternVersion ?? '(absent)',
+              model,
+            );
+          }
+        }
+      }
+
+      // Index form datasources
+      if (formData.dataSources && Array.isArray(formData.dataSources)) {
+        const stmt = this.db.prepare(`
+          INSERT OR REPLACE INTO form_datasources (
+            form_name, datasource_name, table_name,
+            allow_edit, allow_create, allow_delete, model
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        for (const ds of formData.dataSources) {
+          if (ds.name && ds.table) {
+            stmt.run(
+              formName,
+              ds.name,
+              ds.table,
+              ds.allowEdit ? 1 : 0,
+              ds.allowCreate ? 1 : 0,
+              ds.allowDelete ? 1 : 0,
+              model
+            );
+          }
+        }
+      }
+
+      if (typeof xml === 'string' && xml.length > 0) {
+        this.db.prepare(
+          'INSERT OR REPLACE INTO form_source (form_name, model, xml_gz, indexed_at) VALUES (?, ?, ?, ?)'
+        ).run(formName, model, gzipSync(Buffer.from(xml, 'utf-8')), new Date().toISOString());
+      }
+    });
+    write();
   }
 
   private indexQueries(queriesPath: string, model: string): void {
@@ -4334,6 +4411,7 @@ export class XppSymbolIndex {
     this.db.exec('DELETE FROM table_relations');
     this.db.exec('DELETE FROM form_datasources');
     this.db.exec('DELETE FROM form_patterns');
+    this.db.exec('DELETE FROM form_source');
     this.db.exec('DELETE FROM edt_metadata');
     this.db.exec('DELETE FROM security_privilege_entries');
     this.db.exec('DELETE FROM security_duty_privileges');
@@ -4375,6 +4453,7 @@ export class XppSymbolIndex {
       this.db.prepare(`DELETE FROM table_relations WHERE model IN (${placeholders})`).run(...modelNames);
       this.db.prepare(`DELETE FROM form_datasources WHERE model IN (${placeholders})`).run(...modelNames);
       this.db.prepare(`DELETE FROM form_patterns WHERE model IN (${placeholders})`).run(...modelNames);
+      this.db.prepare(`DELETE FROM form_source WHERE model IN (${placeholders})`).run(...modelNames);
       this.db.prepare(`DELETE FROM edt_metadata WHERE model IN (${placeholders})`).run(...modelNames);
       this.db.prepare(`DELETE FROM security_privilege_entries WHERE model IN (${placeholders})`).run(...modelNames);
       this.db.prepare(`DELETE FROM security_duty_privileges WHERE model IN (${placeholders})`).run(...modelNames);

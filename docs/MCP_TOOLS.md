@@ -66,6 +66,7 @@ One unified reader covers every object type via `objectType`; type-specific flag
 
 - **`objectType`** — `class`, `table`, `form`, `query`, `view`, `enum`, `edt`, `report`, `data-entity`, `menu-item`, `service`, `map`, `config-key`, `security-policy`, `macro`, plus the extension variants (`table-extension`, `class-extension`, `form-extension`, `enum-extension`, `edt-extension`, `data-entity-extension`).
 - **Batch** — for 2+ objects pass `objects: [{objectType, objectName}, …]` (max 10): one call, all lookups in parallel, per-object sections back (absorbs the former `batch_get_info`). A top-level `options` applies to every entry.
+- **Forms without AOT files** — on a host that has only the database (the Azure read-only instance), a form is read from the copy the index stored when it was built, and `options: {include: "xml"}` returns its whole XML (paged). The answer says it is a stored copy and when it was written. Needs a database built from metadata extracted by this version or later (see [SETUP_AZURE.md](SETUP_AZURE.md)).
 - **Type-specific `options`** — `{includeRdl}` (report), `{searchControl}` (form), `{compact: false}` (class), `{mode: "hierarchy"}` (edt), `{filter}` (macro).
 - **Class members** — `{members: "names"}` (optional `{prefix}`) returns a fast IntelliSense-style member-name list; `{method: "validateWrite", include: "signature"}` returns ONE method, where `include` is `signature` (exact signature, **mandatory before CoC**), `source` (full X++ body) or `both` (default). Absorbs the former `get_method`.
 

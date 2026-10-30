@@ -28,7 +28,22 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Added
+- **Forms can be read from the database alone, and `find_references` lists the forms that
+  use a table.** The index stores each form's original XML (gzipped, table `form_source`,
+  about +37 MB for a full standard install), so on a host with no AOT files and no bridge,
+  such as the Azure read-only instance, `get_object_info` renders a form from the stored
+  copy and `options={include:"xml"}` returns its whole XML, paged. A stored copy is
+  labelled with the time it was written and is never used for a form this machine knows
+  was deleted. For a table target, the `find_references` fallback lists the forms that bind
+  it as a datasource (base forms only; form extensions, views, maps and code inside forms
+  are not covered). Form JSON now carries the XML as `raw` and roughly triples in size;
+  stored copies appear after a re-extract and re-index (pipeline order in SETUP_AZURE.md).
+
 ### Fixed
+- **`update_symbol_index` left a changed form's datasources and patterns stale.** It wrote
+  only the form's symbol row; it now writes everything the full build writes for a form,
+  and removing a form removes its datasource, pattern and stored-XML rows.
 - **`add-method` and `remove-method` failed on a data entity.** The bridge has no
   data-entity arm for either, so `d365fo_file` modify returned "add-method not supported
   for objectType 'data-entity' via bridge (use XML fallback)" and applied nothing — the

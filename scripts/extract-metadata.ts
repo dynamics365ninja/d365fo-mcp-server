@@ -1099,7 +1099,7 @@ async function extractTables(
 
 }
 
-async function extractForms(
+export async function extractForms(
   parser: XppMetadataParser,
   formsPath: string,
   modelName: string,
@@ -1127,11 +1127,16 @@ async function extractForms(
       }
       
       const formInfo = result.data;
-      
+
+      // The original XML rides along as `raw` (the convention enums use) so the index
+      // build can store it: a host with only the database has no AOT files to read.
+      // parseFormFile does not return it, hence the second read (OS-cached).
+      const raw = await fs.readFile(filePath, 'utf-8');
+
       const outputDir = path.join(OUTPUT_PATH, modelName, 'forms');
       await fs.mkdir(outputDir, { recursive: true });
       const outputFile = path.join(outputDir, `${formInfo.name}.json`);
-      await writeMetadataJson(outputFile, formInfo, isCustom, modelName);
+      await writeMetadataJson(outputFile, { ...formInfo, raw }, isCustom, modelName);
 
       stats.forms++;
     } catch (error) {
