@@ -36,7 +36,9 @@ those are called out explicitly below.
   object reached disk with only a "Written by the local XML template" note. Such
   rejections (`-32602` with "is not a valid", "Invalid …" or "— nothing was written")
   now stop the create with the bridge's message. Other bridge failures, such as a model
-  its provider does not know, still fall back as before.
+  its provider does not know, still fall back as before. Such a rejection also no longer
+  gets the dispatcher's "bridge errored … re-run once the bridge is healthy" note: the
+  bridge answered, it is the input that was wrong.
 - **`add-method` and `remove-method` failed on a data entity.** The bridge has no
   data-entity arm for either, so `d365fo_file` modify returned "add-method not supported
   for objectType 'data-entity' via bridge (use XML fallback)" and applied nothing — the
