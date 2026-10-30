@@ -21,7 +21,6 @@
 import fs from 'fs';
 import path from 'path';
 import { lookupSymbolsNocase, type DbLike } from '../../utils/symbolLookup.js';
-import { packagesRootFromPath } from '../../metadata/modelDescriptor.js';
 
 export interface EnumValueSet {
   /** Lower-cased value names from the enum and every indexed extension of it. */
@@ -84,10 +83,21 @@ export function indexedEnumValueNames(db: DbLike, enumName: string): EnumValueSe
     const xml = readText(file);
     if (xml === null) return null;
     for (const name of enumValueNamesFromXml(xml)) names.add(name.toLowerCase());
-    const root = packagesRootFromPath(file);
+    const root = packagesRootOf(file);
     if (root) roots.add(root);
   }
   return { names, enumName: enumRows[0].name, packagesRoots: [...roots] };
+}
+
+/**
+ * The PackagesLocalDirectory a file lives under, in the file's OWN spelling.
+ * modelDescriptor's packagesRootFromPath rewrites the separators to `\`, which is
+ * right for comparing paths and wrong for opening one on a machine whose separator
+ * is `/`.
+ */
+function packagesRootOf(file: string): string | null {
+  const m = /^(.*[\\/]PackagesLocalDirectory)(?=[\\/]|$)/i.exec(file);
+  return m ? m[1] : null;
 }
 
 /** Lower-cased contents of every `bin/*_AxEnumExtension.md` under a root, read once. */
