@@ -363,32 +363,36 @@ export function preflightReplaceCode(
   const normNew = newCode.replace(/\r\n/g, '\n');
   if (normOld.length === 0) return null;
 
-  const hits = methodScopedLines(content, normOld, methodName) ?? occurrenceLines(content, normOld);
+  // Both the match count and the already-applied check look where the bridge acts: newCode
+  // in ANOTHER method is not this edit being done, and must not turn it into a no-op.
+  const inScope = (needle: string) => methodScopedLines(content, needle, methodName) ?? occurrenceLines(content, needle);
+  const hits = inScope(normOld);
+  const newHits = normNew.length > 0 ? inScope(normNew) : [];
 
   if (hits.length === 0) {
     // Not an error here — the bridge may still reach source this file-level view
     // cannot (form control overrides). But if the intended result is already
     // present, say THAT instead of letting "oldCode not found" imply the opposite.
-    if (normNew.length > 0 && content.includes(normNew)) {
+    if (newHits.length > 0) {
       return {
         kind: 'noop',
         message:
           `Nothing to do — the file already contains newCode ` +
-          `(line ${occurrenceLines(content, normNew)[0]}), and oldCode is not present. ` +
+          `(line ${newHits[0]}), and oldCode is not present. ` +
           `This edit has already been applied; do not retry it.`,
       };
     }
     return null;
   }
 
-  if (normNew.includes(normOld) && content.includes(normNew)) {
+  if (normNew.includes(normOld) && newHits.length > 0) {
     return {
       kind: 'noop',
       message:
         `Nothing to do — this edit is already applied, and repeating it would nest the text.\n` +
         `   oldCode  : ${JSON.stringify(normOld)}\n` +
         `   newCode  : ${JSON.stringify(normNew)}\n` +
-        `newCode is already in the file at line ${occurrenceLines(content, normNew)[0]}, and oldCode is a ` +
+        `newCode is already in the file at line ${newHits[0]}, and oldCode is a ` +
         `substring of it — so the ${hits.length} "match(es)" found ARE the newCode occurrence(s). ` +
         `Applying it would produce ${JSON.stringify(normNew.replace(normOld, normNew))}.\n` +
         `If you meant a different edit, pass a full-line oldCode with enough surrounding text to be unambiguous.`,

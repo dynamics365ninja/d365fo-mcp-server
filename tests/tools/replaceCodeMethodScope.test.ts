@@ -153,6 +153,20 @@ describe('replace-code preflight honours methodName', () => {
   it('lets through a control override scoped by Owner.method', () => {
     expect(preflightReplaceCode(FORM_XML, 'element.refresh();', 'element.reread();', 'PostButton.clicked')).toBeNull();
   });
+
+  // The already-applied check looked at the whole file: newCode present in ANOTHER
+  // method turned the edit of the named one into "Nothing to do", and nothing was written.
+  const POST_LOCKED = CLASS_XML.replace('ttsbegin;\n        this.write();', 'ttsbegin;\n        this.lock();\n        this.write();');
+
+  it('does not call an edit applied because another method already has newCode', () => {
+    expect(preflightReplaceCode(POST_LOCKED, 'ttsbegin;', 'ttsbegin;\n        this.lock();', 'reverse')).toBeNull();
+    expect(preflightReplaceCode(POST_LOCKED, 'this.undo();', 'this.lock();', 'reverse')).toBeNull();
+  });
+
+  it('still calls an edit applied when the named method already has newCode', () => {
+    expect(preflightReplaceCode(POST_LOCKED, 'ttsbegin;', 'ttsbegin;\n        this.lock();', 'post')?.kind).toBe('noop');
+    expect(preflightReplaceCode(POST_LOCKED, 'this.save();', 'this.lock();', 'post')?.kind).toBe('noop');
+  });
 });
 
 describe('directXmlReplaceCode honours methodName', () => {

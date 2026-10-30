@@ -36,7 +36,8 @@ those are called out explicitly below.
   methodName", although the call already had one. Both now count only inside the named
   method, the class declaration for `classDeclaration`, or the control or data source
   override for `Owner.method`. The fallback also no longer edits a different method
-  when the named one does not contain `oldCode`.
+  when the named one does not contain `oldCode`, and `newCode` already present in another
+  method no longer turns the edit of the named one into "Nothing to do".
 - **An incremental build silently removed a data entity's OData actions.** xppc's
   `-incremental` mode rewrites the `bin\Dynamics.AX.<Package>.ODataExtends.runtime`
   entry of every entity it recompiles without its actions, and the AOS reads them from
