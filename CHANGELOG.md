@@ -44,6 +44,14 @@ those are called out explicitly below.
   [Names exactly as given](docs/CUSTOM_EXTENSIONS.md#names-exactly-as-given).
 
 ### Fixed
+- **COC004 reported `next` inside `try`, `finally` or `using` as conditional.** Any
+  block deeper than the method body counted as conditional, so CoC methods the compiler
+  accepts (`next insert()` inside `try … finally`, `return next insertFromForm()` inside
+  `using`) were refused as SYS10028 errors. Only blocks whose header branches or loops
+  (`if`, `else`, `while`, `for`, `do`, `switch`, `case`, `default`, `catch`) now make
+  `next` conditional. Across 3,193 shipped CoC classes that call `next`, COC004 fell
+  from 189 hits to 120. The rest are `[Replaceable]` base methods and data source
+  overrides, which need a lookup of the target method.
 - **A multi-line `replace-code` always missed in the bridge.** The bridge matches with
   `Contains` against method source read through `IMetadataProvider`, which keeps the
   file's CRLF, while clients send `oldCode` with LF. Every multi-line edit therefore
