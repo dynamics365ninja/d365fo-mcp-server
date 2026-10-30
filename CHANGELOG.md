@@ -29,6 +29,10 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Fixed
+- **An already-applied `replace-code` counted as applied in a batch.** Its "no change
+  needed" answer returned before the outcome was marked skipped, so `operations[]`
+  reported it in "N/N operation(s) applied" and in the "verified on disk" trailer for a
+  write that never happened. It is now counted as skipped, as a bridge skip is.
 - **`add-method` and `remove-method` failed on a data entity.** The bridge has no
   data-entity arm for either, so `d365fo_file` modify returned "add-method not supported
   for objectType 'data-entity' via bridge (use XML fallback)" and applied nothing — the
