@@ -22,7 +22,7 @@ import {
   prefixConflictWarning, resolveEffectivePrefix, sameModel,
 } from '../../utils/effectivePrefix.js';
 
-import { isNoPrefixMode } from '../../utils/modelClassifier.js';
+import { isAsGivenNamingMode, isNoPrefixMode } from '../../utils/modelClassifier.js';
 
 export { modelWritesLandIn } from '../../utils/effectivePrefix.js';
 
@@ -70,6 +70,7 @@ export function buildPrefixDiagnostics(
   const lines = [`Prefix      : ${effectivePrefix || '(none)'}  (${source})`];
   if (switched) lines.push(switchNote);
   const noPrefix = isNoPrefixMode();
+  const asGiven = isAsGivenNamingMode();
   const conflictWarning = prefixConflictWarning(resolution);
   if (noPrefix) {
     // A decision, not a gap: no "EXTENSION_PREFIX is not set" nag.
@@ -86,13 +87,17 @@ export function buildPrefixDiagnostics(
     `## Prefix Configuration`,
     ``,
     `EXTENSION_PREFIX: ${extensionPrefixEnv
-      ? `${extensionPrefixEnv}${noPrefix ? ' (ignored — naming.prefixSource=none)' : ''}`
+      ? `${extensionPrefixEnv}${noPrefix ? ` (ignored — naming.prefixSource=${asGiven ? 'as-given' : 'none'})` : ''}`
       : noPrefix ? '(not set)' : '(not set — falling back to model name)'}`,
     `Effective prefix: ${effectivePrefix || '(none)'}  (source: ${source})`,
   ];
   if (switched) verboseLines.push(switchNote);
   verboseLines.push(
-    noPrefix
+    asGiven
+      ? `✅ naming.prefixSource=as-given — the server renames nothing: objects, members AND extensions keep ` +
+        `the name as given, and a name that cannot be an AOT name is refused. The convention is the one in ` +
+        `the project's instruction file.`
+      : noPrefix
       ? `✅ naming.prefixSource=none — no prefix: new objects, fields and methods keep the name as given ` +
         `(EXTENSION_PREFIX and the model's own objects are ignored); extension elements and classes embed ` +
         `the model name.`

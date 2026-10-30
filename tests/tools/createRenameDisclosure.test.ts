@@ -313,3 +313,52 @@ describe('create, as the benchmark agents called it', () => {
     expect(text).toMatch(/🔧 Added xmlns="Microsoft\.Dynamics\.AX\.Metadata\.V6"/);
   });
 });
+
+/**
+ * naming.prefixSource=as-given (#1134): the token here is an abbreviation (`ABC`),
+ * not the model name (`ContosoExt`). `none` rewrote `VendTable.ABC` to
+ * `VendTable.ContosoExt`; as-given writes exactly what was asked, and refuses a
+ * name that cannot be an AOT name instead of completing it.
+ */
+describe('create under naming.prefixSource=as-given', () => {
+  beforeEach(() => {
+    delete process.env.EXTENSION_PREFIX;
+    process.env.EXTENSION_PREFIX_SOURCE = 'as-given';
+  });
+
+  it('writes extension names exactly as given, whatever the token', async () => {
+    for (const [objectType, objectName, rest] of [
+      ['table-extension', 'VendTable.ABC', {}],
+      ['class-extension', 'VendTableTable_ABC_Extension', {
+        sourceCode: '[ExtensionOf(tableStr(VendTable))]\nfinal class VendTableTable_ABC_Extension\n{\n}',
+      }],
+      ['class', 'VendSettingsABC', { sourceCode: 'class VendSettingsABC\n{\n}' }],
+    ] as const) {
+      createObject.mockClear();
+      const result = await handleCreateD365File(req(objectType, objectName, rest), buildContext());
+      const text = result.content[0].text as string;
+      expect(result.isError, `${objectName}: ${text}`).toBeFalsy();
+      expect(createObject).toHaveBeenCalledWith(expect.objectContaining({ objectName }));
+      expect(text).not.toMatch(/as passed/);
+    }
+  });
+
+  it('refuses a bare base name for an extension instead of inventing the token', async () => {
+    const result = await handleCreateD365File(req('table-extension', 'VendTable'), buildContext());
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/Not created: .*<Base>\.<Token>/);
+    expect(createObject).not.toHaveBeenCalled();
+  });
+
+  it('refuses a class extension that does not end in _Extension', async () => {
+    const result = await handleCreateD365File(
+      req('class-extension', 'VendTableTable_ABC', {
+        sourceCode: '[ExtensionOf(tableStr(VendTable))]\nfinal class VendTableTable_ABC\n{\n}',
+      }),
+      buildContext(),
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/must end with `_Extension`/);
+    expect(createObject).not.toHaveBeenCalled();
+  });
+});
