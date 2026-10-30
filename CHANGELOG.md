@@ -44,6 +44,13 @@ those are called out explicitly below.
   [Names exactly as given](docs/CUSTOM_EXTENSIONS.md#names-exactly-as-given).
 
 ### Fixed
+- **A multi-line `replace-code` always missed in the bridge.** The bridge matches with
+  `Contains` against method source read through `IMetadataProvider`, which keeps the
+  file's CRLF, while clients send `oldCode` with LF. Every multi-line edit therefore
+  fell through to the XML writer with a "bridge declined" note (168 of 176 in one
+  project's sessions, against 3 of 181 single-line ones). `oldCode` and `newCode` now
+  reach the bridge in the line endings of the file on disk, which also keeps inserted
+  code in the file's own style.
 - **An already-applied `replace-code` counted as applied in a batch.** Its "no change
   needed" answer returned before the outcome was marked skipped, so `operations[]`
   reported it in "N/N operation(s) applied" and in the "verified on disk" trailer for a
