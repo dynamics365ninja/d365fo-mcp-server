@@ -28,6 +28,16 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Added
+- **`d365fo_file(action="modify", operations[], atomic: true)` restores the file when an
+  operation fails.** A batch stops at the first failure and keeps what applied before it
+  ("4/13 operation(s) applied, failed at #5"), leaving the object half-changed. With
+  `atomic: true` it writes back each changed file's bytes from before the call,
+  refreshes the provider and the index, and reports "0/N operation(s) applied (K rolled
+  back)". The default is unchanged, and its failure text now mentions the option.
+  `atomic` is a top-level batch option, not published in the schema (which sits at its
+  token budget), and it is not passed on to the operations.
+
 ### Fixed
 - **`add-method` and `remove-method` failed on a data entity.** The bridge has no
   data-entity arm for either, so `d365fo_file` modify returned "add-method not supported

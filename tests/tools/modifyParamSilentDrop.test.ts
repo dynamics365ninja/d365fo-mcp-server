@@ -649,3 +649,27 @@ describe('parameter-accounting helpers', () => {
     expect(findMissingMutationParams('remove-field', ['fieldName'])).toEqual([]);
   });
 });
+
+describe('the pre-batch image an atomic operations[] batch restores', () => {
+  const addIndex = () => req({
+    objectType: 'table',
+    objectName: 'ConDemoModLifecycle',
+    operation: 'add-index',
+    indexName: 'TicketIdx',
+    indexFields: [{ fieldName: 'CustAccount' }],
+    filePath: TABLE_FILE_PATH,
+  });
+
+  it('is captured before the write when the batch asks for it', async () => {
+    const outcome: { captureOriginal?: boolean; originalBytes?: unknown } = { captureOriginal: true };
+    await modifyD365FileTool(addIndex(), buildContext(), outcome as any);
+    expect(outcome.originalBytes).toBeDefined();
+    expect(String(outcome.originalBytes)).toContain('ConDemoModLifecycle');
+  });
+
+  it('is not read for an ordinary call', async () => {
+    const outcome: { originalBytes?: unknown } = {};
+    await modifyD365FileTool(addIndex(), buildContext(), outcome as any);
+    expect(outcome.originalBytes).toBeUndefined();
+  });
+});
