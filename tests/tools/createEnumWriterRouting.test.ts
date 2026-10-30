@@ -86,6 +86,7 @@ vi.mock('../../src/utils/packageResolver', () => ({
 
 vi.mock('../../src/utils/modelClassifier', () => ({
   registerCustomModel: vi.fn(),
+  isAsGivenNamingMode: vi.fn(() => false),
   resolveObjectPrefix: vi.fn(() => ''),
   applyObjectPrefix: vi.fn((name: string) => name),
   getObjectSuffix: vi.fn(() => ''),

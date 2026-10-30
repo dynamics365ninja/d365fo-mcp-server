@@ -44,6 +44,7 @@
  *   SEL008  order by / group by after the where of the same segment
  *   SEL009  the in operator with an inline container literal
  *   SEL010  a select expression on an aliased buffer; validTimeState given an expression
+ *   SEL011  update()/delete() on a buffer no select fetched for update
  *   ATTR001 an attribute argument that is not a compile-time literal
  *   ATTR002 [SysObsolete] without message, isError AND date (xppbp moniker)
  *   EXT001  an extension-method class whose class or methods are not static
@@ -2613,8 +2614,123 @@ function checkMixedBooleanOperators(code: string): ValidationViolation[] {
   return violations;
 }
 
+/** Words that can sit where `Type` sits in `Type buf;` without declaring anything. */
+const NOT_A_DECLARING_TYPE = new Set([
+  'select', 'join', 'from', 'next', 'return', 'exists', 'notexists', 'outer', 'firstonly',
+  'firstonly10', 'firstonly100', 'firstonly1000', 'firstfast', 'forupdate', 'nofetch',
+  'reverse', 'crosscompany', 'forceplaceholders', 'forceliterals', 'forceselectorder',
+  'forcenestedloop', 'repeatableread', 'validtimestate', 'pessimisticlock', 'optimisticlock',
+  'generateonly', 'desc', 'asc', 'by', 'new', 'case', 'else', 'delete_from', 'update_recordset',
+]);
+
+const LOCK_HINT = /\b(?:forupdate|pessimisticlock|optimisticlock)\b/i;
+
+/** What may stand between `select`/`join` and the buffer it binds. */
+const SELECT_HINT = /^(?:firstonly\d*|firstfast|forupdate|nofetch|reverse|crosscompany|forceplaceholders|forceliterals|forceselectorder|forcenestedloop|repeatableread|validtimestate|pessimisticlock|optimisticlock|generateonly|exists|notexists|outer)$/i;
+
+/**
+ * The buffers one select statement binds — `select [hints] buf`, `select [hints]
+ * f1, f2 from buf`, and the same after each `join`. Field names in the field list
+ * and `x.Field == buf.RecId` in the where clause are not bindings; matching the
+ * name anywhere in the statement made `select Location from dirPartyLocation`
+ * look like a select of a `location` buffer.
+ */
+function selectBoundBuffers(statement: string): string[] {
+  const buffers: string[] = [];
+  for (const kw of statement.matchAll(/\b(?:select|join)\b/gi)) {
+    const clause = statement
+      .slice((kw.index ?? 0) + kw[0].length)
+      .split(/\b(?:where|join|order|group|index)\b/i)[0];
+    const from = /\bfrom\s+([A-Za-z_]\w*)/i.exec(clause);
+    if (from) { buffers.push(from[1]); continue; }
+    const tokens = clause.replace(/\([^)]*\)/g, ' ').replace(/:\s*\w+/g, ' ').match(/[A-Za-z_]\w*/g) ?? [];
+    const first = tokens.find(t => !SELECT_HINT.test(t));
+    if (first) buffers.push(first);
+  }
+  return buffers;
+}
+
+/**
+ * SEL011 — `buf.update()` / `buf.delete()` on a buffer that was never selected
+ * for update.
+ *
+ * It passes the compiler and the reference check, and throws at runtime: "Cannot
+ * edit a record in <table>. The operation cannot be completed, since the record
+ * was not selected for update." (#1164)
+ *
+ * Deliberately narrow, because the buffer can get its update permission in ways
+ * a text scan cannot follow. It fires only when the buffer IS selected in this
+ * method and EVERY such select before the call lacks forupdate /
+ * pessimisticlock / optimisticlock, and it stays quiet when:
+ *   - the buffer calls selectForUpdate() anywhere,
+ *   - it is assigned or inserted after its last select (`buf = T::find(id, true)`),
+ *   - its declared type looks like a temporary table, or it calls setTmp(),
+ *   - the call is on `this`.
+ * The scope is "since the buffer was last declared", which keeps a select of the
+ * same name in another method from counting.
+ */
+function checkUpdateWithoutForUpdate(code: string): ValidationViolation[] {
+  const masked = maskStringsAndComments(code);
+  const violations: ValidationViolation[] = [];
+  const callRe = /\b([A-Za-z_]\w*)\s*\.\s*(update|delete)\s*\(\s*\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = callRe.exec(masked)) !== null) {
+    const buf = m[1];
+    if (/^(?:this|super|element)$/i.test(buf)) continue;
+    const b = buf.toLowerCase();
+    const before = masked.slice(0, m.index);
+
+    // Scope: from the buffer's last declaration (local, parameter or member).
+    const declRe = new RegExp(String.raw`\b([A-Za-z_]\w*)\s+${buf}\s*([;,=)])(\s*[A-Za-z_]\w*\s*;)?`, 'gi');
+    let scopeStart = -1;
+    let declaredType = '';
+    let copiedFromBuffer = false;
+    for (const d of before.matchAll(declRe)) {
+      if (NOT_A_DECLARING_TYPE.has(d[1].toLowerCase())) continue;
+      scopeStart = d.index ?? 0;
+      declaredType = d[1];
+      // `T tmpref = stampJournalTable;` — a copy of another buffer, which may
+      // well be a temporary-table instance, and those need no forupdate.
+      copiedFromBuffer = d[2] === '=' && Boolean(d[3]);
+    }
+    if (scopeStart < 0 || copiedFromBuffer) continue; // origin unknown
+    if (/tmp|temp/i.test(declaredType)) continue;
+    const scope = masked.slice(scopeStart, m.index);
+    if (new RegExp(String.raw`\b${buf}\s*\.\s*(?:selectForUpdate|setTmp)\s*\(`, 'i').test(masked)) continue;
+
+    // Every select statement in scope that binds this buffer.
+    let lastSelectEnd = -1;
+    let anySelect = false;
+    let anyLocked = false;
+    for (const s of scope.matchAll(/\bselect\b[^;{]*/gi)) {
+      if (!selectBoundBuffers(s[0]).some(x => x.toLowerCase() === b)) continue;
+      anySelect = true;
+      if (LOCK_HINT.test(s[0])) anyLocked = true;
+      lastSelectEnd = (s.index ?? 0) + s[0].length;
+    }
+    if (!anySelect || anyLocked) continue;
+
+    // Re-filled after the select: assigned, or inserted (an inserted buffer may be updated).
+    const after = scope.slice(lastSelectEnd);
+    if (new RegExp(String.raw`\b${buf}\s*=(?!=)|\b${buf}\s*\.\s*(?:insert|data)\s*\(`, 'i').test(after)) continue;
+
+    violations.push({
+      rule: 'SEL011',
+      severity: 'warning',
+      line: lineNumber(code, m.index),
+      excerpt: `${buf}.${m[2]}()`,
+      fix:
+        `${buf} is selected without forupdate, so ${buf}.${m[2]}() throws at runtime ("the record was not ` +
+        `selected for update"). Add forupdate to the select that fetches it (select forupdate ${buf} where …), ` +
+        `or call ${buf}.selectForUpdate(true) before the select.`,
+    });
+  }
+  return violations;
+}
+
 const XPP_RULES = [
   checkTodayDeprecated,
+  checkUpdateWithoutForUpdate,
   checkDocCommentXml,
   checkSetBasedWithoutWhere,
   checkMixedBooleanOperators,
