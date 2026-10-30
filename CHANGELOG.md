@@ -44,6 +44,14 @@ those are called out explicitly below.
   [Names exactly as given](docs/CUSTOM_EXTENSIONS.md#names-exactly-as-given).
 
 ### Fixed
+- **An EDT that extends an enum EDT had no enum.** The base-type inference from
+  `extends` left enum parents alone, so `extends: "NoYesId"` wrote a string EDT. And
+  neither writer could set the enum at all: the bridge's `SetAxEdtProperty` had no
+  `enumType` case (reported unsupported) and `generateAxEdtXml` never wrote
+  `<EnumType>`. An enum parent now gives `edtType: Enum` and the parent's `enumType`
+  (bridge `readEdt`, then the index chain), an explicit `edtType: Enum` without an enum
+  gets the parent's, and both writers write `<EnumType>` after `<TableReferences />`,
+  as all 1,512 shipped children of enum EDTs do.
 - **A value the bridge rejected was written anyway by the XML template.** When a bridge
   create threw, create fell back to the template, also when the bridge had validated a
   value and refused it ("'RegularTable' is not a valid TableType"). The template wrote

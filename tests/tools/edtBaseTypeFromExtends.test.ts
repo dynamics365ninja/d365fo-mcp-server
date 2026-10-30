@@ -67,6 +67,44 @@ describe('withEdtTypeFromExtends', () => {
   });
 });
 
+describe('withEdtTypeFromExtends — enum parents', () => {
+  // Every shipped child of an enum EDT is AxEdtEnum with its own <EnumType>, equal to
+  // the parent's (1,512 of 1,512). Before, an enum parent was left alone and both
+  // writers produced a string EDT.
+  const enumBridge = (enumType: string) =>
+    ({ isReady: true, readEdt: vi.fn(async () => ({ baseType: 'Enum', enumType })) }) as any;
+
+  it('takes Enum and the enum from the parent via the bridge', async () => {
+    const props = await withEdtTypeFromExtends({ extends: 'EnumParent1' }, enumBridge('NoYes'), undefined);
+    expect(props?.edtType).toBe('Enum');
+    expect(props?.enumType).toBe('NoYes');
+  });
+
+  it('follows the index chain when there is no bridge', async () => {
+    // A custom EDT extending NoYesId, which is a root enum EDT on NoYes.
+    const db = dbWith({ EnumParent2: { extends: 'NoYesId' }, NoYesId: { extends: null, enum_type: 'NoYes' } });
+    const props = await withEdtTypeFromExtends({ extends: 'EnumParent2' }, undefined, db);
+    expect(props).toMatchObject({ edtType: 'Enum', enumType: 'NoYes' });
+  });
+
+  it('completes an explicit edtType Enum that names no enum', async () => {
+    const props = await withEdtTypeFromExtends({ extends: 'EnumParent3', edtType: 'AxEdtEnum' }, enumBridge('NoYes'), undefined);
+    expect(props).toMatchObject({ edtType: 'Enum', enumType: 'NoYes' });
+  });
+
+  it('keeps an explicit enumType', async () => {
+    const props = { extends: 'EnumParent4', edtType: 'Enum', enumType: 'SalesStatus' };
+    await expect(withEdtTypeFromExtends(props, enumBridge('NoYes'), undefined)).resolves.toBe(props);
+  });
+
+  it('writes <EnumType> after <TableReferences /> in the XML template, as shipped EDTs do', async () => {
+    const props = await withEdtTypeFromExtends({ extends: 'EnumParent5' }, enumBridge('NoYes'), undefined);
+    const xml = XmlTemplateGenerator.generateAxEdtXml('MyApprovedFlag', props);
+    expect(xml).toContain('i:type="AxEdtEnum"');
+    expect(xml).toMatch(/<TableReferences \/>\s*<EnumType>NoYes<\/EnumType>\s*<\/AxEdt>/);
+  });
+});
+
 describe('bridgeEdtBaseTypeName', () => {
   it('strips the AxEdt prefix the bridge switch does not know', () => {
     expect(bridgeEdtBaseTypeName('AxEdtReal')).toBe('Real');
