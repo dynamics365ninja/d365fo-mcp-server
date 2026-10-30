@@ -29,6 +29,50 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Fixed
+- **`add-method` and `remove-method` failed on a data entity.** The bridge has no
+  data-entity arm for either, so `d365fo_file` modify returned "add-method not supported
+  for objectType 'data-entity' via bridge (use XML fallback)" and applied nothing — the
+  fallback the message named did not exist. When the bridge declines an object type this
+  way, the method is now upserted into (or removed from) the root `<SourceCode><Methods>`
+  by the XML writer, with the same doc-comment and indentation pass the bridge path
+  applies, and read back before the reply says it landed. `replace-code` already fell back.
+  A multi-method `add-method` also stops at the first refusal and reports it, instead of
+  summarising a failed write as "Added N methods".
+- **`find_references` called the owner of a field or method "not a class".** The hint for
+  a form or table name passed as a class also checked the owner of every `Owner.member`
+  target, so `SalesTable.SalesId` as a field, or `SalesTable.initFromSalesQuotationTable`
+  as a method, came back with "⚠️ Type Mismatch: … is not a **class**" when no class was
+  asked for. The hint now runs only for a name looked up as a class.
+- **Labels were not compiled (on labelc 7.0.8199.32), behind a green build.** The build
+  passed the located csc and SDK tool folders as `-CompilerPath` / `-SdkToolsPath`;
+  that labelc lists both in its usage text but does not parse them, so it printed the
+  usage text, compiled nothing and exited 0, and new labels kept being reported as
+  unknown. The folders now go first on labelc's own PATH, which every labelc version
+  searches. A labelc run that reports no compilation result is now a failure instead
+  of a success.
+- **`run_systest_class` lost the result of a class with failing tests.** SysTestConsole
+  exits non-zero when a test fails, and the tool took that for a runner error: it never
+  read the XML result the run had written, replied `❌ Tests failed:` with the raw
+  console log, and the 5,000-char response cap cut that log mid-stack-trace — on a
+  43-test class with two failures, the counts and the second failure never arrived, and
+  the eval oracle scored the run as one that never ran. A run that wrote results is now
+  reported as `❌ Tests FAILED` from the XML: the counts, then each failure with its
+  message, then the passing tests, the path of the result file and the raw log last.
+  The tool has its own 12,000-char cap, and its truncation note no longer suggests
+  paging parameters it does not have.
+- **A default argument that is a call renamed the method on class create.** The class
+  split named each method after the identifier before the last `(` of its signature,
+  so `void run(TransDate _from = dateNull())` was written as a method named `dateNull`.
+  For methods inside the class body, a signature over several lines also lost its
+  attribute and every line above that call, with no error. The name and the method start
+  now come from the `(` that matches the signature's last `)`.
+- **An EDT that extends a real, integer or date EDT was created as a string EDT.** With
+  `extends` but no `edtType`, both the bridge and the XML template fell back to
+  `AxEdtString`, so `extends: "AmountCur"` wrote a string EDT extending a real one and
+  every field built on it was mistyped. The base type now comes from the parent EDT
+  (bridge first, then the symbol index). String and enum parents, and parents that
+  cannot be resolved, are left to the writers as before. `edtType` in the `AxEdt*` form
+  (`AxEdtReal`) also reaches the bridge as `Real` instead of falling through to a string.
 - **`find_references` blamed "this server mode" for a missing setting.** Whenever it fell
   back to the name-based search it said "the cross-reference bridge is unavailable in this
   server mode". On a traditional VM the usual cause is a running bridge with no

@@ -918,6 +918,62 @@ describe('create_d365fo_file', () => {
     expect(sentParams.properties.Extends ?? sentParams.properties.extends).toBe('AmountCur');
   });
 
+  it('edt create takes the base type from the EDT it extends when edtType is omitted', async () => {
+    // extends:"AmountCur" alone reached CreateEdt with no BaseType and was written as
+    // AxEdtString — a string EDT extending a real one, and every field on it mistyped.
+    const createObject = vi.fn(async () => ({
+      success: true,
+      filePath: 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxEdt\\MyRebateAmount.xml',
+      api: 'IMetaEdtProvider.Create',
+    }));
+    const readEdt = vi.fn(async (name: string) => ({ name, baseType: 'Real' }));
+    const ctx = buildContext();
+    (ctx as any).bridge = { isReady: true, metadataAvailable: true, createObject, readEdt, validateObject: vi.fn(async () => null) };
+
+    const result = await handleCreateD365File(
+      req('create_d365fo_file', {
+        objectType: 'edt',
+        objectName: 'MyRebateAmount',
+        modelName: 'Contoso',
+        packageName: 'Contoso',
+        packagePath: 'K:\\PackagesLocalDirectory',
+        addToProject: false,
+        properties: { label: '@Contoso:RebateAmount', extends: 'MyTestAmountCurParent' },
+      }),
+      ctx,
+    );
+
+    expect((result as any).isError).toBeFalsy();
+    expect(readEdt).toHaveBeenCalledWith('MyTestAmountCurParent');
+    expect(createObject.mock.calls[0][0].properties.BaseType).toBe('Real');
+  });
+
+  it('edt create accepts edtType in the AxEdt* form the XML uses', async () => {
+    // The C# switch knows `real`, not `axedtreal` — the prefixed spelling fell through to AxEdtString.
+    const createObject = vi.fn(async () => ({
+      success: true,
+      filePath: 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxEdt\\MyRebatePct.xml',
+      api: 'IMetaEdtProvider.Create',
+    }));
+    const ctx = buildContext();
+    (ctx as any).bridge = { isReady: true, metadataAvailable: true, createObject, validateObject: vi.fn(async () => null) };
+
+    await handleCreateD365File(
+      req('create_d365fo_file', {
+        objectType: 'edt',
+        objectName: 'MyRebatePct',
+        modelName: 'Contoso',
+        packageName: 'Contoso',
+        packagePath: 'K:\\PackagesLocalDirectory',
+        addToProject: false,
+        properties: { label: '@Contoso:RebatePct', extends: 'Percent', edtType: 'AxEdtReal' },
+      }),
+      ctx,
+    );
+
+    expect(createObject.mock.calls[0][0].properties.BaseType).toBe('Real');
+  });
+
   it('blocks form-extension create when xmlContent uses the malformed control shape', async () => {
     // Guard: the deserializer-rejecting shape an AI tends to hand-write
     // (AxFormControlExtension / ParentControlName / FormControlExtension-wrapping / AxFormIntControl)

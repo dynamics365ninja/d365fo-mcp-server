@@ -46,9 +46,14 @@ export interface CompileLabelsResult {
 // Toolchain discovery
 //
 // labelc shells out to csc.exe, al.exe and resgen.exe and finds them on PATH
-// when not told otherwise — which is what VS relies on. The MCP server does not
-// control the PATH it inherits, so pass explicit directories when they can be
-// located and fall back to VS's behaviour when they cannot.
+// — which is what VS relies on. The MCP server does not control the PATH it
+// inherits, so the directories are located here and put first on labelc's own
+// PATH, falling back to the inherited PATH when they cannot be found.
+//
+// They are NOT passed as -CompilerPath / -SdkToolsPath. labelc 7.0.8199.32
+// lists both in its usage text but does not parse them: given either, with or
+// without spaces in the value, it prints the usage text and compiles nothing.
+// PATH is the lookup every labelc version falls back to.
 // ---------------------------------------------------------------------------
 
 const CSC_DIRS = [
@@ -200,21 +205,34 @@ export async function labelAssembliesAreStale(
 // Public API
 // ---------------------------------------------------------------------------
 
-/** Arguments VS passes, plus explicit toolchain directories when we found them. */
+/** The arguments VS passes. */
 export function labelcArgs(
   customPackagesPath: string,
   modelName: string,
   resourcesDir: string,
-  cscDir: string | null,
-  sdkToolsDir: string | null,
 ): string[] {
   return [
     `-Metadata=${customPackagesPath}`,
     `-Output=${resourcesDir}`,
     `-ModelModule=${modelName}`,
-    ...(cscDir ? [`-CompilerPath=${cscDir}`] : []),
-    ...(sdkToolsDir ? [`-SdkToolsPath=${sdkToolsDir}`] : []),
   ];
+}
+
+/** `env` with the located toolchain directories first on its PATH. */
+export function labelcEnv(
+  env: NodeJS.ProcessEnv,
+  cscDir: string | null,
+  sdkToolsDir: string | null,
+): NodeJS.ProcessEnv {
+  const toolDirs = [cscDir, sdkToolsDir].filter((d): d is string => !!d);
+  if (toolDirs.length === 0) return env;
+  // Windows env names are case-insensitive, but a copied env object is not:
+  // reuse whatever spelling the inherited PATH has, so it is not duplicated.
+  const pathKey = Object.keys(env).find(k => k.toUpperCase() === 'PATH') ?? 'PATH';
+  const inherited = env[pathKey];
+  // ';' rather than path.delimiter: labelc only runs on Windows, and the
+  // result must not depend on the host the tests run on.
+  return { ...env, [pathKey]: [...toolDirs, ...(inherited ? [inherited] : [])].join(';') };
 }
 
 /** The lines worth keeping out of labelc's verbose progress report. */
@@ -264,24 +282,26 @@ export async function compileModelLabels(
     };
   }
 
-  const args = labelcArgs(
-    customPackagesPath,
-    modelName,
-    resourcesDir,
-    await findCscDir(),
-    await findSdkToolsDir(),
-  );
+  const args = labelcArgs(customPackagesPath, modelName, resourcesDir);
 
   try {
     const { stdout, stderr } = await execFileAsync(labelcExe, args, {
       timeout: LABELC_TIMEOUT_MS,
       windowsHide: true,
+      env: labelcEnv(process.env, await findCscDir(), await findSdkToolsDir()),
     });
     const output = [stdout, stderr].filter(Boolean).join('\n');
     // labelc can report a non-zero compilation result while exiting 0, so the
     // trailing status line is authoritative rather than the process exit code.
     const reported = /Completed label compilation in .* with exit code (\d+)/i.exec(output);
-    if (reported && reported[1] !== '0') {
+    // No status line means labelc compiled nothing — given arguments it does not
+    // parse, it prints its usage text and exits 0. Reporting that as success is
+    // how unrebuilt label assemblies went unnoticed behind a green build.
+    if (!reported) {
+      const excerpt = output.replace(/\s+/g, ' ').trim().slice(0, 300) || 'no output';
+      return { skipped: false, success: false, message: `labelc.exe did not report a compilation result: ${excerpt}` };
+    }
+    if (reported[1] !== '0') {
       return { skipped: false, success: false, message: `labelc.exe reported exit code ${reported[1]}: ${summarise(output)}` };
     }
     return { skipped: false, success: true, message: summarise(output) };
