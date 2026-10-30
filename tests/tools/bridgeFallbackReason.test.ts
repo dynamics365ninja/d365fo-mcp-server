@@ -79,10 +79,14 @@ const FORM_XML = `<?xml version="1.0" encoding="utf-8"?>
 <AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
 	<Name>ContosoXyzNoteHeaderList</Name>
 	<SourceCode>
-		<Methods xmlns="">
-			<Method>
+		<DataControls xmlns="">
+			<Control>
 				<Name>PostButton</Name>
-				<Source><![CDATA[
+				<Type>Button</Type>
+				<Methods>
+					<Method>
+						<Name>clicked</Name>
+						<Source><![CDATA[
 public void clicked()
 {
     ttsbegin;
@@ -90,8 +94,10 @@ public void clicked()
     ttscommit;
 }
 ]]></Source>
-			</Method>
-		</Methods>
+					</Method>
+				</Methods>
+			</Control>
+		</DataControls>
 	</SourceCode>
 </AxForm>`;
 

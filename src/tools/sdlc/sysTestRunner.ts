@@ -305,6 +305,15 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
     // the answer and is not retried.
     let stdout = '';
     let stderr = '';
+    let xmlResult = '';
+    const readXmlResult = async () => {
+      if (!xmlResultPath) return '';
+      try {
+        return await fs.readFile(xmlResultPath, 'utf8');
+      } catch {
+        return ''; // Best-effort — fall back to stdout/stderr below.
+      }
+    };
     for (let attempt = 0; ; attempt++) {
       console.error(`[run_systest_class] Running: "${runnerPath}" ${args.join(' ')}`);
       try {
@@ -318,6 +327,15 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
         ));
         break;
       } catch (error: any) {
+        // SysTestConsole exits non-zero when a test FAILS. A run that wrote its
+        // results is a finished run with red tests, not a runner error. The catch
+        // below never reads the XML, so it would report only the raw log.
+        xmlResult = await readXmlResult();
+        if (parseSysTestXml(xmlResult).length > 0) {
+          stdout = error?.stdout ?? '';
+          stderr = error?.stderr ?? '';
+          break;
+        }
         const next = sysTestConsoles[attempt + 1];
         const fault = next && runnerPath === sysTestConsoles[attempt] ? runnerStartupFault(error) : null;
         if (!fault) throw error;
@@ -327,14 +345,7 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
       }
     }
 
-    let xmlResult = '';
-    if (xmlResultPath) {
-      try {
-        xmlResult = await fs.readFile(xmlResultPath, 'utf8');
-      } catch {
-        // Best-effort — fall back to stdout/stderr below.
-      }
-    }
+    if (!xmlResult) xmlResult = await readXmlResult();
 
     const output = [stdout, stderr, xmlResult].filter(Boolean).join('\n').trim();
 
@@ -343,6 +354,7 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
     // test name is enough to report a green run as failed.
     const outcomes = parseSysTestXml(xmlResult);
     const failedOutcomes = outcomes.filter(o => !o.passed);
+    const passedOutcomes = outcomes.filter(o => o.passed);
     const hasFailed = outcomes.length > 0
       ? failedOutcomes.length > 0
       : /failed|error|exception/i.test(output);
@@ -355,14 +367,21 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
       ? `\n⚠️ testMethod="${testMethod}" was requested but ${runnerName} has no per-method filter — the whole class ran.`
       : '';
 
-    // Per-method lines first: which test failed and why is the answer being asked
-    // for, and it is otherwise buried in the raw document.
+    // Counts, then the failures, then the passes: which test failed and why is the
+    // answer being asked for, and the response cap keeps the head of the text.
     const perMethod = outcomes.length > 0
-      ? '\n\n' + outcomes
+      ? `\n\n${passedOutcomes.length}/${outcomes.length} passed` +
+        (failedOutcomes.length > 0 ? `, ${failedOutcomes.length} failed.` : '.') +
+        '\n\n' + [...failedOutcomes, ...passedOutcomes]
         .map(o => `${o.passed ? '✅' : '❌'} ${o.name}${o.message ? ` — ${o.message}` : ''}`)
-        .join('\n') +
-        `\n\n${outcomes.length - failedOutcomes.length}/${outcomes.length} passed.`
+        .join('\n')
       : '';
+    // The document itself is rendered above, so it is named rather than repeated:
+    // what is shown at the end is the console log, plus the document only when it
+    // could not be read into results.
+    const resultFileNote = outcomes.length > 0 ? `\n\nResult file: ${xmlResultPath}` : '';
+    const displayOutput = (outcomes.length > 0 ? [stdout, stderr] : [stdout, stderr, xmlResult])
+      .filter(Boolean).join('\n').trim();
 
     // A test method the caller asked about that never appears in the results is
     // worth saying out loud: a misspelt name otherwise reads as a clean run.
@@ -384,7 +403,8 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
           perMethod +
           focusNote +
           redPhaseNote +
-          `\n\n${output || '(no output)'}`
+          resultFileNote +
+          `\n\n${displayOutput || '(no output)'}`
       }]
     };
   } catch (error: any) {

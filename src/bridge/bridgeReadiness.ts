@@ -37,7 +37,7 @@ export interface BridgeStartup {
  * whole server context (and so tests can pass a two-field stub).
  */
 export interface BridgeReadinessSource {
-  bridge?: { isReady?: boolean; metadataAvailable?: boolean };
+  bridge?: { isReady?: boolean; metadataAvailable?: boolean; xrefAvailable?: boolean };
   bridgeStartup?: BridgeStartup;
 }
 
@@ -105,6 +105,23 @@ export function bridgeStartupState(context: BridgeReadinessSource): BridgeStartu
   // yet appear. Once it has settled, a missing bridge is a real absence.
   if (context.bridgeStartup && !context.bridgeStartup.settled) return 'starting';
   return 'unavailable';
+}
+
+/** Whether the cross-reference database can be read right now, and if not, why. */
+export type XrefAvailability = 'ready' | 'starting' | 'not-connected' | 'no-xref';
+
+/**
+ * Classify cross-reference access without waiting. There are three ways to have
+ * none, each with its own fix: a bridge still starting (retry), no bridge (fix
+ * the bridge), and a running bridge without a cross-reference database
+ * (configure one).
+ */
+export function xrefAvailability(context: BridgeReadinessSource): XrefAvailability {
+  switch (bridgeStartupState(context)) {
+    case 'starting': return 'starting';
+    case 'unavailable': return 'not-connected';
+    default: return context.bridge?.xrefAvailable ? 'ready' : 'no-xref';
+  }
 }
 
 /**

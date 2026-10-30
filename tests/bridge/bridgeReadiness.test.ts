@@ -27,6 +27,7 @@ import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import {
   trackBridgeStartup,
   bridgeStartupState,
+  xrefAvailability,
   awaitBridgeReady,
   describeBridgeStartup,
   BRIDGE_BACKED_TOOLS,
@@ -80,6 +81,18 @@ describe('bridgeStartupState', () => {
 
   it('is "ready" once the bridge is attached', () => {
     expect(bridgeStartupState({ bridge: READY_BRIDGE })).toBe('ready');
+  });
+});
+
+describe('xrefAvailability', () => {
+  it('tells the three ways to have no cross-references apart', () => {
+    const inFlight = trackBridgeStartup(new Promise<void>(() => {}));
+
+    expect(xrefAvailability({ bridgeStartup: inFlight })).toBe('starting');
+    expect(xrefAvailability({})).toBe('not-connected');
+    expect(xrefAvailability({ bridge: { ...READY_BRIDGE, isReady: false } })).toBe('not-connected');
+    expect(xrefAvailability({ bridge: { ...READY_BRIDGE, xrefAvailable: false } })).toBe('no-xref');
+    expect(xrefAvailability({ bridge: { ...READY_BRIDGE, xrefAvailable: true } })).toBe('ready');
   });
 });
 

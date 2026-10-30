@@ -34,6 +34,8 @@ vi.mock('../../src/utils/operationLocks.js', () => ({
 
 import path from 'path';
 import { sysTestRunnerTool, compareSysTestDataAccess, findSysTestConsole, findSysTestConsoles } from '../../src/tools/sdlc/sysTestRunner';
+import { capToolResponse } from '../../src/tools/responseCaps';
+import { parseSysTestResult } from '../../src/eval/oracle/systest';
 
 const PKG = 'K:\\AOSService\\PackagesLocalDirectory';
 const SYSTEST_CONSOLE = path.join(PKG, 'Bin', 'SysTestConsole.exe');
@@ -448,6 +450,110 @@ describe('run_systest_class — a SysTestConsole that cannot start hands over to
 
     expect(execFileMock).toHaveBeenCalledTimes(1);
     expect(result.content[0].text).toContain('❌ The test runner could not start: System.ValueTuple 4.0.3.0.');
+  });
+});
+
+/**
+ * A class with failing tests. SysTestConsole exits non-zero when a test fails,
+ * so execFile rejects; the run is still complete and its XML result written.
+ * The failures and counts must come from that XML, ahead of a raw log long
+ * enough to be cut by the response cap.
+ */
+describe('run_systest_class — a run whose tests fail', () => {
+  const CLASS = 'MTF_EInvoiceSendToGatewayServiceTests';
+  const names = Array.from({ length: 43 }, (_, i) => `test_case${String(i + 1).padStart(2, '0')}`);
+  const FAILING: Record<string, string> = {
+    test_case07: 'Assert.areEqual failed: expected Sent, actual Pending',
+    test_case39: 'Assert.isTrue failed: gateway status was not updated',
+  };
+  const XML = '<?xml version="1.0"?><test-results><results>' +
+    names.map(n => FAILING[n]
+      ? `<test-case name="${CLASS}.${n}" success="false"><failure><message>${FAILING[n]}</message></failure></test-case>`
+      : `<test-case name="${CLASS}.${n}" success="true" />`).join('') +
+    '</results></test-results>';
+  // ~39 KB of console log, its stack traces long enough to bury everything after them.
+  const STACK = Array.from({ length: 150 }, (_, i) =>
+    `   at Dynamics.AX.Application.MTF_EInvoiceSendToGatewayService.frame${i}() in xppSource://Source/Mountfield\\AxClass_MTF_EInvoiceSendToGatewayService.xpp:line ${i}`).join('\n');
+  const LOG = `Executing test(s) ....\n${names.map(n => FAILING[n] ? `${n} failed: ${FAILING[n]}\n${STACK}` : `${n} passed`).join('\n')}\n` +
+    'Rainier Test Suite : 43 Run, 2 Failed';
+
+  const capped = (result: any) => capToolResponse('run_systest_class', result).content[0].text as string;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    readdirMock.mockResolvedValue(['SysTestConsole.17.0.exe']);
+    cfgEnsureLoaded.mockResolvedValue(undefined);
+    cfgGetModelName.mockReturnValue('MountfieldTests');
+    cfgGetPackagePath.mockReturnValue(PKG);
+    allowPaths([SYSTEST_CONSOLE_17]);
+    readFileMock.mockImplementation(async (p: string) => {
+      if (/systest-.*\.xml$/.test(p)) return XML;
+      throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    });
+    // What execFile hands back for a process that exited 1.
+    execFileMock.mockImplementation((_f: string, _a: string[], _o: any, cb: Function) => {
+      cb(Object.assign(new Error(`Command failed: ${SYSTEST_CONSOLE_17} /test:${CLASS}`), { code: 1, stdout: LOG, stderr: '' }));
+    });
+  });
+
+  it('reports the failing tests from the XML, not as a runner error', async () => {
+    const result = await sysTestRunnerTool({ className: CLASS }, {});
+    const text = result.content[0].text;
+
+    expect(result.isError).toBeFalsy();
+    expect(text.startsWith('❌ Tests FAILED')).toBe(true);
+    expect(text).not.toContain('❌ Tests failed:');
+    expect(text).toContain('41/43 passed, 2 failed.');
+  });
+
+  it('keeps the counts and every failure inside the response cap', async () => {
+    const text = capped(await sysTestRunnerTool({ className: CLASS }, {}));
+
+    expect(text).toContain('41/43 passed, 2 failed.');
+    for (const [name, message] of Object.entries(FAILING)) {
+      expect(text).toContain(`❌ ${CLASS}.${name} — ${message}`);
+    }
+  });
+
+  it('lists the failures before the passing tests and the raw log', async () => {
+    const text = (await sysTestRunnerTool({ className: CLASS }, {})).content[0].text;
+
+    const lastFailure = text.indexOf(`❌ ${CLASS}.test_case39`);
+    expect(lastFailure).toBeGreaterThan(-1);
+    expect(lastFailure).toBeLessThan(text.indexOf(`✅ ${CLASS}.test_case01`));
+    expect(lastFailure).toBeLessThan(text.indexOf('Executing test(s)'));
+  });
+
+  it('names the XML result file and does not repeat the document itself', async () => {
+    const result = await sysTestRunnerTool({ className: CLASS }, {});
+    const text = result.content[0].text;
+    const xmlArg = capturedArgs(0).find(a => a.startsWith('/xml:'))!.slice('/xml:'.length);
+
+    expect(text).toContain(xmlArg);
+    expect(text).not.toContain('<test-case');
+  });
+
+  it('is scored by the eval oracle as a run that failed, not one that never ran', async () => {
+    const parsed = parseSysTestResult(capped(await sysTestRunnerTool({ className: CLASS }, {})));
+
+    expect(parsed.ran).toBe(true);
+    expect(parsed.passed).toBe(false);
+  });
+
+  it('still reports a runner error when a non-zero exit left no results', async () => {
+    readFileMock.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+
+    const result = await sysTestRunnerTool({ className: CLASS }, {});
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('❌ Tests failed:');
+  });
+
+  it('advises nothing the tool does not accept when the raw log is cut', async () => {
+    const text = capped(await sysTestRunnerTool({ className: CLASS }, {}));
+
+    expect(text).toContain('Response truncated');
+    expect(text).not.toMatch(/methodOffset|fieldsOffset|fieldFilter|compact=/);
   });
 });
 

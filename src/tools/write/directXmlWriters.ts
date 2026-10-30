@@ -36,6 +36,7 @@ import {
   type EntityDataSourceSpec, type EntityMappedFieldSpec,
 } from '../xml/dataEntityViewEdit.js';
 import { escapeXml } from '../../utils/xmlEscape.js';
+import { methodSourceSpans, occurrencesInSpans } from '../../utils/methodSourceSpans.js';
 import { upsertTableFieldProperty } from '../xml/tableFieldPropertyEdit.js';
 import {
   addModuleReference, removeModuleReference, parseModuleReferences, invalidateModelVisibility,
@@ -71,6 +72,7 @@ export const directXmlReplaceCode = serializedOnFile(async (
   oldCode: string,
   newCode: string,
   reason: string,
+  methodName?: string,
 ): Promise<{ success: boolean; message: string } | null> => {
   try {
     // Files on disk are CRLF; oldCode from get_method_source is typically LF-only.
@@ -80,21 +82,26 @@ export const directXmlReplaceCode = serializedOnFile(async (
     const normOld = oldCode.replace(/\r\n/g, '\n');
     const normNew = newCode.replace(/\r\n/g, '\n');
 
-    if (!content.includes(normOld)) {
-      return null; // oldCode not found in file at all
+    // Scoped by methodName the way the bridge is, so a snippet that also occurs
+    // in another method is not ambiguous, and never edits that other method.
+    const spans = methodSourceSpans(content, methodName);
+    const hits = occurrencesInSpans(content, normOld, spans ?? [{ start: 0, end: content.length }]);
+    if (hits.length === 0) {
+      return null; // oldCode not found in scope
     }
 
-    // Without /g, String.replace() only replaces the first occurrence, so require
-    // exactly one match to avoid silently picking the wrong one.
-    const occurrences = content.split(normOld).length - 1;
-    if (occurrences > 1) {
+    // Replace one site only, so require exactly one match to avoid silently
+    // picking the wrong one.
+    if (hits.length > 1) {
+      const scope = spans ? `${methodName} in ${filePath}` : filePath;
       return {
         success: false,
-        message: `❌ directXmlReplaceCode: oldCode appears ${occurrences} times in ${filePath} — replacement is ambiguous. Provide a more specific oldCode snippet.`,
+        message: `❌ directXmlReplaceCode: oldCode appears ${hits.length} times in ${scope} — replacement is ambiguous. Provide a more specific oldCode snippet.`,
       };
     }
 
-    const updated = content.replace(normOld, normNew);
+    const at = hits[0];
+    const updated = content.slice(0, at) + normNew + content.slice(at + normOld.length);
     if (updated === content) {
       return null; // no change made
     }
@@ -2458,6 +2465,200 @@ export const directXmlRemoveModuleReference = serializedOnFile(async (
       message:
         `❌ Could not remove the module reference from ${filePath}: ${err instanceof Error ? err.message : err}`,
     };
+  }
+});
+
+/** Offset just past the last non-whitespace character before `end`. */
+function endOfContentBefore(content: string, end: number): number {
+  let i = end;
+  while (i > 0 && /\s/.test(content[i - 1])) i--;
+  return i;
+}
+
+interface SourceCodeMethodsLocation {
+  /** Inner end of the root's <SourceCode> (just before `</SourceCode>`). */
+  sourceCodeInnerEnd: number;
+  /** Its direct <Methods> child, absolute offsets; null when the element is absent. */
+  methods: DirectChild | null;
+  /** Each direct <Method> inside <Methods>, by name. */
+  methodSpans: Array<{ name: string; start: number; end: number }>;
+}
+
+/**
+ * The root object's <SourceCode>/<Methods>, located on a CDATA-masked copy so a
+ * `/// <summary>` doc comment inside X++ source cannot derail the tag scan.
+ * Offsets index `content` unchanged. Null when the root has no open <SourceCode>.
+ */
+function locateSourceCodeMethods(content: string): SourceCodeMethodsLocation | null {
+  const masked = maskXmlNonMarkup(content);
+  const rootOpen = /<[A-Za-z_]/.exec(masked);
+  if (!rootOpen) return null;
+  const rootAt = rootOpen.index;
+
+  const sc = findDirectChild(masked.slice(rootAt), 'SourceCode');
+  if (!sc || sc.selfClosing) return null;
+  const scStart = rootAt + sc.start;
+
+  const m = findDirectChild(masked.slice(scStart, rootAt + sc.end), 'Methods');
+  const methods: DirectChild | null = !m
+    ? null
+    : m.selfClosing
+      ? { selfClosing: true, start: scStart + m.start, end: scStart + m.end }
+      : {
+          selfClosing: false,
+          start: scStart + m.start,
+          end: scStart + m.end,
+          innerStart: scStart + m.innerStart,
+          innerEnd: scStart + m.innerEnd,
+        };
+
+  const methodSpans: SourceCodeMethodsLocation['methodSpans'] = [];
+  if (methods && !methods.selfClosing) {
+    const inner = masked.slice(methods.innerStart, methods.innerEnd);
+    const re = /<Method>\s*<Name>([^<]*)<\/Name>/g;
+    let mm: RegExpExecArray | null;
+    while ((mm = re.exec(inner)) !== null) {
+      const close = inner.indexOf('</Method>', mm.index);
+      if (close < 0) break;
+      methodSpans.push({
+        name: mm[1].trim(),
+        start: methods.innerStart + mm.index,
+        end: methods.innerStart + close + '</Method>'.length,
+      });
+      re.lastIndex = close;
+    }
+  }
+
+  return { sourceCodeInnerEnd: rootAt + sc.innerEnd, methods, methodSpans };
+}
+
+/**
+ * Adds a method to the root object's <SourceCode><Methods>, or replaces the source of
+ * the method already there under that name — the same upsert the bridge's AddMethod
+ * does via TryUpdateMethodSourceInPlace. Pure: returns the new XML, writes nothing.
+ *
+ * Element shape matches the create path (dataEntityXml.ts buildSourceCodeXml):
+ * Name then Source, the CDATA opening on its own line and a blank line before `]]>`.
+ */
+export function upsertSourceCodeMethod(
+  content: string,
+  methodName: string,
+  source: string,
+): { ok: true; xml: string; replaced: boolean } | { ok: false; message: string } {
+  if (source.includes(']]>')) {
+    return { ok: false, message: `method source contains ']]>', which cannot be stored inside a CDATA section` };
+  }
+  const loc = locateSourceCodeMethods(content);
+  if (!loc) return { ok: false, message: 'the object has no <SourceCode> block to add a method to' };
+
+  const element =
+    `<Method>\n\t\t\t\t<Name>${methodName}</Name>\n\t\t\t\t<Source><![CDATA[\n` +
+    `${source.replace(/\s+$/, '')}\n\n]]></Source>\n\t\t\t</Method>`;
+
+  const existing = loc.methodSpans.find(s => s.name.toLowerCase() === methodName.toLowerCase());
+  if (existing) {
+    return { ok: true, replaced: true, xml: content.slice(0, existing.start) + element + content.slice(existing.end) };
+  }
+
+  const { methods } = loc;
+  if (!methods) {
+    const at = endOfContentBefore(content, loc.sourceCodeInnerEnd);
+    const block = `\n\t\t<Methods>\n\t\t\t${element}\n\t\t</Methods>`;
+    return { ok: true, replaced: false, xml: content.slice(0, at) + block + content.slice(at) };
+  }
+  if (methods.selfClosing) {
+    const block = `<Methods>\n\t\t\t${element}\n\t\t</Methods>`;
+    return { ok: true, replaced: false, xml: content.slice(0, methods.start) + block + content.slice(methods.end) };
+  }
+  const at = endOfContentBefore(content, methods.innerEnd);
+  return { ok: true, replaced: false, xml: `${content.slice(0, at)}\n\t\t\t${element}${content.slice(at)}` };
+}
+
+/**
+ * Removes the named method from the root object's <SourceCode><Methods>, collapsing
+ * the collection to `<Methods />` when it was the last one. Pure.
+ */
+export function removeSourceCodeMethod(
+  content: string,
+  methodName: string,
+): { ok: true; xml: string } | { ok: false; message: string } {
+  const loc = locateSourceCodeMethods(content);
+  const span = loc?.methodSpans.find(s => s.name.toLowerCase() === methodName.toLowerCase());
+  if (!loc || !span || !loc.methods || loc.methods.selfClosing) {
+    return { ok: false, message: `method '${methodName}' not found` };
+  }
+  const from = endOfContentBefore(content, span.start);
+  let xml = content.slice(0, from) + content.slice(span.end);
+
+  const removed = span.end - from;
+  const innerStart = loc.methods.innerStart;
+  const innerEnd = loc.methods.innerEnd - removed;
+  if (xml.slice(innerStart, innerEnd).trim() === '') {
+    xml = xml.slice(0, loc.methods.start) + '<Methods />' + xml.slice(loc.methods.end - removed);
+  }
+  return { ok: true, xml };
+}
+
+/**
+ * add-method fallback for object types the bridge declines (its AddMethod has no arm
+ * for them — data-entity on bridges built before that arm existed). Upserts the method
+ * into the root <SourceCode><Methods> and reads it back before claiming success.
+ */
+export const directXmlAddMethod = serializedOnFile(async (
+  filePath: string,
+  methodName: string,
+  source: string,
+  reason: string,
+): Promise<{ success: boolean; message: string } | null> => {
+  try {
+    const raw = await fs.readFile(filePath, 'utf-8');
+    const content = raw.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+    const r = upsertSourceCodeMethod(content, methodName, source.replace(/\r\n/g, '\n'));
+    if (!r.ok) return { success: false, message: `❌ add-method '${methodName}': ${r.message} — nothing was written.` };
+
+    await writeFileAtomic(filePath, normalizeD365Xml(r.xml));
+
+    const after = (await fs.readFile(filePath, 'utf-8')).replace(/^﻿/, '').replace(/\r\n/g, '\n');
+    if (!locateSourceCodeMethods(after)?.methodSpans.some(s => s.name.toLowerCase() === methodName.toLowerCase())) {
+      return {
+        success: false,
+        message: `❌ add-method: wrote ${filePath} but method '${methodName}' is not in it afterwards — ` +
+          `the write did not take effect. Re-read the file and retry; do not assume the change landed.`,
+      };
+    }
+    console.error(`[modify_d365fo_file] ✅ directXmlAddMethod fallback (${reason}): '${methodName}' in ${filePath}`);
+    return {
+      success: true,
+      message: `✅ Method '${methodName}' ${r.replaced ? 'replaced' : 'added'} and verified on disk in ${filePath}.\n` +
+        `   (Written by this server's XML writer rather than the bridge — ${reason})`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlAddMethod failed: ${err}`);
+    return null;
+  }
+});
+
+/** remove-method fallback, same trigger as directXmlAddMethod. */
+export const directXmlRemoveMethod = serializedOnFile(async (
+  filePath: string,
+  methodName: string,
+  reason: string,
+): Promise<{ success: boolean; message: string } | null> => {
+  try {
+    const raw = await fs.readFile(filePath, 'utf-8');
+    const content = raw.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+    const r = removeSourceCodeMethod(content, methodName);
+    if (!r.ok) return { success: false, message: `❌ remove-method: ${r.message} in ${filePath} — nothing was written.` };
+    await writeFileAtomic(filePath, normalizeD365Xml(r.xml));
+    console.error(`[modify_d365fo_file] ✅ directXmlRemoveMethod fallback (${reason}): '${methodName}' from ${filePath}`);
+    return {
+      success: true,
+      message: `✅ Method '${methodName}' removed from ${filePath}.\n` +
+        `   (Written by this server's XML writer rather than the bridge — ${reason})`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlRemoveMethod failed: ${err}`);
+    return null;
   }
 });
 

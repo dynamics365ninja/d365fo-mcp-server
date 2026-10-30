@@ -1478,6 +1478,22 @@ namespace D365MetadataBridge.Services
 
                     return new { success = true, operation = "add-method", objectType, objectName, methodName, api = "IMetaViewProvider.Update" };
                 }
+                case "data-entity":
+                {
+                    var axEntity = _provider.DataEntityViews.Read(objectName)
+                        ?? throw new ArgumentException($"Data entity '{objectName}' not found");
+                    var msi = GetModelSaveInfoForObject(_provider.DataEntityViews, objectName);
+
+                    if (!TryUpdateMethodSourceInPlace(axEntity, methodName, source))
+                    {
+                        var axMethod = new AxMethod { Name = methodName, Source = source };
+                        ((dynamic)axEntity).Methods.Add(axMethod);
+                    }
+
+                    ((IMetaDataEntityViewProvider)_provider.DataEntityViews).Update(axEntity, msi);
+
+                    return new { success = true, operation = "add-method", objectType, objectName, methodName, api = "IMetaDataEntityViewProvider.Update" };
+                }
                 case "form-extension":
                 {
                     var axExt = _provider.FormExtensions.Read(objectName)
@@ -1951,6 +1967,17 @@ namespace D365MetadataBridge.Services
                     ((IMetaViewProvider)_provider.Views).Update(obj, msi);
                     return new { success = true, operation = "replace-code", objectType, objectName, methodName, api = "Update" };
                 }
+                case "data-entity":
+                {
+                    var obj = _provider.DataEntityViews.Read(objectName)
+                        ?? throw new ArgumentException($"Data entity '{objectName}' not found");
+                    var msi = GetModelSaveInfoForObject(_provider.DataEntityViews, objectName);
+                    var replaced = ReplaceInMethods(obj, methodName, oldCode, newCode);
+                    if (!replaced)
+                        throw new InvalidOperationException($"oldCode not found in {objectName}" + (methodName != null ? $".{methodName}" : ""));
+                    ((IMetaDataEntityViewProvider)_provider.DataEntityViews).Update(obj, msi);
+                    return new { success = true, operation = "replace-code", objectType, objectName, methodName, api = "Update" };
+                }
                 case "form-extension":
                 {
                     var obj = _provider.FormExtensions.Read(objectName)
@@ -2050,6 +2077,16 @@ namespace D365MetadataBridge.Services
                         throw new InvalidOperationException($"Method '{methodName}' not found on view '{objectName}'");
                     ((IMetaViewProvider)_provider.Views).Update(obj, msi);
                     return new { success = true, operation = "remove-method", objectType, objectName, methodName, api = "IMetaViewProvider.Update" };
+                }
+                case "data-entity":
+                {
+                    var obj = _provider.DataEntityViews.Read(objectName)
+                        ?? throw new ArgumentException($"Data entity '{objectName}' not found");
+                    var msi = GetModelSaveInfoForObject(_provider.DataEntityViews, objectName);
+                    if (!RemoveMethodByName(obj, methodName))
+                        throw new InvalidOperationException($"Method '{methodName}' not found on data entity '{objectName}'");
+                    ((IMetaDataEntityViewProvider)_provider.DataEntityViews).Update(obj, msi);
+                    return new { success = true, operation = "remove-method", objectType, objectName, methodName, api = "IMetaDataEntityViewProvider.Update" };
                 }
                 case "form-extension":
                 {
