@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>FixtureReservedWordShapes</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// Shapes KW001 must stay silent on. The select expression is shipped code's own
+/// shape (SalesLine and SalesTable.lastPackingSlip), and a full sweep showed a
+/// parameter pattern reading its middle sort key as a parameter named `desc`;
+/// the names were compiled in a probe class.
+public class FixtureReservedWordShapes
+{
+    boolean boolean;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>lastPackingSlip</Name>
+				<Source><![CDATA[
+    /// A select in parentheses with several descending sort keys: split at its
+    /// commas, the middle key reads like a parameter named `desc`.
+    public PackingSlipId lastPackingSlip(InventTransId _inventTransId)
+    {
+        CustPackingSlipTrans custPackingSlipTrans;
+
+        return (select firstfast PackingSlipId from custPackingSlipTrans
+                    order by DeliveryDate desc, CreatedDateTime desc, PackingSlipId desc
+                    where custPackingSlipTrans.InventTransId == _inventTransId).PackingSlipId;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>count</Name>
+				<Source><![CDATA[
+    /// A method may be named after a keyword; `@` and `in` make legal names.
+    public int count(int @index, int in = 0)
+    {
+        int @order = @index + in;
+
+        return @order;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
