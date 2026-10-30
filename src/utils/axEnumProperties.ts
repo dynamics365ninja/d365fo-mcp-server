@@ -152,8 +152,9 @@ export function assertKnownEnumValue(
  *
  * A member without <Value> counts as 0. Null XML (the file could not be read)
  * gives 0, the old behaviour. Not used for enum EXTENSIONS: there the platform
- * numbers the members of an extensible enum, and shipped extensions carry no
- * <Value> at all, which is what 0 still writes.
+ * numbers the members of an extensible enum, and most shipped extensions carry
+ * no <Value> (219 of the 278 AxEnumExtension files in a 10.0 PackagesLocalDirectory;
+ * the other 59 are Microsoft's own, numbered by hand), which is what 0 still writes.
  */
 export function nextEnumValue(enumXml: string | null): number {
   if (!enumXml) return 0;

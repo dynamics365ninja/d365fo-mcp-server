@@ -6,7 +6,7 @@
  * it is given. In the shipped enum shape the first member is the one without a
  * <Value> (0), so every added member collided with it: "Duplicate value '0'
  * detected", reported only by a full build. Enum EXTENSIONS keep 0 — the platform
- * numbers their members, and shipped extensions carry no <Value> at all.
+ * numbers their members, and most shipped extensions (219 of 278) carry no <Value>.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { modifyD365FileTool } from '../../src/tools/write/modifyD365File';
