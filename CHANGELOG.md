@@ -38,7 +38,10 @@ those are called out explicitly below.
   written, with the reason and the operation that changes the element. The index,
   field-group and relation wrappers report it as "⏭️ NOT written" (the field paths
   already did). The XML index fallback's "✅ already present" is a skip too, and the
-  valid-time-state and relation-property follow-ups no longer run after a skip.
+  valid-time-state and relation-property follow-ups no longer run after a skip. An
+  `add-field-group` with `fields` on a group that exists puts the missing fields into
+  it instead of dropping them, so `add-field-group AutoReport` with fields does what it
+  asked for.
 - **`add-method` and `remove-method` failed on a data entity.** The bridge has no
   data-entity arm for either, so `d365fo_file` modify returned "add-method not supported
   for objectType 'data-entity' via bridge (use XML fallback)" and applied nothing — the

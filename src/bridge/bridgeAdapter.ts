@@ -2227,6 +2227,26 @@ export async function bridgeAddFieldGroup(
   if (!bridge?.isReady || !bridge.metadataAvailable) return null;
   try {
     const result = await bridge.addFieldGroup(tableName, groupName, label, fields);
+    // Table create always writes the Auto* groups, so "add-field-group AutoReport
+    // with fields [A, B]" finds the group there. Skipping the whole call dropped the
+    // fields the caller asked for; put the missing ones into the existing group.
+    if (result.skipped === true && fields && fields.length > 0) {
+      const added: string[] = [];
+      const present: string[] = [];
+      for (const field of fields) {
+        const r = await bridge.addFieldToFieldGroup(tableName, groupName, field);
+        if (r.skipped === true) present.push(field);
+        else if (r.success) added.push(field);
+        else return { success: false, message: `Bridge addFieldToFieldGroup(${groupName}, ${field}) returned success=false` + (added.length ? ` after adding ${added.join(', ')}` : '') };
+      }
+      if (added.length > 0) {
+        return {
+          success: true,
+          message: `✅ Field group '${groupName}' already existed — added ${added.join(', ')} to it` +
+            (present.length ? ` (${present.join(', ')} already in it)` : ''),
+        };
+      }
+    }
     return {
       success: result.success,
       skipped: result.skipped === true,

@@ -20,7 +20,7 @@
  *  5. an ordinary write is untouched by any of it.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   skippedMessage,
   bridgeAddField,
@@ -144,4 +144,37 @@ describe('bridge wrappers: a skip is never rendered as a write', () => {
       expect(result!.message).not.toContain('NOT written');
     });
   }
+});
+
+describe('add-field-group on a group that already exists', () => {
+  // Table create writes AutoReport, AutoLookup, … so a follow-up add-field-group
+  // AutoReport with fields finds the group there. A plain skip dropped the fields
+  // the caller asked for; the missing ones now go into the existing group.
+  const existingGroup = (alreadyIn: string[]) => {
+    const addFieldToFieldGroup = vi.fn(async (_t: string, _g: string, field: string) =>
+      alreadyIn.includes(field) ? { success: true, skipped: true, reason: 'already in group' } : { success: true });
+    return {
+      isReady: true,
+      metadataAvailable: true,
+      addFieldGroup: async () => ({ success: true, skipped: true, reason: "field group 'AutoReport' already exists" }),
+      addFieldToFieldGroup,
+    };
+  };
+
+  it('adds the requested fields that are not in it yet, and says which', async () => {
+    const bridge = existingGroup(['Name']);
+    const result = await bridgeAddFieldGroup(bridge as any, 'ConTable', 'AutoReport', undefined, ['Name', 'Amount']);
+
+    expect(bridge.addFieldToFieldGroup).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({ success: true });
+    expect(result!.skipped).toBeFalsy();
+    expect(result!.message).toContain('already existed — added Amount');
+    expect(result!.message).toContain('Name already in it');
+  });
+
+  it('is a skip when every requested field is already in it', async () => {
+    const result = await bridgeAddFieldGroup(existingGroup(['Name']) as any, 'ConTable', 'AutoReport', undefined, ['Name']);
+    expect(result).toMatchObject({ success: true, skipped: true });
+    expect(result!.message).toContain('NOT written');
+  });
 });
