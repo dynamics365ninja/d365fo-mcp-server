@@ -62,6 +62,17 @@ those are called out explicitly below.
   [Names exactly as given](docs/CUSTOM_EXTENSIONS.md#names-exactly-as-given).
 
 ### Fixed
+- **Kernel EDTs were refused as "does not exist"** (#1179). `RecId`, `UserId`,
+  `DataAreaId`, `ValidFromDateTime`, `TimeOfDay` and the other EDTs the X++ runtime
+  defines have no `AxEdt` file, so the bridge's field guard refused `add-field` with
+  "extended data type 'UserId' does not exist — nothing was written",
+  `generate_object(scaffold)` refused to write such a table, `validate_code(references)`
+  reported `<ExtendedDataType>UserId` as an error, and `get_object_info` advised indexing a
+  file that cannot exist. Fields on `TimeOfDay`, `FieldId`, `TableId` … were also typed
+  String. One evidence-based list (`src/knowledge/kernelEdts.ts`, 83 names: every EDT
+  shipped fields or EDTs use that `readEdt` cannot resolve, with the base type all their
+  fields agree on) now answers those paths, mirrored in the bridge and kept equal by a
+  parity test. The bridge also writes `Time` fields and EDTs, which it could not before.
 - **`update_symbol_index` left a changed form's datasources and patterns stale.** It wrote
   only the form's symbol row; it now writes everything the full build writes for a form,
   and removing a form removes its datasource, pattern and stored-XML rows.

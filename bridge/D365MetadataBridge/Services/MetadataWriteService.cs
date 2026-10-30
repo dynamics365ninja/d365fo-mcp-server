@@ -751,6 +751,7 @@ namespace D365MetadataBridge.Services
                 case "int": case "integer": axEdt = new AxEdtInt { Name = name }; break;
                 case "real": axEdt = new AxEdtReal { Name = name }; break;
                 case "date": axEdt = new AxEdtDate { Name = name }; break;
+                case "time": case "timeofday": axEdt = new AxEdtTime { Name = name }; break;
                 case "utcdatetime": case "datetime": axEdt = new AxEdtUtcDateTime { Name = name }; break;
                 case "int64": axEdt = new AxEdtInt64 { Name = name }; break;
                 case "enum": axEdt = new AxEdtEnum { Name = name }; break;
@@ -3646,6 +3647,30 @@ namespace D365MetadataBridge.Services
         // ========================
 
         /// <summary>
+        /// Kernel EDTs: defined by the X++ runtime, with no AxEdt file, so IMetaEdtProvider.Exists
+        /// answers false for them although shipped tables use them (DataAreaId 841 fields, UserId
+        /// 331, RecId 319, ValidFromDateTime 245 ...). Derived by census + readEdt probe on
+        /// 7.0.7996.33 (#1179). Mirrors src/knowledge/kernelEdts.ts; a parity test keeps the two equal.
+        /// </summary>
+        private static readonly HashSet<string> KernelEdtNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "DataAreaId", "SelectableDataArea", "UserId", "RecId", "ValidFromDateTime", "ValidToDateTime",
+            "ValidFromDate", "ValidToDate", "TableName", "FieldName", "CreatedDateTime", "RelationType",
+            "FieldId", "TimeOfDay", "ClassName", "ClassId", "TableId", "IdentifierName",
+            "SecurityRoleAotName", "ModifiedDateTime", "SecurityRoleName", "CreatedBy", "EnumName", "SysRowVersionNumber",
+            "CreatedTransactionId", "NetworkAlias", "ExtendedTypeId", "PartitionKey", "UtilElementName", "UserIdStr",
+            "MethodName", "RecVersion", "InstalledLanguageId", "NetworkDomain", "ModifiedBy", "FormName",
+            "QueryName", "SequenceNum", "EnumId", "SecurityDutyName", "ConfigurationKeyName", "SecurityDutyIdentifier",
+            "MenuItemName", "ReportName", "ResourceName", "ConfigurationKeyId", "ExtendedDataTypeName", "Partition",
+            "MoneyMST", "UtilElementId", "Sid", "SecurityPrivilegeName", "SecurityPrivilegeIdentifier", "SecurableName",
+            "SecurityRoleDescription", "MetadataXmlObject", "PreferredLocale", "WorkflowCategoryName", "MenuItemNameDisplay", "WorkflowTypeName",
+            "LicenseCodeId", "SegregationOfDutiesRuleName", "IndexName", "RowNumber", "ModelName", "WebUrlItemName",
+            "MenuItemNameAction", "DeploymentRecId", "MenuItemNameOutput", "ServiceName", "TableCollectionName", "ModelElementRecid",
+            "SecurityRisk", "SecurityMitigation", "SegregationOfDutiesOverrideComment", "TitleFields", "GlobalObjectCacheScope", "WorkflowApprovalName",
+            "Money", "AssemblyName", "SecurityDutyDescription", "SegmentedEntryField", "Sha1HashCode",
+        };
+
+        /// <summary>
         /// Refuse to write an &lt;ExtendedDataType&gt; naming an EDT the provider does not know.
         /// The metadata writer accepts any string here, so a misspelled EDT serialized fine
         /// and the create/add-field returned success — the only symptom was a later build
@@ -3654,9 +3679,13 @@ namespace D365MetadataBridge.Services
         /// Deliberately fails OPEN when the provider itself throws (an Exists() that cannot
         /// answer is not evidence the EDT is missing, and blocking a valid write on a
         /// provider hiccup is a worse failure than the one this guards).
+        ///
+        /// A kernel EDT passes without asking: Exists() answers false for every one of them
+        /// (they have no AxEdt file), although shipped tables use them thousands of times (#1179).
         /// </summary>
         private void RequireExtendedDataTypeExists(string fieldName, string edtName, string what)
         {
+            if (KernelEdtNames.Contains(edtName)) return;
             bool known;
             try { known = _provider.Edts.Exists(edtName); }
             catch { return; }
@@ -3688,6 +3717,12 @@ namespace D365MetadataBridge.Services
                     break;
                 case "date":
                     axField = new AxTableFieldDate();
+                    break;
+                case "time":
+                case "timeofday":
+                    // 77 shipped fields on the kernel EDT TimeOfDay are AxTableFieldTime; without
+                    // this case "Time" fell to default and was looked up as an EDT name.
+                    axField = new AxTableFieldTime();
                     break;
                 case "utcdatetime":
                 case "datetime":

@@ -24,6 +24,7 @@ import { reconcileTableCreateProperties } from '../xml/createTablePropertyHonest
 import { writeFileAtomic } from '../../utils/atomicFileWrite.js';
 import * as debouncedRefresh from '../../bridge/debouncedRefresh.js';
 import { recordCreatedArtifact } from '../../workspace/createdArtifactLedger.js';
+import { isKernelEdt, kernelEdtBaseType } from '../../knowledge/kernelEdts.js';
 
 interface GenerateSmartTableArgs {
   name: string;
@@ -1219,13 +1220,17 @@ export async function bridgeEdtBaseType(bridge: BridgeClient | undefined, edtNam
 export function resolveEdtBaseType(edtName: string, db: any, depth = 0): string | undefined {
   // D365FO primitive types − these map directly to AxTableField types
   const PRIMITIVES = new Set([
-    'String', 'Integer', 'Int64', 'Real', 'Date', 'UtcDateTime', 'DateTime',
+    'String', 'Integer', 'Int64', 'Real', 'Date', 'Time', 'UtcDateTime', 'DateTime',
     'Enum', 'Container', 'Guid', 'GUID',
   ]);
 
   if (depth > 8) return 'String'; // guard against circular chains
 
   if (PRIMITIVES.has(edtName)) return edtName;
+  // A kernel EDT has no edt_metadata row, so a chain ending in one (MyTime → TimeOfDay,
+  // RefRecId → RecId) used to stop at "unknown" here.
+  const kernel = kernelEdtBaseType(edtName);
+  if (kernel) return kernel;
 
   try {
     const row = db.prepare(
@@ -1301,6 +1306,10 @@ export function resolveEdtEnumType(edtName: string, db: any, depth = 0): string 
  * Returns undefined for genuinely unrecognizable names (caller keeps EDT-as-string).
  */
 export function heuristicEdtBaseType(edtName: string): string | undefined {
+  // A kernel EDT is not a guess: its base type is what every shipped field on it uses,
+  // and the name heuristics below miss most of them (TimeOfDay, FieldId, TableId …).
+  const kernel = kernelEdtBaseType(edtName);
+  if (kernel) return kernel;
   const e = edtName.toLowerCase();
   if (e === 'recid' || e.endsWith('recid') || e.includes('refrecid')) return 'Int64';
   // Any "...DateTime" name (TransDateTime, CreatedDateTime, ModifiedDateTime, UtcDateTime,
@@ -1364,7 +1373,7 @@ function validateEdtExists(edtName: string, db: any): boolean {
   const SYSTEM_EDTS = new Set([
     'RecId', 'String255', 'Name', 'Description', 'NoYesId', 'RefRecId',
   ]);
-  if (SYSTEM_EDTS.has(edtName)) return true;
+  if (SYSTEM_EDTS.has(edtName) || isKernelEdt(edtName)) return true;
 
   try {
     // Check edt_metadata first (most reliable)
