@@ -7,6 +7,12 @@ import type { XppServerContext } from '../../types/context.js';
 import { bridgeRefreshProvider } from '../../bridge/index.js';
 import { isFileUnderRoot } from '../../utils/pathContainment.js';
 import { lookupCreatedArtifact, forgetCreatedArtifact, type CreatedArtifact } from '../../workspace/createdArtifactLedger.js';
+import { removeCompilerMetadataFor } from './compilerMetadataPrune.js';
+
+/** The line an undo appends when it also removed the element's compiler-metadata copy. */
+function compilerCopyNote(removed: string | null): string {
+  return removed ? '\nAlso removed its compiler-metadata copy: ' + removed : '';
+}
 
 const execFileAsync = util.promisify(execFile);
 
@@ -163,15 +169,34 @@ export const undoLastModificationTool = async (params: any, context: XppServerCo
       };
     }
 
+    // Untracked is not the same as created by the last write. A repo that commits
+    // only at PR time keeps objects from earlier sessions untracked for days, and
+    // an undo after a bad MODIFY of one deleted the whole object (git has nothing
+    // to restore, and no backup is taken inside a work tree). Delete only what this
+    // session created — the rule the non-git path below already applies.
+    if (!lookupCreatedArtifact(absolutePath)) {
+      return {
+        content: [{
+          type: 'text',
+          text: 'Refusing to delete ' + absolutePath + ': it is not tracked by git, and this session did not ' +
+            'create it, so there is no earlier version to revert to. Deleting it would remove the whole object, ' +
+            'not the last change. Undo the change with another modify, or remove the object deliberately with ' +
+            'd365fo_file(action="delete").',
+        }],
+        isError: true,
+      };
+    }
+
     fs.unlinkSync(absolutePath);
     // The create registered this file in a .rnrproj; deleting it without that
     // entry leaves a <Content Include> pointing at nothing, which nothing else in
     // the session removes and only VS reports. A model directory under source
     // control takes this path, not the ledger one below.
     const projectNote = await removeFromProjectAndForget(absolutePath);
+    const metaNote = compilerCopyNote(await removeCompilerMetadataFor(absolutePath));
     await cleanupIndexAfterUndo(context, absolutePath, 'deleted');
     return {
-      content: [{ type: 'text', text: 'Successfully undid file creation (deleted untracked file): ' + absolutePath + projectNote + '\nStale index entries cleaned up.' }],
+      content: [{ type: 'text', text: 'Successfully undid file creation (deleted untracked file): ' + absolutePath + projectNote + metaNote + '\nStale index entries cleaned up.' }],
     };
   } catch (error: any) {
     return {
@@ -215,10 +240,11 @@ async function undoViaLedger(
 
   fs.unlinkSync(absolutePath);
   const projectNote = await removeFromProjectAndForget(absolutePath);
+  const metaNote = compilerCopyNote(await removeCompilerMetadataFor(absolutePath));
   await cleanupIndexAfterUndo(context, absolutePath, 'deleted');
 
   return {
-    content: [{ type: 'text', text: 'Successfully undid file creation (deleted session-created file outside git): ' + absolutePath + projectNote + '\nStale index entries cleaned up.' }],
+    content: [{ type: 'text', text: 'Successfully undid file creation (deleted session-created file outside git): ' + absolutePath + projectNote + metaNote + '\nStale index entries cleaned up.' }],
   };
 }
 

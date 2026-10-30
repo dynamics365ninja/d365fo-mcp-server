@@ -23,6 +23,7 @@ import {
   getExtensionClassNamingStyle,
   endsWithInfix,
   inferBaseBeforeToken,
+  isAsGivenNamingMode,
 } from './modelClassifier.js';
 import { normalizeModelToken } from './modelToken.js';
 
@@ -111,6 +112,9 @@ export function normalizeObjectName(
   onNote?: (note: string) => void,
   options?: { knownBase?: boolean; extendedBase?: string },
 ): string {
+  // as-given: the caller's name is final. A name that cannot be valid is refused
+  // by the write path (asGivenNameProblem), not repaired here.
+  if (isAsGivenNamingMode()) return objectName;
   const objectPrefix = resolveObjectPrefix(modelName ?? '');
   // Elements and classes carry their own style: a convention may spell one with the
   // model name and the other with the prefix. Case A is an element, Case B a class.
@@ -198,4 +202,46 @@ export function normalizeObjectName(
     finalName = applyObjectSuffix(finalName, getObjectSuffix());
   }
   return finalName;
+}
+
+/** An AOT identifier: a letter or underscore, then letters, digits and underscores. */
+const AOT_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** D365FO's hard limit on an AOT element name; past it the build fails. */
+const MAX_AOT_NAME_LENGTH = 81;
+
+/**
+ * Why `objectName` cannot be written as `objectType` under naming.prefixSource=as-given,
+ * or null when it can.
+ *
+ * Only what makes a name a valid AOT name is checked — the convention itself is
+ * the project's, stated in its instruction file. The other modes REPAIR these
+ * shapes (a bare `VendTable` given as table-extension becomes `VendTable.<token>`),
+ * but repairing means choosing a token, which is exactly what this mode leaves to
+ * the caller. So the name is refused with the reason, and nothing is invented.
+ */
+export function asGivenNameProblem(objectName: string, objectType: string): string | null {
+  const name = objectName.trim();
+  if (!name) return 'the name is empty.';
+  if (name.length > MAX_AOT_NAME_LENGTH) {
+    return `"${name}" is ${name.length} characters; AOT names stop at ${MAX_AOT_NAME_LENGTH}.`;
+  }
+  if (DOT_NOTATION_EXTENSION_TYPES.has(objectType)) {
+    const parts = name.split('.');
+    if (parts.length !== 2 || !parts[0] || !parts[1]) {
+      return `a ${objectType} is named \`<Base>.<Token>\` (e.g. \`VendTable.ABC\`); "${name}" is not — ` +
+        'name it by your convention, the server does not add the token in naming.prefixSource=as-given.';
+    }
+    const bad = parts.find(p => !AOT_IDENTIFIER.test(p));
+    if (bad) return `"${bad}" in "${name}" is not a valid AOT identifier (letters, digits and _ only).`;
+    return null;
+  }
+  if (!AOT_IDENTIFIER.test(name)) {
+    return `"${name}" is not a valid AOT name (a letter or _, then letters, digits and _ only).`;
+  }
+  if (objectType === 'class-extension' && !name.endsWith('_Extension')) {
+    return `a class extension's name must end with \`_Extension\` (e.g. \`VendTableTable_ABC_Extension\`); ` +
+      `"${name}" does not — name it by your convention, the server does not derive it in naming.prefixSource=as-given.`;
+  }
+  return null;
 }

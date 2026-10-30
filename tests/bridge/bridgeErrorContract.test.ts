@@ -202,4 +202,28 @@ describe('dispatcher response for a throwing bridge', () => {
     const text = res.content.map((c: any) => c.text).join('\n');
     expect(text).not.toContain(BRIDGE_FAILURE_MARKER);
   });
+
+  it('does not call a validation rejection a bridge failure', async () => {
+    // A bridge that checked an input and refused it is healthy. The generic note
+    // ("came from the SQLite symbol index … re-run once the bridge is healthy")
+    // followed create's own "❌ Nothing was written … 'Fooo' is not a valid
+    // CacheLookup" in a live run, and sent the reader after a bridge that was fine.
+    const rejecting = () => {
+      throw new Error("Bridge error [-32602]: 'Fooo' is not a valid CacheLookup. Valid values: None, Found.");
+    };
+    const { registerToolHandler } = await import('../../src/tools/toolHandler');
+    const { server, getCallHandler } = buildFakeServer();
+    registerToolHandler(server, {
+      symbolIndex: emptyIndex(),
+      bridge: { ...emptyBridge(), readTable: rejecting },
+    } as any);
+
+    const res: any = await call(getCallHandler(), 'get_object_info', {
+      objectType: 'table', name: 'ConRejectedProbe',
+    });
+
+    const text = res.content.map((c: any) => c.text).join('\n');
+    expect(text).not.toContain(BRIDGE_FAILURE_MARKER);
+    expect(text).not.toContain('re-run once the bridge is healthy');
+  });
 });

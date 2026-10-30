@@ -224,6 +224,41 @@ describe('replace-code preflight', () => {
   });
 });
 
+describe('TTS001 on what a write carries', () => {
+  const COC_DECLARATION = `<AxClass><SourceCode><Declaration><![CDATA[
+[ExtensionOf(tableStr(ConCore_TaxTransReportChangeLog))]
+final class ConCore_TaxTransReportChangeLogConSK_Extension
+{
+}
+]]></Declaration></SourceCode></AxClass>`;
+
+  it('stays quiet on a replace-code fragment that keeps the balance', () => {
+    // Adding a line after "ttsbegin;" inside a balanced method warned
+    // "ttsbegin × 1, ttscommit × 0" — the fragment was counted as if it were the method.
+    const newCode = 'ttsbegin;\n        custTable.selectForUpdate(true);';
+    expect(validateWrittenXpp(newCode)).toContain('TTS001');
+    expect(validateWrittenXpp(newCode, null, 'ttsbegin;')).not.toContain('TTS001');
+  });
+
+  it('still warns when the replace-code changes the balance', () => {
+    const newCode = 'ttsbegin;\n        custTable.update();';
+    expect(validateWrittenXpp(newCode, null, 'custTable.update();')).toContain('TTS001');
+  });
+
+  it('reports an unbalanced method on an extension class instead of dropping it', () => {
+    // The synthetic class header put the region on the class line, which the
+    // rebase filter then discarded: TTS001 never reached any extension class.
+    const method = `    public void insert()
+    {
+        ttsbegin;
+        next insert();
+    }`;
+    const note = validateWrittenXpp(method, COC_DECLARATION);
+    expect(note).toContain('TTS001');
+    expect(note).toContain('line 1 of the code you sent');
+  });
+});
+
 describe('the reply shows what changed', () => {
   it('renders the edited line with context', () => {
     const before = 'a\nb\nc\nd\ne\nf\ng';
