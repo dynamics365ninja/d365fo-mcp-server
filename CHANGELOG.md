@@ -38,6 +38,11 @@ those are called out explicitly below.
   applies, and read back before the reply says it landed. `replace-code` already fell back.
   A multi-method `add-method` also stops at the first refusal and reports it, instead of
   summarising a failed write as "Added N methods".
+- **`find_references` called the owner of a field or method "not a class".** The hint for
+  a form or table name passed as a class also checked the owner of every `Owner.member`
+  target, so `SalesTable.SalesId` as a field, or `SalesTable.initFromSalesQuotationTable`
+  as a method, came back with "⚠️ Type Mismatch: … is not a **class**" when no class was
+  asked for. The hint now runs only for a name looked up as a class.
 - **An incremental build silently removed a data entity's OData actions.** xppc's
   `-incremental` mode rewrites the `bin\Dynamics.AX.<Package>.ODataExtends.runtime`
   entry of every entity it recompiles without its actions, and the AOS reads them from
