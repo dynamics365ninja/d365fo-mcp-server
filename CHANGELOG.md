@@ -29,6 +29,13 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Fixed
+- **TTS001 warned on replace-code fragments and never reached extension classes.** The
+  write-time check counted `ttsbegin`/`ttscommit` in the text sent, so adding a line
+  after `ttsbegin;` in a balanced method warned "ttsbegin × 1, ttscommit × 0". For a
+  `replace-code`, TTS001 now stays only when the edit changes the balance between
+  `oldCode` and `newCode`. Separately, a method sent to an extension class was wrapped in
+  a synthetic class header whose line the rebase dropped, together with the TTS001 that
+  sat on it. That violation is now kept on line 1 of the code sent.
 - **`add-method` and `remove-method` failed on a data entity.** The bridge has no
   data-entity arm for either, so `d365fo_file` modify returned "add-method not supported
   for objectType 'data-entity' via bridge (use XML fallback)" and applied nothing — the

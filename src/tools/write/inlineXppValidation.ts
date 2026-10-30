@@ -7,7 +7,7 @@
  * time, one that annotates it only has to be useful.
  */
 
-import { runRules, type ValidationViolation } from '../analysis/validateXpp.js';
+import { runRules, maskStringsAndComments, type ValidationViolation } from '../analysis/validateXpp.js';
 import { decodeXmlEntitiesFromXppSource } from '../../utils/xmlEscape.js';
 
 /** Lines prepended by `withClassContext`; subtracted again before reporting. */
@@ -42,6 +42,13 @@ function withClassContext(snippet: string, declaration: string | null): { code: 
     code: `${extensionOf[0].trim()}\nfinal class ${className[1]}\n{\n${snippet}\n}`,
     offset: SYNTHETIC_HEADER_LINES,
   };
+}
+
+/** ttsbegin minus ttscommit and ttsabort, outside strings and comments. */
+function ttsBalance(code: string): number {
+  const masked = maskStringsAndComments(code);
+  const count = (word: string) => (masked.match(new RegExp(`\\b${word}\\b`, 'gi')) ?? []).length;
+  return count('ttsbegin') - count('ttscommit') - count('ttsabort');
 }
 
 /** True for text that is a JSON document rather than X++. */
@@ -92,11 +99,18 @@ function render(violations: ValidationViolation[]): string {
  *                        Nothing else is inspected — never the rest of the file.
  * @param declarationXml  raw XML of the target object, when the write has one on
  *                        disk; used only to recover the enclosing class header.
+ * @param replacedCode    for replace-code, the oldCode that suppliedSource replaced.
+ *                        TTS001 counts ttsbegin/ttscommit in the text it is given,
+ *                        and a replace-code newCode is a fragment of a method: adding
+ *                        a line after "ttsbegin;" warned "ttsbegin × 1, ttscommit × 0"
+ *                        on a balanced method. A fragment can only unbalance the
+ *                        method by changing the balance, so TTS001 stays only then.
  * @returns a markdown note to append to the write's reply, or '' when clean.
  */
 export function validateWrittenXpp(
   suppliedSource: string | undefined,
   declarationXml?: string | null,
+  replacedCode?: string,
 ): string {
   if (!suppliedSource || suppliedSource.trim().length === 0) return '';
   // XML as "X++" is reported upstream by assertCleanXppSource.
@@ -116,9 +130,14 @@ export function validateWrittenXpp(
     return '';
   }
 
+  const keepTts = replacedCode === undefined || ttsBalance(suppliedSource) !== ttsBalance(replacedCode);
   const rebased = violations
-    .map(v => (v.line === undefined ? v : { ...v, line: v.line - offset }))
-    // A violation inside the synthetic header is the header's, not the caller's.
+    .filter(v => v.rule !== 'TTS001' || keepTts)
+    // TTS001 reports a region at the line that opens it. With a synthetic header
+    // that is the class line, but the region is the caller's snippet: keep it on
+    // line 1 instead of dropping it, which silenced TTS001 on every extension class.
+    .map(v => (v.line === undefined ? v : { ...v, line: v.rule === 'TTS001' ? Math.max(1, v.line - offset) : v.line - offset }))
+    // Any other violation inside the synthetic header is the header's, not the caller's.
     .filter(v => v.line === undefined || v.line > 0);
 
   return render(rebased);
