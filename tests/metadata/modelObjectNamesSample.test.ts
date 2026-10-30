@@ -144,24 +144,62 @@ describe('getModelObjectNames', () => {
 
     const issued: string[] = [];
     readModelObjectNames(
-      { prepare: (sql: string) => { issued.push(sql); return { all: () => [] }; } },
+      {
+        prepare: (sql: string) => {
+          issued.push(sql);
+          // The rowid edges answer, so the spread runs and the top-up are issued too.
+          return { all: () => (/SELECT id FROM/.test(sql) ? [{ id: 1 }] : []) };
+        },
+      },
       'ContosoFinanceSK',
     );
-    // Both bands, so a fix applied to only one of them cannot pass.
-    expect(issued).toHaveLength(2);
+    // Extension band, both rowid edges, the spread run, the top-up — so a fix
+    // applied to only some of them cannot pass.
+    expect(issued).toHaveLength(5);
     for (const sql of issued) {
-      const plan = (index.db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all('ContosoFinanceSK', 60) as Array<{ detail: string }>)
+      const params = ['ContosoFinanceSK', 1, 60].slice(0, (sql.match(/\?/g) ?? []).length);
+      const plan = (index.db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...params) as Array<{ detail: string }>)
         .map(r => r.detail)
         .join(' ');
-      // COVERING: nothing touches the table, so the cost is the rows returned
-      // rather than the rows the model has.
-      expect(plan).toContain('COVERING INDEX idx_model_type_name');
+      if (/INDEXED BY idx_symbols_model/.test(sql)) {
+        // The spread: a seek on (model, rowid) that stops at its limit.
+        expect(plan).toContain('idx_symbols_model');
+      } else {
+        // COVERING: nothing touches the table, so the cost is the rows returned
+        // rather than the rows the model has.
+        expect(plan).toContain('COVERING INDEX idx_model_type_name');
+      }
       // And no sort pass. `ORDER BY type, name LIMIT n` over a plan that cannot
       // deliver that order has to read EVERY row of the model before the limit
       // can apply — 2.4 s warm on a large production model, even on the right
       // index. The temp B-tree is that pass, and its absence is the fix.
       expect(plan).not.toContain('TEMP B-TREE');
     }
+  });
+
+  it('spreads the regular band so a minority prefix that sorts first cannot fill it (#1164)', () => {
+    // The issue's model: ~3,800 objects named xyz…, 69 of them xyz3PL…. Digits
+    // sort before letters, so the first sixty classes by name were 53 xyz3PL
+    // names, and inference answered "xyz3PL" for a model that is "xyz".
+    for (let i = 0; i < 69; i++) add(`xyz3PLShipment${String(i).padStart(3, '0')}`, 'class');
+    for (let i = 0; i < 2400; i++) add(`xyzSales${String(i).padStart(4, '0')}`, 'class');
+    for (let i = 0; i < 1300; i++) add(`xyzLedger${String(i).padStart(4, '0')}`, 'table');
+
+    const names = index.getModelObjectNames('ContosoFinanceSK');
+    const regulars = names.filter(n => !n.includes('.'));
+    expect(regulars).toHaveLength(60);
+    expect(regulars.filter(n => n.startsWith('xyz3PL')).length).toBeLessThan(15);
+    // Both types are reached, not just the first one in (type, name) order.
+    expect(regulars.some(n => n.startsWith('xyzLedger'))).toBe(true);
+    expect(inferPrefixFromObjectNames(names, 'ContosoFinanceSK')?.regular).toBe('xyz');
+  });
+
+  it('still reads every regular object of a model smaller than the cap', () => {
+    for (let i = 0; i < 12; i++) {
+      add(`ConSKThing${i}`, 'class');
+      add('run', 'method', `ConSKThing${i}`);
+    }
+    expect(index.getModelObjectNames('ContosoFinanceSK').sort()).toHaveLength(12);
   });
 
   it('still excludes members and non-extension children', () => {

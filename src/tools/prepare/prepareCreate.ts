@@ -16,6 +16,7 @@
 import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
 import { createProvenanceToken } from '../../utils/provenanceStore.js';
+import { isAsGivenNamingMode } from '../../utils/modelClassifier.js';
 import { getConfigManager } from '../../utils/configManager.js';
 import { checkObjectNaming } from '../../utils/objectNamingRules.js';
 import { COC_BASE_SYMBOL_TYPES, inferExtendedBase, normalizeObjectName } from '../../utils/objectNaming.js';
@@ -575,7 +576,9 @@ export async function prepareCreateTool(request: any, context: XppServerContext)
   // cached context.
   lines.push(
     `Next: call \`d365fo_file(action="create", objectType="${objectType}", objectName="${objectName}", groundingToken=...)\` ` +
-    (objectName.includes('.')
+    (isAsGivenNamingMode()
+      ? '— the name is written exactly as given (naming.prefixSource=as-given), so pass the full name your instruction file prescribes. '
+      : objectName.includes('.')
       ? '— the name is written as given; only the suffix after the dot is yours to choose. '
       : '— pass the BASE name, the prefix is applied for you. ') +
     'Syntax/BP linting and (under GROUNDING_ENFORCE=true) ' +
