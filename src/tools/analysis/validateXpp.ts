@@ -874,7 +874,15 @@ function checkBuiltinArity(code: string): ValidationViolation[] {
  *
  * Brace depths are counted on the masked copy, so a '{' inside a literal or a doc
  * comment cannot shift the method boundaries.
+ *
+ * Only a block whose header branches or loops makes `next` conditional. A `try`,
+ * `finally` or `using` block runs its body unconditionally, and the compiler accepts
+ * `next` there: counting every block deeper than the method body reported 66 shipped
+ * CoC methods that compile (QMSCaseDetailBase_Extension.insert, try/finally) as
+ * SYS10028 errors. `catch` stays conditional — its body runs only on an exception.
  */
+const COC_CONDITIONAL_BLOCK = /\b(if|else|while|for|do|switch|case|default|catch)\b/;
+
 function checkCocNextUnconditional(code: string): ValidationViolation[] {
   const violations: ValidationViolation[] = [];
   if (!/\[ExtensionOf\s*\(/i.test(code)) return violations;
@@ -885,6 +893,9 @@ function checkCocNextUnconditional(code: string): ValidationViolation[] {
     /^\s*(?:(?:public|protected|private|internal|static|final|display|edit|server|client)\s+)*[A-Za-z_]\w*\s+([A-Za-z_]\w*)\s*\([^;]*\)\s*$/;
 
   let depth = 0;
+  // One entry per block open inside the current method body: does its header branch?
+  const blocks: boolean[] = [];
+  let previousHeader = '';
   let classBodyDepth: number | null = null;
   // The method currently being walked, if any.
   let method: { name: string; bodyDepth: number; nexts: Array<{ line: number; excerpt: string; conditional: boolean }>; earlyReturn: number | null } | null = null;
@@ -953,9 +964,9 @@ function checkCocNextUnconditional(code: string): ValidationViolation[] {
         method.nexts.push({
           line: i + 1,
           excerpt: lines[i].trim(),
-          // Deeper than the method body means it sits inside if/while/switch/try;
-          // the same-line form "if (ret) ret = next foo();" never opens a block.
-          conditional: depthAtLineStart > method.bodyDepth || /\b(if|while|for|switch|case)\b/.test(clean),
+          // Inside an open if/while/switch/catch block, or the same-line form
+          // "if (ret) ret = next foo();", which never opens a block.
+          conditional: blocks.includes(true) || /\b(if|while|for|switch|case)\b/.test(clean),
         });
       } else if (
         method.earlyReturn === null &&
@@ -971,13 +982,30 @@ function checkCocNextUnconditional(code: string): ValidationViolation[] {
       }
     }
 
-    for (const ch of clean) {
-      if (ch === '{') depth++;
-      else if (ch === '}') {
+    let segmentStart = 0;
+    for (let c = 0; c < clean.length; c++) {
+      const ch = clean[c];
+      if (ch === '{') {
+        depth++;
+        if (method && depth > method.bodyDepth) {
+          // The header is the text before this brace, or the line above for a brace on its own line.
+          const header = clean.slice(segmentStart, c).trim() || previousHeader;
+          blocks.push(COC_CONDITIONAL_BLOCK.test(header));
+        }
+        segmentStart = c + 1;
+      } else if (ch === '}') {
+        if (method && depth > method.bodyDepth) blocks.pop();
         depth--;
-        if (method && depth < method.bodyDepth) closeMethod();
+        if (method && depth < method.bodyDepth) {
+          closeMethod();
+          blocks.length = 0;
+        }
+        segmentStart = c + 1;
+      } else if (ch === ';') {
+        segmentStart = c + 1;
       }
     }
+    if (clean.trim()) previousHeader = clean.trim();
   }
   closeMethod();
 

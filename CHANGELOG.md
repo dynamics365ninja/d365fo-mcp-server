@@ -29,6 +29,14 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Fixed
+- **COC004 reported `next` inside `try`, `finally` or `using` as conditional.** Any
+  block deeper than the method body counted as conditional, so CoC methods the compiler
+  accepts (`next insert()` inside `try … finally`, `return next insertFromForm()` inside
+  `using`) were refused as SYS10028 errors. Only blocks whose header branches or loops
+  (`if`, `else`, `while`, `for`, `do`, `switch`, `case`, `default`, `catch`) now make
+  `next` conditional. Across 3,193 shipped CoC classes that call `next`, COC004 fell
+  from 189 hits to 120. The rest are `[Replaceable]` base methods and data source
+  overrides, which need a lookup of the target method.
 - **`add-method` and `remove-method` failed on a data entity.** The bridge has no
   data-entity arm for either, so `d365fo_file` modify returned "add-method not supported
   for objectType 'data-entity' via bridge (use XML fallback)" and applied nothing — the
