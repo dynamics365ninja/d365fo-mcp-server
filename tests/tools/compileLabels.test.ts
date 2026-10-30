@@ -26,6 +26,7 @@ import {
   findLabelFileDirs,
   labelAssembliesAreStale,
   labelcArgs,
+  labelcEnv,
 } from '../../src/tools/write/compileLabels';
 import { describeLabelCompilation } from '../../src/tools/sdlc/buildProject';
 
@@ -169,24 +170,37 @@ describe('labelcArgs', () => {
     //   -output="K:\AosService\PackagesLocalDirectory\Demo\Resources"
     //   -modelmodule="Demo"
     const args = labelcArgs('K:\\AosService\\PackagesLocalDirectory', 'Demo',
-      'K:\\AosService\\PackagesLocalDirectory\\Demo\\Resources', null, null);
+      'K:\\AosService\\PackagesLocalDirectory\\Demo\\Resources');
     expect(args).toEqual([
       '-Metadata=K:\\AosService\\PackagesLocalDirectory',
       '-Output=K:\\AosService\\PackagesLocalDirectory\\Demo\\Resources',
       '-ModelModule=Demo',
     ]);
   });
+});
 
-  it('pins csc and the SDK tools when they were located', () => {
-    // labelc otherwise resolves csc/al/resgen from PATH, which the MCP server
-    // does not control — VS gets away with it because it runs from a dev shell.
-    const args = labelcArgs('K:\\PLD', 'Contoso', 'K:\\PLD\\Contoso\\Resources',
-      'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319',
-      'C:\\Program Files (x86)\\Microsoft SDKs\\Windows\\v10.0A\\bin\\NETFX 4.8 Tools');
-    expect(args).toContain('-CompilerPath=C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319');
-    expect(args).toContain(
-      '-SdkToolsPath=C:\\Program Files (x86)\\Microsoft SDKs\\Windows\\v10.0A\\bin\\NETFX 4.8 Tools',
-    );
+describe('labelcEnv', () => {
+  // labelc resolves csc/al/resgen from PATH, which the MCP server does not
+  // control — VS gets away with it because it runs from a dev shell.
+  const CSC = 'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319';
+  const SDK = 'C:\\Program Files (x86)\\Microsoft SDKs\\Windows\\v10.0A\\bin\\NETFX 4.8 Tools';
+
+  it('puts the located directories before the inherited PATH', () => {
+    const env = labelcEnv({ Path: 'C:\\Windows\\system32', OTHER: 'x' }, CSC, SDK);
+    expect(env).toEqual({ Path: `${CSC};${SDK};C:\\Windows\\system32`, OTHER: 'x' });
+  });
+
+  it('adds only what was located', () => {
+    expect(labelcEnv({ PATH: 'C:\\bin' }, null, SDK)).toEqual({ PATH: `${SDK};C:\\bin` });
+  });
+
+  it('creates PATH when none was inherited', () => {
+    expect(labelcEnv({ OTHER: 'x' }, CSC, null)).toEqual({ OTHER: 'x', PATH: CSC });
+  });
+
+  it('leaves the environment alone when nothing was located', () => {
+    const env = { PATH: 'C:\\bin' };
+    expect(labelcEnv(env, null, null)).toBe(env);
   });
 });
 

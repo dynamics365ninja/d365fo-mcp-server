@@ -520,9 +520,16 @@ export const runBpCheckTool = async (params: any, context: any) => {
 
     // Path resolution mirrors build_d365fo_project: (1) XPP config file if present — authoritative,
     // .mcp.json custom/microsoft packages paths are ignored in that case; (2) configManager
-    // (.mcp.json overrides, then XPP auto-detection); (3) drive scan for AosService (CHE).
+    // (.mcp.json overrides, then XPP auto-detection, then D365FO_PACKAGE_PATH); (3) drive
+    // scan for AosService (CHE). An explicit packagePath param replaces the packages root.
     // In UDE, customPackagesPath (ModelStoreFolder) is metadata root, microsoftPackagesPath
     // (FrameworkDirectory) is binaries root; in CHE both roles share packagesRoot.
+    //
+    // D365FO_PACKAGE_PATH has to be consulted BEFORE the drive scan. On a single-root VM
+    // whose metadata lives outside PackagesLocalDirectory (a repo folder with the standard
+    // packages symlinked in), the scan finds PackagesLocalDirectory, which does not contain
+    // the custom modules — and xppbp failed with "No module with the name ... could be
+    // found under the source path", whatever D365FO_PACKAGE_PATH or packagePath said.
     let customPackagesPath: string | null = null;
     let microsoftPackagesPath: string | null = null;
     const xppConfig = await configManager.getActiveXppConfig();
@@ -532,7 +539,8 @@ export const runBpCheckTool = async (params: any, context: any) => {
     }
 
     if (!customPackagesPath)    customPackagesPath    = await configManager.getCustomPackagesPath();
-    if (!microsoftPackagesPath) microsoftPackagesPath = await configManager.getMicrosoftPackagesPath();
+    if (!microsoftPackagesPath) microsoftPackagesPath = await configManager.getMicrosoftPackagesPath() ?? configManager.getPackagePath();
+    if (params.packagePath)     microsoftPackagesPath = params.packagePath;
 
     if (!microsoftPackagesPath) {
       microsoftPackagesPath = findPackagesRoot();
@@ -540,12 +548,9 @@ export const runBpCheckTool = async (params: any, context: any) => {
 
     if (!customPackagesPath && microsoftPackagesPath) customPackagesPath = microsoftPackagesPath;
 
-    // packagesRoot priority: explicit param → microsoft path → custom path → legacy env var → detected default
-    const packagesRoot = params.packagePath
-      || microsoftPackagesPath
-      || customPackagesPath
-      || configManager.getPackagePath()
-      || defaultPackagesRoot();
+    // packagesRoot priority: explicit param → XPP config / .mcp.json microsoft path → D365FO_PACKAGE_PATH
+    // → drive scan → custom path → detected default
+    const packagesRoot = microsoftPackagesPath || customPackagesPath || defaultPackagesRoot();
 
     // xppbp.exe always lives in the Microsoft/framework packages Bin, not the custom model folder.
     const xppbpPath = path.join(packagesRoot, 'Bin', 'xppbp.exe');

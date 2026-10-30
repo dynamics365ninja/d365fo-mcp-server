@@ -22,7 +22,7 @@ Call `get_workspace_info()` before doing anything with D365FO objects.
 
 ## Terminal Prohibition
 
-PowerShell / any terminal command **WILL HANG** in VS 2022 / VS 2026 MCP integration. Never use `run_in_terminal` or generate scripts as a fallback when an MCP tool fails — STOP and report the error verbatim.
+PowerShell / any terminal command **WILL HANG** in VS 2022 / VS 2026 MCP integration. Never use `run_command_in_terminal` / `run_in_terminal` (or any other terminal tool) or generate scripts as a fallback when an MCP tool fails — STOP and report the error verbatim.
 
 ## Core Tool Mapping
 
