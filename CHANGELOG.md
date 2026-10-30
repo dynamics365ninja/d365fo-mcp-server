@@ -44,6 +44,12 @@ those are called out explicitly below.
   [Names exactly as given](docs/CUSTOM_EXTENSIONS.md#names-exactly-as-given).
 
 ### Fixed
+- **Every modify warned "overwrite: IGNORED" although nobody passed it.** MCP clients
+  send the schema's published defaults, so `overwrite: false` arrived on each call and
+  the silent-drop guard answered "not a recognised d365fo_file parameter … Re-run with
+  the correct parameter name(s)" after a call that had succeeded, once per entry in a
+  batch. A parameter whose value equals its published default is no longer reported.
+  A real value the operation cannot use (`overwrite: true` on modify) still is.
 - **`validate_code` accepted any value on a known enum; no check for an update on a
   buffer never selected for update; prefix inference followed a minority prefix**
   (#1164). `PurchStatus::NoSuchStatus` passed as verified once `PurchStatus` existed.
