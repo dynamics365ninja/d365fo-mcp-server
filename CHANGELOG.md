@@ -106,6 +106,13 @@ those are called out explicitly below.
   override for `Owner.method`. The fallback also no longer edits a different method
   when the named one does not contain `oldCode`, and `newCode` already present in another
   method no longer turns the edit of the named one into "Nothing to do".
+- **`add-enum-value` without a value collided with the enum's first member.** The op
+  documents that the next available value is assigned, but the dispatcher sent 0 and the
+  bridge wrote it, so the new member duplicated the first one (the member without a
+  `<Value>`). xppc reports "Duplicate value '0' detected", and only on a full build. A new
+  member of an enum now gets one past the highest value in its XML. Enum extensions keep
+  0, which writes no `<Value>`: the platform numbers the members of an extensible enum,
+  and most shipped extensions (219 of 278) carry none.
 - **An incremental build silently removed a data entity's OData actions.** xppc's
   `-incremental` mode rewrites the `bin\Dynamics.AX.<Package>.ODataExtends.runtime`
   entry of every entity it recompiles without its actions, and the AOS reads them from
