@@ -42,6 +42,7 @@ import { validateFormExtensionControlShape, buildFormExtensionShapeError } from 
 import { gateOnReferenceErrors } from './resolveReferences.js';
 import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
 import { resolveEdtBaseType, resolveEdtEnumType, heuristicEdtBaseType, isEnumName, bridgeEdtBaseType } from '../smart/generateSmartTable.js';
+import { withEdtTypeFromExtends, bridgeEdtBaseTypeName } from './edtBaseTypeFromExtends.js';
 import { recordCreatedArtifact } from '../../workspace/createdArtifactLedger.js';
 import { resolveOrCreateLabelRef, type AutoLabelTarget } from './createLabel.js';
 import { isRawLabelText } from '../../utils/labelReference.js';
@@ -1357,6 +1358,11 @@ export async function handleCreateD365File(
     // same ✅ as one the bridge performed.
     let bridgeFailure: BridgeFailure | null = null;
 
+    // Both writers below default an EDT to a string one; its parent decides instead.
+    if (args.objectType === 'edt') {
+      args.properties = await withEdtTypeFromExtends(args.properties, context?.bridge, context?.symbolIndex?.getReadDb?.());
+    }
+
     if (!args.xmlContent && !skipBridgeForEnum && context?.bridge && actualModelName && canBridgeCreate(args.objectType)) {
       try {
         // Settle any rebuild an earlier write in this session scheduled but did not
@@ -1524,7 +1530,7 @@ export async function handleCreateD365File(
         // edtType:"Real", extends:"AmountCur" — the written XML came back i:type="AxEdtString".
         if (args.objectType === 'edt' && bridgeParams.properties && 'edtType' in bridgeParams.properties) {
           const { edtType, ...rest } = bridgeParams.properties;
-          bridgeParams.properties = { ...rest, BaseType: edtType };
+          bridgeParams.properties = { ...rest, BaseType: bridgeEdtBaseTypeName(edtType) as string };
         }
 
         // For plain 'table' creates, prefer the bridge's BP-smart path
@@ -1613,7 +1619,7 @@ export async function handleCreateD365File(
                       );
                       projectMsg = `\n✅ Added to project: ${path.basename(detectedPath)}`;
                     } else {
-                      projectMsg = `\n⚠️ Could not find .rnrproj for model '${actualModelName}' in ${solutionPathToUse}`;
+                      projectMsg = `\n⚠️ ${await ProjectFileFinder.describeNoProject(solutionPathToUse, actualModelName)}`;
                     }
                   } catch (projErr) {
                     projectMsg = `\n⚠️ Could not add to project: ${projErr}`;
@@ -1745,7 +1751,7 @@ export async function handleCreateD365File(
                   );
                   projectMsg = `\n✅ Added to project: ${path.basename(detectedPath)}`;
                 } else {
-                  projectMsg = `\n⚠️ Could not find .rnrproj for model '${actualModelName}' in ${solutionPathToUse}`;
+                  projectMsg = `\n⚠️ ${await ProjectFileFinder.describeNoProject(solutionPathToUse, actualModelName)}`;
                 }
               } catch (projErr) {
                 projectMsg = `\n⚠️ Could not add to project: ${projErr}`;
@@ -2155,9 +2161,8 @@ export async function handleCreateD365File(
           console.error(
             `[create_d365fo_file] No .rnrproj found in solution directory`
           );
-          projectMessage = `\n⚠️ Could not find .rnrproj file for model '${actualModelName}' in solution directory.\n` +
-            `Searched in: ${solutionPathToUse}\n` +
-            `Please specify projectPath parameter explicitly or add it to .mcp.json.\n`;
+          projectMessage =
+            `\n⚠️ ${await ProjectFileFinder.describeNoProject(solutionPathToUse, actualModelName)}\n`;
         } else {
           console.error(
             `[create_d365fo_file] Found project file: ${detectedPath}`
