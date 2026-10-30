@@ -88,6 +88,15 @@ those are called out explicitly below.
   being told to set `bridge.xrefDbName`. `doctor` now gives
   the same advice. It used to name only the config file, although the `env` block of
   `.mcp.json` takes precedence.
+- **Writes without a configured `projectPath` landed in an arbitrary project.** The
+  solution-folder scan returned the first `.rnrproj` whose file name contained the model
+  name, in directory order. In a solution with one project per feature area of a model
+  every project matched, so every create, modify and label write registered into the
+  alphabetically first one, and an exact `<Model>.rnrproj` lost to a shallower substring
+  match. The scan now returns `<Model>.rnrproj` wherever it sits, or the only project that
+  matches, and otherwise no project, as `autoDetectProject` already does when several
+  projects share a model. The log names the count and asks for `projectPath`, and the
+  create reply says how many projects matched instead of "Could not find .rnrproj".
 - **An incremental build silently removed a data entity's OData actions.** xppc's
   `-incremental` mode rewrites the `bin\Dynamics.AX.<Package>.ODataExtends.runtime`
   entry of every entity it recompiles without its actions, and the AOS reads them from

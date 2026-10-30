@@ -1619,7 +1619,7 @@ export async function handleCreateD365File(
                       );
                       projectMsg = `\n✅ Added to project: ${path.basename(detectedPath)}`;
                     } else {
-                      projectMsg = `\n⚠️ Could not find .rnrproj for model '${actualModelName}' in ${solutionPathToUse}`;
+                      projectMsg = `\n⚠️ ${await ProjectFileFinder.describeNoProject(solutionPathToUse, actualModelName)}`;
                     }
                   } catch (projErr) {
                     projectMsg = `\n⚠️ Could not add to project: ${projErr}`;
@@ -1751,7 +1751,7 @@ export async function handleCreateD365File(
                   );
                   projectMsg = `\n✅ Added to project: ${path.basename(detectedPath)}`;
                 } else {
-                  projectMsg = `\n⚠️ Could not find .rnrproj for model '${actualModelName}' in ${solutionPathToUse}`;
+                  projectMsg = `\n⚠️ ${await ProjectFileFinder.describeNoProject(solutionPathToUse, actualModelName)}`;
                 }
               } catch (projErr) {
                 projectMsg = `\n⚠️ Could not add to project: ${projErr}`;
@@ -2161,9 +2161,8 @@ export async function handleCreateD365File(
           console.error(
             `[create_d365fo_file] No .rnrproj found in solution directory`
           );
-          projectMessage = `\n⚠️ Could not find .rnrproj file for model '${actualModelName}' in solution directory.\n` +
-            `Searched in: ${solutionPathToUse}\n` +
-            `Please specify projectPath parameter explicitly or add it to .mcp.json.\n`;
+          projectMessage =
+            `\n⚠️ ${await ProjectFileFinder.describeNoProject(solutionPathToUse, actualModelName)}\n`;
         } else {
           console.error(
             `[create_d365fo_file] Found project file: ${detectedPath}`
