@@ -28,6 +28,8 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+## [1.22.0] — 2026-10-30
+
 ### Added
 - **Forms can be read from the database alone, and `find_references` lists the forms that
   use a table.** The index stores each form's original XML (gzipped, table `form_source`,
