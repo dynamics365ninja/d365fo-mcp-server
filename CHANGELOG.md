@@ -44,6 +44,13 @@ those are called out explicitly below.
   [Names exactly as given](docs/CUSTOM_EXTENSIONS.md#names-exactly-as-given).
 
 ### Fixed
+- **TTS001 warned on replace-code fragments and never reached extension classes.** The
+  write-time check counted `ttsbegin`/`ttscommit` in the text sent, so adding a line
+  after `ttsbegin;` in a balanced method warned "ttsbegin × 1, ttscommit × 0". For a
+  `replace-code`, TTS001 now stays only when the edit changes the balance between
+  `oldCode` and `newCode`. Separately, a method sent to an extension class was wrapped in
+  a synthetic class header whose line the rebase dropped, together with the TTS001 that
+  sat on it. That violation is now kept on line 1 of the code sent.
 - **COC004 reported `next` inside `try`, `finally` or `using` as conditional.** Any
   block deeper than the method body counted as conditional, so CoC methods the compiler
   accepts (`next insert()` inside `try … finally`, `return next insertFromForm()` inside

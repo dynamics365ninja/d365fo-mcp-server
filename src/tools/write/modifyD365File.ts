@@ -3409,7 +3409,7 @@ async function runModify(
 
     // The offline rule set on the same text. The object's <Declaration> supplies
     // the class header a method snippet lacks; without it, fewer rules apply.
-    const xppRuleNote = writtenXpp ? validateWrittenXpp(writtenXpp, afterContent) : '';
+    const xppRuleNote = writtenXpp ? validateWrittenXpp(writtenXpp, afterContent, operation === 'replace-code' ? args.oldCode : undefined) : '';
 
     const changedLinesNote = replaceCodeBefore !== null && afterContent !== null
       ? renderChangedLines(replaceCodeBefore, afterContent)
