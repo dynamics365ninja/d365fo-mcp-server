@@ -29,6 +29,22 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Fixed
+- **`validate_code` accepted any value on a known enum; no check for an update on a
+  buffer never selected for update; prefix inference followed a minority prefix**
+  (#1164). `PurchStatus::NoSuchStatus` passed as verified once `PurchStatus` existed.
+  The references check now reads the value names from the enum's XML and from every
+  indexed `AxEnumExtension` of it (plus, for packages shipped without XML, the compiled
+  `bin\<Package>_AxEnumExtension.md`) and reports `unknown-enum-value` as an error.
+  Over the 312,533 `Enum::Value` uses in shipped X++ it raised 30, every one a .NET enum
+  of the same name brought in by a `using` directive, so a source with such a directive
+  gets a warning instead; a namespace-qualified `A.B.Enum::Value` and an enum whose XML
+  is not on this machine are not checked. New rule SEL011 warns on `buf.update()` /
+  `buf.delete()` when every select of `buf` since its declaration lacks `forupdate`,
+  `pessimisticlock` and `optimisticlock` — 20 hits over 1.1M shipped CDATA blocks,
+  all code paths that throw if reached. And the regular-object sample prefix inference
+  reads was the model's first 60 names in (type, name) order, so in a 3,800-object
+  `xyz` model with 69 `xyz3PL` names (digits sort first) inference answered `xyz3PL`;
+  the sample is now drawn as eight short runs spread over the model's rows.
 - **`add-method` and `remove-method` failed on a data entity.** The bridge has no
   data-entity arm for either, so `d365fo_file` modify returned "add-method not supported
   for objectType 'data-entity' via bridge (use XML fallback)" and applied nothing — the
