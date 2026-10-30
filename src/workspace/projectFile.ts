@@ -210,7 +210,7 @@ export class ProjectFileFinder {
 
     // Every candidate is needed now, not just the first, so the whole tree is
     // walked: entry types come with the listing instead of one stat per file.
-    let entries: Array<{ name: string; isDirectory(): boolean }>;
+    let entries: Array<{ name: string; isDirectory(): boolean; isSymbolicLink(): boolean }>;
     try {
       entries = await fs.readdir(dir, { withFileTypes: true });
     } catch {
@@ -224,7 +224,10 @@ export class ProjectFileFinder {
     }
 
     for (const entry of entries) {
-      if (entry.isDirectory()) {
+      // A Dirent does not follow links, where the fs.stat it replaced did: a project
+      // folder linked into the solution (junction or symlink) is still walked. A link
+      // to a file fails readdir, which returns quietly.
+      if (entry.isDirectory() || entry.isSymbolicLink()) {
         await ProjectFileFinder.collectRecursive(path.join(dir, entry.name), modelName, currentDepth + 1, maxDepth, found);
       }
     }

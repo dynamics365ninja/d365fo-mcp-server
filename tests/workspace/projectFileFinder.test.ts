@@ -90,6 +90,23 @@ describe('ProjectFileFinder.findProjectInSolution', () => {
 
     await expect(ProjectFileFinder.findProjectInSolution(root, 'ContosoCore')).resolves.toBeNull();
   });
+
+  it('walks a project folder linked into the solution', async () => {
+    // readdir's Dirent does not follow links; the fs.stat this scan used to make did.
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'project-finder-linked-'));
+    try {
+      await fs.writeFile(path.join(outside, 'ContosoCore.rnrproj'), '<Project />', 'utf-8');
+      // 'junction' needs no privilege on Windows and is ignored elsewhere.
+      await fs.symlink(outside, path.join(root, 'Linked'), 'junction');
+
+      await expect(ProjectFileFinder.findProjectInSolution(root, 'ContosoCore'))
+        .resolves.toBe(path.join(root, 'Linked', 'ContosoCore.rnrproj'));
+    } finally {
+      // The link goes first, so removing root cannot reach through it.
+      await fs.rm(path.join(root, 'Linked'), { force: true });
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('ProjectFileFinder.describeNoProject', () => {
