@@ -27,6 +27,9 @@ import {
   bridgeAddFieldToFieldGroup,
   bridgeAddDataSource,
   bridgeAddMenuItemToMenu,
+  bridgeAddIndex,
+  bridgeAddFieldGroup,
+  bridgeAddRelation,
 } from '../../src/bridge/bridgeAdapter';
 
 /** A healthy bridge whose every write returns the given payload. */
@@ -39,6 +42,9 @@ function bridgeReturning(payload: Record<string, unknown>): any {
     addFieldToFieldGroup: answer,
     addDataSource: answer,
     addMenuItemToMenu: answer,
+    addIndex: answer,
+    addFieldGroup: answer,
+    addRelation: answer,
   };
 }
 
@@ -71,6 +77,21 @@ const SKIPPABLE: Array<{
   {
     name: 'bridgeAddMenuItemToMenu',
     call: b => bridgeAddMenuItemToMenu(b, 'PurchOrder', 'KSBackOrderMenuItem'),
+  },
+  // The table adds below skip an element that already exists (AddIndex, AddFieldGroup,
+  // AddRelation). AutoReport is the common case: table create writes it, and a
+  // follow-up add-field-group AutoReport used to fail with "already exists among elements".
+  {
+    name: 'bridgeAddIndex',
+    call: b => bridgeAddIndex(b, 'PurchTable', 'KSIdx', ['PurchId']),
+  },
+  {
+    name: 'bridgeAddFieldGroup',
+    call: b => bridgeAddFieldGroup(b, 'PurchTable', 'AutoReport', undefined, ['PurchId']),
+  },
+  {
+    name: 'bridgeAddRelation',
+    call: b => bridgeAddRelation(b, 'PurchTable', 'KSRel', 'VendTable', [{ field: 'OrderAccount', relatedField: 'AccountNum' }]),
   },
 ];
 

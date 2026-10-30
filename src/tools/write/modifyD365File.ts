@@ -2266,10 +2266,10 @@ async function runModify(
             if (enumSet && !enumSet.success) {
               // Undo the half-written field. Two calls are not atomic, and what
               // they can leave behind — an AxTableFieldEnum with no enum — is a
-              // field the caller did not ask for. Worse, the bridge's AddField
-              // does not check for an existing field, so an agent that reads
-              // "failed" and simply repeats the call ends up with the field
-              // twice. Rolling back restores the pre-call state, which is the
+              // field the caller did not ask for. (AddField now skips a field that
+              // exists, so a repeat no longer adds it twice, and the skip guard
+              // above keeps this rollback off an existing field.) Rolling back
+              // restores the pre-call state, which is the
               // only state a failed operation may leave.
               const undone = await bridgeRemoveField(context.bridge, objectName, args.fieldName);
               bridgeResult = {
@@ -2413,8 +2413,8 @@ async function runModify(
             if (xmlFallbackResult) bridgeResult = viaXmlFallback(xmlFallbackResult);
           }
           // Valid-time-state key/mode live outside what the bridge's AddIndex knows —
-          // stamp them into the on-disk XML once the index exists (either path).
-          if (bridgeResult?.success) {
+          // stamp them into the on-disk XML once the index exists (either path, not a skip).
+          if (bridgeResult?.success && !bridgeResult.skipped) {
             const vtsResult = await directXmlSetIndexValidTimeState(
               actualFilePath,
               (args as any).indexName,
@@ -2524,7 +2524,7 @@ async function runModify(
           // The on-disk writer stays as the fallback for an OLD bridge binary, which
           // ignores the new params without complaint; it no-ops when the properties are
           // already present, so the bridge path costs one file read.
-          if (bridgeResult?.success && !(bridgeResult as any).propertiesWritten) {
+          if (bridgeResult?.success && !bridgeResult.skipped && !(bridgeResult as any).propertiesWritten) {
             const relProps = await directXmlEnsureRelationProperties(
               actualFilePath,
               (args as any).relationName,

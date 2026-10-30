@@ -1588,6 +1588,8 @@ namespace D365MetadataBridge.Services
             var axTable = _provider.Tables.Read(tableName);
             if (axTable != null)
             {
+                if (HasMemberNamed(axTable.Fields, fieldName))
+                    return AlreadyPresent("add-field", tableName, $"field '{fieldName}'", "Use modify-field to change it.", "IMetaTableProvider.Update");
                 var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
                 axTable.AddField(axField);
                 var tableProvider = _provider.Tables as IMetaTableProvider
@@ -1599,6 +1601,8 @@ namespace D365MetadataBridge.Services
             var axExt = _provider.TableExtensions.Read(tableName);
             if (axExt != null)
             {
+                if (HasMemberNamed(axExt.Fields, fieldName))
+                    return AlreadyPresent("add-field", tableName, $"field '{fieldName}'", "Use modify-field to change it.", "IMetaTableExtensionProvider.Update");
                 var msi = GetModelSaveInfoForObject(_provider.TableExtensions, tableName);
                 axExt.Fields.Add(axField);
                 var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
@@ -1609,6 +1613,30 @@ namespace D365MetadataBridge.Services
 
             throw new ArgumentException($"Table or table-extension '{tableName}' not found");
         }
+
+        /// <summary>
+        /// True when a metadata collection already holds a member of this name (by its Name
+        /// property, case-insensitive, as the AOT compares names).
+        /// </summary>
+        /// <remarks>
+        /// The table Add* writes did not look before adding. A field group the caller re-sends
+        /// (table create already writes AutoReport, AutoLookup, …) failed inside the SDK with
+        /// "already exists among elements" and stopped the batch it was in, and the comment on
+        /// the enum add-field path records AddField ending up with the field twice.
+        /// </remarks>
+        private static bool HasMemberNamed(System.Collections.IEnumerable items, string name)
+        {
+            foreach (var item in items)
+            {
+                var itemName = item?.GetType().GetProperty("Name")?.GetValue(item) as string;
+                if (string.Equals(itemName, name, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>The skip answer for an element that is already there: nothing written, and why.</summary>
+        private static object AlreadyPresent(string operation, string objectName, string what, string hint, string api) =>
+            new { success = true, operation, objectName, skipped = true, reason = $"{what} already exists on '{objectName}', nothing was written. {hint}", api };
 
         /// <summary>
         /// add-field on a data-entity-view-extension: appends an AxDataEntityViewMappedField
@@ -2169,6 +2197,8 @@ namespace D365MetadataBridge.Services
             var axTable = _provider.Tables.Read(tableName);
             if (axTable != null)
             {
+                if (HasMemberNamed(axTable.Indexes, indexName))
+                    return AlreadyPresent("add-index", tableName, $"index '{indexName}'", "To change it, remove-index then add-index.", "IMetaTableProvider.Update");
                 var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
                 axTable.AddIndex(axIdx);
                 ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
@@ -2178,6 +2208,8 @@ namespace D365MetadataBridge.Services
             var axExt = _provider.TableExtensions.Read(tableName);
             if (axExt != null)
             {
+                if (HasMemberNamed(axExt.Indexes, indexName))
+                    return AlreadyPresent("add-index", tableName, $"index '{indexName}'", "To change it, remove-index then add-index.", "IMetaTableExtensionProvider.Update");
                 var msi = GetModelSaveInfoForObject(_provider.TableExtensions, tableName);
                 axExt.Indexes.Add(axIdx);
                 var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
@@ -2480,6 +2512,8 @@ namespace D365MetadataBridge.Services
             var axTable = _provider.Tables.Read(tableName);
             if (axTable != null)
             {
+                if (HasMemberNamed(axTable.Relations, relationName))
+                    return AlreadyPresent("add-relation", tableName, $"relation '{relationName}'", "To change it, remove-relation then add-relation.", "IMetaTableProvider.Update");
                 var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
                 axTable.AddRelation(axRel);
                 ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
@@ -2557,6 +2591,8 @@ namespace D365MetadataBridge.Services
                     };
                 }
 
+                if (HasMemberNamed(axExt.Relations, relationName))
+                    return AlreadyPresent("add-relation", tableName, $"relation '{relationName}'", "To change it, remove-relation then add-relation.", "IMetaTableExtensionProvider.Update");
                 axExt.Relations.Add(axRel);
                 extProvider.Update(axExt, msi);
                 return new
@@ -2656,6 +2692,8 @@ namespace D365MetadataBridge.Services
             var axTable = _provider.Tables.Read(tableName);
             if (axTable != null)
             {
+                if (HasMemberNamed(axTable.FieldGroups, groupName))
+                    return AlreadyPresent("add-field-group", tableName, $"field group '{groupName}'", "Use add-field-to-field-group to add fields to it.", "IMetaTableProvider.Update");
                 var msi = GetModelSaveInfoForObject(_provider.Tables, tableName);
                 axTable.AddFieldGroup(axFg);
                 ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
@@ -2665,6 +2703,8 @@ namespace D365MetadataBridge.Services
             var axExt = _provider.TableExtensions.Read(tableName);
             if (axExt != null)
             {
+                if (HasMemberNamed(axExt.FieldGroups, groupName))
+                    return AlreadyPresent("add-field-group", tableName, $"field group '{groupName}'", "Use add-field-to-field-group to add fields to it.", "IMetaTableExtensionProvider.Update");
                 var msi = GetModelSaveInfoForObject(_provider.TableExtensions, tableName);
                 axExt.FieldGroups.Add(axFg);
                 var extProvider = _provider.TableExtensions as IMetaTableExtensionProvider
@@ -2764,6 +2804,11 @@ namespace D365MetadataBridge.Services
                 if (targetFg == null)
                     throw new InvalidOperationException($"Field group '{groupName}' not found on table '{tableName}'");
 
+                foreach (AxTableFieldGroupField existing in targetFg.Fields)
+                {
+                    if (string.Equals(existing.DataField, fieldName, StringComparison.OrdinalIgnoreCase))
+                        return new { success = true, operation = "add-field-to-field-group", objectName = tableName, groupName, fieldName, extendBaseFieldGroup = false, skipped = true, reason = $"field '{fieldName}' already in field group '{groupName}'", api = "IMetaTableProvider.Update" };
+                }
                 targetFg.AddField(new AxTableFieldGroupField { DataField = fieldName });
 
                 ((IMetaTableProvider)_provider.Tables).Update(axTable, msi);
@@ -2813,6 +2858,11 @@ namespace D365MetadataBridge.Services
                         $"Field group '{groupName}' not found on table-extension '{tableName}'. " +
                         "If it is a group defined by the BASE table, pass extendBaseFieldGroup=true to append the field through <FieldGroupExtensions> instead.");
 
+                foreach (AxTableFieldGroupField existing in targetFg.Fields)
+                {
+                    if (string.Equals(existing.DataField, fieldName, StringComparison.OrdinalIgnoreCase))
+                        return new { success = true, operation = "add-field-to-field-group", objectName = tableName, groupName, fieldName, extendBaseFieldGroup = false, skipped = true, reason = $"field '{fieldName}' already in field group '{groupName}'", api = "IMetaTableExtensionProvider.Update" };
+                }
                 targetFg.AddField(new AxTableFieldGroupField { DataField = fieldName });
                 extProvider.Update(axExt, msi);
                 return new { success = true, operation = "add-field-to-field-group", objectName = tableName, groupName, fieldName, extendBaseFieldGroup = false, api = "IMetaTableExtensionProvider.Update" };

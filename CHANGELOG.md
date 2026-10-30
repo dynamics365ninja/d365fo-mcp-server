@@ -29,6 +29,16 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Fixed
+- **Re-adding a table element that exists failed the call or the batch.** The bridge's
+  table `AddField`, `AddIndex`, `AddFieldGroup`, `AddFieldToFieldGroup` and
+  `AddRelation` added without checking the name, so an element that existed failed
+  inside the SDK ("already exists among elements") and stopped the `operations[]` batch
+  it was in. Table create always writes the five Auto field groups, so a follow-up
+  `add-field-group AutoReport` always collided. Each now answers as a skip, nothing
+  written, with the reason and the operation that changes the element. The index,
+  field-group and relation wrappers report it as "⏭️ NOT written" (the field paths
+  already did). The XML index fallback's "✅ already present" is a skip too, and the
+  valid-time-state and relation-property follow-ups no longer run after a skip.
 - **`add-method` and `remove-method` failed on a data entity.** The bridge has no
   data-entity arm for either, so `d365fo_file` modify returned "add-method not supported
   for objectType 'data-entity' via bridge (use XML fallback)" and applied nothing — the
