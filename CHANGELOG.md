@@ -66,6 +66,13 @@ those are called out explicitly below.
   For methods inside the class body, a signature over several lines also lost its
   attribute and every line above that call, with no error. The name and the method start
   now come from the `(` that matches the signature's last `)`.
+- **An EDT that extends a real, integer or date EDT was created as a string EDT.** With
+  `extends` but no `edtType`, both the bridge and the XML template fell back to
+  `AxEdtString`, so `extends: "AmountCur"` wrote a string EDT extending a real one and
+  every field built on it was mistyped. The base type now comes from the parent EDT
+  (bridge first, then the symbol index). String and enum parents, and parents that
+  cannot be resolved, are left to the writers as before. `edtType` in the `AxEdt*` form
+  (`AxEdtReal`) also reaches the bridge as `Real` instead of falling through to a string.
 - **An incremental build silently removed a data entity's OData actions.** xppc's
   `-incremental` mode rewrites the `bin\Dynamics.AX.<Package>.ODataExtends.runtime`
   entry of every entity it recompiles without its actions, and the AOS reads them from
