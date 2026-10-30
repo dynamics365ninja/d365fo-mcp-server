@@ -29,6 +29,12 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Fixed
+- **Every modify warned "overwrite: IGNORED" although nobody passed it.** MCP clients
+  send the schema's published defaults, so `overwrite: false` arrived on each call and
+  the silent-drop guard answered "not a recognised d365fo_file parameter … Re-run with
+  the correct parameter name(s)" after a call that had succeeded, once per entry in a
+  batch. A parameter whose value equals its published default is no longer reported.
+  A real value the operation cannot use (`overwrite: true` on modify) still is.
 - **`add-method` and `remove-method` failed on a data entity.** The bridge has no
   data-entity arm for either, so `d365fo_file` modify returned "add-method not supported
   for objectType 'data-entity' via bridge (use XML fallback)" and applied nothing — the
