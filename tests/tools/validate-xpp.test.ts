@@ -566,6 +566,123 @@ describe('TTS003 — unguarded retry', () => {
   });
 });
 
+describe('SEL011 — update()/delete() on a buffer not selected for update (#1164)', () => {
+  const sel011 = async (code: string) =>
+    getText(await validateXppTool(req({ code, codeType: 'xpp' }))).includes('SEL011');
+
+  it('flags update() inside a while select that has no forupdate', async () => {
+    expect(await sel011(`
+      PurchTable purchTable;
+      ttsbegin;
+      while select purchTable where purchTable.PurchStatus == PurchStatus::Backorder
+      {
+          purchTable.update();
+      }
+      ttscommit;
+    `)).toBe(true);
+  });
+
+  it('flags delete() after a field-list select of the buffer', async () => {
+    expect(await sel011(`
+      ProjDependency dependency;
+      while select PredecessorHierarchyTaskId from dependency where dependency.ProjPlanHierarchyId == _id
+      {
+          dependency.delete();
+      }
+    `)).toBe(true);
+  });
+
+  it('flags the buffer updated next to the one that was selected forupdate', async () => {
+    // Shipped RetailSizeGroupTrans.checkSizeLength: the loop locks sizeGroupTrans2
+    // and updates sizeGroupTrans.
+    expect(await sel011(`
+      RetailSizeGroupTrans sizeGroupTrans, sizeGroupTrans2;
+      select firstonly sizeGroupTrans where sizeGroupTrans.SizeGroup == this.SizeGroup;
+      while select forupdate sizeGroupTrans2 where sizeGroupTrans2.SizeGroup == this.SizeGroup
+      {
+          sizeGroupTrans.update();
+      }
+    `)).toBe(true);
+  });
+
+  it('accepts forupdate, pessimisticlock and optimisticlock', async () => {
+    for (const hint of ['forupdate', 'pessimisticlock', 'optimisticlock', 'firstonly forupdate']) {
+      expect(await sel011(`
+        CustTable custTable;
+        select ${hint} custTable where custTable.AccountNum == _account;
+        custTable.update();
+      `), hint).toBe(false);
+    }
+  });
+
+  it('accepts a buffer re-filled after its select, or given selectForUpdate', async () => {
+    expect(await sel011(`
+      CustTable custTable;
+      select custTable where custTable.AccountNum == _account;
+      custTable = CustTable::find(_account, true);
+      custTable.update();
+    `)).toBe(false);
+    expect(await sel011(`
+      CustTable custTable;
+      custTable.selectForUpdate(true);
+      select custTable where custTable.AccountNum == _account;
+      custTable.update();
+    `)).toBe(false);
+  });
+
+  it('does not count a field or a where-clause mention as a select of the buffer', async () => {
+    // Shipped DirPartyPostalAddressView.delete: `Location` is a FIELD in the list,
+    // and `x.CaseAssociation == caseAssociation.RecId` is not a binding either.
+    expect(await sel011(`
+      LogisticsLocation location;
+      DirPartyLocation dirPartyLocation;
+      location = LogisticsLocation::find(this.Location, true);
+      select firstonly RecId, Location, Party from dirPartyLocation where dirPartyLocation.Location == this.Location;
+      location.delete();
+    `)).toBe(false);
+    expect(await sel011(`
+      CaseAssociation caseAssociation = CaseAssociation::qmsFindRecid(_rec, true);
+      QMSCAPACaseAssociationInventDim dim;
+      select count(RecId) from dim where dim.CaseAssociation == caseAssociation.RecId;
+      caseAssociation.delete();
+    `)).toBe(false);
+  });
+
+  it('stays quiet on temp tables, buffer copies, this, and buffers it never saw selected', async () => {
+    expect(await sel011(`
+      SalesTmpLine tmpLine;
+      while select tmpLine { tmpLine.delete(); }
+    `)).toBe(false);
+    expect(await sel011(`
+      JmgStampJournalTable tmpref = stampJournalTable;
+      while select tmpref { tmpref.delete(); }
+    `)).toBe(false);
+    expect(await sel011('this.update();')).toBe(false);
+    expect(await sel011(`
+      public void post(CustTable _custTable)
+      {
+          _custTable.update();
+      }
+    `)).toBe(false);
+  });
+
+  it("scopes the selects to the buffer's own declaration", async () => {
+    // The same name selected without forupdate in an EARLIER method is not this buffer.
+    expect(await sel011(`
+      public void a()
+      {
+          CustTable custTable;
+          select custTable where custTable.AccountNum == 'x';
+      }
+      public void b()
+      {
+          CustTable custTable = CustTable::find('x', true);
+          custTable.update();
+      }
+    `)).toBe(false);
+  });
+});
+
 describe('SEL006 / SEL007 — index hint and foreign join syntax', () => {
   it('SEL006: flags index hint without allowIndexHint(true)', async () => {
     const code = `select firstOnly custTable index hint AccountIdx where custTable.AccountNum == acc;`;

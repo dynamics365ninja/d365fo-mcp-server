@@ -44,6 +44,7 @@ import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
 import { canonicalSymbolName, lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import { scaffoldWriteRefusalResult } from '../write/writeAnchorGuard.js';
 import { upsertWrittenFileIntoIndex } from '../write/inlineIndexUpsert.js';
+import { recordCreatedArtifact } from '../../workspace/createdArtifactLedger.js';
 
 /**
  * The field a report temp table's unique index is built on.
@@ -1232,12 +1233,15 @@ export async function handleGenerateSmartReport(
       continue;
     }
 
+    // Only a file this call brings into being may later be deleted by undo.
+    const existedBefore = fs.existsSync(normalizedPath);
     fs.writeFileSync(normalizedPath, normalizeD365Xml(obj.content), 'utf-8');
     // Same reason as the other generators: an object the index never hears
     // about is missing from the untyped `search` that now answers from it.
     await upsertWrittenFileIntoIndex(normalizedPath, { symbolIndex });
 
     let projectMsg = '';
+    let addedToProject: string | undefined;
     if (effectiveProjectPath) {
       try {
         const projectManager = new ProjectFileManager({ withinSolutionRoots: true });
@@ -1247,10 +1251,14 @@ export async function handleGenerateSmartReport(
           obj.objectName,
           normalizedPath
         );
+        if (wasAdded) addedToProject = effectiveProjectPath;
         projectMsg = wasAdded ? ' ✅ added to project' : ' (already in project)';
       } catch (e) {
         projectMsg = ` ⚠️ project add failed: ${e instanceof Error ? e.message : String(e)}`;
       }
+    }
+    if (!existedBefore) {
+      recordCreatedArtifact({ filePath: normalizedPath, objectType: obj.objectType, objectName: obj.objectName, projectPath: addedToProject });
     }
 
     results.push(`📁 ${obj.objectType}: ${normalizedPath}${projectMsg}`);

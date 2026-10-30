@@ -120,6 +120,26 @@ describe('undo_last_modification — non-git ledger fallback', () => {
     expect(proj).toContain('Services\\"');
   });
 
+  it('removes the compiler-metadata copy of the created element on the git path', async () => {
+    // <Package>\XppMetadata\<Model>\<AxType>\<Name>.xml is written next to the source
+    // by the metadata provider; deleting only the source left it in the manifests.
+    const repoDir = gitRepoIn(tmpDir);
+    const filePath = path.join(repoDir, 'Contoso', 'Contoso', 'AxClass', 'ConSmoke.xml');
+    const copy = path.join(repoDir, 'Contoso', 'XppMetadata', 'Contoso', 'AxClass', 'ConSmoke.xml');
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.mkdirSync(path.dirname(copy), { recursive: true });
+    fs.writeFileSync(filePath, '<AxClass><Name>ConSmoke</Name></AxClass>', 'utf-8');
+    fs.writeFileSync(copy, '<AxClass><Name>ConSmoke</Name></AxClass>', 'utf-8');
+    recordCreatedArtifact({ filePath, objectType: 'class', objectName: 'ConSmoke' });
+
+    const result = await undoLastModificationTool({ filePath }, {} as any);
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toMatch(/compiler-metadata copy/);
+    expect(fs.existsSync(filePath)).toBe(false);
+    expect(fs.existsSync(copy)).toBe(false);
+  });
+
   it('cleans the .rnrproj on the GIT path too — PackagesLocalDirectory usually is a repo', async () => {
     // The two undo paths did not agree: the ledger one removed the project entry,
     // the git-untracked one deleted the file and stopped there. A model directory
@@ -156,9 +176,10 @@ describe('undo_last_modification — non-git ledger fallback', () => {
     expect(lookupCreatedArtifact(filePath)).toBeUndefined();
   });
 
-  it('leaves the project alone on the git path when the ledger never saw the file', async () => {
-    // Safety: an untracked file this session did not create carries no project
-    // entry to reverse, and undo must not go looking for one to delete.
+  it('refuses, and keeps the file, on the git path when the ledger never saw it', async () => {
+    // Safety: an untracked file this session did not create is an object from an
+    // earlier session that is not committed yet. Deleting it would remove the
+    // whole object, not revert the last change, and nothing could restore it.
     const repoDir = gitRepoIn(tmpDir);
 
     const filePath = path.join(repoDir, 'Unrecorded.xml');
@@ -166,9 +187,10 @@ describe('undo_last_modification — non-git ledger fallback', () => {
 
     const result = await undoLastModificationTool({ filePath }, {} as any);
 
-    expect(result.isError).toBeFalsy();
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/did not\s+create it/);
     expect(result.content[0].text).not.toMatch(/project entry/i);
-    expect(fs.existsSync(filePath)).toBe(false);
+    expect(fs.existsSync(filePath)).toBe(true);
   });
 
   it('drops the <Folder Include> when addToProject added it in this session', async () => {

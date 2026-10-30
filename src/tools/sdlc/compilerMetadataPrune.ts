@@ -1,5 +1,45 @@
 import path from 'path';
-import { readdir, stat, unlink, utimes } from 'fs/promises';
+import { readdir, rmdir, stat, unlink, utimes } from 'fs/promises';
+
+/**
+ * Remove the compiler-metadata copy of ONE element whose source was just deleted.
+ *
+ * The source is `<root>\<Package>\<Model>\<AxType>\<Name>.xml`; its copy is
+ * `<root>\<Package>\XppMetadata\<Model>\<AxType>\<Name>.xml` — the layout
+ * pruneStaleCompilerMetadata pairs. That prune removes such a phantom, but only during
+ * an incremental build of this server. An `undo` or `delete` followed by a Visual
+ * Studio build or a packaging step kept the deleted element in the metadata and so in
+ * the `.md` manifests. This applies the prune's own rule ("source gone → delete the
+ * file") at the moment the source goes, then removes the copy's type folder if that
+ * left it empty (non-recursive: a folder with anything else in it stays).
+ *
+ * Does nothing while the source still exists. Never throws — the delete it follows
+ * has already succeeded. Returns the removed path, or null.
+ */
+export async function removeCompilerMetadataFor(sourceFile: string): Promise<string | null> {
+  try {
+    await stat(sourceFile);
+    return null; // source still there: the copy is not a phantom
+  } catch (err: any) {
+    if (err?.code !== 'ENOENT') return null;
+  }
+  const typeDir = path.dirname(sourceFile);
+  const modelDir = path.dirname(typeDir);
+  const packageDir = path.dirname(modelDir);
+  const metaTypeDir = path.join(packageDir, 'XppMetadata', path.basename(modelDir), path.basename(typeDir));
+  const metaFile = path.join(metaTypeDir, path.basename(sourceFile));
+  try {
+    await unlink(metaFile);
+  } catch {
+    return null;
+  }
+  try {
+    await rmdir(metaTypeDir);
+  } catch {
+    // Not empty, or already gone — either way nothing more to do.
+  }
+  return metaFile;
+}
 
 /**
  * What {@link pruneStaleCompilerMetadata} did to one package's XppMetadata tree.
