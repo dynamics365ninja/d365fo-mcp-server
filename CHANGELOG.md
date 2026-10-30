@@ -44,6 +44,10 @@ those are called out explicitly below.
   [Names exactly as given](docs/CUSTOM_EXTENSIONS.md#names-exactly-as-given).
 
 ### Fixed
+- **An already-applied `replace-code` counted as applied in a batch.** Its "no change
+  needed" answer returned before the outcome was marked skipped, so `operations[]`
+  reported it in "N/N operation(s) applied" and in the "verified on disk" trailer for a
+  write that never happened. It is now counted as skipped, as a bridge skip is.
 - **Every modify warned "overwrite: IGNORED" although nobody passed it.** MCP clients
   send the schema's published defaults, so `overwrite: false` arrived on each call and
   the silent-drop guard answered "not a recognised d365fo_file parameter … Re-run with

@@ -2781,7 +2781,9 @@ async function runModify(
             if (verdict?.kind === 'refuse') throw new Error(verdict.message);
             if (verdict?.kind === 'noop') {
               // An already-correct file is a success; "oldCode not found" would
-              // read as "the file is still wrong" and invite a retry.
+              // read as "the file is still wrong" and invite a retry. Nothing was
+              // written, so a batch must count it as skipped, not applied.
+              if (outcome) outcome.skipped = true;
               return {
                 content: [{
                   type: 'text',
