@@ -138,8 +138,7 @@ describe('layer direction', () => {
     // argument passed on to the direct-XML fallback. Both landed together; 4,770
     // still holds them.
     const src = readFileSync('src/tools/write/modifyD365File.ts', 'utf8');
-    expect(src.split('
-').length).toBeLessThan(4770);
+    expect(src.split('\n').length).toBeLessThan(4770);
   });
 
   it('the dispatcher routes rather than implementing', () => {
