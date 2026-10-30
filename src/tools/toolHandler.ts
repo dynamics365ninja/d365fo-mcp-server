@@ -8,7 +8,7 @@ import {
 } from '../server/serverMode.js';
 import { BRIDGE_BACKED_TOOLS, awaitBridgeReady } from '../bridge/bridgeReadiness.js';
 import {
-  BRIDGE_FAILURE_MARKER, runWithBridgeFailureScope, renderBridgeFailureNote,
+  BRIDGE_FAILURE_MARKER, runWithBridgeFailureScope, renderBridgeFailureNote, rejectedBridgeInput,
 } from '../bridge/bridgeFailure.js';
 import type { BridgeFailure } from '../bridge/bridgeFailure.js';
 import {
@@ -420,10 +420,10 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
     try {
       capped = capToolResponse(toolName, result);
 
-      // Appended after the cap so truncation can never eat the one line that says the
-      // answer is not authoritative. Skipped when the tool already named the failure
-      // itself (the create/resolve path does) so the response says it once.
-      if (bridgeFailures.length > 0) {
+      // Appended after the cap so truncation can never eat the line saying the answer is
+      // not authoritative. Skipped when the tool named the failure itself, and for a bridge
+      // that only refused an input value ("'Fooo' is not a valid CacheLookup"), which is healthy.
+      if (bridgeFailures.some(f => !rejectedBridgeInput(f))) {
         const alreadyReported = capped?.content?.some(
           (item: any) => typeof item?.text === 'string' && item.text.includes(BRIDGE_FAILURE_MARKER),
         );
@@ -432,7 +432,7 @@ export function registerToolHandler(server: Server, context: XppServerContext): 
           // so it needs the "it landed, do not repeat it" wording rather than the
           // reader's "treat this as unproven and re-run".
           const writeSucceeded = WRITE_CAPABLE_TOOLS.has(toolName) && capped?.isError !== true;
-          capped = appendNote(capped, renderBridgeFailureNote(bridgeFailures, { writeSucceeded }));
+          capped = appendNote(capped, renderBridgeFailureNote(bridgeFailures.filter(f => !rejectedBridgeInput(f)), { writeSucceeded }));
         }
       }
 

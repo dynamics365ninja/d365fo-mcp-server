@@ -44,6 +44,18 @@ those are called out explicitly below.
   [Names exactly as given](docs/CUSTOM_EXTENSIONS.md#names-exactly-as-given).
 
 ### Fixed
+- **A value the bridge rejected was written anyway by the XML template.** When a bridge
+  create threw, create fell back to the template, also when the bridge had validated a
+  value and refused it ("'RegularTable' is not a valid TableType"). The template wrote
+  the same value unchecked, and the invalid object reached disk with only a "Written by
+  the local XML template" note. Such rejections (`-32602` with "is not a valid" or
+  "Invalid …") now stop the create with the bridge's message. Other bridge failures,
+  such as a model its provider does not know, still fall back as before, and so does
+  the field EDT check: the provider reports kernel EDTs (`RecId`, `UserId`,
+  `ValidFromDateTime`, …) as missing, so its "does not exist" is not proof that the
+  input is wrong. Such a rejection also no longer
+  gets the dispatcher's "bridge errored … re-run once the bridge is healthy" note: the
+  bridge answered, it is the input that was wrong.
 - **`undo` and `delete` left the element's compiler-metadata copy behind.** The copy at
   `<Package>\XppMetadata\<Model>\<AxType>\<Name>.xml` was removed only by the phantom
   prune of this server's incremental build, so a Visual Studio build or a packaging step
