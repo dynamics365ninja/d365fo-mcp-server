@@ -374,9 +374,9 @@ export function clearInferredModelPrefixes(): void {
  */
 function inferenceDisabled(): boolean {
   const source = process.env.EXTENSION_PREFIX_SOURCE?.trim().toLowerCase();
-  // 'none' (no prefix at all) has nothing to learn either: a model whose objects
-  // share a stem must not bring a prefix back.
-  return source === 'config' || source === 'none';
+  // 'none' (no prefix at all) and 'as-given' (no renaming at all) have nothing to
+  // learn either: a model whose objects share a stem must not bring a prefix back.
+  return source === 'config' || source === 'none' || source === 'as-given';
 }
 
 /**
