@@ -29,6 +29,12 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Fixed
+- **`undo` and `delete` left the element's compiler-metadata copy behind.** The copy at
+  `<Package>\XppMetadata\<Model>\<AxType>\<Name>.xml` was removed only by the phantom
+  prune of this server's incremental build, so a Visual Studio build or a packaging step
+  in between kept the deleted element in the manifests. Both now remove the copy when
+  they remove the source, by the prune's own rule, and drop the copy's type folder if
+  that left it empty.
 - **`add-method` and `remove-method` failed on a data entity.** The bridge has no
   data-entity arm for either, so `d365fo_file` modify returned "add-method not supported
   for objectType 'data-entity' via bridge (use XML fallback)" and applied nothing — the

@@ -7,6 +7,12 @@ import type { XppServerContext } from '../../types/context.js';
 import { bridgeRefreshProvider } from '../../bridge/index.js';
 import { isFileUnderRoot } from '../../utils/pathContainment.js';
 import { lookupCreatedArtifact, forgetCreatedArtifact, type CreatedArtifact } from '../../workspace/createdArtifactLedger.js';
+import { removeCompilerMetadataFor } from './compilerMetadataPrune.js';
+
+/** The line an undo appends when it also removed the element's compiler-metadata copy. */
+function compilerCopyNote(removed: string | null): string {
+  return removed ? '\nAlso removed its compiler-metadata copy: ' + removed : '';
+}
 
 const execFileAsync = util.promisify(execFile);
 
@@ -169,9 +175,10 @@ export const undoLastModificationTool = async (params: any, context: XppServerCo
     // the session removes and only VS reports. A model directory under source
     // control takes this path, not the ledger one below.
     const projectNote = await removeFromProjectAndForget(absolutePath);
+    const metaNote = compilerCopyNote(await removeCompilerMetadataFor(absolutePath));
     await cleanupIndexAfterUndo(context, absolutePath, 'deleted');
     return {
-      content: [{ type: 'text', text: 'Successfully undid file creation (deleted untracked file): ' + absolutePath + projectNote + '\nStale index entries cleaned up.' }],
+      content: [{ type: 'text', text: 'Successfully undid file creation (deleted untracked file): ' + absolutePath + projectNote + metaNote + '\nStale index entries cleaned up.' }],
     };
   } catch (error: any) {
     return {
@@ -215,10 +222,11 @@ async function undoViaLedger(
 
   fs.unlinkSync(absolutePath);
   const projectNote = await removeFromProjectAndForget(absolutePath);
+  const metaNote = compilerCopyNote(await removeCompilerMetadataFor(absolutePath));
   await cleanupIndexAfterUndo(context, absolutePath, 'deleted');
 
   return {
-    content: [{ type: 'text', text: 'Successfully undid file creation (deleted session-created file outside git): ' + absolutePath + projectNote + '\nStale index entries cleaned up.' }],
+    content: [{ type: 'text', text: 'Successfully undid file creation (deleted session-created file outside git): ' + absolutePath + projectNote + metaNote + '\nStale index entries cleaned up.' }],
   };
 }
 
