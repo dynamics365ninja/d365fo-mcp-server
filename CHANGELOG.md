@@ -29,6 +29,14 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Fixed
+- **An EDT that extends an enum EDT had no enum.** The base-type inference from
+  `extends` left enum parents alone, so `extends: "NoYesId"` wrote a string EDT. And
+  neither writer could set the enum at all: the bridge's `SetAxEdtProperty` had no
+  `enumType` case (reported unsupported) and `generateAxEdtXml` never wrote
+  `<EnumType>`. An enum parent now gives `edtType: Enum` and the parent's `enumType`
+  (bridge `readEdt`, then the index chain), an explicit `edtType: Enum` without an enum
+  gets the parent's, and both writers write `<EnumType>` after `<TableReferences />`,
+  as all 1,512 shipped children of enum EDTs do.
 - **`add-method` and `remove-method` failed on a data entity.** The bridge has no
   data-entity arm for either, so `d365fo_file` modify returned "add-method not supported
   for objectType 'data-entity' via bridge (use XML fallback)" and applied nothing — the
