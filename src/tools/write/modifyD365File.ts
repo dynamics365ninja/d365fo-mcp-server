@@ -84,6 +84,7 @@ import {
 import { resolveAnchorModel } from './writeAnchorGuard.js';
 import { resolveOrCreateLabelRef, type AutoLabelTarget } from './createLabel.js';
 import { isRawLabelText } from '../../utils/labelReference.js';
+import { readFileEol, withEol } from '../../utils/eolUtils.js';
 import { methodScopedLines } from '../../utils/methodSourceSpans.js';
 import { nextEnumValue } from '../../utils/axEnumProperties.js';
 // The direct-XML writers moved to their own module; this file dispatches to them.
@@ -2792,14 +2793,15 @@ async function runModify(
             }
           }
 
-          // Try bridge first
+          // Try bridge first, in the file's own line endings: it matches with Contains.
+          const eol = await readFileEol(actualFilePath);
           bridgeResult = await bridgeReplaceCode(
             context.bridge,
             objectType,
             objectName,
             args.methodName,
-            args.oldCode!,
-            args.newCode!,
+            withEol(args.oldCode!, eol),
+            withEol(args.newCode!, eol),
           );
 
           // Fallback: if bridge returns null (unsupported type or not connected)
