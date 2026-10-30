@@ -16,7 +16,12 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { READ_METHOD_OPTIONS } from '../../utils/methodBodyHint.js';
-import { XPP_INTRINSICS, COMPILER_VERSION } from '../../knowledge/compilerFacts.generated.js';
+import {
+  XPP_EXEMPTED_KEYWORDS,
+  XPP_INTRINSICS,
+  XPP_KEYWORDS,
+  COMPILER_VERSION,
+} from '../../knowledge/compilerFacts.generated.js';
 
 // ─── Schema ─────────────────────────────────────────────────────────────────
 
@@ -94,6 +99,73 @@ function intrinsicCatalogRule(): string {
     `The complete catalog is ${Object.keys(XPP_INTRINSICS).length} intrinsics, read from the compiler `
     + `itself (xppc ${COMPILER_VERSION}) rather than from documentation, and grouped by ARITY because `
     + `that is what callers get wrong — validator FN001 exists for the one-argument ssrsReportStr. `
+    + groups.join(' · ')
+  );
+}
+
+/**
+ * The reserved-word catalog, built from the compiler's keyword set like the
+ * intrinsic catalog above. The groups only order the list for a reader; a word
+ * the map does not know (a recapture after a compiler update) still appears,
+ * under "other", so the topic cannot drop a word the parser rejects.
+ * `tests/knowledge/reservedWords.test.ts` asserts that every word is listed.
+ */
+const RESERVED_WORD_GROUPS: Record<string, string> = {
+  anytype: 'types', container: 'types', date: 'types', guid: 'types', int: 'types', int64: 'types',
+  real: 'types', str: 'types', utcdatetime: 'types', var: 'types', void: 'types',
+  abstract: 'declarations', async: 'declarations', byref: 'declarations', class: 'declarations',
+  client: 'declarations', const: 'declarations', delegate: 'declarations', display: 'declarations',
+  edit: 'declarations', eventhandler: 'declarations', extends: 'declarations', final: 'declarations',
+  implements: 'declarations', interface: 'declarations', internal: 'declarations',
+  namespace: 'declarations', private: 'declarations', protected: 'declarations',
+  public: 'declarations', readonly: 'declarations', server: 'declarations', static: 'declarations',
+  using: 'declarations',
+  break: 'control flow', breakpoint: 'control flow', case: 'control flow', catch: 'control flow',
+  continue: 'control flow', default: 'control flow', do: 'control flow', else: 'control flow',
+  finally: 'control flow', for: 'control flow', foreach: 'control flow', if: 'control flow',
+  retry: 'control flow', return: 'control flow', switch: 'control flow', throw: 'control flow',
+  try: 'control flow', while: 'control flow',
+  as: 'expressions', await: 'expressions', div: 'expressions', false: 'expressions',
+  is: 'expressions', like: 'expressions', mod: 'expressions', new: 'expressions', next: 'expressions',
+  null: 'expressions', print: 'expressions', super: 'expressions', true: 'expressions',
+  unchecked: 'expressions',
+  changecompany: 'database', delete_from: 'database', flush: 'database',
+  insert_recordset: 'database', select: 'database', setting: 'database', update_recordset: 'database',
+  avg: 'aggregates', count: 'aggregates', maxof: 'aggregates', minof: 'aggregates', sum: 'aggregates',
+  asc: 'select options', by: 'select options', crosscompany: 'select options', desc: 'select options',
+  exists: 'select options', firstfast: 'select options', firstonly: 'select options',
+  firstonly1: 'select options', firstonly10: 'select options', firstonly100: 'select options',
+  firstonly1000: 'select options', forceliterals: 'select options', forcenestedloop: 'select options',
+  forceplaceholders: 'select options', forceselectorder: 'select options', forupdate: 'select options',
+  from: 'select options', generateonly: 'select options', group: 'select options',
+  having: 'select options', hint: 'select options', index: 'select options', join: 'select options',
+  nofetch: 'select options', notexists: 'select options', optimisticlock: 'select options',
+  order: 'select options', outer: 'select options', pessimisticlock: 'select options',
+  repeatableread: 'select options', reverse: 'select options', validtimestate: 'select options',
+  where: 'select options',
+  ttsabort: 'transactions', ttsbegin: 'transactions', ttscommit: 'transactions',
+};
+const RESERVED_GROUP_ORDER = [
+  'types', 'control flow', 'declarations', 'expressions', 'database', 'aggregates',
+  'select options', 'transactions', 'other',
+];
+
+function reservedWordCatalogRule(): string {
+  const byGroup = new Map<string, string[]>();
+  for (const word of XPP_KEYWORDS) {
+    if (XPP_EXEMPTED_KEYWORDS.includes(word)) continue;
+    const group = RESERVED_WORD_GROUPS[word] ?? 'other';
+    const list = byGroup.get(group) ?? [];
+    list.push(word);
+    byGroup.set(group, list);
+  }
+  const groups = RESERVED_GROUP_ORDER
+    .filter(g => byGroup.has(g))
+    .map(g => `${g}: ${byGroup.get(g)!.sort().join(', ')}`);
+  const count = XPP_KEYWORDS.length - XPP_EXEMPTED_KEYWORDS.length;
+  return (
+    `The complete set is ${count} words, read from the parser itself (xppc ${COMPILER_VERSION}) rather `
+    + 'than from documentation. None of them can name a variable, a parameter or a loop variable. '
     + groups.join(' · ')
   );
 }
@@ -4883,6 +4955,41 @@ switch (status)
       },
     ],
     related: ['operators-precedence', 'xpp-declarations', 'error-handling'],
+  },
+  {
+    id: 'reserved-words',
+    title: 'Reserved Words (the compiler\'s keyword set)',
+    keywords: ['reserved words', 'reserved word', 'reserved keywords', 'reserved keyword', 'reserved',
+               'keywords', 'keyword', 'kw001', 'invalid name', 'invalid token', 'identifier expected'],
+    summary:
+      'X++ reserves more words than the language reference lists, and the compiler rarely names the word when ' +
+      'one is used as a name. The set below is the parser\'s own; validate_code KW001 checks it.',
+    rules: [
+      reservedWordCatalogRule(),
+      'The compiler rejects a reserved word as a local or member variable of ANY type (int, a class, a table, an EDT, var), as every name of a declaration list (int a, count;), as a method parameter, as a for loop variable and as the variable of using/catch. The messages differ by position: "\'index\' is an invalid name for a parameter because it is an X++ keyword", "Invalid token \'count\'", "\'identifier\' expected" — most do not point at the name, so rename before building',
+      '`in` is reserved but EXEMPTED: int in; compiles. Prefixing a name with @ turns a keyword into an identifier (int @index; compiles), but a plain rename (lineIndex, itemCount, groupRecord) reads better',
+      'Method names are NOT restricted the same way: a method named count() compiles, and display, edit and abstract are modifiers in front of a method name',
+      '`boolean` is a type name but NOT a reserved word (boolean boolean; compiles); timeOfDay is not in the set either. int, int64, real, str, date, utcdatetime, guid, container and anytype ARE reserved',
+      'The Microsoft language reference and the compiler disagree. The reference still lists pause, window and tableLock, which the compiler no longer reserves (they are removed — see switch-loops), and it omits async, await, const, finally, foreach, generateonly, having, hint, namespace, readonly, unchecked, using, var, firstonly1, client, server, index and internal. Trust this set: it is captured from xppc by reflection and follows a recapture automatically',
+      'Several reserved words are reserved WITHOUT a feature behind them (having, foreach, async, await, namespace): they are still illegal as names even though no statement uses them',
+    ],
+    examples: [
+      {
+        label: 'Names that compile',
+        code: `void process(int _index)
+{
+    int     lineCount;
+    MyTable groupRecord;
+    int     @order = _index;    // the @ prefix makes a keyword an identifier
+
+    for (int i = 0; i < _index; i++)
+    {
+        lineCount++;
+    }
+}`,
+      },
+    ],
+    related: ['xpp-declarations', 'switch-loops'],
   },
   {
     id: 'attributes-authoring',
