@@ -354,9 +354,15 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
         `as targetName (e.g. \`CustTable.AccountIdx\`) or set \`ownerName\`.\n` }] };
     }
 
-    // parentObjectName powers the cross-type ("you used a form name as a class") hint
-    const parentObjectName: string | null =
-      owner ?? ((targetType === 'class' || targetType === 'method') ? memberName : null);
+    // parentObjectName powers the cross-type ("you used a form name as a class") hint,
+    // which is only for a name looked up AS a class. The owner of a member is not one:
+    // a field's owner is a table, and a method's may be a table, form or view as well.
+    let parentObjectName: string | null = null;
+    if (targetType === 'class') {
+      parentObjectName = owner ?? memberName;
+    } else if (targetType === 'method' && !owner) {
+      parentObjectName = memberName;
+    }
 
     const wantsMethod = !targetType || targetType === 'method' || targetType === 'all';
     // AOT child segments to scope an "Owner.member" target to. Default covers both
