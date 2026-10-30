@@ -16,7 +16,7 @@
  * came from, what lost, and whether the two disagree at all.
  */
 
-import { isNoPrefixMode, resolveObjectPrefix } from './modelClassifier.js';
+import { isAsGivenNamingMode, isNoPrefixMode, resolveObjectPrefix } from './modelClassifier.js';
 import { getInferredModelPrefix, type InferredModelPrefix } from './modelPrefixInference.js';
 import { crossModelWriteAllowedByConfig } from './crossModelWriteGuard.js';
 
@@ -97,7 +97,9 @@ export function resolveEffectivePrefix(modelName: string | null): EffectivePrefi
   // objects' count, and there were none to agree). A line that contradicts
   // itself in the section built to make the prefix checkable is worse than a
   // vaguer one, so each origin states the evidence it actually has.
-  const source = isNoPrefixMode()
+  const source = isAsGivenNamingMode()
+    ? 'none — naming.prefixSource=as-given (no name is changed; the project instruction file states the convention)'
+    : isNoPrefixMode()
     ? 'none — naming.prefixSource=none (new objects keep the name as given)'
     : inferred?.regular
     ? inferred.coverage > 0

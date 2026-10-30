@@ -1749,7 +1749,7 @@ namespace D365MetadataBridge.Services
                         ?? throw new ArgumentException($"EDT '{objectName}' not found");
                     var msi = GetModelSaveInfoForObject(_provider.Edts, objectName);
                     if (!SetAxEdtProperty(obj, propertyPath, propertyValue))
-                        throw new ArgumentException($"Unknown AxEdt property '{propertyPath}' — nothing was written. Supported: label, helpText, extends, stringSize, referenceTable.");
+                        throw new ArgumentException($"Unknown AxEdt property '{propertyPath}' — nothing was written. Supported: label, helpText, extends, stringSize, referenceTable, enumType (enum EDTs).");
                     ((IMetaEdtProvider)_provider.Edts).Update(obj, msi);
                     return new { success = true, operation = "modify-property", objectType, objectName, propertyPath, propertyValue, api = "Update" };
                 }
@@ -3882,6 +3882,13 @@ namespace D365MetadataBridge.Services
                     strEdt.StringSize = ss;
                     break;
                 case "referencetable": edt.ReferenceTable = value; break;
+                case "enumtype":
+                    // Only an enum EDT has an EnumType. Every shipped child of an enum EDT
+                    // states it (1,512 of 1,512, equal to the parent's), so without this an
+                    // enum EDT created through the bridge had no enum at all.
+                    if (edt is not AxEdtEnum enumEdt) return false;
+                    enumEdt.EnumType = value;
+                    break;
                 case "basetype": break; // handled at construction time
                 default:
                     Console.Error.WriteLine($"[WriteService] Unknown AxEdt property: {prop}");

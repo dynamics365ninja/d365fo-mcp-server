@@ -19,14 +19,14 @@ import { ProjectFileManager, ProjectFileFinder, registerFileInActiveProject } fr
 import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, renderBatchEditHint } from './inlineWriteVerification.js';
 import { validateWrittenXpp } from './inlineXppValidation.js';
 import { createPhaseTimer } from '../../utils/phaseTimer.js';
-import { registerCustomModel } from '../../utils/modelClassifier.js';
-import { COC_BASE_SYMBOL_TYPES, inferExtendedBase, normalizeObjectName } from '../../utils/objectNaming.js';
+import { isAsGivenNamingMode, registerCustomModel } from '../../utils/modelClassifier.js';
+import { COC_BASE_SYMBOL_TYPES, asGivenNameProblem, inferExtendedBase, normalizeObjectName } from '../../utils/objectNaming.js';
 import { lookupSymbolsNocase } from '../../utils/symbolLookup.js';
 import { PackageResolver } from '../../utils/packageResolver.js';
 import { crossModelWriteRefusal, standDownNotice } from '../../utils/crossModelWriteGuard.js';
 import { resolveAnchorModel } from './writeAnchorGuard.js';
 import { xppMethodSourceForXml } from '../../utils/xppFormat.js';
-import { bridgeValidateAfterWrite, canBridgeCreate, bridgeCreateObject, bridgeCreateSmartTable, isBridgeFailure, describeBridgeFailure } from '../../bridge/index.js';
+import { bridgeValidateAfterWrite, canBridgeCreate, bridgeCreateObject, bridgeCreateSmartTable, isBridgeFailure, describeBridgeFailure, rejectedBridgeInput } from '../../bridge/index.js';
 import type { BridgeFailure } from '../../bridge/index.js';
 import * as debouncedRefresh from '../../bridge/debouncedRefresh.js';
 import { subscriberAccessLevelValue } from '../../utils/subscriberAccessLevel.js';
@@ -991,6 +991,15 @@ export async function handleCreateD365File(
           return false;
         }
       });
+    // naming.prefixSource=as-given: the name is final, so one that cannot be a
+    // valid AOT name is refused with the reason instead of repaired (#1134).
+    const asGivenProblem = isAsGivenNamingMode() ? asGivenNameProblem(args.objectName, args.objectType) : null;
+    if (asGivenProblem) {
+      return {
+        content: [{ type: 'text', text: `❌ Not created: ${asGivenProblem}` }],
+        isError: true,
+      };
+    }
     const finalObjectName = normalizeObjectName(
       args.objectName,
       args.objectType,
@@ -1815,6 +1824,20 @@ export async function handleCreateD365File(
       } catch (bridgeErr) {
         console.error(`[create_d365fo_file] Bridge create failed, falling back to XML: ${bridgeErr}`);
       }
+    }
+
+    // The bridge validated a value and rejected it: the template would write the
+    // same value unchecked, so stop here instead of falling back.
+    const rejectedInput = bridgeFailure ? rejectedBridgeInput(bridgeFailure) : null;
+    if (rejectedInput) {
+      return {
+        content: [{
+          type: 'text',
+          text: `❌ Nothing was written — the bridge rejected an input value for ${args.objectType} ` +
+            `"${finalObjectName}": ${rejectedInput}\nCorrect the value and create it again.`,
+        }],
+        isError: true,
+      };
     }
 
     // A view's <DataSource> must name the referenced QUERY'S ROOT DATASOURCE, not

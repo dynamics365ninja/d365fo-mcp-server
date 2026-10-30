@@ -72,6 +72,7 @@ import {
   findIgnoredParams, renderIgnoredParamsWarning, findMissingMutationParams,
   paramCorrectionCandidates, canonicalParamForAlias, D365FO_FILE_OP_SPECS,
 } from '../specs/d365foFileOpSpecs.js';
+import { isPublishedDefault } from '../specs/opSpecs.js';
 import { lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import { isValidModuleReferenceName } from '../../metadata/modelDescriptor.js';
 import { decodeXmlEntitiesFromXppSource } from '../../utils/xmlEscape.js';
@@ -84,6 +85,7 @@ import {
 import { resolveAnchorModel } from './writeAnchorGuard.js';
 import { resolveOrCreateLabelRef, type AutoLabelTarget } from './createLabel.js';
 import { isRawLabelText } from '../../utils/labelReference.js';
+import { readFileEol, withEol } from '../../utils/eolUtils.js';
 import { methodScopedLines } from '../../utils/methodSourceSpans.js';
 import { nextEnumValue } from '../../utils/axEnumProperties.js';
 // The direct-XML writers moved to their own module; this file dispatches to them.
@@ -1288,7 +1290,7 @@ async function runModify(
     // told it was dropped. Measured on the NORMALISED keys, so a key that has
     // just been corrected is not also reported as ignored.
     const rawArgs = normalized.args;
-    const providedKeys = Object.keys(rawArgs).filter(k => rawArgs[k] !== undefined);
+    const providedKeys = Object.keys(rawArgs).filter(k => rawArgs[k] !== undefined && !isPublishedDefault(k, rawArgs[k]));
     const ignoredParams = findIgnoredParams(String(args.operation), providedKeys);
     const ignoredParamsWarning = renderIgnoredParamsWarning(String(args.operation), ignoredParams);
 
@@ -2780,7 +2782,9 @@ async function runModify(
             if (verdict?.kind === 'refuse') throw new Error(verdict.message);
             if (verdict?.kind === 'noop') {
               // An already-correct file is a success; "oldCode not found" would
-              // read as "the file is still wrong" and invite a retry.
+              // read as "the file is still wrong" and invite a retry. Nothing was
+              // written, so a batch must count it as skipped, not applied.
+              if (outcome) outcome.skipped = true;
               return {
                 content: [{
                   type: 'text',
@@ -2792,14 +2796,15 @@ async function runModify(
             }
           }
 
-          // Try bridge first
+          // Try bridge first, in the file's own line endings: it matches with Contains.
+          const eol = await readFileEol(actualFilePath);
           bridgeResult = await bridgeReplaceCode(
             context.bridge,
             objectType,
             objectName,
             args.methodName,
-            args.oldCode!,
-            args.newCode!,
+            withEol(args.oldCode!, eol),
+            withEol(args.newCode!, eol),
           );
 
           // Fallback: if bridge returns null (unsupported type or not connected)
@@ -3404,7 +3409,7 @@ async function runModify(
 
     // The offline rule set on the same text. The object's <Declaration> supplies
     // the class header a method snippet lacks; without it, fewer rules apply.
-    const xppRuleNote = writtenXpp ? validateWrittenXpp(writtenXpp, afterContent) : '';
+    const xppRuleNote = writtenXpp ? validateWrittenXpp(writtenXpp, afterContent, operation === 'replace-code' ? args.oldCode : undefined) : '';
 
     const changedLinesNote = replaceCodeBefore !== null && afterContent !== null
       ? renderChangedLines(replaceCodeBefore, afterContent)

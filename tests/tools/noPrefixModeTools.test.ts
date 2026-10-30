@@ -203,3 +203,51 @@ describe('get_workspace_info naming report under none', () => {
     expect(text).toContain('CustTableABCCredit_Extension) is kept');
   });
 });
+
+/**
+ * naming.prefixSource=as-given (#1134): the tools that check or report naming
+ * must not hold a name to a token the server no longer applies. Only what makes a
+ * name a valid AOT name is checked; the convention is the instruction file's.
+ */
+describe('naming.prefixSource=as-given', () => {
+  beforeEach(() => {
+    process.env.EXTENSION_PREFIX_SOURCE = 'as-given';
+  });
+
+  it('validate_object_naming accepts an extension token that is not the model name', async () => {
+    for (const [proposedName, objectType] of [
+      ['VendTable.XY', 'table-extension'],
+      ['VendTableTable_XY_Extension', 'class-extension'],
+      ['VendSettingsXY', 'table'],
+    ] as const) {
+      const out = await validate({ proposedName, objectType });
+      expect(out, proposedName).not.toMatch(/ERRORS \(\d/);
+      expect(out, proposedName).toMatch(/Naming: as given/);
+      expect(out, proposedName).not.toMatch(/Model prefix|model name "ABC"|Extension Style/);
+    }
+  });
+
+  it('validate_object_naming refuses only structurally invalid names', async () => {
+    expect(await validate({ proposedName: 'VendTable', objectType: 'table-extension' }))
+      .toMatch(/<Base>\.<Token>/);
+    expect(await validate({ proposedName: 'VendTableTable_XY', objectType: 'class-extension' }))
+      .toMatch(/must end with `_Extension`/);
+  });
+
+  it('get_workspace_info and doctor say nothing is renamed', () => {
+    const { lines, verboseLines } = buildPrefixDiagnostics(MODEL, MODEL);
+    expect(lines.join('\n')).toMatch(/naming\.prefixSource=as-given/);
+    expect(verboseLines.join('\n')).toMatch(/renames nothing/);
+
+    const doctor = checkPrefixResolution('XY', MODEL, [], 'Naming', false, true, true);
+    expect(doctor).toHaveLength(1);
+    expect(doctor[0].severity).toBe('ok');
+    expect(doctor[0].message).toMatch(/names as given .*naming\.prefix "XY" is not applied/);
+  });
+
+  it('the cross-model refusal shows the shape, not a name built from the model', async () => {
+    const { suggestedExtensionName } = await import('../../src/utils/crossModelWriteGuard.js');
+    expect(suggestedExtensionName('CustTable', 'table', MODEL)).toBe('CustTable.<YourToken>');
+    expect(suggestedExtensionName('SalesFormLetter', 'class', MODEL)).toBe('SalesFormLetter_<YourToken>_Extension');
+  });
+});

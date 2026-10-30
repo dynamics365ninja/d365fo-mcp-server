@@ -2170,6 +2170,11 @@ ${defaultParamGroupXml}
     const extends_ = properties?.extends ? `\n\t<Extends>${properties.extends}</Extends>` : '';
     const stringSize = edtType === 'AxEdtString'
       ? `\n\t<StringSize>${properties?.stringSize ?? 30}</StringSize>` : '';
+    // An enum EDT names its enum after <TableReferences />, as shipped ones do
+    // (AgreementClassificationImmutable: Extends NoYesId, EnumType NoYes). Without
+    // it the EDT has no enum at all.
+    const enumType = edtType === 'AxEdtEnum' && properties?.enumType
+      ? `\n\t<EnumType>${properties.enumType}</EnumType>` : '';
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxEdt xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns=""
 \ti:type="${edtType}">
@@ -2177,7 +2182,7 @@ ${defaultParamGroupXml}
 \t<Label>${escapeXml(label)}</Label>${extends_}
 \t<ArrayElements />
 \t<Relations />
-\t<TableReferences />${stringSize}
+\t<TableReferences />${stringSize}${enumType}
 </AxEdt>`;
   }
 
