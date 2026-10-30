@@ -34,6 +34,11 @@ describe('doctor — cross-reference database', () => {
     expect(result?.message).toContain('name-based search');
     expect(result?.fix).toContain('bridge.xrefDbName');
     expect(result?.fix).toContain('DYNAMICSXREFDB');
+    // The environment outranks the config file, so the fix must name both places.
+    expect(result?.fix).toContain('D365FO_XREF_DB_NAME');
+    expect(result?.fix).toContain('.mcp.json');
+    // Plain terminal output, not Markdown.
+    expect(result?.fix).not.toContain('`');
   });
 
   // The server reads the real environment first (an .mcp.json `env` block), so

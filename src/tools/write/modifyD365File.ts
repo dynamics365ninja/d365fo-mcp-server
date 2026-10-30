@@ -25,7 +25,7 @@ import { assertWritePathAllowed } from '../../utils/pathContainment.js';
 import { writeFileAtomic } from '../../utils/atomicFileWrite.js';
 import {
   bridgeValidateAfterWrite, canBridgeModify,
-  bridgeAddMethod, bridgeRemoveMethod, bridgeAddField, bridgeSetProperty, bridgeReplaceCode,
+  bridgeAddField, bridgeSetProperty, bridgeReplaceCode,
   bridgeModifyField, bridgeRenameField, bridgeRemoveField, bridgeReplaceAllFields,
   bridgeAddIndex, bridgeRemoveIndex, bridgeAddRelation, bridgeRemoveRelation,
   bridgeAddFullTextIndex, bridgeRemoveFullTextIndex,
@@ -111,6 +111,7 @@ import {
   directXmlRemoveModuleReference,
   directXmlEnsureRelationProperties, directXmlModifyControlProperty, directXmlAddViewField, directXmlSetFormDataSourceInsertIfEmpty,
 } from './directXmlWriters.js';
+import { addMethodWithXmlFallback, removeMethodWithXmlFallback } from './methodXmlFallback.js';
 import { addReportParameter, refreshReportDataset } from './reportDesignXml.js';
 
 
@@ -1916,6 +1917,8 @@ async function runModify(
     const preImage: string | null = await timer.time('pre-write image',
       async () => readForMatching(actualFilePath).catch(() => null));
     let _bridgeRetried = false;
+    const addMethodOrXml = (methodName: string, source: string) =>
+      addMethodWithXmlFallback(context.bridge, objectType, objectName, actualFilePath, methodName, source);
     // Retry loop: on the first null result with all required params present,
     // refresh the bridge provider (picks up objects created this session) and
     // re-run the operation once. Max 1 auto-refresh retry (_bridgeRetried guard).
@@ -1936,7 +1939,8 @@ async function runModify(
 
           if (bodies.length > 1) {
             const added: string[] = [];
-            let lastResult: { success: boolean; message: string } | null = null;
+            let lastResult: { success: boolean; message: string; viaXmlFallback?: boolean } | null = null;
+            let failed = false;
             for (const body of bodies) {
               const mName = extractMethodNameFromSource(body);
               if (!mName) {
@@ -1955,26 +1959,33 @@ async function runModify(
                   `Ensure each method has a complete signature (e.g. "public void foo()").`,
                 );
               }
-              lastResult = await bridgeAddMethod(context.bridge, objectType, objectName, mName, body);
+              lastResult = await addMethodOrXml(mName, body);
               if (!lastResult) {
                 throw new Error(
                   `Bridge add-method failed for '${mName}' (${added.length} of ${bodies.length} method(s) added successfully: ${added.join(', ') || 'none'}).`,
                 );
               }
+              // Stop at the first refusal and hand it to the shared failure path
+              // with its own message — summarising it as "Added N methods" made a
+              // failed write read as a list of successes.
+              if (!lastResult.success) {
+                failed = true;
+                bridgeResult = {
+                  ...lastResult,
+                  message: `${lastResult.message} ('${mName}'; ${added.length} of ${bodies.length} method(s) added before it: ${added.join(', ') || 'none'})`,
+                };
+                break;
+              }
               added.push(mName);
             }
             // Summarize as a single result for the downstream success message.
-            bridgeResult = lastResult
-              ? { ...lastResult, message: `Added ${added.length} methods: ${added.join(', ')}` }
-              : null;
+            if (!failed) {
+              bridgeResult = lastResult
+                ? { ...lastResult, message: `Added ${added.length} methods: ${added.join(', ')}` }
+                : null;
+            }
           } else if (args.methodName) {
-            bridgeResult = await bridgeAddMethod(
-              context.bridge,
-              objectType,
-              objectName,
-              args.methodName,
-              methodSource,
-            );
+            bridgeResult = await addMethodOrXml(args.methodName, methodSource);
           }
         }
         break;
@@ -1993,13 +2004,7 @@ async function runModify(
             `\`${(args as any).displayMethodReturnEdt}\` (stub — fill in the computation).`;
         }
         if (methodName && methodSource) {
-          bridgeResult = await bridgeAddMethod(
-            context.bridge,
-            objectType,
-            objectName,
-            methodName,
-            methodSource,
-          );
+          bridgeResult = await addMethodOrXml(methodName, methodSource);
         }
         break;
       }
@@ -2028,23 +2033,14 @@ async function runModify(
           methodName = (args as any).tableMethodType as string;
         }
         if (methodName && methodSource) {
-          bridgeResult = await bridgeAddMethod(
-            context.bridge,
-            objectType,
-            objectName,
-            methodName,
-            methodSource,
-          );
+          bridgeResult = await addMethodOrXml(methodName, methodSource);
         }
         break;
       }
       case 'remove-method': {
         if (args.methodName) {
-          bridgeResult = await bridgeRemoveMethod(
-            context.bridge,
-            objectType,
-            objectName,
-            args.methodName,
+          bridgeResult = await removeMethodWithXmlFallback(
+            context.bridge, objectType, objectName, actualFilePath, args.methodName,
           );
         }
         break;

@@ -275,6 +275,53 @@ describe('run_bp_check — path resolution', () => {
   });
 
   // -------------------------------------------------------------------------
+  // Environment C — traditional VM, single-root metadata outside PLD.
+  // The custom packages live in a repo folder (D365FO_PACKAGE_PATH) whose
+  // standard packages are symlinks into PackagesLocalDirectory; PLD itself
+  // holds only the standard packages. The drive scan still finds PLD, and the
+  // module was looked for there: "No module with the name 'MyModel' could be
+  // found under the source path 'K:\AosService\PackagesLocalDirectory'".
+  // -------------------------------------------------------------------------
+  describe('Environment C — single-root metadata outside PackagesLocalDirectory', () => {
+    const REPO_METADATA = 'K:\\Repo\\Main\\Metadata';
+    const REPO_XPPBP    = path.join(REPO_METADATA, 'Bin', 'xppbp.exe');
+    const K_PKG         = 'K:\\AosService\\PackagesLocalDirectory';
+    const K_XPPBP       = path.join(K_PKG, 'Bin', 'xppbp.exe');
+
+    beforeEach(() => {
+      detectedRoots.splice(0, detectedRoots.length, K_PKG);
+      allowPaths([REPO_METADATA, REPO_XPPBP, K_PKG, K_XPPBP]);
+    });
+
+    function expectRootsAt(root: string) {
+      const args = capturedArgs(0);
+      const metaArg = args.find(a => /^-metadata[:=]/.test(a));
+      const compArg = args.find(a => /^-compilerMetadata[:=]/.test(a));
+      expect(metaArg).toContain(root);
+      expect(compArg).toContain(root);
+      expect(args.join(' ')).not.toContain(K_PKG);
+    }
+
+    it('reads metadata from D365FO_PACKAGE_PATH, not the scanned PackagesLocalDirectory', async () => {
+      cfgGetPackagePath.mockReturnValue(REPO_METADATA);
+
+      const result = await runBpCheckTool(
+        { modelName: 'MyModel', objects: [{ objectName: 'MyClass', objectType: 'class' }] }, {});
+
+      expect(result.isError).toBeFalsy();
+      expectRootsAt(REPO_METADATA);
+    });
+
+    it('reads metadata from params.packagePath, not the scanned PackagesLocalDirectory', async () => {
+      const result = await runBpCheckTool(
+        { modelName: 'MyModel', packagePath: REPO_METADATA, objects: [{ objectName: 'MyClass', objectType: 'class' }] }, {});
+
+      expect(result.isError).toBeFalsy();
+      expectRootsAt(REPO_METADATA);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // Error paths
   // -------------------------------------------------------------------------
   describe('Error paths', () => {
