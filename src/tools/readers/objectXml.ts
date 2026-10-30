@@ -14,6 +14,7 @@ import {
   findD365FileOnDisk, findD365FileViaIndex, modelsHoldingObject,
   type SymbolFileLookupSource,
 } from '../../utils/objectFileLookup.js';
+import { readIndexedXml } from '../../utils/indexedXmlLookup.js';
 
 /** Default ceiling on returned XML. A large form is well past any useful read. */
 const DEFAULT_MAX_CHARS = 40_000;
@@ -53,6 +54,20 @@ export async function renderObjectXml(
     };
   }
 
+  return renderXmlContent(content, `**File:** ${filePath}`, objectType, objectName, options);
+}
+
+/**
+ * Render XML already in memory. `fileLine` is the provenance line under the title: a
+ * path for a file read here, or a stored-copy note for XML that came out of the index.
+ */
+function renderXmlContent(
+  content: string,
+  fileLine: string,
+  objectType: string,
+  objectName: string,
+  options: ObjectXmlOptions,
+): ObjectXmlResult {
   const allLines = content.split(/\r?\n/);
   const from = Math.max(1, options.startLine ?? 1);
   const to = Math.min(allLines.length, options.endLine ?? allLines.length);
@@ -64,7 +79,7 @@ export async function renderObjectXml(
 
   const header =
     `# ${objectType} ${objectName} — raw XML\n\n` +
-    `**File:** ${filePath}\n` +
+    `${fileLine}\n` +
     `**Lines:** ${from}-${to} of ${allLines.length}\n`;
 
   const footer = truncated
@@ -124,6 +139,30 @@ export async function readObjectXml(
       options.index, objectType, objectName, options.modelName,
     );
     if (indexed) return renderObjectXml(indexed.filePath, objectType, objectName, options);
+
+    // findD365FileViaIndex checks only the stored path, case-sensitively. readIndexedXml
+    // adds the local remap and, for a form on a database-only host, the stored copy; it
+    // ignores modelName, hence the filter.
+    if (objectType === 'form') {
+      const found = await readIndexedXml(options.index.getReadDb(), objectName, ['form']);
+      const modelOk = !options.modelName
+        || found?.ref.indexedModel.toLowerCase() === options.modelName.toLowerCase();
+      if (found && modelOk) {
+        if (found.source === 'stored') {
+          return renderXmlContent(
+            found.xml.replace(/^\uFEFF/, ''),
+            `**Source:** stored copy in the index${found.storedAt ? `, written ${found.storedAt}` : ''}` +
+              ` (${found.ref.indexedPath ?? 'no file path'}); no AOT file reachable on this host`,
+            objectType, objectName, options,
+          );
+        }
+        return renderXmlContent(
+          found.xml.replace(/^\uFEFF/, ''),
+          `**File:** ${found.ref.localPath}`,
+          objectType, objectName, options,
+        );
+      }
+    }
     return objectXmlNotFound(
       objectType, objectName, options.modelName,
       modelsHoldingObject(options.index, objectType, objectName),
