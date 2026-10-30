@@ -26,7 +26,7 @@ import { PackageResolver } from '../../utils/packageResolver.js';
 import { crossModelWriteRefusal, standDownNotice } from '../../utils/crossModelWriteGuard.js';
 import { resolveAnchorModel } from './writeAnchorGuard.js';
 import { xppMethodSourceForXml } from '../../utils/xppFormat.js';
-import { bridgeValidateAfterWrite, canBridgeCreate, bridgeCreateObject, bridgeCreateSmartTable, isBridgeFailure, describeBridgeFailure } from '../../bridge/index.js';
+import { bridgeValidateAfterWrite, canBridgeCreate, bridgeCreateObject, bridgeCreateSmartTable, isBridgeFailure, describeBridgeFailure, rejectedBridgeInput } from '../../bridge/index.js';
 import type { BridgeFailure } from '../../bridge/index.js';
 import * as debouncedRefresh from '../../bridge/debouncedRefresh.js';
 import { subscriberAccessLevelValue } from '../../utils/subscriberAccessLevel.js';
@@ -1815,6 +1815,20 @@ export async function handleCreateD365File(
       } catch (bridgeErr) {
         console.error(`[create_d365fo_file] Bridge create failed, falling back to XML: ${bridgeErr}`);
       }
+    }
+
+    // The bridge validated a value and rejected it: the template would write the
+    // same value unchecked, so stop here instead of falling back.
+    const rejectedInput = bridgeFailure ? rejectedBridgeInput(bridgeFailure) : null;
+    if (rejectedInput) {
+      return {
+        content: [{
+          type: 'text',
+          text: `❌ Nothing was written — the bridge rejected an input value for ${args.objectType} ` +
+            `"${finalObjectName}": ${rejectedInput}\nCorrect the value and create it again.`,
+        }],
+        isError: true,
+      };
     }
 
     // A view's <DataSource> must name the referenced QUERY'S ROOT DATASOURCE, not

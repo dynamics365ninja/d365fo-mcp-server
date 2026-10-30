@@ -29,6 +29,14 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Fixed
+- **A value the bridge rejected was written anyway by the XML template.** When a bridge
+  create threw, create fell back to the template, also when the bridge had validated a
+  value and refused it ("'RegularTable' is not a valid TableType", a field on an EDT
+  that does not exist). The template wrote the same value unchecked, and the invalid
+  object reached disk with only a "Written by the local XML template" note. Such
+  rejections (`-32602` with "is not a valid", "Invalid …" or "— nothing was written")
+  now stop the create with the bridge's message. Other bridge failures, such as a model
+  its provider does not know, still fall back as before.
 - **`add-method` and `remove-method` failed on a data entity.** The bridge has no
   data-entity arm for either, so `d365fo_file` modify returned "add-method not supported
   for objectType 'data-entity' via bridge (use XML fallback)" and applied nothing — the

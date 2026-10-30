@@ -105,6 +105,24 @@ export function describeBridgeFailure(failure: BridgeFailure): string {
 }
 
 /**
+ * The bridge's own message when it refused a VALUE the caller passed, else null.
+ *
+ * A create the bridge throws on falls back to the XML template. That is right for
+ * a bridge that cannot do the job (a model its provider does not know, an
+ * unsupported type), but not when the bridge validated a value and rejected it:
+ * the template writes the same value unchecked, and the invalid object reaches
+ * disk with "⚠️ Written by the local XML template". Seen with tableType
+ * "RegularTable" and a field on EDT "Guid" (which does not exist). The C#
+ * validators word these as "'X' is not a valid <Property>", "Invalid <Property>
+ * 'X'" or "… — nothing was written", all as -32602 (invalid params).
+ */
+export function rejectedBridgeInput(failure: BridgeFailure): string | null {
+  const m = /Bridge error \[-32602\]: ([\s\S]*)$/.exec(failure.reason);
+  if (!m) return null;
+  return /\bis not a valid\b|^Invalid \w+ '|— nothing was written/.test(m[1]) ? m[1].trim() : null;
+}
+
+/**
  * The note appended to a response that was produced while the bridge was throwing.
  * It has to say what the answer IS (index/disk data) as well as what went wrong —
  * "bridge error" on its own reads as "no answer", and the agent retries instead of
