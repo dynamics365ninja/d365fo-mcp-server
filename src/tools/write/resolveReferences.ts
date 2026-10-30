@@ -11,6 +11,7 @@
  *     formStr/queryStr/methodStr/menuItem*Str(...) — args are compile-time
  *     checked by the real X++ compiler, so they must exist in the index
  *   - Static member access  Type::member  (incl. arity check from signature)
+ *   - Enum values           Enum::Value against the enum's and its extensions' XML
  *   - Variable declarations TypeName varName — type must exist
  *   - Bound buffer access   buffer.Field / buffer.method() when the variable
  *     was declared in the snippet with a table/view type from the index
@@ -40,6 +41,11 @@ import {
   type ModelVisibility,
 } from '../../metadata/modelDescriptor.js';
 import { getConfigManager } from '../../utils/configManager.js';
+import {
+  compiledExtensionMayAddValue,
+  indexedEnumValueNames,
+  type EnumValueSet,
+} from './enumValueNames.js';
 
 export const resolveReferencesArgsSchema = z.object({
   code: z.string().describe(
@@ -67,6 +73,7 @@ export interface ReferenceViolation {
   kind:
     | 'unknown-type'
     | 'unknown-static-member'
+    | 'unknown-enum-value'
     | 'unknown-method'
     | 'unknown-field'
     | 'unknown-label'
@@ -797,6 +804,15 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
     return types;
   };
 
+  // `using Microsoft.Xrm.Sdk.Query;` — not the `using (var x = …)` statement.
+  const hasUsingDirective = /^\s*using\s+[A-Za-z_][\w.]*\s*;/m.test(cleaned);
+  const enumValueCache = new Map<string, EnumValueSet | null>();
+  const enumValues = (name: string): EnumValueSet | null => {
+    const key = name.toLowerCase();
+    if (!enumValueCache.has(key)) enumValueCache.set(key, indexedEnumValueNames(deps.db, name));
+    return enumValueCache.get(key) ?? null;
+  };
+
   const isKnownType = (name: string): boolean => {
     const lower = name.toLowerCase();
     return XPP_BUILTIN_TYPES.has(lower)
@@ -963,7 +979,31 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
     // Indexed is not the same as reachable from the model being compiled.
     if (reportIfInvisible(typeName, line)) continue;
     if (types.includes('enum')) {
-      // Enum values are not indexed as symbols — the enum itself is proven.
+      // `Contoso.Contracts.MyEnum::Value` is a .NET enum that happens to share
+      // its name with an X++ one; its values are not in the AOT.
+      const start = m.index ?? 0;
+      if (/\.\s*$/.test(cleaned.slice(Math.max(0, start - 40), start))) { verifiedCount++; continue; }
+      const values = enumValues(typeName);
+      if (values && !values.names.has(member.toLowerCase())
+          && !compiledExtensionMayAddValue(values, member)) {
+        // A `using` directive can bring in a .NET enum of the same name, and the
+        // unqualified name then means THAT enum. All 30 misses over 312,533
+        // `Enum::Value` uses in shipped X++ were exactly this (OrderType,
+        // MessageType, OperationType, Operator under `using Microsoft.Xrm.Sdk.Query;`
+        // and the like), so with a using in sight the finding is only a warning.
+        const imported = hasUsingDirective;
+        violations.push({
+          kind: 'unknown-enum-value',
+          severity: imported ? 'warning' : 'error',
+          line,
+          identifier: `${typeName}::${member}`,
+          detail: `"${member}" is not a value of enum ${values.enumName} (checked the enum and every indexed extension of it). ` +
+            `Use get_object_info(objectType="enum", name="${values.enumName}") for its values.` +
+            (imported ? ' The source has a `using` directive — if it imports a .NET enum of this name, ignore this.' : ''),
+        });
+        continue;
+      }
+      // Values that could not be read (no XML here) leave the enum itself as the proof.
       verifiedCount++;
       continue;
     }

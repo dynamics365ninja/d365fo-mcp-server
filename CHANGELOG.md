@@ -28,6 +28,21 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Added
+- **`naming.prefixSource=as-given`: the server renames nothing** (#1134). `none` dropped
+  the prefix but still rewrote every extension's token to the model name, so a team whose
+  token is an abbreviation (`VendTable.ABC` in model `ContosoCore`) got `VendTable.ContosoCore`
+  and `VendTableTable_ABC_ContosoCore_Extension`. With `as-given` (env
+  `EXTENSION_PREFIX_SOURCE=as-given`) every name is written as passed: objects, members,
+  extension elements and classes, with no prefix, suffix or token, and nothing inferred
+  from the model. A name that cannot be an AOT name is refused with the reason instead of
+  completed (an element extension without `<Base>.<Token>`, a class extension not ending
+  in `_Extension`, invalid characters, more than 81 characters). `validate_object_naming`
+  and `prepare` check only that structure. The prompt's CoC naming rule,
+  `get_workspace_info`, `doctor` and the cross-model refusal point to the project's
+  instruction file. `generate_object` says its derived class names carry no token. See
+  [Names exactly as given](docs/CUSTOM_EXTENSIONS.md#names-exactly-as-given).
+
 ### Fixed
 - **`undo` deleted a whole object that was merely uncommitted.** Inside a git work tree,
   any untracked file was deleted, so an undo after a bad modify of an object from an
@@ -37,6 +52,54 @@ those are called out explicitly below.
   non-git path already applied. Otherwise undo refuses and says why. The tables, forms
   and report objects `generate_object(scaffold)` writes to disk are now recorded as
   created too, so undo can still delete them (it could not outside git before).
+- **TTS001 warned on replace-code fragments and never reached extension classes.** The
+  write-time check counted `ttsbegin`/`ttscommit` in the text sent, so adding a line
+  after `ttsbegin;` in a balanced method warned "ttsbegin × 1, ttscommit × 0". For a
+  `replace-code`, TTS001 now stays only when the edit changes the balance between
+  `oldCode` and `newCode`. Separately, a method sent to an extension class was wrapped in
+  a synthetic class header whose line the rebase dropped, together with the TTS001 that
+  sat on it. That violation is now kept on line 1 of the code sent.
+- **COC004 reported `next` inside `try`, `finally` or `using` as conditional.** Any
+  block deeper than the method body counted as conditional, so CoC methods the compiler
+  accepts (`next insert()` inside `try … finally`, `return next insertFromForm()` inside
+  `using`) were refused as SYS10028 errors. Only blocks whose header branches or loops
+  (`if`, `else`, `while`, `for`, `do`, `switch`, `case`, `default`, `catch`) now make
+  `next` conditional. Across 3,193 shipped CoC classes that call `next`, COC004 fell
+  from 189 hits to 120. The rest are `[Replaceable]` base methods and data source
+  overrides, which need a lookup of the target method.
+- **A multi-line `replace-code` always missed in the bridge.** The bridge matches with
+  `Contains` against method source read through `IMetadataProvider`, which keeps the
+  file's CRLF, while clients send `oldCode` with LF. Every multi-line edit therefore
+  fell through to the XML writer with a "bridge declined" note (168 of 176 in one
+  project's sessions, against 3 of 181 single-line ones). `oldCode` and `newCode` now
+  reach the bridge in the line endings of the file on disk, which also keeps inserted
+  code in the file's own style.
+- **An already-applied `replace-code` counted as applied in a batch.** Its "no change
+  needed" answer returned before the outcome was marked skipped, so `operations[]`
+  reported it in "N/N operation(s) applied" and in the "verified on disk" trailer for a
+  write that never happened. It is now counted as skipped, as a bridge skip is.
+- **Every modify warned "overwrite: IGNORED" although nobody passed it.** MCP clients
+  send the schema's published defaults, so `overwrite: false` arrived on each call and
+  the silent-drop guard answered "not a recognised d365fo_file parameter … Re-run with
+  the correct parameter name(s)" after a call that had succeeded, once per entry in a
+  batch. A parameter whose value equals its published default is no longer reported.
+  A real value the operation cannot use (`overwrite: true` on modify) still is.
+- **`validate_code` accepted any value on a known enum; no check for an update on a
+  buffer never selected for update; prefix inference followed a minority prefix**
+  (#1164). `PurchStatus::NoSuchStatus` passed as verified once `PurchStatus` existed.
+  The references check now reads the value names from the enum's XML and from every
+  indexed `AxEnumExtension` of it (plus, for packages shipped without XML, the compiled
+  `bin\<Package>_AxEnumExtension.md`) and reports `unknown-enum-value` as an error.
+  Over the 312,533 `Enum::Value` uses in shipped X++ it raised 30, every one a .NET enum
+  of the same name brought in by a `using` directive, so a source with such a directive
+  gets a warning instead; a namespace-qualified `A.B.Enum::Value` and an enum whose XML
+  is not on this machine are not checked. New rule SEL011 warns on `buf.update()` /
+  `buf.delete()` when every select of `buf` since its declaration lacks `forupdate`,
+  `pessimisticlock` and `optimisticlock` — 20 hits over 1.1M shipped CDATA blocks,
+  all code paths that throw if reached. And the regular-object sample prefix inference
+  reads was the model's first 60 names in (type, name) order, so in a 3,800-object
+  `xyz` model with 69 `xyz3PL` names (digits sort first) inference answered `xyz3PL`;
+  the sample is now drawn as eight short runs spread over the model's rows.
 - **`add-method` and `remove-method` failed on a data entity.** The bridge has no
   data-entity arm for either, so `d365fo_file` modify returned "add-method not supported
   for objectType 'data-entity' via bridge (use XML fallback)" and applied nothing — the
