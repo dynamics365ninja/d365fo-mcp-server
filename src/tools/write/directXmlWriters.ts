@@ -36,6 +36,7 @@ import {
   type EntityDataSourceSpec, type EntityMappedFieldSpec,
 } from '../xml/dataEntityViewEdit.js';
 import { escapeXml } from '../../utils/xmlEscape.js';
+import { methodSourceSpans, occurrencesInSpans } from '../../utils/methodSourceSpans.js';
 import { upsertTableFieldProperty } from '../xml/tableFieldPropertyEdit.js';
 import {
   addModuleReference, removeModuleReference, parseModuleReferences, invalidateModelVisibility,
@@ -71,6 +72,7 @@ export const directXmlReplaceCode = serializedOnFile(async (
   oldCode: string,
   newCode: string,
   reason: string,
+  methodName?: string,
 ): Promise<{ success: boolean; message: string } | null> => {
   try {
     // Files on disk are CRLF; oldCode from get_method_source is typically LF-only.
@@ -80,21 +82,26 @@ export const directXmlReplaceCode = serializedOnFile(async (
     const normOld = oldCode.replace(/\r\n/g, '\n');
     const normNew = newCode.replace(/\r\n/g, '\n');
 
-    if (!content.includes(normOld)) {
-      return null; // oldCode not found in file at all
+    // Scoped by methodName the way the bridge is, so a snippet that also occurs
+    // in another method is not ambiguous, and never edits that other method.
+    const spans = methodSourceSpans(content, methodName);
+    const hits = occurrencesInSpans(content, normOld, spans ?? [{ start: 0, end: content.length }]);
+    if (hits.length === 0) {
+      return null; // oldCode not found in scope
     }
 
-    // Without /g, String.replace() only replaces the first occurrence, so require
-    // exactly one match to avoid silently picking the wrong one.
-    const occurrences = content.split(normOld).length - 1;
-    if (occurrences > 1) {
+    // Replace one site only, so require exactly one match to avoid silently
+    // picking the wrong one.
+    if (hits.length > 1) {
+      const scope = spans ? `${methodName} in ${filePath}` : filePath;
       return {
         success: false,
-        message: `❌ directXmlReplaceCode: oldCode appears ${occurrences} times in ${filePath} — replacement is ambiguous. Provide a more specific oldCode snippet.`,
+        message: `❌ directXmlReplaceCode: oldCode appears ${hits.length} times in ${scope} — replacement is ambiguous. Provide a more specific oldCode snippet.`,
       };
     }
 
-    const updated = content.replace(normOld, normNew);
+    const at = hits[0];
+    const updated = content.slice(0, at) + normNew + content.slice(at + normOld.length);
     if (updated === content) {
       return null; // no change made
     }

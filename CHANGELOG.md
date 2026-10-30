@@ -97,6 +97,15 @@ those are called out explicitly below.
   matches, and otherwise no project, as `autoDetectProject` already does when several
   projects share a model. The log names the count and asks for `projectPath`, and the
   create reply says how many projects matched instead of "Could not find .rnrproj".
+- **`replace-code` refused an edit that `methodName` made unambiguous.** The bridge
+  replaces only inside the named method, but the file-level preflight and the direct-XML
+  fallback counted `oldCode` over the whole file: a line such as `ttsbegin;` that also
+  occurs in another method was refused with "matches 2 times … or scope the call with
+  methodName", although the call already had one. Both now count only inside the named
+  method, the class declaration for `classDeclaration`, or the control or data source
+  override for `Owner.method`. The fallback also no longer edits a different method
+  when the named one does not contain `oldCode`, and `newCode` already present in another
+  method no longer turns the edit of the named one into "Nothing to do".
 - **An incremental build silently removed a data entity's OData actions.** xppc's
   `-incremental` mode rewrites the `bin\Dynamics.AX.<Package>.ODataExtends.runtime`
   entry of every entity it recompiles without its actions, and the AOS reads them from

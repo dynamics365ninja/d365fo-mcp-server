@@ -127,8 +127,13 @@ describe('layer direction', () => {
     // what landed here is only what the dispatcher itself does — the lookup
     // branch, the standard-model guard for a path shape 1b cannot read, and the
     // two switch arms.
+    //
+    // Raised 4,760 -> 4,770 for replace-code honouring methodName (4,759 ->
+    // 4,762 lines). The span finding went to utils/methodSourceSpans.ts, so what
+    // landed here is the preflight's methodName parameter, its import and the
+    // argument passed on to the direct-XML fallback.
     const src = readFileSync('src/tools/write/modifyD365File.ts', 'utf8');
-    expect(src.split('\n').length).toBeLessThan(4760);
+    expect(src.split('\n').length).toBeLessThan(4770);
   });
 
   it('the dispatcher routes rather than implementing', () => {
