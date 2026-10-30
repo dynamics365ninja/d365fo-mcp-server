@@ -137,8 +137,14 @@ describe('layer direction', () => {
     // landed here is the preflight's methodName parameter, its import and the
     // argument passed on to the direct-XML fallback. Both landed together; 4,770
     // still holds them.
+    //
+    // Raised 4,770 -> 4,780 for four PRs that each fit alone but not together
+    // (4,762 -> 4,772 lines combined): the published-default check's import
+    // (+1, #1167), the line-ending read before the bridge replace-code (+2, #1168),
+    // marking a replace-code no-op skipped (+2, #1171), and the atomic batch's
+    // pre-image capture (+5, here). The batch logic itself went to d365foFile.ts.
     const src = readFileSync('src/tools/write/modifyD365File.ts', 'utf8');
-    expect(src.split('\n').length).toBeLessThan(4770);
+    expect(src.split('\n').length).toBeLessThan(4780);
   });
 
   it('the dispatcher routes rather than implementing', () => {
