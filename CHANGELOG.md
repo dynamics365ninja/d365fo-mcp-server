@@ -29,6 +29,12 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Fixed
+- **`undo` deleted a whole object that was merely uncommitted.** Inside a git work tree,
+  any untracked file was deleted, so an undo after a bad modify of an object from an
+  earlier session (common where objects are committed only at PR time) removed the
+  object itself, with no backup to restore and its `.rnrproj` entry left dangling. An
+  untracked file is now deleted only when this session created it, the rule the
+  non-git path already applied. Otherwise undo refuses and says why.
 - **`add-method` and `remove-method` failed on a data entity.** The bridge has no
   data-entity arm for either, so `d365fo_file` modify returned "add-method not supported
   for objectType 'data-entity' via bridge (use XML fallback)" and applied nothing — the

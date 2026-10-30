@@ -163,6 +163,24 @@ export const undoLastModificationTool = async (params: any, context: XppServerCo
       };
     }
 
+    // Untracked is not the same as created by the last write. A repo that commits
+    // only at PR time keeps objects from earlier sessions untracked for days, and
+    // an undo after a bad MODIFY of one deleted the whole object (git has nothing
+    // to restore, and no backup is taken inside a work tree). Delete only what this
+    // session created — the rule the non-git path below already applies.
+    if (!lookupCreatedArtifact(absolutePath)) {
+      return {
+        content: [{
+          type: 'text',
+          text: 'Refusing to delete ' + absolutePath + ': it is not tracked by git, and this session did not ' +
+            'create it, so there is no earlier version to revert to. Deleting it would remove the whole object, ' +
+            'not the last change. Undo the change with another modify, or remove the object deliberately with ' +
+            'd365fo_file(action="delete").',
+        }],
+        isError: true,
+      };
+    }
+
     fs.unlinkSync(absolutePath);
     // The create registered this file in a .rnrproj; deleting it without that
     // entry leaves a <Content Include> pointing at nothing, which nothing else in
