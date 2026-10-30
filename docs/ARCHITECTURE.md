@@ -165,7 +165,7 @@ Dual-database design — symbol searches never scan label rows (**10–30× fast
 
 | Database | Content | Size | Key tables |
 |----------|---------|------|-----------|
-| `xpp-metadata.db` | symbols + analytics | ~2–3 GB | `symbols` (+FTS5), `form_datasources`, `form_patterns`, `table_relations`, `edt_metadata`, `security_*`, `menu_item_targets`, `property_stats` |
+| `xpp-metadata.db` | symbols + analytics | ~2–3 GB | `symbols` (+FTS5), `form_datasources`, `form_patterns`, `form_source`, `table_relations`, `edt_metadata`, `security_*`, `menu_item_targets`, `property_stats` |
 | `xpp-metadata-labels.db` | labels | ~0.5 GB (4 languages) – 8 GB (all 70) | `labels` (+FTS5 for en-US) |
 
 Each `symbols` row carries enhanced metadata beyond name/type/path: description, semantic tags, source snippet, complexity, used types, extends chain, usage statistics — richer context for generation. Statistical tables (`property_stats`, `form_patterns`) power the data-driven validators and advisors.

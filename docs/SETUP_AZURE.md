@@ -208,6 +208,12 @@ Create a variable group named **`xpp-mcp-server-config`** in Azure DevOps Librar
 | `AZURE_SUBSCRIPTION` | No | Name of your Azure DevOps service connection |
 | `AZURE_APP_SERVICE_NAME` | No | `xpp-mcp-server` |
 
+### Form source in the database
+
+Each form's original XML is stored (gzipped, table `form_source`, about +37 MB for 9,500 forms) so a host with only the database can show a form. The extractor attaches the XML to the form JSON as `raw`, so form JSON in blob storage roughly triples (about 216 MiB → 620 MiB for a full standard extract), which costs storage and download time.
+
+Existing blob JSON has no `raw`; forms from it have no stored copy until re-extracted. Run the **platform pipeline with extraction** (not `skipExtraction`) first for the standard models, then the **custom pipeline with extraction**, then the upgrade pipeline if you use it — the upgrade pipeline and custom `skipExtraction` runs rebuild from blob JSON and only get stored copies if that JSON carries `raw`. `form_datasources` (which forms use a table) needs no re-extraction.
+
 ### Uploading standard packages
 
 The platform pipeline needs the raw `PackagesLocalDirectory` as a zip in the `packages` container. On your D365FO VM, compress `K:\AosService\PackagesLocalDirectory`, upload it as `PackagesLocalDirectory.zip` (via **Azure Storage Explorer**), and re-upload only after a version upgrade or hotfix rollup.
