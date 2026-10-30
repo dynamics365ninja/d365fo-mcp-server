@@ -352,13 +352,17 @@ export const SETTINGS: Setting[] = [
       '`naming.prefix`. Pin it when one model carries several feature prefixes that share a stem — inference learns ' +
       'the shared stem, while the objects you write need the full one. `none` is for teams that use no prefix ' +
       '(e.g. a suffix convention with `naming.suffix`): new objects, fields and methods keep the name as given, ' +
-      'and extension elements/classes embed the model name (CustTable.MyModel, CustTable_MyModel_Extension). See ' +
+      'and extension elements/classes embed the model name (CustTable.MyModel, CustTable_MyModel_Extension). ' +
+      '`as-given` goes further: the server renames nothing, extensions included, and only refuses a name that ' +
+      'cannot be an AOT name (no dot on an element extension, no `_Extension` on a class extension) — state the ' +
+      'convention in the project\'s instruction file (AGENTS.md, CLAUDE.md, .github/copilot-instructions.md). See ' +
       '[Where the prefix comes from](CUSTOM_EXTENSIONS.md#where-the-prefix-comes-from).',
     default: 'model',
     choices: [
       { value: 'model', hint: 'the model\'s own objects decide, falling back to naming.prefix' },
       { value: 'config', hint: 'always naming.prefix, inference off (pre-1.8.2 behaviour)' },
       { value: 'none', hint: 'no prefix at all — names as given; extensions embed the model name' },
+      { value: 'as-given', hint: 'never rename — every name as given, extensions too; convention in your instruction file' },
     ],
   },
   {

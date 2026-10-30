@@ -403,6 +403,44 @@ describe('#35 — an accepted-but-dropped parameter must be reported, never sile
     );
     expect(textOf(result)).not.toContain('did not reach the written XML');
   });
+
+  it('does not warn about the schema defaults a client fills in', async () => {
+    // MCP clients send every published default. overwrite:false arrived on 524
+    // modify replies in one project's sessions, none of whose callers set it,
+    // and each answered "overwrite: IGNORED … Re-run with the correct parameter
+    // name(s)" after a call that had succeeded.
+    const result = await modifyD365FileTool(
+      req({
+        objectType: 'table',
+        objectName: 'ConDemoModLifecycle',
+        operation: 'add-index',
+        indexName: 'TicketIdx',
+        indexFields: [{ fieldName: 'CustAccount' }],
+        filePath: TABLE_FILE_PATH,
+        overwrite: false,
+        addToProject: true,
+        createBackup: false,
+      }),
+      buildContext(),
+    );
+    expect(textOf(result)).not.toContain('did not reach the written XML');
+  });
+
+  it('still warns when a schema parameter carries a value the operation cannot use', async () => {
+    const result = await modifyD365FileTool(
+      req({
+        objectType: 'table',
+        objectName: 'ConDemoModLifecycle',
+        operation: 'add-index',
+        indexName: 'TicketIdx',
+        indexFields: [{ fieldName: 'CustAccount' }],
+        filePath: TABLE_FILE_PATH,
+        overwrite: true,
+      }),
+      buildContext(),
+    );
+    expect(textOf(result)).toMatch(/overwrite: IGNORED/);
+  });
 });
 
 describe('#5 — add-relation must write the relation properties it documents', () => {

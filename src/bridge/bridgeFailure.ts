@@ -105,6 +105,32 @@ export function describeBridgeFailure(failure: BridgeFailure): string {
 }
 
 /**
+ * The bridge's own message when it refused a VALUE the caller passed, else null.
+ *
+ * A create the bridge throws on falls back to the XML template. That is right for
+ * a bridge that cannot do the job (a model its provider does not know, an
+ * unsupported type), but not when the bridge validated a value and rejected it:
+ * the template writes the same value unchecked, and the invalid object reaches
+ * disk with "⚠️ Written by the local XML template". Seen with tableType
+ * "RegularTable". The C# enum-property validators word these as "'X' is not a
+ * valid <Property>" or "Invalid <Property> 'X'", both as -32602 (invalid params),
+ * and their lists of valid values are complete.
+ *
+ * The field EDT check ("extended data type 'X' does not exist — nothing was
+ * written") is deliberately NOT one of them: it asks IMetaEdtProvider.Exists, which
+ * answers "not found" for the kernel EDTs that have no AOT file — RecId, UserId,
+ * DataAreaId, ValidFromDateTime, ValidToDateTime, TimeOfDay, TableName, FieldId,
+ * CreatedDateTime (probed on 10.0 / 7.0.7996.33; together several thousand shipped
+ * table fields). Refusing on it would turn a valid create (a date-effective table's
+ * ValidFrom/ValidTo) into "Nothing was written", where the template writes it right.
+ */
+export function rejectedBridgeInput(failure: BridgeFailure): string | null {
+  const m = /Bridge error \[-32602\]: ([\s\S]*)$/.exec(failure.reason);
+  if (!m) return null;
+  return /\bis not a valid\b|^Invalid \w+ '/.test(m[1]) ? m[1].trim() : null;
+}
+
+/**
  * The note appended to a response that was produced while the bridge was throwing.
  * It has to say what the answer IS (index/disk data) as well as what went wrong —
  * "bridge error" on its own reads as "no answer", and the agent retries instead of

@@ -230,6 +230,23 @@ const D365FO_FILE_OVERRIDE_PARAMS: Record<string, string> = {
     'The write result already carries an on-disk + .rnrproj verification without it.',
 };
 
+/**
+ * True when `value` is the default the published d365fo_file schema declares for
+ * the top-level parameter `key`.
+ *
+ * MCP clients fill schema defaults in before sending, so `overwrite: false`
+ * arrived on every modify although no caller set it, and the silent-drop guard
+ * answered "overwrite: IGNORED (not a recognised d365fo_file parameter) … Re-run
+ * with the correct parameter name(s)" after a call that succeeded — 524 of 1,177
+ * d365fo_file replies in one project's sessions. A value equal to the default
+ * says nothing the caller chose, so there is nothing to report. A non-default
+ * value (`overwrite: true` on modify) is still reported.
+ */
+export function isPublishedDefault(key: string, value: unknown): boolean {
+  const prop = (d365foFileTool.inputSchema.properties as Record<string, { default?: unknown }>)[key];
+  return prop !== undefined && 'default' in prop && prop.default === value;
+}
+
 /** Every topic the lookup answers, grouped for the index listing. */
 export function opSpecTopics(): { modifyOperations: string[]; createObjectTypes: string[]; generateModes: string[] } {
   return {

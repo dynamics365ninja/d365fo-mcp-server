@@ -710,7 +710,7 @@ export const directXmlAddIndex = serializedOnFile(async (
   fields: string[] | undefined,
   allowDuplicates: boolean | undefined,
   alternateKey: boolean | undefined,
-): Promise<{ success: boolean; message: string } | null> => {
+): Promise<{ success: boolean; message: string; skipped?: boolean } | null> => {
   // The bridge refuses an index with no fields (it writes <Fields /> — an index that
   // compiles, warns about nothing and indexes nothing). This fallback runs precisely
   // when the bridge call failed, so without the same gate it would catch the refusal
@@ -741,12 +741,15 @@ export const directXmlAddIndex = serializedOnFile(async (
     // which is why the extension needs its own alternative rather than a looser pattern.
     if (!/<AxTable\b/.test(content) && !/<AxTableExtension\b/.test(content)) return null;
 
-    // Idempotent: if an index with this name already exists, report success
-    // rather than writing a duplicate (mirrors directXmlAddControl).
+    // Idempotent: if an index with this name already exists, nothing is written —
+    // and that is a skip, not an add. "✅ … already present" counted as applied in a
+    // batch, and read as success when the existing index had different fields.
     if (new RegExp(`<AxTableIndex>\\s*<Name>${indexName}</Name>`).test(content)) {
       return {
         success: true,
-        message: `✅ Index '${indexName}' already present in ${filePath} — skipped (idempotent).`,
+        skipped: true,
+        message: `⏭️ NOT written — index '${indexName}' already exists in ${filePath}. ` +
+          `To change it, remove-index then add-index.`,
       };
     }
 

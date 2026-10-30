@@ -33,12 +33,14 @@ vi.mock('fs', () => {
 
 import { undoLastModificationTool } from '../../src/tools/sdlc/undoLastModification';
 import { reviewWorkspaceChangesTool } from '../../src/tools/sdlc/reviewWorkspaceChanges';
+import { recordCreatedArtifact, _clearCreatedArtifactLedger } from '../../src/workspace/createdArtifactLedger';
 
 const getFs = async () => await import('fs');
 
 describe('local tools - undo_last_modification', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    _clearCreatedArtifactLedger();
   });
 
   it('returns error for invalid filePath', async () => {
@@ -88,7 +90,7 @@ describe('local tools - undo_last_modification', () => {
     );
   });
 
-  it('deletes file only when it is git-untracked', async () => {
+  it('deletes file only when it is git-untracked and created this session', async () => {
     execFilePromisified
       .mockResolvedValueOnce({ stdout: '/repo\n', stderr: '' })
       .mockRejectedValueOnce(new Error('not tracked'))
@@ -97,12 +99,32 @@ describe('local tools - undo_last_modification', () => {
     const fsMod = await getFs();
     (fsMod.existsSync as any).mockReturnValue(true);
     ((fsMod as any).promises.stat as any).mockResolvedValue({ isFile: () => true });
+    recordCreatedArtifact({ filePath: '/repo/src/new-file.ts', objectType: 'class', objectName: 'NewFile' });
 
     const result = await undoLastModificationTool({ filePath: '/repo/src/new-file.ts' }, {});
 
     expect(result.isError).toBeFalsy();
     expect(result.content[0].text).toMatch(/deleted untracked file/i);
     expect((fsMod.unlinkSync as any)).toHaveBeenCalledWith('/repo/src/new-file.ts');
+  });
+
+  it('refuses to delete an untracked file this session did not create', async () => {
+    // An object from an earlier session stays untracked until it is committed.
+    // Undo after a bad modify of it used to delete the whole object.
+    execFilePromisified
+      .mockResolvedValueOnce({ stdout: '/repo\n', stderr: '' })
+      .mockRejectedValueOnce(new Error('not tracked'))
+      .mockResolvedValueOnce({ stdout: 'src/old-file.ts\n', stderr: '' });
+
+    const fsMod = await getFs();
+    (fsMod.existsSync as any).mockReturnValue(true);
+    ((fsMod as any).promises.stat as any).mockResolvedValue({ isFile: () => true });
+
+    const result = await undoLastModificationTool({ filePath: '/repo/src/old-file.ts' }, {});
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/did not\s+create it/);
+    expect((fsMod.unlinkSync as any)).not.toHaveBeenCalled();
   });
 
   it('refuses deletion when target is not a file', async () => {

@@ -132,7 +132,7 @@ Mode-specific parameters go in a single `params` object (flat top-level keys sti
 - **`create`** — create any of 39 AOT object types in the correct location + register in `.rnrproj` (gated by grounding token and form-pattern validation).
 - **`modify`** — safe metadata edits via the C# bridge, 41 operations: add-field, add-control, remove-control, add-entry-point, add-method, replace-code, modify-property, report-design, … plus the ones the bridge has no concept of and a direct-XML writer serves: `add-`/`remove-diagnostic-suppression` on `objectType="ignore-diagnostic-list"`, and `add-`/`remove-module-reference` on `objectType="model-descriptor"`.
 - **`delete`** — remove an object's XML and un-register it from every `.rnrproj` of the model that lists it (irreversible; guarded against standard-model and cross-model targets).
-- **`undo`** — roll `filePath` back: git-tracked → `git checkout HEAD`, which discards ALL uncommitted changes to that file, not just the last edit; untracked → deleted; the symbol/label index is re-synced either way.
+- **`undo`** — roll `filePath` back: git-tracked → `git checkout HEAD`, which discards ALL uncommitted changes to that file, not just the last edit; untracked → deleted only if this session created it, otherwise refused; the symbol/label index is re-synced either way.
 - **`generate`** — XML preview without writing (cloud-friendly).
 
 **Non-AOT write targets.** Two files under `src/Metadata/{Model}/` are not AOT objects and have no C# bridge path — they are written straight to XML through the same `action="modify"` gate:

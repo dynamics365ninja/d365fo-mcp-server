@@ -348,7 +348,18 @@ export function checkPrefixResolution(
   label: string,
   pinned = false,
   noPrefix = false,
+  asGiven = false,
 ): CheckResult[] {
+  // naming.prefixSource=as-given (#1134): the server renames nothing, so there is
+  // no prefix or token to check — the convention lives in the instruction file.
+  if (asGiven) {
+    return [{
+      severity: 'ok',
+      message: `${label}: names as given (naming.prefixSource=as-given) — nothing is prefixed or renamed, ` +
+        `extensions included; the convention is the one in the project's instruction file` +
+        (configuredPrefix ? ` (naming.prefix "${configuredPrefix}" is not applied)` : ''),
+    }];
+  }
   // naming.prefixSource=none: no prefix by decision (#1085), so there is nothing
   // to infer, pin or warn about — only what the server does instead.
   if (noPrefix) {
@@ -722,6 +733,7 @@ export async function doctorCommand(): Promise<void> {
   ).trim().toLowerCase();
   for (const r of checkPrefixResolution(
     configuredPrefix, detection.modelName, names, 'Naming', prefixSource === 'config', prefixSource === 'none',
+    prefixSource === 'as-given',
   )) emit(r);
 
   // C# bridge: the only write path; Windows-only.

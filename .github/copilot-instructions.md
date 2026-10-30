@@ -32,7 +32,7 @@ PowerShell / any terminal command **WILL HANG** in VS 2022 / VS 2026 MCP integra
 | Plan a new object before creating it | `prepare(mode="create", goal, objectName, objectType)` — returns collision check, naming, EDT/label hints + `groundingToken` |
 | Create a D365FO object | `d365fo_file(action="create")` (never `create_file`) |
 | Edit an existing object | `d365fo_file(action="modify")` (applies immediately — confirm in chat first) |
-| Revert the last write | `d365fo_file(action="undo", filePath)` — git-tracked → checkout HEAD (discards ALL uncommitted changes to that file); untracked → deleted |
+| Revert the last write | `d365fo_file(action="undo", filePath)` — git-tracked → checkout HEAD (discards ALL uncommitted changes to that file); untracked → deleted only if created this session |
 | Search objects | `search` — multiple via `search(queries[])`, custom-only via `search(scope="extensions")` |
 | Read any object's metadata | `get_object_info(objectType, name, options?)` — objectType ∈ class/table/form/query/view/enum/edt/report/data-entity/menu-item/service/map/config-key/security-policy/macro. 2+ known names: `get_object_info(objects=[{objectType,objectName},…])` — ONE call, never a loop |
 | Method signature for CoC | `get_object_info(objectType="class", name, options={method, include:"signature"})` (already returned by `prepare(mode="change")`) |

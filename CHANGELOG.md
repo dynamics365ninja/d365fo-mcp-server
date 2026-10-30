@@ -37,8 +37,116 @@ those are called out explicitly below.
   back)". The default is unchanged, and its failure text now mentions the option.
   `atomic` is a top-level batch option, not published in the schema (which sits at its
   token budget), and it is not passed on to the operations.
+- **`naming.prefixSource=as-given`: the server renames nothing** (#1134). `none` dropped
+  the prefix but still rewrote every extension's token to the model name, so a team whose
+  token is an abbreviation (`VendTable.ABC` in model `ContosoCore`) got `VendTable.ContosoCore`
+  and `VendTableTable_ABC_ContosoCore_Extension`. With `as-given` (env
+  `EXTENSION_PREFIX_SOURCE=as-given`) every name is written as passed: objects, members,
+  extension elements and classes, with no prefix, suffix or token, and nothing inferred
+  from the model. A name that cannot be an AOT name is refused with the reason instead of
+  completed (an element extension without `<Base>.<Token>`, a class extension not ending
+  in `_Extension`, invalid characters, more than 81 characters). `validate_object_naming`
+  and `prepare` check only that structure. The prompt's CoC naming rule,
+  `get_workspace_info`, `doctor` and the cross-model refusal point to the project's
+  instruction file. `generate_object` says its derived class names carry no token. See
+  [Names exactly as given](docs/CUSTOM_EXTENSIONS.md#names-exactly-as-given).
 
 ### Fixed
+- **Re-adding a table element that exists failed the call or the batch.** The bridge's
+  table `AddField`, `AddIndex`, `AddFieldGroup`, `AddFieldToFieldGroup` and
+  `AddRelation` added without checking the name, so an element that existed failed
+  inside the SDK ("already exists among elements") and stopped the `operations[]` batch
+  it was in. Table create always writes the five Auto field groups, so a follow-up
+  `add-field-group AutoReport` always collided. Each now answers as a skip, nothing
+  written, with the reason and the operation that changes the element. The index,
+  field-group and relation wrappers report it as "⏭️ NOT written" (the field paths
+  already did). The XML index fallback's "✅ already present" is a skip too, and the
+  valid-time-state and relation-property follow-ups no longer run after a skip. An
+  `add-field-group` with `fields` on a group that exists puts the missing fields into
+  it instead of dropping them, so `add-field-group AutoReport` with fields does what it
+  asked for.
+- **An EDT that extends an enum EDT had no enum.** The base-type inference from
+  `extends` left enum parents alone, so `extends: "NoYesId"` wrote a string EDT. And
+  neither writer could set the enum at all: the bridge's `SetAxEdtProperty` had no
+  `enumType` case (reported unsupported) and `generateAxEdtXml` never wrote
+  `<EnumType>`. An enum parent now gives `edtType: Enum` and the parent's `enumType`
+  (bridge `readEdt`, then the index chain), an explicit `edtType: Enum` without an enum
+  gets the parent's, and both writers write `<EnumType>` after `<TableReferences />`,
+  as all 1,512 shipped children of enum EDTs do.
+- **A value the bridge rejected was written anyway by the XML template.** When a bridge
+  create threw, create fell back to the template, also when the bridge had validated a
+  value and refused it ("'RegularTable' is not a valid TableType"). The template wrote
+  the same value unchecked, and the invalid object reached disk with only a "Written by
+  the local XML template" note. Such rejections (`-32602` with "is not a valid" or
+  "Invalid …") now stop the create with the bridge's message. Other bridge failures,
+  such as a model its provider does not know, still fall back as before, and so does
+  the field EDT check: the provider reports kernel EDTs (`RecId`, `UserId`,
+  `ValidFromDateTime`, …) as missing, so its "does not exist" is not proof that the
+  input is wrong. Such a rejection also no longer
+  gets the dispatcher's "bridge errored … re-run once the bridge is healthy" note: the
+  bridge answered, it is the input that was wrong.
+- **`undo` and `delete` left the element's compiler-metadata copy behind.** The copy at
+  `<Package>\XppMetadata\<Model>\<AxType>\<Name>.xml` was removed only by the phantom
+  prune of this server's incremental build, so a Visual Studio build or a packaging step
+  in between kept the deleted element in the manifests. Both now remove the copy when
+  they remove the source, by the prune's own rule, and drop the copy's type folder if
+  that left it empty.
+- **`undo` deleted a whole object that was merely uncommitted.** Inside a git work tree,
+  any untracked file was deleted, so an undo after a bad modify of an object from an
+  earlier session (common where objects are committed only at PR time) removed the
+  object itself, with no backup to restore and its `.rnrproj` entry left dangling. An
+  untracked file is now deleted only when this session created it, the rule the
+  non-git path already applied. Otherwise undo refuses and says why. The tables, forms
+  and report objects `generate_object(scaffold)` writes to disk are now recorded as
+  created too, so undo can still delete them (it could not outside git before).
+- **TTS001 warned on replace-code fragments and never reached extension classes.** The
+  write-time check counted `ttsbegin`/`ttscommit` in the text sent, so adding a line
+  after `ttsbegin;` in a balanced method warned "ttsbegin × 1, ttscommit × 0". For a
+  `replace-code`, TTS001 now stays only when the edit changes the balance between
+  `oldCode` and `newCode`. Separately, a method sent to an extension class was wrapped in
+  a synthetic class header whose line the rebase dropped, together with the TTS001 that
+  sat on it. That violation is now kept on line 1 of the code sent.
+- **COC004 reported `next` inside `try`, `finally` or `using` as conditional.** Any
+  block deeper than the method body counted as conditional, so CoC methods the compiler
+  accepts (`next insert()` inside `try … finally`, `return next insertFromForm()` inside
+  `using`) were refused as SYS10028 errors. Only blocks whose header branches or loops
+  (`if`, `else`, `while`, `for`, `do`, `switch`, `case`, `default`, `catch`) now make
+  `next` conditional. Across 3,193 shipped CoC classes that call `next`, COC004 fell
+  from 189 hits to 120. The rest are `[Replaceable]` base methods and data source
+  overrides, which need a lookup of the target method.
+- **A multi-line `replace-code` always missed in the bridge.** The bridge matches with
+  `Contains` against method source read through `IMetadataProvider`, which keeps the
+  file's CRLF, while clients send `oldCode` with LF. Every multi-line edit therefore
+  fell through to the XML writer with a "bridge declined" note (168 of 176 in one
+  project's sessions, against 3 of 181 single-line ones). `oldCode` and `newCode` now
+  reach the bridge in the line endings of the file on disk, which also keeps inserted
+  code in the file's own style.
+- **An already-applied `replace-code` counted as applied in a batch.** Its "no change
+  needed" answer returned before the outcome was marked skipped, so `operations[]`
+  reported it in "N/N operation(s) applied" and in the "verified on disk" trailer for a
+  write that never happened. It is now counted as skipped, as a bridge skip is.
+- **Every modify warned "overwrite: IGNORED" although nobody passed it.** MCP clients
+  send the schema's published defaults, so `overwrite: false` arrived on each call and
+  the silent-drop guard answered "not a recognised d365fo_file parameter … Re-run with
+  the correct parameter name(s)" after a call that had succeeded, once per entry in a
+  batch. A parameter whose value equals its published default is no longer reported.
+  A real value the operation cannot use (`overwrite: true` on modify) still is.
+- **`validate_code` accepted any value on a known enum; no check for an update on a
+  buffer never selected for update; prefix inference followed a minority prefix**
+  (#1164). `PurchStatus::NoSuchStatus` passed as verified once `PurchStatus` existed.
+  The references check now reads the value names from the enum's XML and from every
+  indexed `AxEnumExtension` of it (plus, for packages shipped without XML, the compiled
+  `bin\<Package>_AxEnumExtension.md`) and reports `unknown-enum-value` as an error.
+  Over the 312,533 `Enum::Value` uses in shipped X++ it raised 30, every one a .NET enum
+  of the same name brought in by a `using` directive, so a source with such a directive
+  gets a warning instead; a namespace-qualified `A.B.Enum::Value` and an enum whose XML
+  is not on this machine are not checked. New rule SEL011 warns on `buf.update()` /
+  `buf.delete()` when every select of `buf` since its declaration lacks `forupdate`,
+  `pessimisticlock` and `optimisticlock` — 20 hits over 1.1M shipped CDATA blocks,
+  all code paths that throw if reached. And the regular-object sample prefix inference
+  reads was the model's first 60 names in (type, name) order, so in a 3,800-object
+  `xyz` model with 69 `xyz3PL` names (digits sort first) inference answered `xyz3PL`;
+  the sample is now drawn as eight short runs spread over the model's rows.
 - **`add-method` and `remove-method` failed on a data entity.** The bridge has no
   data-entity arm for either, so `d365fo_file` modify returned "add-method not supported
   for objectType 'data-entity' via bridge (use XML fallback)" and applied nothing — the

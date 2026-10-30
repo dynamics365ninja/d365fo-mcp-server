@@ -127,6 +127,30 @@ With `prefixSource: none` (env `EXTENSION_PREFIX_SOURCE=none`):
 
 `npx d365fo-mcp setup` asks for this when you leave the prefix empty.
 
+### Names exactly as given
+
+`none` still chooses the extension token: it is always the model name. When your token is something else, an abbreviation of the model name for example, use `as-given`. The server then renames nothing:
+
+```json
+{ "naming": { "prefixSource": "as-given" } }
+```
+
+With `prefixSource: as-given` (env `EXTENSION_PREFIX_SOURCE=as-given`), in a model named `ContosoCore` whose convention uses `ABC`:
+
+| Proposed name | Type | `none` | `as-given` |
+|---|---|---|---|
+| `VendTableABC` | table | kept | kept |
+| `VendTable.ABC` | table-extension | → `VendTable.ContosoCore` | kept |
+| `VendTableTable_ABC_Extension` | class-extension | → `VendTableTable_ABC_ContosoCore_Extension` | kept |
+| `VendTable` | table-extension | → `VendTable.ContosoCore` | **refused**: no token to invent |
+
+- Nothing is prefixed, suffixed or given a token: `naming.prefix`, `naming.suffix`, the naming styles and the model's own objects are all ignored. Fields and methods added to an extension keep their names too.
+- A name is refused, with the reason, only when it cannot be a valid AOT name: an element extension without exactly one dot (`<Base>.<Token>`), a class extension that does not end in `_Extension`, characters other than letters, digits and `_`, or more than 81 characters. Collisions are reported as before.
+- `validate_object_naming` and `prepare` check that structure only. The prompt's CoC naming rule, `get_workspace_info`, `doctor` and the cross-model refusal stop naming a token and point to your instruction file.
+- Names the server would otherwise derive itself, such as the class names in a `generate_object` CoC scaffold, carry no token. Rename them before `d365fo_file(action="create")`; the reply says so.
+
+Write the convention into the project's instruction file (`AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, …). In this mode the model follows that file and nothing else.
+
 ## Objects owned by another model
 
 A customer solution is commonly split across several **custom** models — a shared `ContosoFinanceCore` plus country models `ContosoFinanceSK` / `ContosoFinanceCZ` that extend it. The workspace targets exactly one of them; every other model is code this workspace only consumes.
