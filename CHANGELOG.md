@@ -113,6 +113,15 @@ those are called out explicitly below.
   member of an enum now gets one past the highest value in its XML. Enum extensions keep
   0, which writes no `<Value>`: the platform numbers the members of an extensible enum,
   and most shipped extensions (219 of 278) carry none.
+- **KW001 missed reserved-word names on EDT, table and class types and on parameters.**
+  The rule only matched declarations whose type was a primitive (`int from;`), so
+  `TransDate from;`, `CustTable outer;` and a parameter `(AmountMST sum)` reached the
+  build, where xppc names the token after the word instead of the word. It now takes any
+  type and also checks parameters. Statements whose first word is reserved (`return
+  count;`) and `order by` lists (`asc`, `desc`) are skipped. Across 95,753 shipped and
+  ISV class, table and form files it reports nothing. It did find one: the `args-object`
+  knowledge example declared `MyOrderTable order;`, and `order` is reserved, so the
+  example is now `orderTable`.
 - **An incremental build silently removed a data entity's OData actions.** xppc's
   `-incremental` mode rewrites the `bin\Dynamics.AX.<Package>.ODataExtends.runtime`
   entry of every entity it recompiles without its actions, and the AOS reads them from

@@ -2398,26 +2398,52 @@ function checkExtensionMethodClassShape(code: string): ValidationViolation[] {
  * `await` and `namespace` are reserved without being implemented, so a variable
  * called `having` fails with a syntax error that names the following token instead.
  * `in` is reserved but exempted and stays legal.
+ *
+ * The type may be any EDT, table or class, not only a primitive: `TransDate from;`,
+ * `CustTable outer;` and a parameter `(TransDate _d, AmountMST sum)` fail the same
+ * way, and those are the common shapes (an EDT-typed date range is where `from`
+ * shows up). A line whose first word is itself reserved (`return count;`,
+ * `else sum = 0;`, `group by x;`) is a statement, not a declaration, and is skipped
+ * — except the primitive type names that are reserved words themselves.
+ *
+ * `asc` and `desc` are never reported: an `order by` list (`, ModifyDate desc`,
+ * `SortingRank asc,` on a line of its own) has the same shape as a declaration or a
+ * parameter, and it was the only shape that fired on shipped code. With them
+ * excluded, a sweep of 95,753 shipped and ISV AxClass/AxTable/AxForm files
+ * (1,075,169 source blocks) gives no KW001 at all.
  */
+const RESERVED_TYPE_NAMES = /^(str|int|int64|real|date|utcdatetime|guid|container|anytype|var)$/i;
+
+function isReservedDeclaration(type: string, name: string): boolean {
+  return isReservedKeyword(name) && !/^(asc|desc)$/i.test(name)
+    && (RESERVED_TYPE_NAMES.test(type) || !isReservedKeyword(type));
+}
+
 function checkReservedIdentifiers(code: string): ValidationViolation[] {
   const masked = maskStringsAndComments(code);
   const lines = code.split('\n');
   const violations: ValidationViolation[] = [];
   const declRe =
-    /^\s*(?:(?:public|protected|private|internal|static|final|const|readonly)\s+)*(str\s+\d+|str|int64|int|real|boolean|date|utcdatetime|timeOfDay|guid|container|anytype)\s+([A-Za-z_]\w*)\s*[;,=]/gim;
-  let m: RegExpExecArray | null;
-  while ((m = declRe.exec(masked)) !== null) {
-    if (!isReservedKeyword(m[2])) continue;
-    const lineNo = lineNumber(masked, m.index);
+    /^\s*(?:(?:public|protected|private|internal|static|final|const|readonly)\s+)*([A-Za-z_][\w.]*)(?:\s+\d+)?\s+([A-Za-z_]\w*)\s*[;,=]/gim;
+  const paramRe = /[(,]\s*([A-Za-z_][\w.]*)\s+([A-Za-z_]\w*)\s*(?=[,)=])/g;
+  const report = (index: number, name: string, what: string) => {
+    const lineNo = lineNumber(masked, index);
     violations.push({
       rule: 'KW001',
       severity: 'error',
       line: lineNo,
-      excerpt: lines[lineNo - 1]?.trim() ?? m[0].trim(),
-      fix: `"${m[2]}" is a reserved word in X++ (the parser's own keyword set) and cannot name a ` +
-        'variable. Rename it — the compiler reports the failure on the token that follows, not on ' +
+      excerpt: lines[lineNo - 1]?.trim() ?? name,
+      fix: `"${name}" is a reserved word in X++ (the parser's own keyword set) and cannot name a ` +
+        `${what}. Rename it — the compiler reports the failure on the token that follows, not on ` +
         'the name, so the message will not point here.',
     });
+  };
+  let m: RegExpExecArray | null;
+  while ((m = declRe.exec(masked)) !== null) {
+    if (isReservedDeclaration(m[1], m[2])) report(m.index, m[2], 'variable');
+  }
+  while ((m = paramRe.exec(masked)) !== null) {
+    if (isReservedDeclaration(m[1], m[2])) report(m.index, m[2], 'parameter');
   }
   return violations;
 }

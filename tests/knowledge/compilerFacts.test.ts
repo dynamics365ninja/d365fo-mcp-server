@@ -321,6 +321,36 @@ describe('the rules added from compiler diagnostics fire on the bad shape', () =
     expect(has('    int counter;', 'KW001')).toBe(false);
   });
 
+  it('KW001 — the declared type may be an EDT, table or class', () => {
+    // The common shapes: an EDT-typed date range and a buffer, which the
+    // primitive-only pattern never saw.
+    expect(has('    TransDate from, to;', 'KW001')).toBe(true);
+    expect(has('    CustTable outer;', 'KW001')).toBe(true);
+    expect(has('    AmountMST sum = 0;', 'KW001')).toBe(true);
+    expect(has('    str 30 group;', 'KW001')).toBe(true);
+    expect(has('    private TransDate date;', 'KW001')).toBe(true);
+    expect(has('    TransDate fromDate, toDate;', 'KW001')).toBe(false);
+  });
+
+  it('KW001 — a parameter named after a reserved word', () => {
+    expect(has('    public void run(TransDate from, TransDate _to = dateNull())\n    {\n    }', 'KW001')).toBe(true);
+    expect(has('    public void run(CustAccount _account, AmountMST sum)\n    {\n    }', 'KW001')).toBe(true);
+    expect(has('    public void run(TransDate _from, TransDate _to = dateNull())\n    {\n    }', 'KW001')).toBe(false);
+  });
+
+  it('KW001 — statements that look like declarations are left alone', () => {
+    expect(has('    return count;', 'KW001')).toBe(false);
+    expect(has('    else sum = 0;', 'KW001')).toBe(false);
+    expect(has('    next insert();', 'KW001')).toBe(false);
+    expect(has('    select count(RecId) from custTable\n        group by custTable.CustGroup;', 'KW001')).toBe(false);
+    expect(has('    while select forupdate custTable\n        where custTable.AccountNum == _account\n    {\n    }', 'KW001')).toBe(false);
+    expect(has('    info(strFmt("%1 %2", from, to));', 'KW001')).toBe(false);
+    expect(has('    x = (select firstonly count from custTable).RecId;', 'KW001')).toBe(false);
+    // order by lists: the only shape that fired on shipped code in the sweep.
+    expect(has('    select trans order by TransDate desc, RecId asc;', 'KW001')).toBe(false);
+    expect(has('    select trans\n        order by\n            trans.SortingRank asc,\n            trans.TransDate desc;', 'KW001')).toBe(false);
+  });
+
   it('CS001 — C# shapes, but not the .NET generics the platform ships', () => {
     expect(has('    public override void run()\n    {\n    }', 'CS001')).toBe(true);
     expect(has('    private protected void f()\n    {\n    }', 'CS001')).toBe(true);
