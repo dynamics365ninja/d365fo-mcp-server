@@ -9,6 +9,8 @@ import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
 import { buildObjectTypeMismatchMessage, detectObjectTypeInDb } from '../../utils/metadataResolver.js';
 import { tryBridgeReferences } from '../../bridge/bridgeAdapter.js';
+import { xrefAvailability, type BridgeReadinessSource } from '../../bridge/bridgeReadiness.js';
+import { xrefSetupAdvice } from '../../config/xrefSetup.js';
 import * as fs from 'fs';
 import { readIndexedMethodSources } from '../../utils/indexedMethodSource.js';
 
@@ -200,12 +202,48 @@ const FALLBACK_SEARCHABLE_TYPES = new Set(['method', 'class', 'table', 'field', 
  * target — which reads as an outage and sends the reader off diagnosing one that
  * isn't happening. That mislabel cost a real investigation: an EDT where-used
  * returned this text while the bridge was serving 161 label references fine.
+ *
+ * 'unavailable' is two faults with different fixes, and it used to say "in this
+ * server mode" for both. A running bridge without a cross-reference database is
+ * the usual one on a traditional VM, where no XPP config names DYNAMICSXREFDB —
+ * a setting, not a mode. A bridge still starting is a third, and needs no fix at
+ * all: calling it "not connected" is the conflation behind issue #826.
  */
-function bridgeFallbackReason(status: 'empty' | 'error' | 'unavailable'): string {
+function bridgeFallbackReason(
+  status: 'empty' | 'error' | 'unavailable',
+  context: BridgeReadinessSource,
+): string {
   switch (status) {
     case 'empty': return 'the cross-reference database returned no rows for this target';
     case 'error': return 'the cross-reference query failed';
-    case 'unavailable': return 'the cross-reference bridge is unavailable in this server mode';
+    case 'unavailable':
+      switch (xrefAvailability(context)) {
+        case 'starting':
+          return 'the C# bridge is still starting (a cold-start race, not a configuration problem)';
+        case 'not-connected':
+          return 'the C# bridge is not connected, and only it reads the cross-reference database';
+        default:
+          return 'the C# bridge runs without a cross-reference database: none is configured, ' +
+            'or the configured one could not be reached';
+      }
+  }
+}
+
+/**
+ * What to do about a missing cross-reference database, or '' when there is no
+ * specific advice. A line of its own rather than part of bridgeFallbackReason,
+ * whose clause is reused mid-sentence. Without the setting names the reader learns
+ * that something is not configured, and not what to configure.
+ */
+function bridgeFallbackAdvice(
+  status: 'empty' | 'error' | 'unavailable',
+  context: BridgeReadinessSource,
+): string {
+  if (status !== 'unavailable') return '';
+  switch (xrefAvailability(context)) {
+    case 'starting': return 'Retry the identical call in a few seconds, once the C# bridge has started.';
+    case 'no-xref': return `To get exact cross-references: ${xrefSetupAdvice()}`;
+    default: return '';
   }
 }
 
@@ -223,6 +261,7 @@ function describeUnsearchableType(
   targetName: string,
   targetType: string,
   status: 'empty' | 'error' | 'unavailable',
+  context: BridgeReadinessSource,
 ): { content: Array<{ type: 'text'; text: string }> } {
   // 'empty' is a real zero, not a missing answer. tryBridgeReferences returns it
   // only when every candidate query ran and none of them errored — anything else
@@ -266,13 +305,21 @@ function describeUnsearchableType(
   out += `**Target Type:** ${targetType}\n`;
   out += `**Result:** inconclusive — this is NOT a count of zero\n\n`;
   out += `A \`${targetType}\` where-used needs the cross-reference database (DYNAMICSXREFDB), `;
-  out += `and ${bridgeFallbackReason(status)}.\n\n`;
+  out += `and ${bridgeFallbackReason(status, context)}.\n\n`;
   out += `The name-based index fallback cannot stand in for it here: it scans only X++ method `;
   out += `bodies, and only the first ten lines of each, whereas a ${targetType} is referenced `;
   out += `mostly from declarative metadata that is not in the text index at all. Running it would `;
   out += `have produced a number with no relationship to the real answer.\n\n`;
   out += `**What to do:**\n`;
-  out += `- Re-run once the xref bridge is available (full server mode; on UDE the XPP config names the xref DB, on a traditional VM set \`bridge.xrefDbName\`, usually DYNAMICSXREFDB)\n`;
+  // Each cause gets its own fix. This used to be one "re-run once the xref bridge is
+  // available … set bridge.xrefDbName" for all of them, which told a failed query
+  // that the bridge it had just used was missing, and a disconnected bridge to set
+  // a database name that was not the problem.
+  const advice = bridgeFallbackAdvice(status, context) || (status === 'error'
+    ? 'Check the bridge log for why the cross-reference query failed, then re-run'
+    : 'Ensure the C# bridge exe is built and D365FO metadata is accessible ' +
+      '(`.mcp.json` → `context.packagePath`), then re-run');
+  out += `- ${advice}\n`;
   if (suggestion) {
     out += `- Or pass the explicit AOT path as \`targetName\`: \`${suggestion}\`\n`;
   }
@@ -316,15 +363,17 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
       // FTS scan can't see declarative metadata references, so don't fake a
       // partial answer by falling through to it.
       const why = outcome.status === 'unavailable'
-        ? 'The cross-reference bridge is not available in this server mode.'
+        ? `Here, ${bridgeFallbackReason('unavailable', context)}.`
         : 'The cross-reference query failed — check the bridge log.';
+      const advice = bridgeFallbackAdvice(outcome.status, context);
       return { content: [{ type: 'text', text:
         `# References to label \`${targetName}\`\n\n` +
         `⚠️ Label where-used requires the cross-reference database (DYNAMICSXREFDB), available when ` +
         `the server runs in full mode with a UDE/local xref DB configured. ${why}\n\n` +
         `Unlike code symbols, label references live mostly in declarative metadata (form captions, ` +
         `field/EDT labels, menu-item captions, …) that is not in the text index — so there is no ` +
-        `reliable fallback.\n` }], isError: outcome.status === 'error' };
+        `reliable fallback.\n` +
+        (advice ? `\n${advice}\n` : '') }], isError: outcome.status === 'error' };
     }
 
     // Target shape: AOT path ("/Tables/SalesTable/Methods/initFromSalesQuotationTable"),
@@ -453,7 +502,7 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
     // "0" would mean "not searched" rather than "not found". Say that outright
     // instead of running a scan that structurally cannot see their usages.
     if (targetType && !FALLBACK_SEARCHABLE_TYPES.has(targetType)) {
-      return describeUnsearchableType(targetName, targetType, bridgeOutcome.status);
+      return describeUnsearchableType(targetName, targetType, bridgeOutcome.status, context);
     }
 
     // FTS fallback (xref bridge unavailable) — name-based heuristic, cannot scope
@@ -529,7 +578,9 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
       output += `**Target Type:** ${targetType}\n`;
     }
     output += `**Scope:** ${scope}\n`;
-    output += `_Source: name-based index scan — ${bridgeFallbackReason(bridgeOutcome.status)}; heuristic, not scoped to a declaring type._\n`;
+    output += `_Source: name-based index scan — ${bridgeFallbackReason(bridgeOutcome.status, context)}; heuristic, not scoped to a declaring type._\n`;
+    const advice = bridgeFallbackAdvice(bridgeOutcome.status, context);
+    if (advice) output += `> ℹ️ ${advice}\n`;
     if (intraTypeRefs.length > 0) {
       output += `_${intraTypeRefs.length} of these came from reading the declaring type's source directly — ` +
         `the index only previews a method's first 10 lines, so calls below that are invisible to the scan above._\n`;
@@ -552,7 +603,7 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
     if (tableTarget) {
       output += `> ⚠️ For a table this counts X++ code only. Its declarative references — form data sources, ` +
         `relations, data entity mappings, fields bound on forms — are recorded only in the cross-reference ` +
-        `database, and ${bridgeFallbackReason(bridgeOutcome.status)}.\n`;
+        `database, and ${bridgeFallbackReason(bridgeOutcome.status, context)}.\n`;
     }
     output += `\n`;
 
@@ -569,7 +620,7 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
       // agent read `Total References Found: 0 … Symbol might be unused` for a
       // method with two real call sites, and acted on it.
       output += `No references found for \`${targetName}\` — **this is not evidence that it is unused.**\n\n`;
-      output += `⚠️ Because ${bridgeFallbackReason(bridgeOutcome.status)}, call sites are matched against each method's indexed ` +
+      output += `⚠️ Because ${bridgeFallbackReason(bridgeOutcome.status, context)}, call sites are matched against each method's indexed ` +
         `\`source_snippet\`, which holds only its FIRST TEN LINES. A call on line 11 or later of its ` +
         `caller cannot be seen from here, and long methods are exactly where calls hide. The declaring ` +
         `type's own source was read directly and had none either, which is the strongest statement ` +

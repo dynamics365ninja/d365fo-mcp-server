@@ -9,6 +9,7 @@ import * as fs from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { p } from '../ui.js';
 import { serializeValue, settingByPath } from '../../config/settings.js';
+import { xrefSetupAdvice } from '../../config/xrefSetup.js';
 import { bridgeFreshness, type BridgeFreshness } from '../bridgeSources.js';
 import { bridgeBuildCommand, dataRoot, installMode, isWindows, paths, repoRoot } from '../context.js';
 import { commandExists } from '../exec.js';
@@ -620,7 +621,7 @@ export function checkXrefConfigured(store: SettingsStore): CheckResult | null {
   return {
     severity: 'info',
     message: 'Cross-reference database not configured — find_references uses a name-based search instead of DYNAMICSXREFDB',
-    fix: 'set bridge.xrefDbName to DYNAMICSXREFDB (and bridge.xrefDbServer if it is not localhost), then restart the server',
+    fix: xrefSetupAdvice(s => s),
   };
 }
 
