@@ -55,7 +55,7 @@
  * transcript rather than a log nobody opens.
  */
 
-import { resolveObjectPrefix, applyObjectPrefix, isNoPrefixMode } from './modelClassifier.js';
+import { resolveObjectPrefix, applyObjectPrefix, isAsGivenNamingMode, isNoPrefixMode } from './modelClassifier.js';
 import { reloadWritePolicy } from './loadEnv.js';
 
 /** An extension of the target object that already exists in the active model. */
@@ -242,7 +242,11 @@ export function suggestedExtensionName(
 ): string | null {
   if (!EXTENSION_TYPE_OF[baseType]) return null;
   const prefix = resolveObjectPrefix(activeModel);
-  // naming.prefixSource=none still names extensions — after the model.
+  // naming.prefixSource=none still names extensions — after the model. as-given
+  // names nothing: the convention is the project's, so only the shape is shown.
+  if (isAsGivenNamingMode()) {
+    return baseType === 'class' ? `${baseObject}_<YourToken>_Extension` : `${baseObject}.<YourToken>`;
+  }
   if (!prefix && !isNoPrefixMode()) return null;
   return baseType === 'class'
     ? applyObjectPrefix(`${baseObject}_Extension`, prefix, activeModel, { knownBase: true })

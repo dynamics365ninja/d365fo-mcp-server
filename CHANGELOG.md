@@ -28,6 +28,21 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Added
+- **`naming.prefixSource=as-given`: the server renames nothing** (#1134). `none` dropped
+  the prefix but still rewrote every extension's token to the model name, so a team whose
+  token is an abbreviation (`VendTable.ABC` in model `ContosoCore`) got `VendTable.ContosoCore`
+  and `VendTableTable_ABC_ContosoCore_Extension`. With `as-given` (env
+  `EXTENSION_PREFIX_SOURCE=as-given`) every name is written as passed: objects, members,
+  extension elements and classes, with no prefix, suffix or token, and nothing inferred
+  from the model. A name that cannot be an AOT name is refused with the reason instead of
+  completed (an element extension without `<Base>.<Token>`, a class extension not ending
+  in `_Extension`, invalid characters, more than 81 characters). `validate_object_naming`
+  and `prepare` check only that structure. The prompt's CoC naming rule,
+  `get_workspace_info`, `doctor` and the cross-model refusal point to the project's
+  instruction file. `generate_object` says its derived class names carry no token. See
+  [Names exactly as given](docs/CUSTOM_EXTENSIONS.md#names-exactly-as-given).
+
 ### Fixed
 - **`add-method` and `remove-method` failed on a data entity.** The bridge has no
   data-entity arm for either, so `d365fo_file` modify returned "add-method not supported

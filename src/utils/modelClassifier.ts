@@ -72,6 +72,8 @@ function getConfiguredModelName(): string {
  * Empty string when not configured.
  */
 export function getObjectSuffix(): string {
+  // as-given: the name the caller chose is final, suffix included or not.
+  if (isAsGivenNamingMode()) return '';
   return process.env.EXTENSION_SUFFIX?.trim().replace(/_+$/, '') || '';
 }
 
@@ -85,7 +87,25 @@ export function getObjectSuffix(): string {
  * Studio default) — see getExtensionNamingStyle / getExtensionClassNamingStyle.
  */
 export function isNoPrefixMode(): boolean {
-  return process.env.EXTENSION_PREFIX_SOURCE?.trim().toLowerCase() === 'none';
+  const source = process.env.EXTENSION_PREFIX_SOURCE?.trim().toLowerCase();
+  return source === 'none' || isAsGivenSource(source);
+}
+
+function isAsGivenSource(source: string | undefined): boolean {
+  return source === 'as-given';
+}
+
+/**
+ * True when the server must not rename anything (naming.prefixSource=as-given,
+ * env EXTENSION_PREFIX_SOURCE=as-given) — issue #1134. It is `none` and more:
+ * no prefix, no suffix, AND no extension token. `none` still rewrites an
+ * extension's token to the model name, which is wrong for a team whose token is
+ * an abbreviation of it (`VendTable.ABC` in model `ContosoCore`). The convention
+ * then lives in the project's instruction file, and the server only refuses a
+ * name that cannot be a valid AOT name (see asGivenNameProblem in objectNaming).
+ */
+export function isAsGivenNamingMode(): boolean {
+  return isAsGivenSource(process.env.EXTENSION_PREFIX_SOURCE?.trim().toLowerCase());
 }
 
 /**
@@ -505,6 +525,8 @@ export function applyObjectPrefix(
   modelName?: string,
   options?: ApplyObjectPrefixOptions,
 ): string {
+  // as-given: nothing is renamed, extensions included (#1134).
+  if (isAsGivenNamingMode()) return objectName;
   // No prefix: a new object keeps its name. An extension still gets the model-name
   // token when the operator chose no prefix on purpose (naming.prefixSource=none) —
   // the branches below handle that, and leave regular objects untouched.

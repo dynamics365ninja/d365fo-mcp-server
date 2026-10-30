@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { readMethodCall } from '../../utils/methodBodyHint.js';
 import {
   resolveObjectPrefix, applyObjectPrefix, deriveExtensionInfix, getObjectSuffix, applyObjectSuffix,
-  getExtensionClassNamingStyle, isNoPrefixMode,
+  getExtensionClassNamingStyle, isAsGivenNamingMode, isNoPrefixMode,
 } from '../../utils/modelClassifier.js';
 import { normalizeModelToken } from '../../utils/modelToken.js';
 import { normalizeObjectName } from '../../utils/objectNaming.js';
@@ -3071,6 +3071,12 @@ export async function codeGenTool(request: CallToolRequest) {
             `\`\`\`xpp${code}\n\`\`\`\n\n` +
             `---\n\n` +
             namingNote +
+            // as-given (#1134): the server adds no token, so a name derived above is a
+            // placeholder the caller has to rename before create writes it.
+            (isAsGivenNamingMode()
+              ? `\n⚠️ naming.prefixSource=as-given: names derived here carry no token and are written exactly ` +
+                `as passed — rename them by the project's instruction file before d365fo_file(action="create").`
+              : '') +
             // Only the CoC signature rule earns a line here: guessing static vs
             // instance produces code that fails to compile. The rest was a menu
             // of optional follow-ups — and it named tools that do not exist

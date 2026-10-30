@@ -18,7 +18,7 @@ import { getStdioSessionInfo } from '../../utils/stdioSessionInfo.js';
 import { checkIndexStaleness } from '../../utils/indexStaleness.js';
 import {
   isCustomModel, getObjectSuffix, getExtensionNamingStyle, getExtensionClassNamingStyle, deriveExtensionInfix,
-  unrecognisedNamingStyleSettings, isNoPrefixMode,
+  unrecognisedNamingStyleSettings, isNoPrefixMode, isAsGivenNamingMode,
 } from '../../utils/modelClassifier.js';
 import { normalizeModelToken } from '../../utils/modelToken.js';
 import { buildPrefixDiagnostics, modelWritesLandIn } from '../analysis/prefixDiagnostics.js';
@@ -266,7 +266,15 @@ export async function getWorkspaceInfoTool(
   // naming.prefixSource=none, which ignores both settings: "treated as prefix" is untrue there.
   const noPrefix = isNoPrefixMode();
   const styleTypos = noPrefix ? [] : unrecognisedNamingStyleSettings().map(w => `⚠️  ${w}`);
-  if (diagnostics) {
+  // naming.prefixSource=as-given applies no token, so the samples above (and the
+  // "pass the BASE name" advice) would describe a rename that never happens.
+  const asGivenLine =
+    `names are kept as given (naming.prefixSource=as-given) — pass the FULL name your instruction file ` +
+    `prescribes (e.g. CustTable.<Token>, CustTable_<Token>_Extension); a bare base name is refused, not completed.`;
+  if (isAsGivenNamingMode()) {
+    if (diagnostics) lines.push(`## Extension Naming`, ``, asGivenLine, ``);
+    else lines.push(`Extensions  : ${asGivenLine}`);
+  } else if (diagnostics) {
     lines.push(
       `## Extension Naming`,
       ``,
