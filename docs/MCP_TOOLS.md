@@ -133,7 +133,7 @@ Mode-specific parameters go in a single `params` object (flat top-level keys sti
 - **`create`** — create any of 39 AOT object types in the correct location + register in `.rnrproj` (gated by grounding token and form-pattern validation).
 - **`modify`** — safe metadata edits via the C# bridge, 41 operations: add-field, add-control, remove-control, add-entry-point, add-method, replace-code, modify-property, report-design, … plus the ones the bridge has no concept of and a direct-XML writer serves: `add-`/`remove-diagnostic-suppression` on `objectType="ignore-diagnostic-list"`, and `add-`/`remove-module-reference` on `objectType="model-descriptor"`.
 - **`delete`** — remove an object's XML and un-register it from every `.rnrproj` of the model that lists it (irreversible; guarded against standard-model and cross-model targets).
-- **`undo`** — roll `filePath` back: git-tracked → `git checkout HEAD`, which discards ALL uncommitted changes to that file, not just the last edit; untracked → deleted; the symbol/label index is re-synced either way.
+- **`undo`** — roll `filePath` back: git-tracked → `git checkout HEAD`, which discards ALL uncommitted changes to that file, not just the last edit; untracked → deleted only if this session created it, otherwise refused; the symbol/label index is re-synced either way.
 - **`generate`** — XML preview without writing (cloud-friendly).
 
 **Non-AOT write targets.** Two files under `src/Metadata/{Model}/` are not AOT objects and have no C# bridge path — they are written straight to XML through the same `action="modify"` gate:
@@ -150,7 +150,7 @@ Neither type participates in grounding: `prepare` has no mode that produces a to
 Two things shared by `create` and `modify`:
 
 - **Parameters are fetched, not inlined.** Op-specific parameters go in a single `params` object (flat top-level keys still accepted) and come from `get_knowledge(kind="op-spec", topic="<operation>")` — for `action=create`, the per-objectType `properties` contract from `topic="<objectType>"`. A missing/wrong parameter returns that same complete per-op spec (error-driven guidance, source: `d365foFileOpSpecs.ts`).
-- **Batching.** `operations: [{operation, …}]` (max 20) applies SEVERAL edits to the same object in ONE call — on `action=modify` and on `action=create`, where they run against the object just created under the name it ACTUALLY got. Applied in order, stopped at the first failure, and each section of the report is capped so one call cannot return a context window.
+- **Batching.** `operations: [{operation, …}]` (max 20) applies SEVERAL edits to the same object in ONE call — on `action=modify` and on `action=create`, where they run against the object just created under the name it ACTUALLY got. Applied in order, stopped at the first failure (the entries before it stay applied unless the call passes `atomic: true`, which restores each changed file to its bytes from before the call), and each section of the report is capped so one call cannot return a context window.
 
 ## 🔐 Security & Extensions (5)
 

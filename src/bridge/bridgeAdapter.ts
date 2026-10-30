@@ -1985,15 +1985,16 @@ export async function bridgeAddIndex(
   fields?: string[],
   allowDuplicates?: boolean,
   alternateKey?: boolean,
-): Promise<{ success: boolean; message: string } | null> {
+): Promise<{ success: boolean; message: string; skipped?: boolean } | null> {
   if (!bridge?.isReady || !bridge.metadataAvailable) return null;
   try {
     const result = await bridge.addIndex(tableName, indexName, fields, allowDuplicates, alternateKey);
     return {
       success: result.success,
-      message: result.success
+      skipped: result.skipped === true,
+      message: skippedMessage(result, `Index '${indexName}'`) ?? (result.success
         ? `✅ Index '${indexName}' added via ${result.api}`
-        : `Bridge addIndex returned success=false`,
+        : `Bridge addIndex returned success=false`),
     };
   } catch (e) {
     // Record into the per-call failure sink as well as returning the
@@ -2150,10 +2151,12 @@ export async function bridgeAddRelation(
   relatedTable: string,
   constraints?: Array<{ field?: string; relatedField?: string }>,
   properties?: { relationCardinality?: string; relatedTableCardinality?: string; relationshipType?: string },
-): Promise<{ success: boolean; message: string; propertiesWritten?: boolean } | null> {
+): Promise<{ success: boolean; message: string; propertiesWritten?: boolean; skipped?: boolean } | null> {
   if (!bridge?.isReady || !bridge.metadataAvailable) return null;
   try {
     const result = await bridge.addRelation(tableName, relationName, relatedTable, constraints, properties);
+    const skip = skippedMessage(result, `Relation '${relationName}'`);
+    if (skip) return { success: true, skipped: true, message: skip };
     // An older bridge binary silently ignores the extra params; it echoes back only
     // what it set, so the response says whether the on-disk fallback is still needed.
     const r = result as unknown as Record<string, unknown>;
@@ -2165,6 +2168,7 @@ export async function bridgeAddRelation(
     const note = typeof r.note === 'string' ? ` ${r.note}` : '';
     return {
       success: result.success,
+      skipped: false,
       propertiesWritten,
       message: result.success
         ? `✅ Relation '${relationName}' added via ${result.api}` +
@@ -2219,15 +2223,36 @@ export async function bridgeAddFieldGroup(
   groupName: string,
   label?: string,
   fields?: string[],
-): Promise<{ success: boolean; message: string } | null> {
+): Promise<{ success: boolean; message: string; skipped?: boolean } | null> {
   if (!bridge?.isReady || !bridge.metadataAvailable) return null;
   try {
     const result = await bridge.addFieldGroup(tableName, groupName, label, fields);
+    // Table create always writes the Auto* groups, so "add-field-group AutoReport
+    // with fields [A, B]" finds the group there. Skipping the whole call dropped the
+    // fields the caller asked for; put the missing ones into the existing group.
+    if (result.skipped === true && fields && fields.length > 0) {
+      const added: string[] = [];
+      const present: string[] = [];
+      for (const field of fields) {
+        const r = await bridge.addFieldToFieldGroup(tableName, groupName, field);
+        if (r.skipped === true) present.push(field);
+        else if (r.success) added.push(field);
+        else return { success: false, message: `Bridge addFieldToFieldGroup(${groupName}, ${field}) returned success=false` + (added.length ? ` after adding ${added.join(', ')}` : '') };
+      }
+      if (added.length > 0) {
+        return {
+          success: true,
+          message: `✅ Field group '${groupName}' already existed — added ${added.join(', ')} to it` +
+            (present.length ? ` (${present.join(', ')} already in it)` : ''),
+        };
+      }
+    }
     return {
       success: result.success,
-      message: result.success
+      skipped: result.skipped === true,
+      message: skippedMessage(result, `Field group '${groupName}'`) ?? (result.success
         ? `✅ Field group '${groupName}' added via ${result.api}`
-        : `Bridge addFieldGroup returned success=false`,
+        : `Bridge addFieldGroup returned success=false`),
     };
   } catch (e) {
     // Record into the per-call failure sink as well as returning the

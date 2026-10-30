@@ -476,8 +476,8 @@ describe('a modify outside git keeps a copy only when it changed the file', () =
   });
 
   it('a call that succeeded without changing the file removes its copy', async () => {
-    // The idempotent index writer answers "already present — skipped" as a plain
-    // success; the bytes, not the wording, say nothing changed.
+    // The idempotent index writer answers "NOT written — index already exists" as a
+    // skip; the bytes, not the wording, say nothing changed.
     disk.set(FILE_PATH, TABLE_XML.replace(
       '\t<Indexes />',
       '\t<Indexes>\n\t\t<AxTableIndex>\n\t\t\t<Name>IdxKeep</Name>\n\t\t\t<Fields>\n\t\t\t\t<AxTableIndexField>\n' +
@@ -491,7 +491,7 @@ describe('a modify outside git keeps a copy only when it changed the file', () =
       ctx(),
     );
     expect(r.isError, textOf(r)).toBeFalsy();
-    expect(textOf(r)).toContain('already present');
+    expect(textOf(r)).toContain('already exists');
     expect(copiesTaken()).toHaveLength(1);
     expect(copiesRemoved()).toEqual(copiesTaken());
     expect(textOf(r)).not.toContain('Backup:');

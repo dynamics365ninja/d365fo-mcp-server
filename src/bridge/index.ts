@@ -21,6 +21,7 @@ export * from './bridgeTypes.js';
 export {
   isBridgeFailure,
   describeBridgeFailure,
+  rejectedBridgeInput,
   renderBridgeFailureNote,
   recordBridgeFailure,
   runWithBridgeFailureScope,

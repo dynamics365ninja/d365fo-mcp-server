@@ -123,6 +123,9 @@ export interface IndexProgress {
  */
 export const REGULAR_NAME_SAMPLE = 60;
 
+/** How many evenly spaced runs the regular band is read in — see readModelObjectNames. */
+export const REGULAR_SAMPLE_PROBES = 8;
+
 /** The little of a database handle this read needs, so a CLI can pass its own. */
 export interface ModelNameReadDb {
   prepare(sql: string): { all(...params: unknown[]): unknown[] };
@@ -163,8 +166,8 @@ export interface ModelNameReadDb {
  * outright, regular objects are many and carry the leading token, and
  * inferPrefixFromObjectNames needs BOTH — a single window ordered any way at all
  * would let the larger band crowd the other one out entirely. Each band is capped
- * at half the budget, gives back what it does not use, and is ordered (type, name)
- * so the same model always yields the same sample — a silent, self-reinforcing
+ * at half the budget, gives back what it does not use, and is read in a fixed
+ * order so the same model always yields the same sample — a silent, self-reinforcing
  * failure otherwise, since this server writes names with the inferred prefix and
  * those names become evidence for the next inference.
  *
@@ -176,29 +179,32 @@ export interface ModelNameReadDb {
  * first call of every session. They cannot be dropped altogether — the underscore
  * form ("ConSK_" vs "ConSK") appears in no extension name, so only a regular
  * object can decide it.
+ *
+ * The regular band is SPREAD across the model rather than read from its start
+ * (#1164). Sixty names in (type, name) order are the model's first sixty classes
+ * alphabetically, and a minority prefix that sorts early fills all of them: in a
+ * 3,800-object model where 69 names start "xyz3PL", digits sort before letters,
+ * the sample held 53 of them, and inference answered "xyz3PL" over the "xyz" the
+ * other 3,700 carry. So the band is read as REGULAR_SAMPLE_PROBES short runs,
+ * each starting at an evenly spaced rowid inside the model. The full build
+ * inserts a model type by type and file by file, so evenly spaced rowids land at
+ * evenly spaced points through every type's alphabet. Still deterministic, and
+ * each run is a seek on idx_symbols_model (model, rowid) that stops at its limit
+ * — measured on the production DB at 0.5–1.2 s cold for the largest Microsoft
+ * models and ~2 ms warm, against a full pass over the model for any "every Nth
+ * row" query (57 s cold on Foundation).
  */
 export function readModelObjectNames(db: ModelNameReadDb, model: string, limit = 400): string[] {
   if (!model) return [];
   if (limit <= 0) return [];
 
-  const band = (extensions: boolean, cap: number): string[] => {
+  const extensionBand = (cap: number): string[] => {
     if (cap <= 0) return [];
     const rows = db
       .prepare(
-        // Unary + on parent_name, for the same reason as searchCustomExtensions'
-        // `+type IN (…)`: written plainly, `parent_name IS NULL` makes the planner
-        // choose idx_symbols_parent_name, whose ANALYZE stats claim ~13 rows per
-        // value. NULL is not one value — it is every top-level object of every
-        // model, 180,664 of the 1,188,748 rows on the production DB, against 274
-        // for the one model being asked about. Measured on that DB: 483 s cold and
-        // 632 ms warm on the parent_name plan, against 17 ms on the model plan —
-        // the difference between a first call that looks like a hung server and
-        // one that answers. EXPLAIN QUERY PLAN must keep reporting
-        // `SEARCH symbols USING INDEX idx_symbols_model`.
         `SELECT name FROM symbols
            WHERE model = ?
-             AND type ${extensions ? 'LIKE' : 'NOT LIKE'} '%-extension'
-             ${extensions ? '' : 'AND +parent_name IS NULL'}
+             AND type LIKE '%-extension'
              AND type NOT IN ('method', 'field')
            ORDER BY type, name
            LIMIT ?`
@@ -207,12 +213,73 @@ export function readModelObjectNames(db: ModelNameReadDb, model: string, limit =
     return rows.map(r => r.name);
   };
 
+  const regularBand = (cap: number): string[] => {
+    if (cap <= 0) return [];
+    const names = new Set<string>();
+    try {
+      spreadRegularNames(cap, names);
+    } catch { /* no idx_symbols_model on this DB — the ordered read below still answers */ }
+    // A model with fewer regular objects than the cap, or runs that overlapped:
+    // top up in (type, name) order, which on such a model is all of it.
+    if (names.size < cap) {
+      const rows = db.prepare(
+        `SELECT name FROM symbols
+           WHERE model = ?
+             AND type NOT LIKE '%-extension'
+             AND +parent_name IS NULL
+             AND type NOT IN ('method', 'field')
+           ORDER BY type, name
+           LIMIT ?`,
+      ).all(model, cap) as Array<{ name: string }>;
+      for (const r of rows) if (names.size < cap) names.add(r.name);
+    }
+    return [...names];
+  };
+
+  const spreadRegularNames = (cap: number, names: Set<string>): void => {
+    const edge = (direction: 'ASC' | 'DESC'): number | undefined =>
+      (db.prepare(
+        `SELECT id FROM symbols INDEXED BY idx_symbols_model
+           WHERE model = ? ORDER BY id ${direction} LIMIT 1`,
+      ).all(model) as Array<{ id: number }>)[0]?.id;
+    const lo = edge('ASC');
+    const hi = edge('DESC');
+    if (lo === undefined || hi === undefined) return;
+
+    // Unary + on parent_name, for the same reason as searchCustomExtensions'
+    // `+type IN (…)`: written plainly, `parent_name IS NULL` makes the planner
+    // choose idx_symbols_parent_name, whose ANALYZE stats claim ~13 rows per
+    // value. NULL is not one value — it is every top-level object of every
+    // model, 180,664 of the 1,188,748 rows on the production DB, against 274
+    // for the one model being asked about. Measured on that DB: 483 s cold and
+    // 632 ms warm on the parent_name plan, against 17 ms on the model plan —
+    // the difference between a first call that looks like a hung server and
+    // one that answers. The index is forced here regardless, because the rowid
+    // seek is the whole point of the query; the guard stays for whoever copies it.
+    const run = db.prepare(
+      `SELECT name FROM symbols INDEXED BY idx_symbols_model
+         WHERE model = ? AND id >= ?
+           AND type NOT LIKE '%-extension'
+           AND +parent_name IS NULL
+           AND type NOT IN ('method', 'field')
+         ORDER BY id
+         LIMIT ?`,
+    );
+    const perRun = Math.ceil(cap / REGULAR_SAMPLE_PROBES);
+    for (let i = 0; i < REGULAR_SAMPLE_PROBES && names.size < cap; i++) {
+      const anchor = lo + Math.floor((i * (hi - lo + 1)) / REGULAR_SAMPLE_PROBES);
+      for (const r of run.all(model, anchor, perRun) as Array<{ name: string }>) {
+        if (names.size < cap) names.add(r.name);
+      }
+    }
+  };
+
   // Extensions first so their (smaller) band can hand its leftover budget to the
   // regular one; the reverse would let a large model spend the whole budget on
   // regular objects before the infix evidence is ever read.
   const half = Math.max(1, Math.ceil(limit / 2));
-  const extensionNames = band(true, half);
-  const regularNames = band(false, Math.min(REGULAR_NAME_SAMPLE, limit - extensionNames.length));
+  const extensionNames = extensionBand(half);
+  const regularNames = regularBand(Math.min(REGULAR_NAME_SAMPLE, limit - extensionNames.length));
   return [...extensionNames, ...regularNames];
 }
 
