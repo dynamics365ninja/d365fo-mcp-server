@@ -44,6 +44,19 @@ those are called out explicitly below.
   [Names exactly as given](docs/CUSTOM_EXTENSIONS.md#names-exactly-as-given).
 
 ### Fixed
+- **Re-adding a table element that exists failed the call or the batch.** The bridge's
+  table `AddField`, `AddIndex`, `AddFieldGroup`, `AddFieldToFieldGroup` and
+  `AddRelation` added without checking the name, so an element that existed failed
+  inside the SDK ("already exists among elements") and stopped the `operations[]` batch
+  it was in. Table create always writes the five Auto field groups, so a follow-up
+  `add-field-group AutoReport` always collided. Each now answers as a skip, nothing
+  written, with the reason and the operation that changes the element. The index,
+  field-group and relation wrappers report it as "⏭️ NOT written" (the field paths
+  already did). The XML index fallback's "✅ already present" is a skip too, and the
+  valid-time-state and relation-property follow-ups no longer run after a skip. An
+  `add-field-group` with `fields` on a group that exists puts the missing fields into
+  it instead of dropping them, so `add-field-group AutoReport` with fields does what it
+  asked for.
 - **An EDT that extends an enum EDT had no enum.** The base-type inference from
   `extends` left enum parents alone, so `extends: "NoYesId"` wrote a string EDT. And
   neither writer could set the enum at all: the bridge's `SetAxEdtProperty` had no
