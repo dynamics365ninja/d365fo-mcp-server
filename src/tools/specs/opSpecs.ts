@@ -364,7 +364,7 @@ export function renderPrepareOpSpec(args: {
   }
   if (resolved.length > 1) {
     // The point of asking for several at once: they can also be WRITTEN at once.
-    lines.push('_All of the above can go in ONE d365fo_file(action="modify") call via `operations[]`._');
+    lines.push('_All of the above can go in ONE d365fo_file(action="modify") call via `operations[]` — add `atomic: true` to restore the file if one of them fails._');
   }
 
   lines.push('');
