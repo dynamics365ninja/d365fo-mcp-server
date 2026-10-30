@@ -29,6 +29,15 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Fixed
+- **`add-method` and `remove-method` failed on a data entity.** The bridge has no
+  data-entity arm for either, so `d365fo_file` modify returned "add-method not supported
+  for objectType 'data-entity' via bridge (use XML fallback)" and applied nothing — the
+  fallback the message named did not exist. When the bridge declines an object type this
+  way, the method is now upserted into (or removed from) the root `<SourceCode><Methods>`
+  by the XML writer, with the same doc-comment and indentation pass the bridge path
+  applies, and read back before the reply says it landed. `replace-code` already fell back.
+  A multi-method `add-method` also stops at the first refusal and reports it, instead of
+  summarising a failed write as "Added N methods".
 - **An incremental build silently removed a data entity's OData actions.** xppc's
   `-incremental` mode rewrites the `bin\Dynamics.AX.<Package>.ODataExtends.runtime`
   entry of every entity it recompiles without its actions, and the AOS reads them from
