@@ -281,6 +281,42 @@ describe('COC004 — protected blocks are not conditional', () => {
     expect(rules(code)).toHaveLength(1);
   });
 
+  it('still flags next inside an if or while whose condition spans lines', () => {
+    // The brace's own line and the line above it hold no keyword; only the header's
+    // first line does. Release audit 1.22: these passed after the protected-block change.
+    const code = coc(`    public void insert()
+    {
+        if (this.AccountNum
+            && this.CustGroup)
+        {
+            next insert();
+        }
+    }
+
+    public void update()
+    {
+        while (this.AccountNum
+            && this.CustGroup) {
+            next update();
+        }
+    }`);
+
+    expect(rules(code)).toHaveLength(2);
+  });
+
+  it('accepts next inside a using whose header spans lines', () => {
+    const code = coc(`    public void insert()
+    {
+        using (var context = QMSInventQualityOrderInsertFromFormContext::construct(
+            this.RecId))
+        {
+            next insert();
+        }
+    }`);
+
+    expect(rules(code)).toEqual([]);
+  });
+
   it('still flags next inside an else block on its own line', () => {
     const code = coc(`    public void insert()
     {
