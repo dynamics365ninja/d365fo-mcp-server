@@ -43,6 +43,13 @@ those are called out explicitly below.
   target, so `SalesTable.SalesId` as a field, or `SalesTable.initFromSalesQuotationTable`
   as a method, came back with "⚠️ Type Mismatch: … is not a **class**" when no class was
   asked for. The hint now runs only for a name looked up as a class.
+- **Labels were not compiled (on labelc 7.0.8199.32), behind a green build.** The build
+  passed the located csc and SDK tool folders as `-CompilerPath` / `-SdkToolsPath`;
+  that labelc lists both in its usage text but does not parse them, so it printed the
+  usage text, compiled nothing and exited 0, and new labels kept being reported as
+  unknown. The folders now go first on labelc's own PATH, which every labelc version
+  searches. A labelc run that reports no compilation result is now a failure instead
+  of a success.
 - **An incremental build silently removed a data entity's OData actions.** xppc's
   `-incremental` mode rewrites the `bin\Dynamics.AX.<Package>.ODataExtends.runtime`
   entry of every entity it recompiles without its actions, and the AOS reads them from
