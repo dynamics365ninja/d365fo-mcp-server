@@ -72,6 +72,7 @@ import {
   findIgnoredParams, renderIgnoredParamsWarning, findMissingMutationParams,
   paramCorrectionCandidates, canonicalParamForAlias, D365FO_FILE_OP_SPECS,
 } from '../specs/d365foFileOpSpecs.js';
+import { isPublishedDefault } from '../specs/opSpecs.js';
 import { lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import { isValidModuleReferenceName } from '../../metadata/modelDescriptor.js';
 import { decodeXmlEntitiesFromXppSource } from '../../utils/xmlEscape.js';
@@ -1288,7 +1289,7 @@ async function runModify(
     // told it was dropped. Measured on the NORMALISED keys, so a key that has
     // just been corrected is not also reported as ignored.
     const rawArgs = normalized.args;
-    const providedKeys = Object.keys(rawArgs).filter(k => rawArgs[k] !== undefined);
+    const providedKeys = Object.keys(rawArgs).filter(k => rawArgs[k] !== undefined && !isPublishedDefault(k, rawArgs[k]));
     const ignoredParams = findIgnoredParams(String(args.operation), providedKeys);
     const ignoredParamsWarning = renderIgnoredParamsWarning(String(args.operation), ignoredParams);
 

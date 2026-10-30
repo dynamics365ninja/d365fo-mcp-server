@@ -10,11 +10,13 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { normalizeObjectName } from '../../src/utils/objectNaming.js';
+import { asGivenNameProblem, normalizeObjectName } from '../../src/utils/objectNaming.js';
 import {
   applyObjectPrefix,
   getExtensionClassNamingStyle,
   getExtensionNamingStyle,
+  getObjectSuffix,
+  isAsGivenNamingMode,
   isNoPrefixMode,
   registerCustomModel,
   resolveObjectPrefix,
@@ -124,5 +126,47 @@ describe('without it, nothing changes', () => {
     setModelObjectNameSource(() => []);
     expect(resolveObjectPrefix(MODEL)).toBe('ABC');
     expect(normalizeObjectName('CustomerSettings', 'table', MODEL)).toBe('ABCCustomerSettings');
+  });
+});
+
+describe('naming.prefixSource=as-given (#1134)', () => {
+  beforeEach(() => {
+    process.env.EXTENSION_PREFIX_SOURCE = 'as-given';
+    process.env.EXTENSION_PREFIX = 'Ctso';
+    process.env.EXTENSION_SUFFIX = 'ZZ';
+  });
+
+  it('renames nothing — objects, suffix, extension elements and classes', () => {
+    expect(isAsGivenNamingMode()).toBe(true);
+    expect(isNoPrefixMode()).toBe(true);
+    expect(getObjectSuffix()).toBe('');
+    expect(resolveObjectPrefix(MODEL)).toBe('');
+    // A token that is not the model name ("XY" in model "ABC") is the case `none` broke.
+    for (const [name, type] of [
+      ['VendSettingsXY', 'table'],
+      ['VendTable.XY', 'table-extension'],
+      ['VendTableTable_XY_Extension', 'class-extension'],
+      ['NumberSeqModule.XY', 'enum-extension'],
+    ]) {
+      expect(normalizeObjectName(name, type, MODEL), name).toBe(name);
+      expect(applyObjectPrefix(name, 'Ctso', MODEL), name).toBe(name);
+    }
+  });
+
+  it('learns no prefix from the model either', () => {
+    expect(getInferredModelPrefix(MODEL)).toBeNull();
+  });
+
+  it('asGivenNameProblem checks structure only', () => {
+    expect(asGivenNameProblem('VendTable.XY', 'table-extension')).toBeNull();
+    expect(asGivenNameProblem('VendTableTable_XY_Extension', 'class-extension')).toBeNull();
+    expect(asGivenNameProblem('AnythingGoes_XY', 'table')).toBeNull();
+
+    expect(asGivenNameProblem('VendTable', 'table-extension')).toMatch(/<Base>\.<Token>/);
+    expect(asGivenNameProblem('A.B.C', 'form-extension')).toMatch(/<Base>\.<Token>/);
+    expect(asGivenNameProblem('VendTable.X-Y', 'table-extension')).toMatch(/not a valid AOT identifier/);
+    expect(asGivenNameProblem('VendTableTable_XY', 'class-extension')).toMatch(/_Extension/);
+    expect(asGivenNameProblem('Vend Settings', 'table')).toMatch(/not a valid AOT name/);
+    expect(asGivenNameProblem(`T${'x'.repeat(81)}`, 'table')).toMatch(/81/);
   });
 });
