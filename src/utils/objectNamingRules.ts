@@ -23,9 +23,10 @@ import {
   endsWithInfix,
   deriveExtensionInfix,
   inferBaseBeforeToken,
+  isAsGivenNamingMode,
   isNoPrefixMode,
 } from './modelClassifier.js';
-import { COC_BASE_SYMBOL_TYPES, normalizeObjectName } from './objectNaming.js';
+import { COC_BASE_SYMBOL_TYPES, asGivenNameProblem, normalizeObjectName } from './objectNaming.js';
 import {
   matchPrefixCandidate,
   modelWritesLandIn,
@@ -323,8 +324,18 @@ export async function checkObjectNaming(
       }
     }
 
+    // naming.prefixSource=as-given (#1134): the convention is the project's, stated in
+    // its instruction file, so rule sets 1 and 2 — prefix, token and placement — do
+    // not apply. What is left is whether the name can be an AOT name at all, the same
+    // check the write path refuses on. The length was reported above.
+    const asGiven = isAsGivenNamingMode();
+    if (asGiven && name.length <= MAX_NAME_LENGTH) {
+      const problem = asGivenNameProblem(name, args.objectType);
+      if (problem) errors.push(problem);
+    }
+
     // Rule set 1: extension naming rules
-    if (isExtension) {
+    if (isExtension && !asGiven) {
       const baseObjectName = args.baseObjectName;
 
       if (!baseObjectName) {
@@ -544,7 +555,7 @@ export async function checkObjectNaming(
     }
 
     // Rule set 2: new object naming rules
-    if (!isExtension) {
+    if (!isExtension && !asGiven) {
       /** The candidate prefix the name turned out to carry, once one is found. */
       let separator: PrefixCandidate | null = null;
 
