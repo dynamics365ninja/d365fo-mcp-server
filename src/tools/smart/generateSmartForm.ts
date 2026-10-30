@@ -31,6 +31,7 @@ import { getFieldControlMap, getTableTitleField, type FieldControlMap } from '..
 import { lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import { scaffoldWriteRefusalResult } from '../write/writeAnchorGuard.js';
 import { upsertWrittenFileIntoIndex } from '../write/inlineIndexUpsert.js';
+import { recordCreatedArtifact } from '../../workspace/createdArtifactLedger.js';
 
 /**
  * Symbol types a form datasource may bind to. Views are indexed as 'view'
@@ -1182,6 +1183,8 @@ export async function handleGenerateSmartForm(
     fs.mkdirSync(dir, { recursive: true });
   }
 
+  // Only a file this call brings into being may later be deleted by undo.
+  const existedBefore = fs.existsSync(normalizedPath);
   fs.writeFileSync(normalizedPath, normalizeD365Xml(xml), 'utf-8');
   console.log(`[generateSmartForm] Created file: ${normalizedPath}`);
 
@@ -1192,6 +1195,7 @@ export async function handleGenerateSmartForm(
 
   // Add to Visual Studio project if a projectPath is known
   let projectMessage = '';
+  let addedToProject: string | undefined;
   const effectiveProjectPath = resolvedProjectPath ||
     (await getConfigManager().getProjectPath()) ||
     undefined;
@@ -1205,6 +1209,7 @@ export async function handleGenerateSmartForm(
         finalName,
         normalizedPath
       );
+      if (wasAdded) addedToProject = effectiveProjectPath;
       projectMessage = wasAdded
         ? `\n✅ Added to Visual Studio project:\n📋 Project: ${effectiveProjectPath}`
         : `\n✅ Already in Visual Studio project:\n📋 Project: ${effectiveProjectPath}`;
@@ -1215,6 +1220,9 @@ export async function handleGenerateSmartForm(
     }
   } else {
     projectMessage = `\n⚠️ addToProject skipped — no projectPath found in .mcp.json or tool args.`;
+  }
+  if (!existedBefore) {
+    recordCreatedArtifact({ filePath: normalizedPath, objectType: 'form', objectName: finalName, projectPath: addedToProject });
   }
 
   return {

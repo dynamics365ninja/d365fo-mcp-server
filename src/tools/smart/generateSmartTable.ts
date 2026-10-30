@@ -23,6 +23,7 @@ import { upsertWrittenFileIntoIndex } from '../write/inlineIndexUpsert.js';
 import { reconcileTableCreateProperties } from '../xml/createTablePropertyHonesty.js';
 import { writeFileAtomic } from '../../utils/atomicFileWrite.js';
 import * as debouncedRefresh from '../../bridge/debouncedRefresh.js';
+import { recordCreatedArtifact } from '../../workspace/createdArtifactLedger.js';
 
 interface GenerateSmartTableArgs {
   name: string;
@@ -947,6 +948,7 @@ export async function handleGenerateSmartTable(
 
       // Add to Visual Studio project
       let projectMessage = '';
+      let addedToProject: string | undefined;
       const effectiveProjectPath = resolvedProjectPath ||
         (await getConfigManager().getProjectPath()) ||
         undefined;
@@ -960,6 +962,7 @@ export async function handleGenerateSmartTable(
             finalName,
             bridgeResult.filePath,
           );
+          if (wasAdded) addedToProject = effectiveProjectPath;
           projectMessage = wasAdded
             ? `\n✅ Added to Visual Studio project:\n📋 Project: ${effectiveProjectPath}`
             : `\n✅ Already in Visual Studio project:\n📋 Project: ${effectiveProjectPath}`;
@@ -969,6 +972,9 @@ export async function handleGenerateSmartTable(
       } else {
         projectMessage = `\n⚠️ addToProject skipped — no projectPath found in .mcp.json or tool args.`;
       }
+
+      // The guard above refused an existing file, so this one is new: undo may delete it.
+      recordCreatedArtifact({ filePath: bridgeResult.filePath, objectType: 'table', objectName: finalName, projectPath: addedToProject });
 
       const edtWarningBlock = edtWarnings.length > 0
         ? `\n### ⚠️ EDT Validation Warnings\n${edtWarnings.join('\n')}\n`
@@ -1083,6 +1089,7 @@ export async function handleGenerateSmartTable(
 
   // Add to Visual Studio project if a projectPath is known
   let projectMessage = '';
+  let addedToProject: string | undefined;
   const effectiveProjectPath = resolvedProjectPath ||
     (await getConfigManager().getProjectPath()) ||
     undefined;
@@ -1096,6 +1103,7 @@ export async function handleGenerateSmartTable(
         finalName,
         normalizedPath
       );
+      if (wasAdded) addedToProject = effectiveProjectPath;
       projectMessage = wasAdded
         ? `\n✅ Added to Visual Studio project:\n📋 Project: ${effectiveProjectPath}`
         : `\n✅ Already in Visual Studio project:\n📋 Project: ${effectiveProjectPath}`;
@@ -1107,6 +1115,9 @@ export async function handleGenerateSmartTable(
   } else {
     projectMessage = `\n⚠️ addToProject skipped — no projectPath found in .mcp.json or tool args.`;
   }
+
+  // The guard above refused an existing file, so this one is new: undo may delete it.
+  recordCreatedArtifact({ filePath: normalizedPath, objectType: 'table', objectName: finalName, projectPath: addedToProject });
 
   const edtWarningBlock = edtWarnings.length > 0
     ? `\n### ⚠️ EDT Validation Warnings\n${edtWarnings.join('\n')}\n`

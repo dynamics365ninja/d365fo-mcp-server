@@ -34,7 +34,9 @@ those are called out explicitly below.
   earlier session (common where objects are committed only at PR time) removed the
   object itself, with no backup to restore and its `.rnrproj` entry left dangling. An
   untracked file is now deleted only when this session created it, the rule the
-  non-git path already applied. Otherwise undo refuses and says why.
+  non-git path already applied. Otherwise undo refuses and says why. The tables, forms
+  and report objects `generate_object(scaffold)` writes to disk are now recorded as
+  created too, so undo can still delete them (it could not outside git before).
 - **`add-method` and `remove-method` failed on a data entity.** The bridge has no
   data-entity arm for either, so `d365fo_file` modify returned "add-method not supported
   for objectType 'data-entity' via bridge (use XML fallback)" and applied nothing — the
