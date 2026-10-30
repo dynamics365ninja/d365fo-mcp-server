@@ -25,6 +25,7 @@ import { validateXppTool } from './validateXpp.js';
 import { resolveReferencesTool } from '../write/resolveReferences.js';
 import { lookupSymbolNocase, type DbLike } from '../../utils/symbolLookup.js';
 import { isKernelEnum } from '../../knowledge/kernelEnums.js';
+import { isKernelEdt } from '../../knowledge/kernelEdts.js';
 import { type XmlNode, parseNodes, firstChild, textValueOf } from '../../utils/xmlNodeTree.js';
 
 function err(text: string) {
@@ -245,9 +246,9 @@ function resolveXmlReferences(
   violations.push(...entity.violations);
   verified += entity.verified;
 
-  // <ExtendedDataType> — EDT must exist
+  // <ExtendedDataType> — EDT must exist in the AOT, or be one the runtime defines (#1179).
   for (const edt of extractTagValues(xml, 'ExtendedDataType')) {
-    if (symbolExistsInIndex(db, edt, 'edt')) {
+    if (isKernelEdt(edt) || symbolExistsInIndex(db, edt, 'edt')) {
       verified++;
     } else {
       violations.push({
@@ -309,7 +310,7 @@ function resolveXmlReferences(
   for (const ext of extractTagValues(xml, 'Extends')) {
     // Skip well-known primitive EDT bases (String, Int64, Real, etc.) and same-model names
     if (/^(String|Int64|Real|Date|UtcDateTime|Enum|Container|Guid|AnyType)$/i.test(ext)) continue;
-    if (symbolExistsInIndex(db, ext)) {
+    if (isKernelEdt(ext) || symbolExistsInIndex(db, ext)) {
       verified++;
     } else {
       violations.push({

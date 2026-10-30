@@ -12,6 +12,7 @@ import type { XppServerContext } from '../../types/context.js';
 import { tryBridgeEdt } from '../../bridge/bridgeAdapter.js';
 import { canonicalSymbolName, lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import { normalizeFieldBaseType } from '../../utils/axFieldTypes.js';
+import { describeKernelEdt } from '../../knowledge/kernelEdts.js';
 
 const GetEdtInfoArgsSchema = z.object({
   edtName: z.string().describe('Name of the Extended Data Type (EDT)'),
@@ -32,6 +33,12 @@ export async function getEdtInfoTool(request: CallToolRequest, context: XppServe
     if (args.mode === 'hierarchy') {
       return getEdtHierarchy(symbolIndex.getReadDb(), edtName, modelName);
     }
+
+    // A kernel EDT (RecId, UserId, TimeOfDay …) has no AxEdt file, so the bridge and the
+    // index can only answer "no data", and the advice below (index the file) can never
+    // work. Answer it up front, as the enum reader does for NoYes (#1179).
+    const kernel = describeKernelEdt(edtName);
+    if (kernel) return { content: [{ type: 'text' as const, text: kernel }] };
 
     // Standard mode: C# bridge (IMetadataProvider — live D365FO metadata)
     const bridgeResult = await tryBridgeEdt(context.bridge, edtName);

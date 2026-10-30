@@ -123,6 +123,8 @@ export function describeBridgeFailure(failure: BridgeFailure): string {
  * CreatedDateTime (probed on 10.0 / 7.0.7996.33; together several thousand shipped
  * table fields). Refusing on it would turn a valid create (a date-effective table's
  * ValidFrom/ValidTo) into "Nothing was written", where the template writes it right.
+ * The bridge now lets the kernel EDTs it knows through (KernelEdtNames, #1179), but its
+ * Exists() is still only as complete as that list, so the check stays out of here.
  */
 export function rejectedBridgeInput(failure: BridgeFailure): string | null {
   const m = /Bridge error \[-32602\]: ([\s\S]*)$/.exec(failure.reason);
