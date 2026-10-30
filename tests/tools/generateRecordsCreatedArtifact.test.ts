@@ -62,7 +62,9 @@ afterEach(() => {
   _clearCreatedArtifactLedger();
 });
 
-describe('generate_object(scaffold) records what it creates, so undo can delete it', () => {
+// The generators write only on Windows and build their target path with '\'
+// separators, so on Linux a POSIX temp root never receives the file.
+describe.skipIf(originalPlatform !== 'win32')('generate_object(scaffold) records what it creates, so undo can delete it', () => {
   it('records a table written by the XML fallback', async () => {
     await handleGenerateSmartTable(
       { name: 'ConLedgerTable', modelName: 'MyModel', packagePath: paths.root, fields: [{ name: 'NoteId', edt: 'Description' }] },
