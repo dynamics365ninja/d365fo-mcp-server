@@ -60,6 +60,12 @@ those are called out explicitly below.
   message, then the passing tests, the path of the result file and the raw log last.
   The tool has its own 12,000-char cap, and its truncation note no longer suggests
   paging parameters it does not have.
+- **A default argument that is a call renamed the method on class create.** The class
+  split named each method after the identifier before the last `(` of its signature,
+  so `void run(TransDate _from = dateNull())` was written as a method named `dateNull`.
+  For methods inside the class body, a signature over several lines also lost its
+  attribute and every line above that call, with no error. The name and the method start
+  now come from the `(` that matches the signature's last `)`.
 - **An incremental build silently removed a data entity's OData actions.** xppc's
   `-incremental` mode rewrites the `bin\Dynamics.AX.<Package>.ODataExtends.runtime`
   entry of every entity it recompiles without its actions, and the AOS reads them from
