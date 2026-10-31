@@ -46,6 +46,12 @@ describe('isToolAllowedInMode', () => {
     expect(isToolAllowedInMode('write-only', 'd365fo_file')).toBe(true);
   });
 
+  it('allows find_references in every mode: only the local companion reaches DYNAMICSXREFDB', () => {
+    for (const mode of MODES) {
+      expect(isToolAllowedInMode(mode, 'find_references'), `find_references in ${mode}`).toBe(true);
+    }
+  });
+
   it('write-only allows local tools and blocks search/analysis tools', () => {
     for (const tool of LOCAL_TOOLS) {
       expect(isToolAllowedInMode('write-only', tool), `${tool} in write-only`).toBe(true);
