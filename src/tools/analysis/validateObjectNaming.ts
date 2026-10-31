@@ -36,6 +36,10 @@ const ValidateObjectNamingArgsSchema = z.object({
     ])
     .describe('Type of the D365FO object'),
   baseObjectName: z.string().optional().describe('Required for extension types: name of the object being extended'),
+  baseObjectType: z
+    .string()
+    .optional()
+    .describe('class-extension: type of the extended object (class, table, form, …) — selects the configured class name format'),
   modelPrefix: z
     .string()
     .optional()
@@ -80,7 +84,10 @@ export async function validateObjectNamingTool(request: CallToolRequest, context
       output += `Model Prefix: ${prefix}${modelName ? ` (${modelPart}${origin})` : ''}\n`;
     }
     const asGiven = isAsGivenNamingMode();
-    if (asGiven) {
+    const { formatNote } = check;
+    if (formatNote) {
+      output += `Naming: format — ${formatNote}\n`;
+    } else if (asGiven) {
       output += `Naming: as given (naming.prefixSource=as-given) — structure only; the token and prefix are your instruction file's\n`;
     } else if (isExtension) {
       // A class extension follows the class style, everything else the element style;
@@ -153,7 +160,9 @@ export async function validateObjectNamingTool(request: CallToolRequest, context
 
     output += '\n';
 
-    const rules = asGiven
+    const rules = formatNote
+      ? ['Configured extension name format (exact, base case-insensitive)', 'Valid AOT name (characters, length)']
+      : asGiven
       ? ['Valid AOT name (characters, length)', isExtension ? 'Extension shape (Base.Token / …_Extension)' : 'No extension shape required']
       : isExtension
       ? ['Extension suffix pattern', 'Model prefix included', 'Base object exists in index']

@@ -122,6 +122,8 @@ Two servers, one merged tool list — Copilot/Claude routes calls automatically:
 
 The write-only companion skips database download entirely — it starts in under a second and needs no Blob.
 
+Extension name formats ([CUSTOM_EXTENSIONS.md § Extension name formats](CUSTOM_EXTENSIONS.md#extension-name-formats)) name extensions on **both** instances: the companion writes them (`d365fo_file`), the App Service names them in `generate_object` and checks them in `validate_object_naming` / `prepare`. Give both the same `EXTENSION_*_NAME_FORMAT*` values. The name never depends on the index (the companion has none), so the same environment gives the same name on both. For several customers on one machine, add one companion entry per customer (`d365fo-local-<customer>`), each with its own values.
+
 Startup logs confirm the filtering:
 
 ```

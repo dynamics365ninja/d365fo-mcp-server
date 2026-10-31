@@ -21,6 +21,10 @@ import {
   unrecognisedNamingStyleSettings, isNoPrefixMode, isAsGivenNamingMode,
 } from '../../utils/modelClassifier.js';
 import { normalizeModelToken } from '../../utils/modelToken.js';
+import {
+  classFormatFor, classFormatsActive, describeExtensionNameFormats, elementFormatActive, extensionNameFormatProblems,
+  formatClassExtensionName, formatElementExtensionName,
+} from '../../utils/extensionNameFormat.js';
 import { buildPrefixDiagnostics, modelWritesLandIn } from '../analysis/prefixDiagnostics.js';
 import {
   buildContextSnapshot, renderContextSnapshotSection, renderContextSnapshotCompact,
@@ -253,14 +257,35 @@ export async function getWorkspaceInfoTool(
   // Classes may follow their own style — the sample has to show the name a write
   // would actually produce, which is the whole reason the two are asked separately.
   const extClassNamingStyle = getExtensionClassNamingStyle();
-  const sampleClassExt = extClassNamingStyle === 'model-name' && writeModelToken
+  const styleClassExt = extClassNamingStyle === 'model-name' && writeModelToken
     ? `CustTable_${writeModelToken}_Extension`
     : extClassNamingStyle === 'prefix-leading'
       ? `${extInfix}CustTable_Extension`
       : `CustTable${extInfix}_Extension`;
-  const sampleElemExt = extNamingStyle === 'model-name' && writeModelToken
+  const styleElemExt = extNamingStyle === 'model-name' && writeModelToken
     ? `CustTable.${writeModelToken}`
     : `CustTable.${extInfix}Extension`;
+  // Configured name formats replace the style's samples for the family they cover.
+  // Class formats depend on the extended object's TYPE, so one sample per type.
+  const classFormatSample = (type: string, base: string) => {
+    const rule = classFormatFor(type);
+    return rule.format !== undefined ? formatClassExtensionName(rule.format, base) : `${base}: asks for the name`;
+  };
+  const classByFormat = classFormatsActive();
+  const elementByFormat = elementFormatActive();
+  const sampleClassExt = classByFormat
+    ? `${classFormatSample('class', 'SalesFormLetter')} (class) · ${classFormatSample('table', 'CustTable')} (table) · ` +
+      `${classFormatSample('form', 'CustTable')} (form)`
+    : styleClassExt;
+  const sampleElemExt = elementByFormat ? formatElementExtensionName('CustTable') : styleElemExt;
+  const formatLines = [
+    ...describeExtensionNameFormats().map(l => `  • ${l}`),
+    ...extensionNameFormatProblems().map(w => `⚠️  ${w}`),
+  ];
+  const formatAdvice = classByFormat
+    ? `  ⚠️  Extension classes: state the TYPE of the extended object — the [ExtensionOf(tableStr|formStr|classStr(…))] ` +
+      `in sourceCode, or properties.baseObjectType — the format is chosen by it, never guessed from the name.`
+    : null;
   // A misspelled style falls back in silence; say so in both renderings, since the
   // samples right below are then names under a style nobody configured. Not under
   // naming.prefixSource=none, which ignores both settings: "treated as prefix" is untrue there.
@@ -272,12 +297,15 @@ export async function getWorkspaceInfoTool(
     `names are kept as given (naming.prefixSource=as-given) — pass the FULL name your instruction file ` +
     `prescribes (e.g. CustTable.<Token>, CustTable_<Token>_Extension); a bare base name is refused, not completed.`;
   if (isAsGivenNamingMode()) {
-    if (diagnostics) lines.push(`## Extension Naming`, ``, asGivenLine, ``);
-    else lines.push(`Extensions  : ${asGivenLine}`);
+    // Formats still state the convention under as-given: create refuses a name they would change.
+    const asGivenFormats = formatLines.length > 0 ? [`Name formats (a name they would change is refused, not renamed):`, ...formatLines] : [];
+    if (diagnostics) lines.push(`## Extension Naming`, ``, asGivenLine, ...asGivenFormats, ``);
+    else lines.push(`Extensions  : ${asGivenLine}`, ...asGivenFormats);
   } else if (diagnostics) {
     lines.push(
       `## Extension Naming`,
       ``,
+      ...(formatLines.length > 0 ? [`Name formats (replace the style for what they cover):`, ...formatLines] : []),
       noPrefix
         ? `EXTENSION_NAMING_STYLE: model-name (forced by naming.prefixSource=none — there is no prefix to embed)`
         : `EXTENSION_NAMING_STYLE: ${process.env.EXTENSION_NAMING_STYLE?.trim() || '(not set → "prefix")'}`,
@@ -293,6 +321,7 @@ export async function getWorkspaceInfoTool(
       ...styleTypos,
       `  • Extension class  → ${sampleClassExt}`,
       `  • Element extension → ${sampleElemExt}`,
+      ...(formatAdvice ? [formatAdvice] : []),
       `  ⚠️  Pass the BASE object name (e.g. "CustTable") to d365fo_file(action="create") and let the tool apply the token — ` +
         `a name that already carries it right after its base (CustTable${extClassNamingStyle === 'model-name' ? writeModelToken : extInfix}Credit_Extension) is kept, any other placement is normalised to the above.`,
       ``,
@@ -303,6 +332,8 @@ export async function getWorkspaceInfoTool(
     lines.push(
       `Extensions  : ${sampleClassExt} · ${sampleElemExt}  ` +
       `(pass the BASE name to d365fo_file(create) — the tool applies the token)`,
+      ...(formatLines.length > 0 ? [`Formats     :`, ...formatLines] : []),
+      ...(formatAdvice ? [formatAdvice] : []),
       ...styleTypos,
     );
   }

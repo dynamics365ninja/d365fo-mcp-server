@@ -202,6 +202,12 @@ const CHARS_PER_TOKEN = 4;
 // as git can see — an agent read that as "undo deletes any file it is pointed at"
 // and would not use undo at all. Paid for in the same description ("returns the
 // contract for the one you picked" → "returns its contract"), so the ceiling holds.
+//
+// validate_object_naming published `baseObjectType` (the extended object's type,
+// which picks the extension class name format) and paid for it inside its own
+// schema: objectType's "Type of the D365FO object" restated its enum, and the tool,
+// baseObjectName and modelPrefix descriptions said the same in fewer words.
+// Measured payload after: 45_076 (was 45_096). The ceiling holds.
 const TOTAL_BUDGET = 45_100;
 // axdb_sql is published only once SQL is configured, so TOTAL_BUDGET above —
 // the payload every default install sends — does not carry it. A configured

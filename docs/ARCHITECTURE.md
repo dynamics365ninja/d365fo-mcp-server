@@ -97,6 +97,7 @@ Supporting reliability mechanisms:
 | Agentic-loop detection | ≥3 identical calls in a 15-call window → corrective hint injected |
 | Index staleness detector | `get_workspace_info` warns when workspace files are newer than the index |
 | Structured xppc diagnostics | `build_d365fo_project` parses compiler output into actionable items with fix hints |
+| Extension name formats | optional `EXTENSION_*_NAME_FORMAT*` settings: one resolver (`resolveFormattedExtensionName`, `src/utils/objectNaming.ts`) names extensions for create, the modify lookup, `prepare`, `generate_object` and the cross-model suggestion, and `validate_object_naming` checks against the same formats. The base type comes from the call (`[ExtensionOf(<kind>Str)]`, a stated type), never from the index, so the write-only companion and the read-only server name alike |
 
 ### Form pattern engine
 
