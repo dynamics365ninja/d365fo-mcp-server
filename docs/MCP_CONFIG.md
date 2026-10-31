@@ -118,9 +118,11 @@ Two servers, one merged tool list — Copilot/Claude routes calls automatically:
 | Instance | Host | Mode | Exposes |
 |----------|------|------|---------|
 | `d365fo-azure` | App Service | `read-only` | search & analysis tools |
-| `d365fo-local` | Windows VM (stdio) | `write-only` | write tools + bridge-backed reads + `get_workspace_info`/`verify_d365fo_project` |
+| `d365fo-local` | Windows VM (stdio) | `write-only` | write tools + bridge-backed reads + `get_workspace_info`/`verify_d365fo_project` + `find_references` from `DYNAMICSXREFDB` |
 
 The write-only companion skips database download entirely — it starts in under a second and needs no Blob.
+
+Both instances publish `find_references`. The companion's answers come from the developer's cross-reference database through the C# bridge (on a traditional VM set `D365FO_XREF_DB_NAME=DYNAMICSXREFDB` in its `env` block; UDE reads it from the XPP config), current as of the last Visual Studio build with cross-references. The App Service's answers come from its index, by name. To use only one, hide the other in the client: in the VS Code / Visual Studio tool picker uncheck it under that server, in Claude Code add `mcp__<server>__find_references` to `permissions.deny`.
 
 Startup logs confirm the filtering:
 

@@ -11,6 +11,7 @@ import { buildObjectTypeMismatchMessage, detectObjectTypeInDb } from '../../util
 import { tryBridgeReferences } from '../../bridge/bridgeAdapter.js';
 import { xrefAvailability, type BridgeReadinessSource } from '../../bridge/bridgeReadiness.js';
 import { xrefSetupAdvice } from '../../config/xrefSetup.js';
+import { SERVER_MODE, type ServerMode } from '../../server/serverMode.js';
 import * as fs from 'fs';
 import { readIndexedMethodSources } from '../../utils/indexedMethodSource.js';
 
@@ -187,6 +188,33 @@ function buildScopedEmptyResult(displayName: string, bridgeTargets: string[]): {
 }
 
 /**
+ * buildScopedEmptyResult's write-only counterpart for "Owner.method". A method an
+ * [ExtensionOf] class adds is recorded under that class only, and without the index
+ * those classes are unknown, so the zero covers the owner itself, not the method.
+ * Seen on a VM: 0 here, 12 callers on the extension class's path. The headline says
+ * so, because a reader who stops at "Total References Found: 0" takes it as final.
+ */
+function buildOwnerOnlyEmptyResult(
+  displayName: string,
+  owner: string,
+  memberName: string,
+  bridgeTargets: string[],
+): { content: Array<{ type: 'text'; text: string }> } {
+  let out = `# References to \`${displayName}\`\n\n`;
+  out += `**Result:** 0 on \`${owner}\` itself — methods added by [ExtensionOf] classes were NOT searched\n`;
+  out += `_Source: C# bridge (DYNAMICSXREFDB) — the owner only; this write-only server has no symbol index ` +
+    `to find the extension classes_\n\n`;
+  out += `Nothing references \`${memberName}\` as a member of \`${owner}\`. A method that an [ExtensionOf] class ` +
+    `adds is recorded under that class only, so its callers are not counted here.\n\n`;
+  out += `Resolved xref path(s):\n`;
+  for (const t of bridgeTargets) out += `- \`${t}\`\n`;
+  out += `\n**What to do:**\n`;
+  out += `- If an extension class adds the method, pass its path: \`/Classes/<ExtensionClass>/Methods/${memberName}\`\n`;
+  out += `- Or call \`find_references\` on the shared (read-only) server: it searches its symbol index by name\n`;
+  return { content: [{ type: 'text', text: out }] };
+}
+
+/**
  * targetTypes the name-based fallback can actually search for. The tool schema
  * advertises five more (edt, form, query, view, report) that have no branch in
  * the scan below, so asking for one ran NO query at all and reported
@@ -327,6 +355,33 @@ function describeUnsearchableType(
   return { content: [{ type: 'text', text: out }] };
 }
 
+/**
+ * The write-only companion's answer wherever full mode would run the name-based
+ * index scan. In the hybrid deployment the shared read-only server holds the
+ * symbol index and the local companion holds the C# bridge, so the companion's
+ * index is an empty in-memory stub: the scan would search nothing and report a
+ * zero that means "never searched". The shared server can run that scan, so
+ * point there instead.
+ */
+function companionPointer(
+  targetName: string,
+  status: 'empty' | 'error' | 'unavailable',
+  reason: string,
+  extra: string[] = [],
+): { content: Array<{ type: 'text'; text: string }>; isError: boolean } {
+  let out = `# References to \`${targetName}\`\n\n`;
+  out += status === 'empty'
+    ? `**Result:** no cross-references on this machine — this is NOT proof that it is unused\n\n`
+    : `**Result:** not answered here — this is NOT a count of zero\n\n`;
+  out += `This server runs in write-only mode, the local companion of a hybrid setup. It answers ` +
+    `\`find_references\` only from this machine's cross-reference database (DYNAMICSXREFDB, through the ` +
+    `C# bridge) and has no symbol index for a name-based search. Here, ${reason}.\n\n`;
+  out += `**What to do:**\n`;
+  out += `- Call \`find_references\` with the same arguments on the shared (read-only) server: it searches its symbol index by name\n`;
+  for (const line of extra) out += `- ${line}\n`;
+  return { content: [{ type: 'text', text: out }], isError: status === 'error' };
+}
+
 interface Reference {
   file: string;
   model: string;
@@ -336,7 +391,11 @@ interface Reference {
   caller?: string;
 }
 
-export async function findReferencesTool(request: CallToolRequest, context: XppServerContext) {
+export async function findReferencesTool(
+  request: CallToolRequest,
+  context: XppServerContext,
+  mode: ServerMode = SERVER_MODE,
+) {
   try {
     const args = FindReferencesArgsSchema.parse(request.params.arguments);
     const { symbolIndex } = context;
@@ -427,6 +486,9 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
     let memberScoped = false;
     // The enum of an "Enum::Value" target, for the name-based fallback below.
     let enumValueOwner: string | null = null;
+    // Write-only mode has no index to find the [ExtensionOf] classes that add a
+    // method to the owner, so a zero for "Owner.method" may miss those callers.
+    let extensionMethodsUnresolved = false;
     const typeContainers = targetType ? TARGET_TYPE_TO_XREF_CONTAINER[targetType] : undefined;
     if (isAotPath) {
       memberScoped = /\/(Methods|Fields|EnumValues|TableIndexs|TableFieldGroups)\//.test(cleanTargetName);
@@ -469,11 +531,20 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
         for (const ext of extensionClassesDeclaring(db, owner, memberName)) {
           bridgeTargets.push(`/Classes/${ext}/Methods/${memberName}`);
         }
+        extensionMethodsUnresolved = mode === 'write-only';
       }
       memberScoped = true;
     } else if (typeContainers && !cleanTargetName.includes('/')) {
       bridgeTargets = typeContainers.map(c => `/${c}/${cleanTargetName}`);
     } else if (wantsMethod && targetType !== 'all') {
+      // Only the index knows which types declare a bare method name; the bridge would
+      // read it as a type name and match nothing.
+      if (mode === 'write-only' && targetType === 'method') {
+        return companionPointer(targetName, 'unavailable',
+          'a bare method name needs the symbol index to find the types that declare it', [
+            `Or pass \`Owner.${memberName}\` (or set \`ownerName\`), or an AOT path, to query the cross-reference database here`,
+          ]);
+      }
       // A bare method name, when it is not also a type name (then it stays a type
       // lookup): query the types that declare it, extension classes included.
       const db = symbolIndex.getReadDb();
@@ -495,7 +566,9 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
     // On 'error'/'unavailable' fall through to the FTS heuristic instead of reporting
     // a confident "0 references" we can't stand behind.
     if (memberScoped && bridgeOutcome.status === 'empty') {
-      return buildScopedEmptyResult(targetName, bridgeTargets);
+      return extensionMethodsUnresolved && owner
+        ? buildOwnerOnlyEmptyResult(targetName, owner, memberName, bridgeTargets)
+        : buildScopedEmptyResult(targetName, bridgeTargets);
     }
 
     // The scan below has no branch for edt/form/query/view/report, so for those a
@@ -503,6 +576,24 @@ export async function findReferencesTool(request: CallToolRequest, context: XppS
     // instead of running a scan that structurally cannot see their usages.
     if (targetType && !FALLBACK_SEARCHABLE_TYPES.has(targetType)) {
       return describeUnsearchableType(targetName, targetType, bridgeOutcome.status, context);
+    }
+
+    // Write-only mode: the scan below would run over an empty index.
+    if (mode === 'write-only') {
+      const status = bridgeOutcome.status;
+      const extra: string[] = [];
+      const advice = bridgeFallbackAdvice(status, context);
+      if (advice) extra.push(advice);
+      if (status === 'error') extra.push('Check the bridge log for why the cross-reference query failed');
+      if (status === 'empty' && !memberScoped && !isAotPath) {
+        extra.push(`If \`${memberName}\` is a method, pass \`Owner.${memberName}\` (or set \`ownerName\`): ` +
+          `a bare name is looked up here as a type`);
+      }
+      if (status === 'empty') {
+        extra.push('This machine\'s cross-references are only as current as its last Visual Studio build ' +
+          'with cross-references');
+      }
+      return companionPointer(targetName, status, bridgeFallbackReason(status, context), extra);
     }
 
     // FTS fallback (xref bridge unavailable) — name-based heuristic, cannot scope

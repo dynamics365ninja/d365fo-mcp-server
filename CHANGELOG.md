@@ -28,6 +28,25 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Added
+- **`find_references` in write-only mode: the hybrid companion answers from
+  `DYNAMICSXREFDB`.** In the hybrid deployment the shared read-only server has the
+  symbol index but no C# bridge, so its `find_references` can only search X++ code by
+  name; the local write-only companion has the bridge and the developer's
+  cross-reference database, but did not publish the tool. It now does (it joins
+  `ALWAYS_TOOLS`). There it answers from the bridge only: a typed name is scoped to
+  its container, an untyped name or `Owner.member` goes to the bridge, which expands
+  it across containers itself, and labels and AOT paths are passed as given. Where
+  full mode would run the name-based scan, the companion has nothing to scan (its
+  index is an empty stub), so it says so and points to the shared server's
+  `find_references` instead: a bare method name without its owner, no rows for a bare
+  name, no bridge, no cross-reference database, or a failed query. A zero for
+  `Owner.method` is reported as "0 on the owner itself", with the headline saying that
+  methods added by `[ExtensionOf]` classes were not searched (the xref DB records them
+  under the extension class, and only the index knows those classes) and naming the
+  explicit path. Full and read-only modes are unchanged. Clients that see both
+  servers' `find_references` can hide one in their tool picker.
+
 ## [1.22.0] — 2026-10-30
 
 ### Added

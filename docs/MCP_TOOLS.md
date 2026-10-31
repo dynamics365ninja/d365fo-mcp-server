@@ -8,7 +8,7 @@ Every tool the server exposes, grouped by purpose. The AI agent picks tools auto
 
 > **C# bridge first:** on Windows D365FO VMs, the bridge-backed read tools (marked †) query the live `IMetadataProvider` (always-fresh metadata) and `DYNAMICSXREFDB` (compiler-resolved cross-references), falling back to SQLite transparently on Azure/Linux. All write operations go exclusively through the bridge. See [ARCHITECTURE.md](ARCHITECTURE.md).
 >
-> **Server modes:** `full` = all 22 tools · `read-only` (Azure) = everything except the eight local build/verify tools · `write-only` (hybrid companion) = those eight local tools plus the three always-on ones (`get_object_info`, `labels`, `d365fo_file`). Independently, **`MCP_TOOL_PROFILE=core`** publishes only the 17-tool create-and-build loop, for workspaces that already run other MCP servers. See [MCP_CONFIG.md](MCP_CONFIG.md).
+> **Server modes:** `full` = all 22 tools · `read-only` (Azure) = everything except the eight local build/verify tools · `write-only` (hybrid companion) = those eight local tools plus the four always-on ones (`get_object_info`, `labels`, `d365fo_file`, `find_references`). Independently, **`MCP_TOOL_PROFILE=core`** publishes only the 17-tool create-and-build loop, for workspaces that already run other MCP servers. See [MCP_CONFIG.md](MCP_CONFIG.md).
 
 ---
 
@@ -60,7 +60,7 @@ One unified reader covers every object type via `objectType`; type-specific flag
 | Tool | What it does | Example prompt |
 |------|--------------|----------------|
 | `get_object_info` † | One unified reader for every AOT type — structure, fields, methods, properties; reads up to 10 objects in one call | *"Show the structure of SalesFormLetter"* · *"Get full details of CustTable, SalesLine and CustInvoiceJour"* · *"Methods on SalesTable starting with calc"* |
-| `find_references` † | Where-used analysis, xref-enriched (reference type, caller class/method). Also does **label where-used** — `targetType="label"` or an `@…` id (e.g. `@WAX2194`, `@ApplicationPlatform:AbortButtonText`) — returning every referencing object type (tables, forms, EDTs, enums, reports, menu items, …), grouped by source type | *"Where is updateInventory called from?"* · *"What references label @SYS9694?"* |
+| `find_references` † | Where-used analysis, xref-enriched (reference type, caller class/method). Also does **label where-used** — `targetType="label"` or an `@…` id (e.g. `@WAX2194`, `@ApplicationPlatform:AbortButtonText`) — returning every referencing object type (tables, forms, EDTs, enums, reports, menu items, …), grouped by source type. In `write-only` mode (hybrid companion) it answers from `DYNAMICSXREFDB` only, with no name-based fallback: a bare method name needs `Owner.method`, and anything the cross-reference database cannot answer is pointed to the shared server's `find_references` | *"Where is updateInventory called from?"* · *"What references label @SYS9694?"* |
 
 `get_object_info` in detail:
 
