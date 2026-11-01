@@ -10,6 +10,8 @@ import { relative, resolve } from 'node:path';
 import { p } from '../ui.js';
 import { serializeValue, settingByPath } from '../../config/settings.js';
 import { xrefSetupAdvice } from '../../config/xrefSetup.js';
+import { SqliteXrefProvider } from '../../xref/sqliteXrefProvider.js';
+import { xrefSqliteCounting } from '../../xref/xrefSource.js';
 import { bridgeFreshness, type BridgeFreshness } from '../bridgeSources.js';
 import { bridgeBuildCommand, dataRoot, installMode, isWindows, paths, repoRoot } from '../context.js';
 import { commandExists } from '../exec.js';
@@ -637,6 +639,35 @@ export function checkXrefConfigured(store: SettingsStore): CheckResult | null {
 }
 
 /**
+ * The xref SQLite file (D365FO_XREF_SQLITE_PATH), opened the way the server opens
+ * it: read-only, validated, then closed. Null when none is configured.
+ */
+export function checkXrefSqlite(store: SettingsStore): CheckResult | null {
+  // Same precedence as the server: the real environment (an .mcp.json `env` block) first.
+  const file = process.env.D365FO_XREF_SQLITE_PATH?.trim() || readPath(store, settingByPath('index.xrefSqlitePath')!, '');
+  if (!file) return null;
+  const provider = new SqliteXrefProvider(file, () => { /* the check reports it */ });
+  try {
+    const st = provider.status();
+    if (st.state === 'ok') {
+      return {
+        severity: 'ok',
+        message:
+          `Cross-reference SQLite file: exported ${st.exportedAt ?? '(unknown)'}, ${st.modules} modules, ` +
+          `totals ${xrefSqliteCounting(st)} (${file})`,
+      };
+    }
+    return {
+      severity: 'warn',
+      message: `Cross-reference SQLite file not usable — ${st.reason} (${file}); find_references falls back to a name-based search`,
+      fix: 'point D365FO_XREF_SQLITE_PATH (index.xrefSqlitePath) at a complete DYNAMICSXREFDB export with meta.schema 1, or unset it',
+    };
+  } finally {
+    provider.close();
+  }
+}
+
+/**
  * A built bridge, judged against the sources it was compiled from (#1115). An
  * update can leave an old binary in place while it moves the bridge sources,
  * and parts of the adapter tolerate an older bridge without a word — so a
@@ -765,6 +796,8 @@ export async function doctorCommand(): Promise<void> {
   } else {
     emit({ severity: 'info', message: `C# bridge skipped (Windows-only) — platform is ${process.platform}` });
   }
+  const xrefSqlite = checkXrefSqlite(root.store);
+  if (xrefSqlite) emit(xrefSqlite);
 
   // Instances
   const instances = listInstances();

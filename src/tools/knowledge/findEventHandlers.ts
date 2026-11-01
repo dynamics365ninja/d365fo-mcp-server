@@ -8,6 +8,7 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
 import { tryBridgeEventHandlers } from '../../bridge/index.js';
+import { xrefSource } from '../../xref/xrefSource.js';
 
 const FindEventHandlersArgsSchema = z.object({
   targetClass: z.string().optional().describe('Class whose events to find handlers for'),
@@ -79,7 +80,7 @@ export async function findEventHandlersTool(request: CallToolRequest, context: X
 
     // Bridge fast-path (DYNAMICSXREFDB): supports eventName and handlerType filtering directly in C#
     const bridgeResult = await tryBridgeEventHandlers(
-      context.bridge,
+      xrefSource(context),
       targetName,
       args.eventName,
       args.handlerType,

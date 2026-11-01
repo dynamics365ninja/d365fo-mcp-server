@@ -29,6 +29,7 @@ import { VERSION } from './version.js';
 import { setInitializeParams } from './utils/stdioSessionInfo.js';
 import { setModelObjectNameSource } from './utils/modelPrefixInference.js';
 import { trackBridgeStartup } from './bridge/bridgeReadiness.js';
+import { describeXrefSource } from './xref/xrefSource.js';
 import { startLoopLagMonitor } from './utils/loopLag.js';
 import { warmPackagesRoots } from './utils/packagesRoot.js';
 import {
@@ -464,6 +465,22 @@ async function initializeServices() {
 }
 
 /**
+ * Report the xref SQLite file once the bridge has settled: the source tools will
+ * use, and for the file its export date — or why it cannot be used. Only when
+ * D365FO_XREF_SQLITE_PATH is set; opening it is a few small reads.
+ */
+function logXrefSqlite(context: import('./types/context.js').XppServerContext): void {
+  if (!context.xrefSqlite) return;
+  try {
+    const d = describeXrefSource(context);
+    if (d.kind === 'none') log.warn(`Cross-references: ${d.line}`);
+    else log.ok(`Cross-references: ${d.line}`);
+  } catch (e) {
+    log.warn(`Cross-references: the xref SQLite file could not be checked: ${e}`);
+  }
+}
+
+/**
  * Initialize C# bridge (non-blocking).
  * Shared by stdio and HTTP startup paths.
  * Attaches bridge to the given context object on success.
@@ -762,7 +779,10 @@ async function main() {
     // The attempt is tracked on the context so bridge-backed tools called in the
     // first seconds wait for it instead of reporting a phantom "not connected".
     stubContext.bridgeStartup = trackBridgeStartup(
-      initializeBridge(stubContext).then(s => (s.ok ? log.ok(s.summary) : log.warn(s.summary))),
+      initializeBridge(stubContext).then(s => {
+        if (s.ok) log.ok(s.summary); else log.warn(s.summary);
+        logXrefSqlite(stubContext);
+      }),
     );
 
     // Step 4: load real database in the background
@@ -929,6 +949,7 @@ async function main() {
         ]);
         if (status.ok) log.ok(status.summary); else log.warn(status.summary);
         if (status.detail) log.detail(status.detail);
+        logXrefSqlite(context);
       }
       console.log('');
 

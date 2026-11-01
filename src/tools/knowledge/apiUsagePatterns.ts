@@ -7,6 +7,7 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
 import { tryBridgeApiUsageCallers } from '../../bridge/bridgeAdapter.js';
+import { xrefSource } from '../../xref/xrefSource.js';
 
 const GetApiUsagePatternsArgsSchema = z.object({
   apiName: z.string().describe('Name of the API/class/method to analyze'),
@@ -19,7 +20,7 @@ export async function getApiUsagePatternsTool(request: CallToolRequest, context:
     const { symbolIndex } = context;
 
     // Bridge fast-path: compiler-resolved callers from DYNAMICSXREFDB, grouped by class
-    const bridgeResult = await tryBridgeApiUsageCallers(context.bridge, args.apiName);
+    const bridgeResult = await tryBridgeApiUsageCallers(xrefSource(context), args.apiName);
     if (bridgeResult) return bridgeResult;
 
     // Fallback: SQLite symbol index patterns

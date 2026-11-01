@@ -8,6 +8,7 @@ import type { WorkspaceScanner } from '../workspace/workspaceScanner.js';
 import type { HybridSearch } from '../workspace/hybridSearch.js';
 import type { BridgeClient } from '../bridge/bridgeClient.js';
 import type { BridgeStartup } from '../bridge/bridgeReadiness.js';
+import type { SqliteXrefProvider } from '../xref/sqliteXrefProvider.js';
 
 /**
  * Editor context from IDE (VS2022, VS2026)
@@ -50,6 +51,12 @@ export interface XppServerContext {
    * object or a broken configuration. Absent when nothing spawned a bridge.
    */
   bridgeStartup?: BridgeStartup;
+  /**
+   * Cross-references from a SQLite export of DYNAMICSXREFDB
+   * (D365FO_XREF_SQLITE_PATH), used when the bridge has none. Opened lazily on
+   * first use; see src/xref/xrefSource.ts for the selection order.
+   */
+  xrefSqlite?: SqliteXrefProvider;
   /**
    * Resolves when the real symbol database has been loaded.
    * Present only in stdio mode when the stub pattern is active.

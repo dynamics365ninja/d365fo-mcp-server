@@ -9,6 +9,7 @@ import type { XppServerContext } from '../../types/context.js';
 import { getConfigManager } from '../../utils/configManager.js';
 import { scanFsExtensions } from '../../utils/fsExtensionScanner.js';
 import { tryBridgeCocExtensions } from '../../bridge/index.js';
+import { xrefSource } from '../../xref/xrefSource.js';
 import { canonicalSymbolName } from '../../utils/symbolLookup.js';
 
 /**
@@ -40,7 +41,7 @@ export async function findCocExtensionsTool(request: CallToolRequest, context: X
 
     // Bridge fast-path (DYNAMICSXREFDB): returns method-level CoC detail (wrappedMethods per
     // extension class), so it can be used even when a methodName filter is specified.
-    const bridgeResult = await tryBridgeCocExtensions(context.bridge, className, methodName);
+    const bridgeResult = await tryBridgeCocExtensions(xrefSource(context), className, methodName);
     if (bridgeResult) return bridgeResult;
 
     let output = `CoC Extensions of: ${className}\n`;

@@ -15,6 +15,7 @@ import { registerToolHandler } from '../tools/toolHandler.js';
 import { registerResources } from '../resources/index.js';
 import { registerCodeReviewPrompt } from '../prompts/codeReview.js';
 import type { XppServerContext } from '../types/context.js';
+import { xrefSqliteFromEnv } from '../xref/xrefSource.js';
 import { SERVER_MODE, LOCAL_TOOLS, TOOL_PROFILE, isToolEnabled } from './serverMode.js';
 import { TOOL_ANNOTATIONS } from './toolAnnotations.js';
 import { getConfigManager } from '../utils/configManager.js';
@@ -96,6 +97,8 @@ function applyRootsToConfig(roots: Array<{ uri: string }>): void {
 }
 
 export function createXppMcpServer(context: XppServerContext): Server {
+  // Cross-references without the bridge (D365FO_XREF_SQLITE_PATH). Opens nothing yet.
+  context.xrefSqlite ??= xrefSqliteFromEnv();
   const serverNameSuffix = SERVER_MODE !== 'full' ? ` (${SERVER_MODE})` : '';
   const server = new Server(
     {
