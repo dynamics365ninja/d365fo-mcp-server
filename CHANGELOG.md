@@ -28,6 +28,19 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Fixed
+- **`extension_info(mode="coc", method=…)` counted classes that wrap nothing as wrappers.**
+  "Found 12 extension class(es) wrapping "validateWrite"" listed 12 classes for `SalesTable`
+  where 2 wrap it: the filter also kept every class with an empty wrap list, a leftover from
+  when the list held every base method a class called. The bridge sends a list for every
+  class, so empty means "wraps nothing". The count now covers only the classes whose list
+  names the method (case-insensitive). The other extension classes still follow, grouped by
+  extended element as before, under "Other extension classes of <object> (no wrap of "<m>"
+  recorded): N". A class with no list at all (an older bridge) goes under "wraps unknown"
+  and is not counted. The filesystem fallback of the index path had the same clause and
+  gets the same split. Without a method filter the output is unchanged; the index path's
+  database rows still include classes with an empty list, because there it can mean unknown.
+
 ## [1.22.0] — 2026-10-30
 
 ### Added
