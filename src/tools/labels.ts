@@ -22,6 +22,7 @@ import { mapWithConcurrency } from '../utils/concurrency.js';
 import {
   recordLabelSearchCall, repeatSearchNotice, searchBudgetNotice,
 } from './analysis/labelSearchHistory.js';
+import { exactLabelLookupTool, isExactLookup } from './analysis/exactLabelLookup.js';
 import { getLabelInfoTool } from './readers/getLabelInfo.js';
 import { createLabelTool } from './write/createLabel.js';
 import { renameLabelTool } from './write/renameLabel.js';
@@ -139,6 +140,15 @@ export async function labelsTool(request: CallToolRequest, context: XppServerCon
         r.query = alt;
         delete r.searchText; delete r.text; delete r.q;
       }
+    }
+    // Branches off BEFORE the budget below: an exact lookup is deterministic and
+    // bounded, not the rephrasing loop the budget ends, so it neither counts as a
+    // search call nor reads one (see exactLabelLookup.ts).
+    if (isExactLookup(r.exact)) {
+      const timer = createPhaseTimer();
+      const result = await timer.time('exact lookup', () => exactLabelLookupTool(r, context));
+      const phases = timer.render();
+      return phases ? appendPhaseLine(result, phases) : result;
     }
     // Counted here rather than in either handler: this is the one point both the
     // batched and the single-string path pass through, so a caller cannot escape
