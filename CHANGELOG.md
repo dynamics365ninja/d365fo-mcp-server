@@ -28,6 +28,23 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Added
+- **`update_symbol_index(model="X")` re-indexes what changed in one custom model,
+  without naming the files.** After a git pull, a branch switch or a Visual Studio
+  session the agent does not know which files moved, so it listed them one by one or
+  worked on a stale index until the next full build. The model form walks the model's
+  folder and re-indexes every file whose mtime differs from the one recorded when it was
+  last indexed, adds new files, and removes the rows of files deleted from disk, with
+  one bridge refresh for the lot. Changes are judged per file (new table
+  `indexed_files`, filled by every incremental index of a file), not against
+  `last_indexed_at`, which every write bumps and which therefore hides a file changed
+  before an unrelated write. A model's first pass reads all its files once (1,474 files
+  in about 16 s on a real ISV model), later passes about 1.5 s when nothing changed.
+  Standard models are refused (build-database owns them), and so is `filePath` together
+  with `model`. The stale-index warning in `get_workspace_info` now suggests this call
+  instead of the single newest file. The tool's description was tightened so the schema
+  stays inside its budget.
+
 ## [1.22.0] — 2026-10-30
 
 ### Added
