@@ -974,6 +974,20 @@ export class XppSymbolIndex {
       );
     `);
 
+    // The mtime each file had when it was last indexed incrementally. last_indexed_at
+    // is one global value that every write bumps, so it cannot say which files of a
+    // model changed since THEY were read; update_symbol_index(model) compares each
+    // file's mtime with its own row instead. Rows exist only for files an incremental
+    // pass indexed, so a model's first pass re-reads every file once.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS indexed_files (
+        file_path TEXT PRIMARY KEY COLLATE NOCASE,
+        mtime_ms REAL NOT NULL,
+        model TEXT NOT NULL COLLATE NOCASE
+      );
+      CREATE INDEX IF NOT EXISTS idx_indexed_files_model ON indexed_files(model);
+    `);
+
     // Property stats: distribution of metadata property values across STANDARD models,
     // used for data-driven BP rules in validate_xpp instead of hardcoded tables.
     // Presence is encoded via special values '(present)' / '(absent)'.
@@ -3721,6 +3735,60 @@ export class XppSymbolIndex {
       ).run(new Date().toISOString());
     } catch {
       // Bookkeeping is best-effort
+    }
+  }
+
+  /** Remember the mtime a file had when it was indexed — see the indexed_files table. */
+  recordIndexedFile(filePath: string, mtimeMs: number, model: string): void {
+    try {
+      this.db.prepare(
+        `INSERT OR REPLACE INTO indexed_files (file_path, mtime_ms, model) VALUES (?, ?, ?)`,
+      ).run(filePath, mtimeMs, model);
+    } catch {
+      // Bookkeeping is best-effort: a missing row only costs a re-read next pass
+    }
+  }
+
+  forgetIndexedFile(filePath: string): void {
+    try {
+      this.db.prepare(`DELETE FROM indexed_files WHERE file_path = ?`).run(filePath);
+    } catch { /* best-effort, as above */ }
+  }
+
+  /** Lower-cased path → mtime recorded for every file of the model. */
+  getIndexedFileMtimes(model: string): Map<string, number> {
+    const rows = this.getReadDb().prepare(
+      `SELECT file_path, mtime_ms FROM indexed_files WHERE model = ?`,
+    ).all(model) as Array<{ file_path: string; mtime_ms: number }>;
+    return new Map(rows.map(r => [r.file_path.toLowerCase(), r.mtime_ms]));
+  }
+
+  /** Every distinct file path the symbols table holds for a model. */
+  getModelFilePaths(model: string): string[] {
+    const rows = this.getReadDb().prepare(
+      `SELECT DISTINCT file_path FROM symbols WHERE model = ? COLLATE NOCASE`,
+    ).all(model) as Array<{ file_path: string }>;
+    return rows.map(r => r.file_path);
+  }
+
+  /** Every path indexed_files records for a model, as stored. */
+  getIndexedFilePaths(model: string): string[] {
+    const rows = this.getReadDb().prepare(
+      `SELECT file_path FROM indexed_files WHERE model = ?`,
+    ).all(model) as Array<{ file_path: string }>;
+    return rows.map(r => r.file_path);
+  }
+
+  /**
+   * Every .label.txt path the labels DB holds rows for. Labels are not symbols, so
+   * getModelFilePaths never sees them; one row per file (~800 on a full build).
+   */
+  getAllLabelFilePaths(): string[] {
+    try {
+      const rows = this.labelsDb.prepare(`SELECT file_path FROM label_files`).all() as Array<{ file_path: string }>;
+      return rows.map(r => r.file_path);
+    } catch {
+      return [];
     }
   }
 
