@@ -459,8 +459,12 @@ describe('read-only', () => {
 
 describe('a file replaced while the server runs', () => {
   const rows = (p: SqliteXrefProvider) => p.findReferencesSync('/Classes/ContosoSwap').total;
+  // Windows cannot rename over a file another handle holds open (EPERM): SQLite's
+  // win32 VFS does not share delete access. There the operator stops the server to
+  // replace the file, as the setting's description says.
+  const renameOverOpenFile = it.skipIf(process.platform === 'win32');
 
-  it('reads the new file after an atomic rename, never the old view', () => {
+  renameOverOpenFile('reads the new file after an atomic rename, never the old view', () => {
     buildXrefFixture(file, { refs: manyRefs('/Classes/ContosoSwap', 3) });
     const p = open();
     expect(rows(p)).toBe(3);
@@ -488,7 +492,7 @@ describe('a file replaced while the server runs', () => {
     expect(rows(p)).toBe(5);
   });
 
-  it('stops answering when the file is replaced by garbage or removed, and resumes with a valid one', () => {
+  renameOverOpenFile('stops answering when the file is replaced by garbage or removed, and resumes with a valid one', () => {
     buildXrefFixture(file, { refs: manyRefs('/Classes/ContosoSwap', 3) });
     const p = open();
     expect(rows(p)).toBe(3);
