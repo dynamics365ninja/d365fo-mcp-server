@@ -20,14 +20,14 @@ describe('buildAxLabelFileXml', () => {
   });
 
   it('matches a VS-created descriptor byte for byte', () => {
-    expect(buildAxLabelFileXml('CNX', 'cs', 'ContosoPackage', 'ContosoExt')).toBe(
+    expect(buildAxLabelFileXml('ContosoExt', 'cs', 'ContosoCore', 'ContosoExt')).toBe(
       '<?xml version="1.0" encoding="utf-8"?>\r\n' +
       '<AxLabelFile xmlns:i="http://www.w3.org/2001/XMLSchema-instance">\r\n' +
-      '\t<Name>CNX_cs</Name>\r\n' +
-      '\t<LabelContentFileName>CNX.cs.label.txt</LabelContentFileName>\r\n' +
-      '\t<LabelFileId>CNX</LabelFileId>\r\n' +
+      '\t<Name>ContosoExt_cs</Name>\r\n' +
+      '\t<LabelContentFileName>ContosoExt.cs.label.txt</LabelContentFileName>\r\n' +
+      '\t<LabelFileId>ContosoExt</LabelFileId>\r\n' +
       '\t<Language>cs</Language>\r\n' +
-      '\t<RelativeUriInModelStore>ContosoPackage\\ContosoExt\\AxLabelFile\\LabelResources\\cs\\CNX.cs.label.txt</RelativeUriInModelStore>\r\n' +
+      '\t<RelativeUriInModelStore>ContosoCore\\ContosoExt\\AxLabelFile\\LabelResources\\cs\\ContosoExt.cs.label.txt</RelativeUriInModelStore>\r\n' +
       '</AxLabelFile>',
     );
   });
