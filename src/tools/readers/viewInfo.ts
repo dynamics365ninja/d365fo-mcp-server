@@ -20,6 +20,9 @@ import { tryBridgeView, tryBridgeDataEntity } from '../../bridge/bridgeAdapter.j
 import { readViewMetadata, buildObjectTypeMismatchMessage } from '../../utils/metadataResolver.js';
 import {
   resolveIndexedObject,
+  readXmlFile,
+  storedCopyFor,
+  indexedXmlSourceLabel,
   indexedSourceNote,
   bridgeUnavailableNote,
   type IndexedObjectRef,
@@ -45,11 +48,17 @@ interface ViewLike {
   isPublic?: boolean;
   isReadOnly?: boolean;
   primaryKey?: string;
+  publicEntityName?: string;
+  publicCollectionName?: string;
+  dataManagementEnabled?: boolean;
+  entityCategory?: string;
+  dataSources?: Array<{ name: string; table: string; joinMode?: string; parent?: string }>;
   fields?: Array<{
     name: string;
     dataSource?: string;
     dataField?: string;
     dataMethod?: string;
+    labelId?: string;
     isComputed?: boolean;
   }>;
   relations?: Array<{
@@ -73,13 +82,16 @@ export async function getViewInfoTool(request: CallToolRequest, context: XppServ
     const entityResult = await tryBridgeDataEntity(context.bridge, args.viewName);
     if (entityResult) return entityResult;
 
-    // 3. Symbol index → extracted metadata / XML
-    const indexResult = await buildViewResponseFromIndex(context, args.viewName, args.modelName);
-    if (indexResult) return indexResult;
+    // 3. Symbol index → extracted metadata / XML file
+    const indexed = await buildViewResponseFromIndex(context, args.viewName, args.modelName);
+    if (indexed?.result) return indexed.result;
 
-    // 4. Disk scan — a view created this session and not yet indexed
+    // 4. Disk scan — a view created this session, or an indexed one the stored path misses
     const diskResult = await buildViewResponseFromDisk(context, args.viewName, args.modelName);
     if (diskResult) return diskResult;
+
+    // 5. The copy the index stored (database-only hosts), else the indexed symbols
+    if (indexed) return await buildViewResponseFromStored(context, indexed.ref);
 
     return {
       content: [{ type: 'text', text: buildNotFoundText(context, args.viewName) }],
@@ -96,17 +108,19 @@ export async function getViewInfoTool(request: CallToolRequest, context: XppServ
   }
 }
 
+type TextResult = { content: { type: 'text'; text: string }[] };
+
 /**
  * Serve view info from the symbol index: extracted-metadata JSON first, then the
  * indexed XML file (remapped to the local packages path when the DB stores a
- * build-agent path). Falls back to the indexed field/method symbols so a view the
- * index knows about is never reported as "not found".
+ * build-agent path). `result` is null when neither is readable; `ref` then lets
+ * buildViewResponseFromStored answer once the disk scan has missed too.
  */
 async function buildViewResponseFromIndex(
   context: XppServerContext,
   viewName: string,
   modelName?: string,
-): Promise<{ content: { type: 'text'; text: string }[] } | null> {
+): Promise<{ ref: IndexedObjectRef; result: TextResult | null } | null> {
   let ref;
   try {
     ref = await resolveIndexedObject(context.symbolIndex.getReadDb(), viewName, ['view'], modelName);
@@ -121,21 +135,39 @@ async function buildViewResponseFromIndex(
   if (extracted) {
     // The JSON cache outlives a deleted AxView.xml, so `ref` rides along to have a
     // row that lost its file called out instead of rendered as a live view.
-    return {
-      content: [{ type: 'text', text: formatViewLike(extracted, model, 'symbol index (extracted metadata)', ref) }],
-    };
+    const text = formatViewLike(extracted, model, 'symbol index (extracted metadata)', ref, labelResolver(context));
+    return { ref, result: { content: [{ type: 'text', text }] } };
   }
 
-  // XML on disk — the indexed path, or the same path remapped locally
-  if (ref.localPath) {
-    const parsed = await context.parser.parseViewFile(ref.localPath, model);
-    if (parsed.success && parsed.data) {
-      return { content: [{ type: 'text', text: formatViewLike(parsed.data, model, `XML: ${ref.localPath}`) }] };
-    }
-  }
+  // XML file — the indexed path, or the same path remapped locally
+  const xml = ref.localPath ? await readXmlFile(ref.localPath) : null;
+  const text = xml && await formatViewXml(context, xml, ref.localPath ?? '', model, `XML: ${ref.localPath}`);
+  return { ref, result: text ? { content: [{ type: 'text', text }] } : null };
+}
 
-  // Last resort — the field/method symbols captured at index time
-  return { content: [{ type: 'text', text: formatViewFromSymbols(context, ref.name, model) }] };
+/**
+ * The copy the index stored (a database-only host), else the field/method symbols
+ * captured at index time, so a view the index knows about is never "not found".
+ */
+async function buildViewResponseFromStored(context: XppServerContext, ref: IndexedObjectRef): Promise<TextResult> {
+  const stored = storedCopyFor(context.symbolIndex.getReadDb(), ref);
+  const text = stored && await formatViewXml(
+    context, stored.xml, ref.indexedPath ?? '', ref.model, indexedXmlSourceLabel(stored),
+  );
+  return { content: [{ type: 'text', text: text || formatViewFromSymbols(context, ref.name, ref.model) }] };
+}
+
+async function formatViewXml(
+  context: XppServerContext,
+  xml: string,
+  sourcePath: string,
+  model: string,
+  source: string,
+): Promise<string | null> {
+  const parsed = await context.parser.parseViewXml(xml, sourcePath, model);
+  return parsed.success && parsed.data
+    ? formatViewLike(parsed.data, model, source, undefined, labelResolver(context))
+    : null;
 }
 
 async function buildViewResponseFromDisk(
@@ -152,7 +184,7 @@ async function buildViewResponseFromDisk(
       return {
         content: [{
           type: 'text',
-          text: formatViewLike(parsed.data, model, `live file (not yet in bridge metadata): ${diskPath}`),
+          text: formatViewLike(parsed.data, model, `live file (not yet in bridge metadata): ${diskPath}`, undefined, labelResolver(context)),
         }],
       };
     }
@@ -160,15 +192,56 @@ async function buildViewResponseFromDisk(
   return null;
 }
 
-function formatViewLike(v: ViewLike, model: string, source: string, ref?: IndexedObjectRef | null): string {
-  const kind = v.type === 'data-entity' ? 'Data Entity View' : 'View';
-  let out = `# ${kind}: ${v.name}\n\n`;
-  if (v.label) out += `**Label:** ${v.label}\n`;
+type LabelResolver = (labelId: string | undefined) => string | undefined;
+
+/** Label text (en-us first, else any language) for a label reference; the reference itself when unknown. */
+function labelResolver(context: XppServerContext): LabelResolver {
+  return (labelId) => {
+    if (!labelId?.startsWith('@')) return labelId;
+    try {
+      const rows = context.symbolIndex.getLabelById(labelId);
+      const row = rows.find(r => r.language.toLowerCase() === 'en-us') ?? rows[0];
+      return row ? `${row.text} (${labelId})` : labelId;
+    } catch {
+      return labelId;
+    }
+  };
+}
+
+function formatViewLike(
+  v: ViewLike,
+  model: string,
+  source: string,
+  ref?: IndexedObjectRef | null,
+  label: LabelResolver = id => id,
+): string {
+  const isEntity = v.type === 'data-entity';
+  let out = `# ${isEntity ? 'Data Entity View' : 'View'}: ${v.name}\n\n`;
+  if (v.label) out += `**Label:** ${label(v.label)}\n`;
   out += `**Model:** ${v.model || model}\n`;
-  if (v.isPublic != null) out += `**Public:** ${v.isPublic ? 'Yes' : 'No'}\n`;
+  if (isEntity) {
+    if (v.entityCategory) out += `**Category:** ${v.entityCategory}\n`;
+    if (v.publicEntityName) out += `**Public Entity Name:** ${v.publicEntityName}\n`;
+    if (v.publicCollectionName) out += `**Public Collection Name:** ${v.publicCollectionName}\n`;
+    if (v.isPublic != null) out += `**OData Enabled (IsPublic):** ${v.isPublic ? 'Yes' : 'No'}\n`;
+    if (v.dataManagementEnabled != null) out += `**Data Management (DMF):** ${v.dataManagementEnabled ? 'Yes' : 'No'}\n`;
+  } else if (v.isPublic != null) {
+    out += `**Public:** ${v.isPublic ? 'Yes' : 'No'}\n`;
+  }
   if (v.isReadOnly != null) out += `**Read-Only:** ${v.isReadOnly ? 'Yes' : 'No'}\n`;
   if (v.primaryKey) out += `**Primary Key:** ${v.primaryKey}\n`;
   out += indexedSourceNote(source, ref);
+
+  const dataSources = v.dataSources ?? [];
+  if (dataSources.length > 0) {
+    out += `## 🗃️ Data Sources (${dataSources.length})\n\n`;
+    out += `| Data Source | Table | Join | Parent |\n|---|---|---|---|\n`;
+    for (const ds of dataSources) {
+      // The XML omits JoinMode at its default.
+      out += `| ${ds.name} | ${ds.table || '—'} | ${ds.parent ? ds.joinMode ?? 'InnerJoin' : 'root'} | ${ds.parent ?? '—'} |\n`;
+    }
+    out += '\n';
+  }
 
   const fields = v.fields ?? [];
   if (fields.length > 0) {
@@ -178,8 +251,10 @@ function formatViewLike(v: ViewLike, model: string, source: string, ref?: Indexe
     out += `## 📊 Fields (${fields.length})\n\n`;
     if (mapped.length > 0) {
       out += `### Mapped Fields (${mapped.length})\n\n`;
-      out += `| Field Name | Data Source | Data Field |\n|---|---|---|\n`;
-      for (const f of mapped) out += `| ${f.name} | ${f.dataSource ?? '—'} | ${f.dataField ?? '—'} |\n`;
+      out += `| Field Name | Data Source | Data Field | Label |\n|---|---|---|---|\n`;
+      for (const f of mapped) {
+        out += `| ${f.name} | ${f.dataSource ?? '—'} | ${f.dataField ?? '—'} | ${label(f.labelId)?.replace(/\|/g, '\\|') ?? '—'} |\n`;
+      }
       out += '\n';
     }
     if (computed.length > 0) {
@@ -224,7 +299,7 @@ function formatViewFromSymbols(context: XppServerContext, viewName: string, mode
   } catch { /* DB unavailable — emit the header only */ }
 
   let out = `# View: ${viewName}\n\n**Model:** ${model}\n`;
-  out += `_Source: symbol index (bridge and view XML unavailable — field types and relations are not included)._\n\n`;
+  out += `_Source: symbol index (bridge and view XML unavailable — data sources, entity properties and relations are not included; rebuild the index to store the full definition)._\n\n`;
   out += `## Fields (${fields.length})\n\n`;
   for (const f of fields) out += `- **${f.name}**${f.signature ? ` → ${f.signature}` : ''}\n`;
   if (methods.length > 0) {

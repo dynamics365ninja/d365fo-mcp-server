@@ -14,7 +14,7 @@
  *   3. the same path remapped onto the configured packages root (the DB may store
  *      Azure DevOps build-agent paths)
  *   4. extracted-metadata JSON files, which wrap the XML in a `raw` property
- *   5. for a form, the gzipped copy the index build stored (form_source)
+ *   5. the gzipped copy the index build stored (object_source; form_source for old DBs)
  */
 
 import * as fs from 'fs';
@@ -30,10 +30,12 @@ import { gunzipSync } from 'node:zlib';
 export interface IndexedObjectRef {
   /** Canonical name as stored in the index (may differ in casing from the request). */
   name: string;
+  /** symbols.type of the row ('table', 'view', 'form', …). */
+  type: string;
   model: string;
   /**
    * The model of the symbol row itself. `model` above is the caller's `modelName` when
-   * one was given, so it cannot key a lookup of the stored copy (form_source).
+   * one was given, so it cannot key a lookup of the stored copy (object_source).
    */
   indexedModel: string;
   /** Path recorded in the symbol index — may point at a build agent. */
@@ -70,6 +72,7 @@ export async function resolveIndexedObject(
   const localPath = await resolveLocalPath(hit.file_path);
   return {
     name: hit.name,
+    type: hit.type,
     model: modelName || hit.model || 'Unknown',
     indexedModel: hit.model || '',
     indexedPath: hit.file_path,
@@ -267,22 +270,49 @@ export async function readXmlFile(filePath: string): Promise<string | null> {
 }
 
 /**
- * The gzipped AxForm XML the index build stored for a form (form_source), or null.
- *
- * Keyed by the symbol row's own model, case-insensitively (the build's model directory
- * and the model parsed from a path can differ in case). Never falls back to another
- * model's row: that would render a different form's XML under this one's name. Any
- * failure — an old database without the table, a stub DB, a corrupt blob — is a miss (null).
+ * symbols.type values for a get_object_info objectType: data entities are indexed as
+ * views, a class extension as the AxClass file it is (its `class-extension` row hangs off
+ * the base class, so it is never resolved by name), a menu item under its three kinds and
+ * a configuration key under its full name; every other type under its own name.
  */
-export function readStoredFormXml(
+export function symbolTypesFor(objectType: string): string[] {
+  switch (objectType) {
+    case 'data-entity': return ['view'];
+    case 'class-extension': return ['class'];
+    case 'menu-item': return ['menu-item-display', 'menu-item-action', 'menu-item-output'];
+    case 'config-key': return ['configuration-key'];
+    default: return [objectType];
+  }
+}
+
+/**
+ * The gzipped XML the index build stored for an object (object_source), or null.
+ *
+ * Keyed by the symbol row's own type and model; model matches case-insensitively (the
+ * build's model directory and the model parsed from a path can differ in case). Never
+ * falls back to another model's row. A form also tries form_source, which databases
+ * built before object_source carry. Any failure — a missing table, a stub DB, a corrupt
+ * blob — is a miss (null).
+ */
+export function readStoredObjectXml(
   db: unknown,
-  formName: string,
+  objectType: string,
+  name: string,
   model: string,
 ): { xml: string; storedAt: string } | null {
+  return readStoredRow(db,
+    'SELECT xml_gz, indexed_at FROM object_source WHERE object_type = ? AND name = ? AND model = ? COLLATE NOCASE ORDER BY indexed_at DESC LIMIT 1',
+    [objectType, name, model])
+    ?? (objectType === 'form'
+      ? readStoredRow(db,
+        'SELECT xml_gz, indexed_at FROM form_source WHERE form_name = ? AND model = ? COLLATE NOCASE ORDER BY indexed_at DESC LIMIT 1',
+        [name, model])
+      : null);
+}
+
+function readStoredRow(db: unknown, sql: string, params: unknown[]): { xml: string; storedAt: string } | null {
   try {
-    const row = (db as any)
-      .prepare('SELECT xml_gz, indexed_at FROM form_source WHERE form_name = ? AND model = ? COLLATE NOCASE ORDER BY indexed_at DESC LIMIT 1')
-      .get(formName, model) as { xml_gz?: unknown; indexed_at?: unknown } | undefined;
+    const row = (db as any).prepare(sql).get(...params) as { xml_gz?: unknown; indexed_at?: unknown } | undefined;
     if (!row || !(row.xml_gz instanceof Uint8Array)) return null;
     const xml = gunzipSync(row.xml_gz).toString('utf-8');
     if (!xml) return null;
@@ -295,10 +325,12 @@ export function readStoredFormXml(
 /**
  * Symbol-index lookup + XML read in one step. Returns null when either step fails.
  *
- * For a form with no readable file, the copy stored in the index (form_source) answers
- * instead — except when this machine can tell the file was deleted (`sourceFileMissing`):
- * a leftover row would then present a deleted form as fact. `source` says which one
- * answered so the reader can label a stored copy.
+ * With no readable file, the copy stored in the index answers instead — except when
+ * this machine can tell the file was deleted (`sourceFileMissing`): a leftover row would
+ * then present a deleted object as fact. `source` says which one answered so the reader
+ * can label a stored copy. A reader that also scans the disk resolves the ref itself
+ * and calls storedCopyFor last instead, so a file on this host always beats the copy
+ * taken at index time.
  */
 export async function readIndexedXml(
   db: unknown,
@@ -312,9 +344,24 @@ export async function readIndexedXml(
     const xml = await readXmlFile(ref.localPath);
     if (xml) return { ref, xml, source: 'file' };
   }
-  if (!types.includes('form') || ref.sourceFileMissing) return null;
-  const stored = readStoredFormXml(db, ref.name, ref.indexedModel);
+  return storedCopyFor(db, ref);
+}
+
+/** The stored copy for a resolved object, or null; never for a file this host knows was deleted. */
+export function storedCopyFor(
+  db: unknown,
+  ref: IndexedObjectRef,
+): { ref: IndexedObjectRef; xml: string; source: 'stored'; storedAt: string } | null {
+  if (ref.sourceFileMissing) return null;
+  const stored = readStoredObjectXml(db, ref.type, ref.name, ref.indexedModel);
   return stored ? { ref, xml: stored.xml, source: 'stored', storedAt: stored.storedAt } : null;
+}
+
+/** Provenance line for XML that came from readIndexedXml. */
+export function indexedXmlSourceLabel(found: { ref: IndexedObjectRef; source: 'file' | 'stored'; storedAt?: string }): string {
+  return found.source === 'stored'
+    ? `stored copy in the index${found.storedAt ? `, written ${found.storedAt}` : ''}; no AOT file reachable on this host`
+    : `XML: ${found.ref.localPath}`;
 }
 
 /**

@@ -1,6 +1,6 @@
 /**
  * writeFormSymbols and the cleanup around it: the index keeps, per form, its `form`
- * symbol, datasources, mined patterns and the gzipped original XML in form_source,
+ * symbol, datasources, mined patterns and the gzipped original XML in object_source,
  * so a host with only the database can show a form.
  *
  * Both writers (the full build's indexForms and update_symbol_index) go through
@@ -8,7 +8,7 @@
  *   - a re-index never duplicates datasource rows (form_datasources has no unique key);
  *   - removing a form's file removes all four kinds of row;
  *   - a table file named like a form never removes the form's rows;
- *   - clear()/clearModels() empty form_source with the other form tables.
+ *   - clear()/clearModels() empty object_source with the other form tables.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -55,14 +55,14 @@ describe('writeFormSymbols', () => {
     expect(count('form_datasources', `WHERE form_name = 'SalesTable'`)).toBe(2);
     expect(count('form_patterns', `WHERE form_name = 'SalesTable'`)).toBe(1);
 
-    const row = index.db.prepare(`SELECT xml_gz, indexed_at FROM form_source WHERE form_name = 'SalesTable' AND model = 'Model'`).get() as any;
+    const row = index.db.prepare(`SELECT xml_gz, indexed_at FROM object_source WHERE object_type = 'form' AND name = 'SalesTable' AND model = 'Model'`).get() as any;
     expect(gunzipSync(row.xml_gz).toString('utf-8')).toBe(XML);
     expect(Number.isNaN(Date.parse(row.indexed_at))).toBe(false);
   });
 
-  it('writes no form_source row when no XML is given', () => {
+  it('writes no object_source row when no XML is given', () => {
     index.writeFormSymbols(formData(), 'Model', FORM_FILE);
-    expect(count('form_source')).toBe(0);
+    expect(count('object_source')).toBe(0);
     expect(count('form_datasources')).toBe(2); // everything else is still written
   });
 
@@ -72,8 +72,8 @@ describe('writeFormSymbols', () => {
 
     expect(count('form_datasources')).toBe(2);
     expect(count('form_patterns')).toBe(1);
-    expect(count('form_source')).toBe(1);
-    const row = index.db.prepare(`SELECT xml_gz FROM form_source`).get() as any;
+    expect(count('object_source')).toBe(1);
+    const row = index.db.prepare(`SELECT xml_gz FROM object_source`).get() as any;
     expect(gunzipSync(row.xml_gz).toString('utf-8')).toContain('SalesTable2');
   });
 
@@ -100,7 +100,7 @@ describe('writeFormSymbols', () => {
     index.writeFormSymbols(formData({ dataSources: [{ name: 'SalesTable', table: 'SalesTable' }] }), 'Foundation', FORM_FILE, XML);
 
     expect(count('form_datasources')).toBe(1);
-    expect(count('form_source')).toBe(1);
+    expect(count('object_source')).toBe(1);
   });
 
   it('keeps a same-named form in another model apart', () => {
@@ -110,7 +110,7 @@ describe('writeFormSymbols', () => {
 
     expect(count('form_datasources', `WHERE model = 'ModelA'`)).toBe(2);
     expect(count('form_datasources', `WHERE model = 'ModelB'`)).toBe(0);
-    expect(count('form_source')).toBe(2);
+    expect(count('object_source')).toBe(2);
   });
 
   it('rolls the whole form back when a write fails midway', () => {
@@ -123,11 +123,11 @@ describe('writeFormSymbols', () => {
 
     // The previous state is intact: nothing half-written, nothing half-deleted.
     expect(count('form_datasources')).toBe(2);
-    expect(count('form_source')).toBe(1);
+    expect(count('object_source')).toBe(1);
   });
 });
 
-describe('removeSymbolsByFile and form_source', () => {
+describe('removeSymbolsByFile and object_source', () => {
   it('removes the form symbol, datasources, patterns and stored XML with the file', () => {
     index.writeFormSymbols(formData(), 'Model', FORM_FILE, XML);
 
@@ -137,13 +137,13 @@ describe('removeSymbolsByFile and form_source', () => {
     expect(count('symbols', `WHERE type = 'form'`)).toBe(0);
     expect(count('form_datasources')).toBe(0);
     expect(count('form_patterns')).toBe(0);
-    expect(count('form_source')).toBe(0);
+    expect(count('object_source')).toBe(0);
   });
 
   it('removes them when called with another spelling of the stored path', () => {
     index.writeFormSymbols(formData(), 'Model', OTHER_SPELLING, XML);
     index.removeSymbolsByFile(FORM_FILE);
-    expect(count('form_source')).toBe(0);
+    expect(count('object_source')).toBe(0);
     expect(count('form_datasources')).toBe(0);
   });
 
@@ -158,7 +158,7 @@ describe('removeSymbolsByFile and form_source', () => {
     expect(count('symbols', `WHERE type = 'form'`)).toBe(1);
     expect(count('form_datasources')).toBe(2);
     expect(count('form_patterns')).toBe(1);
-    expect(count('form_source')).toBe(1);
+    expect(count('object_source')).toBe(1);
   });
 
   it('returns every top-level name, forms and non-forms', () => {
@@ -172,10 +172,10 @@ describe('removeSymbolsByFile and form_source', () => {
 });
 
 describe('clear and clearModels', () => {
-  it('clear() empties form_source', () => {
+  it('clear() empties object_source', () => {
     index.writeFormSymbols(formData(), 'Model', FORM_FILE, XML);
     index.clear();
-    expect(count('form_source')).toBe(0);
+    expect(count('object_source')).toBe(0);
   });
 
   it('clearModels() removes only the named model\'s stored forms', () => {
@@ -184,25 +184,25 @@ describe('clear and clearModels', () => {
 
     index.clearModels(['ModelA']);
 
-    expect(count('form_source', `WHERE model = 'ModelA'`)).toBe(0);
-    expect(count('form_source', `WHERE model = 'ModelB'`)).toBe(1);
+    expect(count('object_source', `WHERE model = 'ModelA'`)).toBe(0);
+    expect(count('object_source', `WHERE model = 'ModelB'`)).toBe(1);
   });
 });
 
 describe('schema', () => {
-  it('adds form_source to an existing database that never had it, keeping its rows', () => {
+  it('adds object_source to an existing database that never had it, keeping its rows', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'form-source-'));
     const dbPath = path.join(dir, 'm.db');
     const labelsPath = path.join(dir, 'l.db');
     try {
       const first = new XppSymbolIndex(dbPath, labelsPath);
       first.writeFormSymbols(formData(), 'Model', FORM_FILE, XML);
-      first.db.exec('DROP TABLE form_source'); // what a database built before this change looks like
+      first.db.exec('DROP TABLE object_source'); // what a database built before this change looks like
       first.close();
 
       const reopened = new XppSymbolIndex(dbPath, labelsPath);
       try {
-        const n = (reopened.db.prepare('SELECT COUNT(*) AS n FROM form_source').get() as any).n;
+        const n = (reopened.db.prepare('SELECT COUNT(*) AS n FROM object_source').get() as any).n;
         expect(n).toBe(0);
         const forms = (reopened.db.prepare(`SELECT COUNT(*) AS n FROM symbols WHERE type = 'form'`).get() as any).n;
         expect(forms).toBe(1);

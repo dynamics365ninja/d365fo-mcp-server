@@ -5,7 +5,7 @@
  *   - a file that is here wins, and is labelled 'file';
  *   - a stored copy is labelled 'stored' with its write time;
  *   - a file this machine can tell was deleted is NOT answered from a leftover row;
- *   - only forms ever consult the table (queries and reports are unchanged);
+ *   - only forms ever consult form_source (other types use object_source);
  *   - a missing table, row or garbage blob is a miss, never a throw;
  *   - the lookup keys on the symbol row's model, never another model's row.
  */

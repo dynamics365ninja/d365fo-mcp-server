@@ -208,11 +208,11 @@ Create a variable group named **`xpp-mcp-server-config`** in Azure DevOps Librar
 | `AZURE_SUBSCRIPTION` | No | Name of your Azure DevOps service connection |
 | `AZURE_APP_SERVICE_NAME` | No | `xpp-mcp-server` |
 
-### Form source in the database
+### Object source in the database
 
-Each form's original XML is stored (gzipped, table `form_source`, about +37 MB for 9,500 forms) so a host with only the database can show a form. The extractor attaches the XML to the form JSON as `raw`, so form JSON in blob storage roughly triples (about 216 MiB → 620 MiB for a full standard extract), which costs storage and download time.
+Every object's original XML is stored (gzipped, table `object_source`; extensions excluded) so a host with only the database can read it. Measured on one full standard install (about 187,000 objects): 1.8 GiB of XML, **about 330 MiB gzipped** in the database, led by reports (120 MiB, embedded RDL), classes (95 MiB), tables (37 MiB) and forms (36 MiB); gzip adds about 90 s of CPU to a full build. The extractor attaches the XML to each JSON as `raw`, so blob JSON grows by roughly the escaped XML size (about +1.8 GiB for a full standard extract), which costs storage and download time.
 
-Existing blob JSON has no `raw`; forms from it have no stored copy until re-extracted. Run the **platform pipeline with extraction** (not `skipExtraction`) first for the standard models, then the **custom pipeline with extraction**, then the upgrade pipeline if you use it — the upgrade pipeline and custom `skipExtraction` runs rebuild from blob JSON and only get stored copies if that JSON carries `raw`. `form_datasources` (which forms use a table) needs no re-extraction.
+Existing blob JSON has no `raw`; objects from it have no stored copy until re-extracted. Run the **platform pipeline with extraction** (not `skipExtraction`) first for the standard models, then the **custom pipeline with extraction**, then the upgrade pipeline if you use it — the upgrade pipeline and custom `skipExtraction` runs rebuild from blob JSON and only get stored copies if that JSON carries `raw`. `form_datasources` (which forms use a table) needs no re-extraction.
 
 ### Uploading standard packages
 

@@ -474,6 +474,14 @@ export async function indexOneFile(
 
     const parser = new XppMetadataParser();
 
+    // Kept for object_source; the parsers read the file themselves.
+    let sourceXml: string | undefined;
+    try {
+      sourceXml = fs.readFileSync(filePath, 'utf-8');
+    } catch {
+      sourceXml = undefined;
+    }
+
     console.error(`[update_symbol_index] Re-indexing ${objectType} "${objectName}" (model: ${model})`);
 
     // 1. Remove all existing symbols for this file so stale entries don't linger.
@@ -745,18 +753,12 @@ export async function indexOneFile(
       if (result.success && result.data) {
         const formData = result.data as any;
         // Same writer as the full build, so datasources, patterns and the stored source
-        // follow an edit. parseFormFile does not return the XML, hence the second read.
-        let xml: string | undefined;
-        try {
-          xml = fs.readFileSync(filePath, 'utf-8');
-        } catch {
-          xml = undefined;
-        }
+        // follow an edit.
         symbolIndex.writeFormSymbols(
           { ...formData, name: formData.name ?? objectName },
           model,
           filePath,
-          xml,
+          sourceXml,
         );
         insertedCount++;
       } else {
@@ -887,6 +889,15 @@ export async function indexOneFile(
       }
     } else {
       tx();
+    }
+
+    // The stored copy follows the file, as in the full build (writeFormSymbols stores forms).
+    // Keyed by the indexed row's name, as the build keys it, not the file name's casing.
+    if (objectType !== 'form' && insertedCount > 0 && symbolIndex.writeObjectSource) {
+      const row = symbolIndex.db.prepare(
+        'SELECT name FROM symbols WHERE file_path = ? AND type = ? AND parent_name IS NULL LIMIT 1'
+      ).get(filePath, objectType) as { name?: string } | undefined;
+      symbolIndex.writeObjectSource(objectType, row?.name ?? objectName, model, sourceXml);
     }
 
     symbolIndex.touchLastIndexed?.();
