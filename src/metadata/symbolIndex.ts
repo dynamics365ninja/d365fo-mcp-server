@@ -3758,6 +3758,27 @@ export class XppSymbolIndex {
     return rows.map(r => r.file_path);
   }
 
+  /** Every path indexed_files records for a model, as stored. */
+  getIndexedFilePaths(model: string): string[] {
+    const rows = this.getReadDb().prepare(
+      `SELECT file_path FROM indexed_files WHERE model = ?`,
+    ).all(model) as Array<{ file_path: string }>;
+    return rows.map(r => r.file_path);
+  }
+
+  /**
+   * Every .label.txt path the labels DB holds rows for. Labels are not symbols, so
+   * getModelFilePaths never sees them; one row per file (~800 on a full build).
+   */
+  getAllLabelFilePaths(): string[] {
+    try {
+      const rows = this.labelsDb.prepare(`SELECT file_path FROM label_files`).all() as Array<{ file_path: string }>;
+      return rows.map(r => r.file_path);
+    } catch {
+      return [];
+    }
+  }
+
   /** ISO timestamp of the last full or incremental index update, or null. */
   getLastIndexedAt(): string | null {
     try {

@@ -40,6 +40,8 @@ function makeContext() {
   const symbols = new Map<string, string>();      // lower-cased path -> stored path
   const recorded = new Map<string, number>();     // stored path -> mtime
   const removed: string[] = [];
+  const labelFiles = new Map<string, string>();   // lower-cased path -> stored path
+  const removedLabels: string[] = [];
   return {
     bridge: { isReady: true, metadataAvailable: true },
     workspaceScanner: { invalidate: vi.fn() },
@@ -50,13 +52,21 @@ function makeContext() {
         removed.push(fp);
         return { deletedCount: symbols.delete(fp.toLowerCase()) ? 1 : 0, objectNames: [] };
       },
-      removeLabelsByFile: () => 0,
+      removeLabelsByFile: (fp: string) => {
+        removedLabels.push(fp);
+        return labelFiles.delete(fp.toLowerCase()) ? 1 : 0;
+      },
+      bulkAddLabels: (labels: any[]) => {
+        for (const l of labels) labelFiles.set(l.filePath.toLowerCase(), l.filePath);
+      },
       touchLastIndexed: vi.fn(),
       recordIndexedFile: (fp: string, mtime: number) => { recorded.set(fp, mtime); },
       forgetIndexedFile: (fp: string) => { recorded.delete(fp); },
       getIndexedFileMtimes: () => new Map([...recorded].map(([k, v]) => [k.toLowerCase(), v])),
       getModelFilePaths: () => [...symbols.values()],
-      symbols, recorded, removed,
+      getIndexedFilePaths: () => [...recorded.keys()],
+      getAllLabelFilePaths: () => [...labelFiles.values()],
+      symbols, recorded, removed, labelFiles, removedLabels,
     },
   } as any;
 }
@@ -141,6 +151,27 @@ describe('update_symbol_index({ model })', () => {
     expect(textOf(result)).toContain('Removed : 1 deleted from disk');
     expect(context.symbolIndex.removed).toContain(beta);
     expect(context.symbolIndex.recorded.has(beta)).toBe(false);
+  });
+
+  it('removes the labels of a label file deleted from disk: labels are not symbols', async () => {
+    writeObject('ConAlpha');
+    const dir = path.join(workspace, 'ContosoPackage', 'Contoso', 'AxLabelFile', 'LabelResources', 'en-US');
+    fs.mkdirSync(dir, { recursive: true });
+    const labelFile = path.join(dir, 'ConLabels.en-US.label.txt');
+    fs.writeFileSync(labelFile, 'ConHello=Hello\n', 'utf-8');
+    const context = makeContext();
+    await updateSymbolIndexTool({ model: 'Contoso' }, context);
+    expect(context.symbolIndex.labelFiles.size).toBe(1);
+    // A full build never fills indexed_files: only the labels DB knows this file.
+    context.symbolIndex.recorded.delete(labelFile);
+    fs.rmSync(labelFile);
+    context.symbolIndex.removedLabels.length = 0;
+
+    const result = await updateSymbolIndexTool({ model: 'Contoso' }, context);
+
+    expect(textOf(result)).toContain('Removed : 1 deleted from disk');
+    expect(context.symbolIndex.removedLabels).toEqual([labelFile]);
+    expect(context.symbolIndex.labelFiles.size).toBe(0);
   });
 
   it('leaves alone rows it cannot judge: relative paths and paths outside the model folder', async () => {

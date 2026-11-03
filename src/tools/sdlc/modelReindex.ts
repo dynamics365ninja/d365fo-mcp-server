@@ -123,14 +123,21 @@ export async function reindexModel(model: string, context: XppServerContext) {
     try { return fs.statSync(fp).mtimeMs !== was; } catch { return false; }
   });
 
-  // Rows for files that are gone: what the symbols table holds for the model, plus
-  // files recorded but never symbolised (an empty label file). Only absolute paths
-  // under this folder qualify — a relative or foreign path cannot be judged here,
-  // and treating it as deleted would drop rows that are still true.
+  // Rows for files that are gone: what the symbols table holds for the model, the
+  // label files under the folder (labels are not symbols), and files recorded but
+  // never symbolised (an empty label file). Only absolute paths under this folder
+  // qualify — a relative or foreign path cannot be judged here, and treating it as
+  // deleted would drop rows that are still true.
   const folderKey = folder.toLowerCase() + path.sep;
-  const known = new Set<string>();
-  for (const fp of symbolIndex.getModelFilePaths?.(model) ?? []) known.add(fp);
-  const deleted = [...known].filter(fp =>
+  const known = new Map<string, string>();
+  for (const fp of [
+    ...(symbolIndex.getModelFilePaths?.(model) ?? []),
+    ...(symbolIndex.getIndexedFilePaths?.(model) ?? []),
+    ...(symbolIndex.getAllLabelFilePaths?.() ?? []),
+  ]) {
+    if (!known.has(fp.toLowerCase())) known.set(fp.toLowerCase(), fp);
+  }
+  const deleted = [...known.values()].filter(fp =>
     path.isAbsolute(fp) && fp.toLowerCase().startsWith(folderKey) && !fs.existsSync(fp));
 
   if (changed.length === 0 && deleted.length === 0) {
