@@ -4960,7 +4960,7 @@ switch (status)
     id: 'reserved-words',
     title: 'Reserved Words (the compiler\'s keyword set)',
     keywords: ['reserved words', 'reserved word', 'reserved keywords', 'reserved keyword', 'reserved',
-               'keywords', 'keyword', 'kw001', 'invalid name', 'invalid token', 'identifier expected'],
+               'keywords', 'kw001', 'invalid name', 'invalid token', 'identifier expected'],
     summary:
       'X++ reserves more words than the language reference lists, and the compiler rarely names the word when ' +
       'one is used as a name. The set below is the parser\'s own; validate_code KW001 checks it.',

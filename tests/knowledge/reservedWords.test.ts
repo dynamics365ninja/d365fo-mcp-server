@@ -58,4 +58,9 @@ describe('reserved-words knowledge topic', () => {
       expect(await lookup(topic)).toMatch(/^## Reserved Words/);
     },
   );
+
+  it('does not take a query about one keyword away from its own topic', async () => {
+    // A bare 'keyword' keyword scored +10 on every "<word> keyword" query.
+    expect(await lookup('next keyword')).toMatch(/^## Chain of Command/);
+  });
 });
