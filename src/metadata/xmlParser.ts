@@ -16,6 +16,7 @@ import type {
   XppIndexInfo,
   XppRelationInfo,
   XppViewFieldInfo,
+  XppViewDataSourceInfo,
   XppViewRelationFieldInfo,
   XppViewRelationInfo,
 } from './types.js';
@@ -248,7 +249,15 @@ export class XppMetadataParser {
    */
   async parseViewFile(filePath: string, model?: string): Promise<XppParseResult<XppViewInfo>> {
     try {
-      const content = await fs.readFile(filePath, 'utf-8');
+      return await this.parseViewXml(await fs.readFile(filePath, 'utf-8'), filePath, model);
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  /** parseViewFile on XML already in hand (e.g. the copy stored in the index). */
+  async parseViewXml(content: string, filePath: string, model?: string): Promise<XppParseResult<XppViewInfo>> {
+    try {
       const parsed = await this.parser.parseStringPromise(content);
 
       const axView = parsed.AxDataEntityView || parsed.AxView;
@@ -272,7 +281,14 @@ export class XppMetadataParser {
         fields: this.parseViewFields(axView.Fields),
         relations: this.parseViewRelations(axView.Relations),
         methods: this.parseMethods(axView.SourceCode?.Methods?.Method, viewName),
+        dataSources: this.parseViewDataSources(axView.ViewMetadata?.DataSources),
       };
+      if (isDataEntity) {
+        viewInfo.publicEntityName = axView.PublicEntityName || undefined;
+        viewInfo.publicCollectionName = axView.PublicCollectionName || undefined;
+        viewInfo.dataManagementEnabled = axView.DataManagementEnabled === 'Yes';
+        viewInfo.entityCategory = axView.EntityCategory || undefined;
+      }
 
       return { success: true, data: viewInfo };
     } catch (error) {
@@ -515,6 +531,26 @@ export class XppMetadataParser {
       labelId: this.extractLabelId(field.Label),
       isComputed: !!field.DataMethod,
     }));
+  }
+
+  private parseViewDataSources(node: any, parent?: string, out: XppViewDataSourceInfo[] = []): XppViewDataSourceInfo[] {
+    if (!node || typeof node !== 'object') return out;
+    const nodes = [
+      ...this.ensureArray(node.AxQuerySimpleRootDataSource),
+      ...this.ensureArray(node.AxQuerySimpleEmbeddedDataSource),
+    ];
+    for (const ds of nodes) {
+      if (!ds?.Name) continue;
+      out.push({ name: ds.Name, table: ds.Table || '', joinMode: ds.JoinMode || undefined, parent });
+      this.parseViewDataSources(ds.DataSources, ds.Name, out);
+      // Tables that inherit from this one (table inheritance), not joins.
+      for (const derived of this.ensureArray(ds.DerivedDataSources?.AxQuerySimpleDerivedDataSource)) {
+        if (!derived?.Name) continue;
+        out.push({ name: derived.Name, table: derived.Table || '', joinMode: 'Derived', parent: ds.Name });
+        this.parseViewDataSources(derived.DataSources, derived.Name, out);
+      }
+    }
+    return out;
   }
 
   private parseViewRelations(relationsData: any): XppViewRelationInfo[] {
@@ -1132,7 +1168,23 @@ export class XppMetadataParser {
     mappings: { table: string; fieldConnections: number }[];
   }>> {
     try {
-      const content = await fs.readFile(filePath, 'utf-8');
+      return await this.parseMapXml(await fs.readFile(filePath, 'utf-8'), filePath);
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  /** parseMapFile on XML already in hand (e.g. the copy stored in the index). */
+  async parseMapXml(content: string, filePath: string): Promise<XppParseResult<{
+    name: string;
+    extends?: string;
+    sourcePath: string;
+    declaration: string;
+    fields: { name: string; type: string; edt?: string; enumType?: string }[];
+    methods: XppMethodInfo[];
+    mappings: { table: string; fieldConnections: number }[];
+  }>> {
+    try {
       const parsed = await this.parser.parseStringPromise(content);
       const root = parsed?.AxMap;
       if (!root) return { success: false, error: 'Not an AxMap file' };

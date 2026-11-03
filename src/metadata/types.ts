@@ -154,6 +154,20 @@ export interface XppViewInfo {
   fields: XppViewFieldInfo[];
   relations: XppViewRelationInfo[];
   methods: XppMethodInfo[];
+  /** Data entity only. */
+  publicEntityName?: string;
+  publicCollectionName?: string;
+  dataManagementEnabled?: boolean;
+  entityCategory?: string;
+  /** ViewMetadata data sources, depth-first; `parent` is unset on the root. */
+  dataSources?: XppViewDataSourceInfo[];
+}
+
+export interface XppViewDataSourceInfo {
+  name: string;
+  table: string;
+  joinMode?: string;
+  parent?: string;
 }
 
 export interface XppSymbol {
