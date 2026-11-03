@@ -29,6 +29,11 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`reserved-words` knowledge topic.** `get_knowledge(topic="reserved keywords")`
+  answered with the `switch` topic. The new topic lists the compiler's own keyword
+  set (`XPP_KEYWORDS`, read when the module loads, so a recapture updates it),
+  grouped by kind, with the `in` exemption, the `@` escape, the positions the
+  compiler rejects and where the language reference differs from the compiler.
 - **Exact label lookup: `labels(action="search", exact=true)`.** The search matches
   words in the label id, text and comment, ranked by relevance, so "the label whose text
   is exactly X" came back as dozens of candidates to compare by hand; and from the third
@@ -51,6 +56,24 @@ those are called out explicitly below.
   "create your own label" advice. `exact`, `texts` and `maxMatches` are accepted flat or in `params` and
   documented in the op-spec (`get_knowledge(kind="op-spec", topic="labels")`); the
   published schema is unchanged. Normal searches are byte-for-byte unchanged.
+
+### Fixed
+- **KW001 missed the later names of a declaration list and sized-string
+  parameters.** `int a, count;` and `void f(str 20 select)` passed, although a probe
+  class showed xppc rejecting both ("'identifier' expected", "invalid name for a
+  parameter"). A reserved word as a `for`, `using` or `catch` variable was already
+  caught, but the fix called it a parameter; it now says loop variable / variable.
+- **`extension_info(mode="coc", method=…)` counted classes that wrap nothing as wrappers.**
+  "Found 12 extension class(es) wrapping "validateWrite"" listed 12 classes for `SalesTable`
+  where 2 wrap it: the filter also kept every class with an empty wrap list, a leftover from
+  when the list held every base method a class called. The bridge sends a list for every
+  class, so empty means "wraps nothing". The count now covers only the classes whose list
+  names the method (case-insensitive). The other extension classes still follow, grouped by
+  extended element as before, under "Other extension classes of <object> (no wrap of "<m>"
+  recorded): N". A class with no list at all (an older bridge) goes under "wraps unknown"
+  and is not counted. The filesystem fallback of the index path had the same clause and
+  gets the same split. Without a method filter the output is unchanged; the index path's
+  database rows still include classes with an empty list, because there it can mean unknown.
 
 ## [1.22.0] — 2026-10-30
 
