@@ -28,7 +28,19 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Added
+- **`reserved-words` knowledge topic.** `get_knowledge(topic="reserved keywords")`
+  answered with the `switch` topic. The new topic lists the compiler's own keyword
+  set (`XPP_KEYWORDS`, read when the module loads, so a recapture updates it),
+  grouped by kind, with the `in` exemption, the `@` escape, the positions the
+  compiler rejects and where the language reference differs from the compiler.
+
 ### Fixed
+- **KW001 missed the later names of a declaration list and sized-string
+  parameters.** `int a, count;` and `void f(str 20 select)` passed, although a probe
+  class showed xppc rejecting both ("'identifier' expected", "invalid name for a
+  parameter"). A reserved word as a `for`, `using` or `catch` variable was already
+  caught, but the fix called it a parameter; it now says loop variable / variable.
 - **`extension_info(mode="coc", method=…)` counted classes that wrap nothing as wrappers.**
   "Found 12 extension class(es) wrapping "validateWrite"" listed 12 classes for `SalesTable`
   where 2 wrap it: the filter also kept every class with an empty wrap list, a leftover from
