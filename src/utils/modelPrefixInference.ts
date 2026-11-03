@@ -24,6 +24,8 @@
  * consistent prefix yields null, and the configured value is used unchanged.
  */
 
+import { matchesConfiguredExtensionFormat } from './extensionNameFormat.js';
+
 /** The two prefix tokens a model's own objects reveal. */
 export interface InferredModelPrefix {
   /** Token prepended to new objects and to members added inside extensions. */
@@ -392,7 +394,10 @@ export function getInferredModelPrefix(modelName: string): InferredModelPrefix |
 
   let result: InferredModelPrefix | null = null;
   try {
-    const names = nameSource?.(modelName) ?? [];
+    // Names a configured extension name format produced carry the format's tokens,
+    // not a prefix: CTSO_CustTableCls_Extension must not teach a token, and neither
+    // must CustTable.CTSO. Without a format nothing matches and nothing is dropped.
+    const names = (nameSource?.(modelName) ?? []).filter(n => !matchesConfiguredExtensionFormat(n));
     result = names.length > 0 ? inferPrefixFromObjectNames(names, modelName) : null;
     if (result) {
       console.error(

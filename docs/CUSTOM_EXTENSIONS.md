@@ -222,7 +222,7 @@ EXTENSION_CLASS_NAMING_STYLE=prefix        # extension classes — default: inhe
 
 Unset (or `inherit`), `EXTENSION_CLASS_NAMING_STYLE` follows `EXTENSION_NAMING_STYLE`, so existing setups behave exactly as before. `get_workspace_info` and `validate_object_naming` report both styles when they differ.
 
-**There is no custom naming template.** The name is normalised in code on every create and modify:
+**Without [extension name formats](#extension-name-formats) there is no custom naming template.** The name is normalised in code on every create and modify:
 
 - An **element extension** always gets the style's token after the dot — `ProdTable.BKU_TableExtension` is written as `ProdTable.BKUExtension`.
 - An **extension class** given a bare base name gets `{Base}{Infix}_Extension` (`ProdTable` → `ProdTableBKU_Extension`). A full name whose part before `_Extension` already *ends* with the infix is kept as passed, so `ProdTable_BKU_Extension` survives — but only when the agent passes that exact name. The infix counts only as its own PascalCase word: with infix `Le`, `SalesTable_Extension` is a base that still needs it (`SalesTableLe_Extension`), not one that already ends in it. A base that itself *starts* with the infix as a word (`ProjTable` under infix `Proj`) cannot be told apart from an already-prefixed name, so pass the bare base (`objectName: "ProjTable"`, `objectType: "class-extension"`) to get `ProjTableProj_Extension`; a full `ProjTable_Extension` is kept as given.
@@ -247,6 +247,36 @@ EXTENSION_CLASS_NAMING_STYLE=prefix-leading   # extension classes only — eleme
 The prefix is recognised only as a separate PascalCase word, so a base whose name merely starts or ends with the same letters keeps them: with `EXTENSION_PREFIX=Le`, `SalesTable` becomes `LeSalesTable_Extension`. One case cannot be told apart from the name alone — a base that itself starts with the prefix as a word (`ProjTable` under prefix `Proj`). Pass the bare base (`objectName: "ProjTable"`, `objectType: "class-extension"`) and it is written as `ProjProjTable_Extension`; a name you pass already ending in `_Extension` (`ProjTable_Extension`) is read as already prefixed and kept as given.
 
 Element extensions are unaffected — `prefix-leading` only exists for classes, because `Base.{Infix}Extension` is Microsoft's own dot-notation shape and leading the infix there would not parse as an AOT name. A name already written under the trailing `prefix` style is converted rather than double-prefixed the first time it is normalised (`CustTableCr_Extension` → `CRCustTable_Extension`).
+
+### Extension name formats
+
+The styles place one token at a fixed spot. A convention that fixes the whole name, and picks the class token by the type of the object extended, needs a format instead. `{0}` is the extended object's name; `_Extension` is always appended to a class format:
+
+```env
+EXTENSION_ELEMENT_NAME_FORMAT={0}.CTSO               # every element extension
+EXTENSION_CLASS_NAME_FORMAT=CTSO_{0}Cls              # CoC classes of classes (and of tables/forms without their own format)
+EXTENSION_CLASS_NAME_FORMAT_TABLE=CTSO_{0}Dbt        # CoC classes of tables
+EXTENSION_CLASS_NAME_FORMAT_FORM=CTSO_{0}Frm         # CoC classes of forms
+EXTENSION_NAME_FORMAT_UNDEFINED=ask                  # everything else — ask (default) | class-format
+```
+
+| Extends | How the type reaches the tool | Written as |
+|---|---|---|
+| table `InventTable` (table extension) | `objectType: "table-extension"` | `InventTable.CTSO` |
+| any other element (form, EDT, enum, menu item, security object …) | its `*-extension` objectType | `<Base>.CTSO` |
+| class `SalesFormLetter` | `[ExtensionOf(classStr(SalesFormLetter))]` in `sourceCode` | `CTSO_SalesFormLetterCls_Extension` |
+| table `InventTable` | `[ExtensionOf(tableStr(InventTable))]`, or `properties.baseObjectType: "table"` | `CTSO_InventTableDbt_Extension` |
+| form `InventTable` | `[ExtensionOf(formStr(InventTable))]`, or `properties.baseObjectType: "form"` | `CTSO_InventTableFrm_Extension` |
+| form data source / control, view, data entity, map …, or no type stated | — | `ask`: the user names it · `class-format`: `CTSO_<Base>Cls_Extension` |
+
+- **The type comes from the call, never from the name.** `CustTable` is a table and a form; the server does not guess which. `generate_object(mode="pattern")` knows it from the pattern (`class-extension`, `table-extension`, `form-handler` …), `d365fo_file(action="create")` from the `[ExtensionOf(…)]` in `sourceCode` or `properties.baseObjectType`, and `validate_object_naming` from `baseObjectType`.
+- **`ask`** stops the call with: *no naming convention for … ask the user for the name and call again with an explicit `name`*. The second call passes the full class name ending in `_Extension`: `objectName` (with the `[ExtensionOf]` in `sourceCode`) for `d365fo_file`, `params.className` for `generate_object`. For these cases an explicit name is kept under `class-format` too.
+- **Validation:** where a format is defined, `validate_object_naming` requires exactly its name (the base part compares case-insensitively). For a case no format defines, any name the compiler accepts passes: an identifier ending in `_Extension`, at most 81 characters, not a reserved word.
+- **Reading a name back** (CoC lookups, the template's `[ExtensionOf]`): a formatted name is read by its format. Where two formats can produce the same name (`CTSO_{0}` and `CTSO_{0}Frm` both give `CTSO_CustTableFrm`), the more specific one wins, so this reads as the form `CustTable`. An `[ExtensionOf]` in the source decides instead.
+- Names a format produced are not used to infer a model prefix. New objects, fields and methods keep the prefix rules above.
+- With `naming.prefixSource=as-given` nothing is renamed: a name the format would change is refused, with the name it expects.
+- A format that cannot produce a valid name (no `{0}`, other characters, an element format without `{0}.<Token>`) is refused on every write, never ignored; `get_workspace_info` lists it. With every format empty, nothing changes.
+- Several conventions on one machine: one server entry (companion) per customer, each with its own environment. No format is passed per call.
 
 ---
 

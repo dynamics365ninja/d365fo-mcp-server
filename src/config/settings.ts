@@ -412,6 +412,80 @@ export const SETTINGS: Setting[] = [
       { value: 'prefix-leading', hint: 'CtsoCustTable_Extension — embeds the extension prefix, leading (e.g. Avanade Development Guidelines)' },
     ],
   },
+  {
+    path: 'naming.elementNameFormat',
+    env: 'EXTENSION_ELEMENT_NAME_FORMAT',
+    section: 'naming',
+    tier: 'advanced',
+    type: 'string',
+    label: 'Name format for element extensions',
+    description:
+      'A fixed name shape for every element extension (tables, forms, EDTs, enums, menus, menu items, security ' +
+      'objects …), `{0}` = the extended object: `{0}.Contoso` names the InventTable extension `InventTable.Contoso`. ' +
+      'Set, it replaces `naming.extensionStyle` for element extensions; create, prepare and validate_object_naming ' +
+      'all apply it. Empty (the default) = the style decides, as before. See ' +
+      '[Extension name formats](CUSTOM_EXTENSIONS.md#extension-name-formats).',
+    placeholder: '{0}.Contoso',
+  },
+  {
+    path: 'naming.classNameFormat',
+    env: 'EXTENSION_CLASS_NAME_FORMAT',
+    section: 'naming',
+    tier: 'advanced',
+    type: 'string',
+    label: 'Name format for extension classes',
+    description:
+      'A fixed name shape for CoC extension classes, `{0}` = the extended object; `_Extension` is always appended: ' +
+      '`Contoso_{0}Cls` names the SalesFormLetter extension `Contoso_SalesFormLetterCls_Extension`. Used for classes, ' +
+      'and for tables and forms that have no format of their own. Which format applies depends on the TYPE of the ' +
+      'extended object, which comes from the call (the `[ExtensionOf(tableStr(…))]` in sourceCode, or ' +
+      '`properties.baseObjectType`) and is never guessed from a name. Set, it replaces `naming.extensionClassStyle`. ' +
+      'Empty (the default) = the style decides, as before.',
+    placeholder: 'Contoso_{0}Cls',
+  },
+  {
+    path: 'naming.classNameFormatTable',
+    env: 'EXTENSION_CLASS_NAME_FORMAT_TABLE',
+    section: 'naming',
+    tier: 'advanced',
+    type: 'string',
+    label: 'Name format for extension classes of tables',
+    description:
+      'Like `naming.classNameFormat`, for extension classes of TABLES (`[ExtensionOf(tableStr(…))]`); `_Extension` ' +
+      'is appended: `Contoso_{0}Dbt` → `Contoso_InventTableDbt_Extension`. Empty = `naming.classNameFormat`.',
+    placeholder: 'Contoso_{0}Dbt',
+  },
+  {
+    path: 'naming.classNameFormatForm',
+    env: 'EXTENSION_CLASS_NAME_FORMAT_FORM',
+    section: 'naming',
+    tier: 'advanced',
+    type: 'string',
+    label: 'Name format for extension classes of forms',
+    description:
+      'Like `naming.classNameFormat`, for extension classes of FORMS (`[ExtensionOf(formStr(…))]`); `_Extension` ' +
+      'is appended: `Contoso_{0}Frm` → `Contoso_InventTableFrm_Extension`. Empty = `naming.classNameFormat`.',
+    placeholder: 'Contoso_{0}Frm',
+  },
+  {
+    path: 'naming.undefinedNameFormat',
+    env: 'EXTENSION_NAME_FORMAT_UNDEFINED',
+    section: 'naming',
+    tier: 'advanced',
+    type: 'enum',
+    label: 'Extension classes no format defines',
+    description:
+      'Only read while an extension class name format is set. Decides the extension classes none of them defines — ' +
+      'of form data sources and controls, views, data entities, maps …, and calls that do not state the extended ' +
+      'object\'s type. `ask`: the tool does not invent a name; it answers "ask the user for the name and call again ' +
+      'with an explicit name". `class-format`: `naming.classNameFormat` names them. An explicit full name (ending in ' +
+      '`_Extension`) is accepted for these cases either way.',
+    default: 'ask',
+    choices: [
+      { value: 'ask', hint: 'the tool asks for the name — the user decides' },
+      { value: 'class-format', hint: 'naming.classNameFormat names them' },
+    ],
+  },
 
   // ── index ────────────────────────────────────────────────────────────────
   {

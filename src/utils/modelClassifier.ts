@@ -12,6 +12,7 @@
 
 import { getInferredModelPrefix, toExtensionInfixCase } from './modelPrefixInference.js';
 import { normalizeModelToken } from './modelToken.js';
+import { readClassExtensionName } from './extensionNameFormat.js';
 
 // Runtime registry for auto-detected custom models
 const autoDetectedCustomModels = new Set<string>();
@@ -475,6 +476,10 @@ export function prefixLeadingClassName(base: string, infix: string): string {
  */
 export function extensionClassBaseOf(name: string, modelName?: string): string {
   if (!name.endsWith('_Extension')) return name;
+  // A configured class format states where the base sits; the most specific
+  // reading wins where formats overlap (see readClassExtensionName).
+  const formatted = readClassExtensionName(name)[0];
+  if (formatted) return formatted.base;
   const stem = name.slice(0, -'_Extension'.length);
   const prefix = resolveObjectPrefix(modelName ?? '');
   const infix = prefix ? deriveExtensionInfix(prefix, modelName) : '';

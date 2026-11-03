@@ -26,6 +26,18 @@ import {
   isAsGivenNamingMode,
 } from './modelClassifier.js';
 import { normalizeModelToken } from './modelToken.js';
+import {
+  classFormatFor,
+  classFormatsActive,
+  elementFormatActive,
+  extensionNameFormatProblems,
+  formatClassExtensionName,
+  formatElementExtensionName,
+  normalizeExtensionBaseType,
+  readClassExtensionName,
+  ELEMENT_FORMAT_ENV,
+  UNDEFINED_FORMAT_ENV,
+} from './extensionNameFormat.js';
 
 /**
  * Extension types whose AOT name is `Base.{Token}Extension`. A bare base name
@@ -59,6 +71,10 @@ export function inferExtendedBase(
 ): string | undefined {
   // A dotted name is an element extension (CustTable.MY_Extension), never a class.
   if (!objectName.endsWith('_Extension') || objectName.includes('.')) return undefined;
+  // Under class formats the name states its base through the format, and only
+  // through it: the index is not asked, so the local companion (empty index) and
+  // the shared server (full index) read the same base from the same name.
+  if (classFormatsActive()) return readClassExtensionName(objectName)[0]?.base;
   const stem = objectName.slice(0, -'_Extension'.length);
   const prefix = resolveObjectPrefix(modelName ?? '');
   const infix = prefix ? deriveExtensionInfix(prefix, modelName) : '';
@@ -110,11 +126,20 @@ export function normalizeObjectName(
   objectType: string,
   modelName: string | undefined,
   onNote?: (note: string) => void,
-  options?: { knownBase?: boolean; extendedBase?: string },
+  options?: { knownBase?: boolean; extendedBase?: string; baseType?: string },
 ): string {
   // as-given: the caller's name is final. A name that cannot be valid is refused
   // by the write path (asGivenNameProblem), not repaired here.
   if (isAsGivenNamingMode()) return objectName;
+  // A configured format names the extension instead of the styles below. When it
+  // cannot (no format for the case, or a format that is wrong) the name is left as
+  // given: the write path asks resolveFormattedExtensionName first and refuses.
+  const formatted = resolveFormattedExtensionName(objectName, objectType, options);
+  if (formatted.kind === 'name') {
+    if (formatted.name !== objectName) onNote?.(`Named by ${formatted.setting}: ${objectName} → ${formatted.name}`);
+    return formatted.name;
+  }
+  if (formatted.kind !== 'none') return objectName;
   const objectPrefix = resolveObjectPrefix(modelName ?? '');
   // Elements and classes carry their own style: a convention may spell one with the
   // model name and the other with the prefix. Case A is an element, Case B a class.
@@ -244,4 +269,117 @@ export function asGivenNameProblem(objectName: string, objectType: string): stri
       `"${name}" does not — name it by your convention, the server does not derive it in naming.prefixSource=as-given.`;
   }
   return null;
+}
+
+/** What a configured format makes of one extension name. */
+export type FormattedExtensionName =
+  /** No format applies to this type: the naming styles decide, as before. */
+  | { kind: 'none' }
+  /** The name the format gives — or the caller's explicit one, for a case no format defines. */
+  | { kind: 'name'; name: string; setting: string }
+  /** No format defines this case and EXTENSION_NAME_FORMAT_UNDEFINED=ask: the user names it. */
+  | { kind: 'ask'; message: string }
+  /** A format is set but cannot name anything (see extensionNameFormatProblems). */
+  | { kind: 'invalid'; message: string };
+
+/**
+ * The extension name the configured formats give `objectName` as `objectType`.
+ *
+ * Element extensions (the dot-notation types) take EXTENSION_ELEMENT_NAME_FORMAT
+ * with `{0}` = the part before the dot, or the whole name when there is none.
+ *
+ * Extension classes take the class format of the extended object's TYPE, which
+ * comes from the call — `options.baseType`, read from [ExtensionOf(<kind>Str(…))]
+ * or stated — and is never guessed from the base's name. The base is
+ * `options.extendedBase`, else what a configured format reads out of the name,
+ * else the name itself (`CustTable` or `CustTable_Extension`). A name already
+ * shaped by a format is read back by it, so applying this twice changes nothing.
+ *
+ * For a case no format defines — a base type without one, or no base type — a
+ * name ending in `_Extension` that is not just `{Base}_Extension` is the caller's
+ * explicit choice and is kept. Anything else is named by the class format under
+ * EXTENSION_NAME_FORMAT_UNDEFINED=class-format, and asked for under `ask`.
+ */
+export function resolveFormattedExtensionName(
+  objectName: string,
+  objectType: string,
+  options?: { extendedBase?: string; baseType?: string },
+): FormattedExtensionName {
+  const isElement = DOT_NOTATION_EXTENSION_TYPES.has(objectType);
+  if (isElement ? !elementFormatActive() : objectType !== 'class-extension' || !classFormatsActive()) {
+    return { kind: 'none' };
+  }
+  const problems = extensionNameFormatProblems().filter(p => !p.startsWith(UNDEFINED_FORMAT_ENV));
+  if (problems.length > 0) {
+    return { kind: 'invalid', message: `the configured extension name format cannot be used — ${problems.join(' ')}` };
+  }
+  const name = objectName.trim();
+
+  if (isElement) {
+    const base = name.includes('.') ? name.slice(0, name.indexOf('.')) : name;
+    return { kind: 'name', name: formatElementExtensionName(base), setting: ELEMENT_FORMAT_ENV };
+  }
+
+  const extendedBase = options?.extendedBase?.trim() || undefined;
+  const statedType = normalizeExtensionBaseType(options?.baseType);
+  const stem = /_Extension$/i.test(name) ? name.slice(0, -'_Extension'.length) : undefined;
+  // A reading that contradicts a stated type is no reading: the stated type wins.
+  const reading = readClassExtensionName(name, extendedBase)
+    .find(r => !statedType || r.type === statedType || r.type === 'class');
+  const base = extendedBase ?? reading?.base ?? stem ?? name;
+  const baseType = statedType ?? reading?.type;
+  const explicit = stem !== undefined && stem.toLowerCase() !== base.toLowerCase();
+  const rule = classFormatFor(baseType);
+
+  if (rule.format !== undefined && !(explicit && !isDefinedBaseType(baseType))) {
+    return { kind: 'name', name: formatClassExtensionName(rule.format, base), setting: rule.setting };
+  }
+  if (explicit) {
+    // Kept as given — the structure still has to be a valid class name.
+    const problem = asGivenNameProblem(name, 'class-extension');
+    return problem
+      ? { kind: 'invalid', message: problem }
+      : { kind: 'name', name, setting: 'the name as given (no format defines this case)' };
+  }
+  return { kind: 'ask', message: formatAskMessage(rule.format === undefined ? rule.undefinedCase : '', base) };
+}
+
+/** A base type a class format is defined for (as opposed to one the fallback covers). */
+function isDefinedBaseType(baseType: string | undefined): boolean {
+  return baseType === 'class' || baseType === 'table' || baseType === 'form';
+}
+
+/**
+ * The ask-back. The caller is a model: it should ask its user, not pick a name,
+ * and the message says which parameters carry the answer on the next call.
+ */
+function formatAskMessage(undefinedCase: string, base: string): string {
+  return (
+    `no naming convention for ${undefinedCase || 'this extension class'} (base "${base}"; ` +
+    `${UNDEFINED_FORMAT_ENV}=ask): ask the user for the name and call again with an explicit \`name\` — ` +
+    `the full class name ending in _Extension (d365fo_file: objectName, with [ExtensionOf(…)] in sourceCode or ` +
+    `properties.baseClass; generate_object: params.className). If the base is a class, table or form, pass its ` +
+    `type instead (d365fo_file: properties.baseObjectType, or the [ExtensionOf] in sourceCode) and the configured ` +
+    `format names it.`
+  );
+}
+
+/**
+ * Under naming.prefixSource=as-given the server renames nothing, formats
+ * included: a name the format would change is refused with the name it expects.
+ * Null when the name may be written as given.
+ */
+export function formatNameProblemAsGiven(
+  objectName: string,
+  objectType: string,
+  options?: { extendedBase?: string; baseType?: string },
+): string | null {
+  const formatted = resolveFormattedExtensionName(objectName, objectType, options);
+  if (formatted.kind === 'none') return null;
+  if (formatted.kind !== 'name') return formatted.message;
+  if (formatted.name === objectName.trim()) return null;
+  return (
+    `"${objectName}" does not follow ${formatted.setting}; it expects "${formatted.name}". ` +
+    `naming.prefixSource=as-given renames nothing — pass that name.`
+  );
 }

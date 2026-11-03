@@ -8,11 +8,11 @@
 
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import * as fs from 'fs/promises';
 import type { XppServerContext } from '../../types/context.js';
 import { lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import { renderMethodSignature } from '../../metadata/xppDeclaration.js';
 import { findD365FileOnDisk } from '../../utils/objectFileLookup.js';
+import { resolveIndexedObject, readXmlFile, storedCopyFor, indexedXmlSourceLabel } from '../../utils/indexedXmlLookup.js';
 
 const GetMapInfoArgsSchema = z.object({
   mapName: z.string().describe('Name of the AxMap object (e.g. "LogMap")'),
@@ -41,14 +41,6 @@ export async function getMapInfoTool(request: CallToolRequest, context: XppServe
       `SELECT mapping_table, field_connections FROM map_mappings WHERE map_name = ? ORDER BY mapping_table`
     ).all(symbol.name) as { mapping_table: string; field_connections: number }[];
 
-    const lines: string[] = [];
-    lines.push(`# AxMap: \`${symbol.name}\``);
-    lines.push('');
-    lines.push(`**Model:** ${symbol.model}`);
-    if (symbol.extends_class) lines.push(`**Extends:** \`${symbol.extends_class}\``);
-    lines.push(`**File:** \`${symbol.file_path}\``);
-    lines.push('');
-
     // Parse the map's XML for declaration, fields and method signatures. The
     // indexed path may be relative (post-extract dumps) — resolve it against
     // the configured packages root when it is not readable as-is. A stale
@@ -59,29 +51,43 @@ export async function getMapInfoTool(request: CallToolRequest, context: XppServe
       fields?: { name: string; type: string; edt?: string; enumType?: string }[];
       methods?: { name: string; [k: string]: any }[];
     } | null = null;
+    let storedSource: string | null = null;
+    const withTimeout = <T>(p: Promise<T>) => Promise.race([
+      p,
+      new Promise<{ success: false; error: string }>(resolve =>
+        setTimeout(() => resolve({ success: false, error: 'timeout' }), 3000)
+      ),
+    ]);
     try {
-      let mapPath: string | null = symbol.file_path ?? null;
-      if (mapPath) {
-        try {
-          await fs.access(mapPath);
-        } catch {
-          mapPath = await findD365FileOnDisk('map', symbol.name, symbol.model ?? undefined);
-        }
-      } else {
-        mapPath = await findD365FileOnDisk('map', symbol.name, symbol.model ?? undefined);
-      }
-      if (mapPath) {
-        const result = await Promise.race([
-          context.parser.parseMapFile(mapPath),
-          new Promise<{ success: false; error: string }>(resolve =>
-            setTimeout(() => resolve({ success: false, error: 'timeout' }), 3000)
-          ),
-        ]);
-        if (result.success && result.data) mapData = result.data;
-      }
+      // File first (indexed path, local remap, configured model), the copy the index
+      // stored last, so a local edit since indexing wins.
+      const model = symbol.model ?? undefined;
+      const ref = await resolveIndexedObject(db, symbol.name, ['map'], model);
+      const fileXml = ref?.localPath ? await readXmlFile(ref.localPath) : null;
+      const mapPath = fileXml ? null : await findD365FileOnDisk('map', symbol.name, model);
+      const stored = ref && !fileXml && !mapPath ? storedCopyFor(db, ref) : null;
+      const xml = fileXml ?? stored?.xml;
+      const result = xml
+        ? await withTimeout(context.parser.parseMapXml(xml, ref?.localPath ?? ref?.indexedPath ?? ''))
+        : mapPath ? await withTimeout(context.parser.parseMapFile(mapPath)) : null;
+      if (result?.success && result.data) mapData = result.data;
+      if (mapData && stored) storedSource = indexedXmlSourceLabel(stored);
     } catch {
       mapData = null;
     }
+
+    const lines: string[] = [];
+    lines.push(`# AxMap: \`${symbol.name}\``);
+    lines.push('');
+    lines.push(`**Model:** ${symbol.model}`);
+    if (symbol.extends_class) lines.push(`**Extends:** \`${symbol.extends_class}\``);
+    if (storedSource) {
+      lines.push(`**Source:** ${storedSource}`);
+      lines.push(`**Indexed path:** \`${symbol.file_path}\``);
+    } else {
+      lines.push(`**File:** \`${symbol.file_path}\``);
+    }
+    lines.push('');
 
     if (mapData?.declaration) {
       const decl = mapData.declaration.slice(0, DECLARATION_PREVIEW_CHARS);

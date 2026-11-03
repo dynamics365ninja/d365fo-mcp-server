@@ -12,6 +12,7 @@ import type { XppSymbol } from './types.js';
 import { renderMethodSignature } from './xppDeclaration.js';
 import { isStandardModel } from '../utils/modelClassifier.js';
 import { labelIdSpellings, parseLabelReference } from '../utils/labelReference.js';
+import { normalizeLabelText } from '../utils/labelText.js';
 import { c, log } from '../utils/terminalUi.js';
 
 /**
@@ -24,6 +25,18 @@ const isCI = (): boolean => {
 
 /** How many distinct queries keep a memoized "did you mean" candidate pool. */
 const SUGGESTION_CACHE_ENTRIES = 32;
+
+/**
+ * Case-insensitive order with the exact spelling as tie-break, so two calls on
+ * the same rows always agree. Plain code-unit comparison, not localeCompare:
+ * the order must not depend on the process locale.
+ */
+function compareIgnoreCase(a: string, b: string): number {
+  const x = a.toLowerCase();
+  const y = b.toLowerCase();
+  if (x !== y) return x < y ? -1 : 1;
+  return a === b ? 0 : a < b ? -1 : 1;
+}
 
 /**
  * A multi-word query, split into the substrings a symbol name must ALL contain.
@@ -125,6 +138,18 @@ export const REGULAR_NAME_SAMPLE = 60;
 
 /** How many evenly spaced runs the regular band is read in — see readModelObjectNames. */
 export const REGULAR_SAMPLE_PROBES = 8;
+
+/**
+ * The object types whose original XML object_source keeps: the top-level types the full
+ * build indexes. Extensions are left out — their rows hang off the base object, so no
+ * reader resolves them by name and a stored copy could never be read or cleaned up.
+ */
+export const STORED_SOURCE_TYPES: ReadonlySet<string> = new Set([
+  'class', 'table', 'form', 'query', 'view', 'enum', 'edt', 'report', 'map', 'macro',
+  'security-privilege', 'security-duty', 'security-role', 'security-policy',
+  'menu-item-display', 'menu-item-action', 'menu-item-output',
+  'service', 'service-group', 'configuration-key', 'license-code',
+]);
 
 /** The little of a database handle this read needs, so a CLI can pass its own. */
 export interface ModelNameReadDb {
@@ -842,16 +867,18 @@ export class XppSymbolIndex {
       CREATE INDEX IF NOT EXISTS idx_form_patterns_model ON form_patterns(model);
     `);
 
-    // Form Source — the original AxForm XML, gzipped, so a host that has only this
-    // database (no AOT files, no extracted JSON) can still show a form's whole source.
-    // Nothing but the form XML readers queries it, and no symbols row refers to it.
+    // Object Source — every object's original XML, gzipped, so a host that has only this
+    // database (no AOT files, no extracted JSON) can still read its definition. Keyed by
+    // symbols.type because names repeat across types. It replaces the forms-only
+    // form_source, which this version neither writes nor reads.
     this.db.exec(`
-      CREATE TABLE IF NOT EXISTS form_source (
-        form_name TEXT NOT NULL,
-        model TEXT NOT NULL,
+      CREATE TABLE IF NOT EXISTS object_source (
+        object_type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        model TEXT NOT NULL COLLATE NOCASE,
         xml_gz BLOB NOT NULL,
         indexed_at TEXT NOT NULL,
-        PRIMARY KEY (form_name, model)
+        PRIMARY KEY (object_type, name, model)
       );
     `);
 
@@ -959,6 +986,20 @@ export class XppSymbolIndex {
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
+    `);
+
+    // The mtime each file had when it was last indexed incrementally. last_indexed_at
+    // is one global value that every write bumps, so it cannot say which files of a
+    // model changed since THEY were read; update_symbol_index(model) compares each
+    // file's mtime with its own row instead. Rows exist only for files an incremental
+    // pass indexed, so a model's first pass re-reads every file once.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS indexed_files (
+        file_path TEXT PRIMARY KEY COLLATE NOCASE,
+        mtime_ms REAL NOT NULL,
+        model TEXT NOT NULL COLLATE NOCASE
+      );
+      CREATE INDEX IF NOT EXISTS idx_indexed_files_model ON indexed_files(model);
     `);
 
     // Property stats: distribution of metadata property values across STANDARD models,
@@ -1676,17 +1717,21 @@ export class XppSymbolIndex {
     ).all(...forms) as Array<{ name: string }>;
     const objectNames = rows.map(r => r.name);
 
-    // A removed form also owns rows in three side tables that no symbols row points at.
-    // Only a `form` symbol qualifies: a table file named like a form must not wipe the
-    // form's datasources, patterns or stored source.
-    const formRows = this.db.prepare(
-      `SELECT DISTINCT name, model FROM symbols WHERE file_path COLLATE NOCASE IN (${placeholders}) AND type = 'form' AND parent_name IS NULL`
-    ).all(...forms) as Array<{ name: string; model: string }>;
+    // Removed objects also own rows no symbols row points at: the stored source, and for
+    // a form its datasources and patterns. Keyed by type, so a table file named like a
+    // form cannot wipe the form's rows.
+    const ownerRows = this.db.prepare(
+      `SELECT DISTINCT type, name, model FROM symbols WHERE file_path COLLATE NOCASE IN (${placeholders}) AND parent_name IS NULL`
+    ).all(...forms) as Array<{ type: string; name: string; model: string }>;
 
     // The FTS trigger (symbols_fts AFTER DELETE) handles FTS cleanup automatically
     const removeAll = this.db.transaction(() => {
       const result = this.db.prepare(`DELETE FROM symbols WHERE file_path COLLATE NOCASE IN (${placeholders})`).run(...forms);
-      for (const f of formRows) this.deleteFormSideRows(f.name, f.model);
+      const deleteSource = this.db.prepare('DELETE FROM object_source WHERE object_type = ? AND name = ? AND model = ?');
+      for (const o of ownerRows) {
+        if (o.type === 'form') this.deleteFormSideRows(o.name, o.model);
+        else deleteSource.run(o.type, o.name, o.model);
+      }
       return result;
     });
     const result = removeAll();
@@ -1694,13 +1739,13 @@ export class XppSymbolIndex {
     return { deletedCount: result.changes, objectNames };
   }
 
-  /** The three tables keyed by a form's name and model (see writeFormSymbols). */
+  /** The tables keyed by a form's name and model, its stored source included (see writeFormSymbols). */
   private deleteFormSideRows(formName: string, model: string): void {
     // NOCASE on model: the reader matches it that way, and the build's model directory
     // and the model parsed from a path can differ in case.
     this.db.prepare('DELETE FROM form_datasources WHERE form_name = ? AND model = ? COLLATE NOCASE').run(formName, model);
     this.db.prepare('DELETE FROM form_patterns WHERE form_name = ? AND model = ? COLLATE NOCASE').run(formName, model);
-    this.db.prepare('DELETE FROM form_source WHERE form_name = ? AND model = ? COLLATE NOCASE').run(formName, model);
+    this.db.prepare(`DELETE FROM object_source WHERE object_type = 'form' AND name = ? AND model = ?`).run(formName, model);
   }
 
   /**
@@ -2739,6 +2784,7 @@ export class XppSymbolIndex {
           relatedMethods: classData.relatedMethods ? JSON.stringify(classData.relatedMethods) : undefined,
           apiPatterns: classData.apiPatterns ? JSON.stringify(classData.apiPatterns) : undefined,
         });
+        this.writeObjectSource('class', classData.name, model, classData.raw);
 
         // Add method symbols with enhanced metadata
         if (classData.methods && Array.isArray(classData.methods)) {
@@ -2791,6 +2837,7 @@ export class XppSymbolIndex {
           filePath: sourceFilePath,
           model,
         });
+        this.writeObjectSource('table', tableData.name, model, tableData.raw);
 
         // Mine property distribution for data-driven BP rules (standard models only)
         this.recordTablePropertyStats(tableData, model);
@@ -2899,6 +2946,7 @@ export class XppSymbolIndex {
           filePath: sourceFilePath,
           model,
         });
+        this.writeObjectSource('enum', enumName, model, enumData.raw);
       
       } catch (error) {
         log.warn(`Skipped enum ${file}: ${error instanceof Error ? error.message : error}`);
@@ -2940,6 +2988,7 @@ export class XppSymbolIndex {
           filePath: sourceFilePath,
           model,
         });
+        this.writeObjectSource('edt', edtName, model, edtData.raw);
 
         // Add extended EDT metadata to new table — always insert when any property is present
         if (edtData.extends || edtData.enumType || edtData.referenceTable ||
@@ -2990,6 +3039,7 @@ export class XppSymbolIndex {
           filePath: sourceFilePath,
           model,
         });
+        this.writeObjectSource('report', reportName, model, reportData.raw);
       } catch (error) {
         log.warn(`Skipped report ${file}: ${error instanceof Error ? error.message : error}`);
       }
@@ -3010,7 +3060,7 @@ export class XppSymbolIndex {
         const formName = formData.name || path.basename(file, '.json');
 
         // `raw` (the original XML) is missing from JSON extracted by older versions;
-        // those forms get no form_source row.
+        // those forms get no object_source row.
         this.writeFormSymbols(
           { ...formData, name: formName },
           model,
@@ -3118,13 +3168,26 @@ export class XppSymbolIndex {
         }
       }
 
-      if (typeof xml === 'string' && xml.length > 0) {
-        this.db.prepare(
-          'INSERT OR REPLACE INTO form_source (form_name, model, xml_gz, indexed_at) VALUES (?, ?, ?, ?)'
-        ).run(formName, model, gzipSync(Buffer.from(xml, 'utf-8')), new Date().toISOString());
-      }
+      this.writeObjectSource('form', formName, model, xml);
     });
     write();
+  }
+
+  /**
+   * Store an object's original XML (object_source). A no-op without XML (JSON from older
+   * extracts) and for a type outside STORED_SOURCE_TYPES, so the build and
+   * update_symbol_index store the same set.
+   */
+  writeObjectSource(objectType: string, name: string, model: string, xml: unknown): void {
+    if (typeof xml !== 'string' || xml.length === 0 || !STORED_SOURCE_TYPES.has(objectType)) return;
+    let stmt = this.stmtCache.get('writeObjectSource');
+    if (!stmt) {
+      stmt = this.db.prepare(
+        'INSERT OR REPLACE INTO object_source (object_type, name, model, xml_gz, indexed_at) VALUES (?, ?, ?, ?, ?)'
+      );
+      this.stmtCache.set('writeObjectSource', stmt);
+    }
+    stmt.run(objectType, name, model, gzipSync(Buffer.from(xml, 'utf-8')), new Date().toISOString());
   }
 
   private indexQueries(queriesPath: string, model: string): void {
@@ -3147,6 +3210,7 @@ export class XppSymbolIndex {
           model,
           description: queryData.title || queryData.label,
         });
+        this.writeObjectSource('query', queryName, model, queryData.raw);
       
       } catch (error) {
         log.warn(`Skipped query ${file}: ${error instanceof Error ? error.message : error}`);
@@ -3175,6 +3239,7 @@ export class XppSymbolIndex {
           model,
           description: viewData.label || viewData.type,
         });
+        this.writeObjectSource('view', viewName, model, viewData.raw);
 
         // Add field symbols (same pattern as tables)
         if (viewData.fields && Array.isArray(viewData.fields)) {
@@ -3243,6 +3308,7 @@ export class XppSymbolIndex {
           description: data.label || undefined,
           signature: entryPoints.length > 0 ? `${entryPoints.length} entry point(s)` : undefined,
         });
+        this.writeObjectSource('security-privilege', name, model, data.raw);
 
         for (const ep of entryPoints) {
           // Skip malformed entry points — missing name causes a bind error in node:sqlite
@@ -3291,6 +3357,7 @@ export class XppSymbolIndex {
           description: data.label || undefined,
           signature: privileges.length > 0 ? `${privileges.length} privilege(s)` : undefined,
         });
+        this.writeObjectSource('security-duty', name, model, data.raw);
 
         for (const priv of privileges) {
           insertPriv.run(name, priv, model);
@@ -3324,6 +3391,7 @@ export class XppSymbolIndex {
           description: data.description || data.label || undefined,
           signature: duties.length > 0 ? `${duties.length} duty(ies)` : undefined,
         });
+        this.writeObjectSource('security-role', name, model, data.raw);
 
         for (const duty of duties) {
           insertDuty.run(name, duty, model);
@@ -3358,6 +3426,7 @@ export class XppSymbolIndex {
           description: data.label || undefined,
           signature: data.targetObject || data.object || undefined,
         });
+        this.writeObjectSource(symbolType, name, model, data.raw);
 
         insertTarget.run(
           name,
@@ -3399,6 +3468,7 @@ export class XppSymbolIndex {
           signature: data.serviceClass || undefined,
           description: data.externalName || undefined,
         });
+        this.writeObjectSource('service', name, model, data.raw);
 
         if (Array.isArray(data.operations)) {
           for (const op of data.operations) {
@@ -3433,6 +3503,7 @@ export class XppSymbolIndex {
           model,
           description: data.description || undefined,
         });
+        this.writeObjectSource('service-group', name, model, data.raw);
 
         if (Array.isArray(data.services)) {
           for (const svc of data.services) {
@@ -3464,6 +3535,7 @@ export class XppSymbolIndex {
           model,
           extendsClass: data.extends || undefined,
         });
+        this.writeObjectSource('map', name, model, data.raw);
         // Map methods are indexed like class methods (type 'method', parent =
         // the map) so search and the index-fallback method reader see them.
         if (Array.isArray(data.methods)) {
@@ -3510,6 +3582,7 @@ export class XppSymbolIndex {
           description: data.label || undefined,
           signature: data.parentKey || undefined,
         });
+        this.writeObjectSource('configuration-key', name, model, data.raw);
       } catch (error) {
         log.warn(`Skipped configuration-key ${file}: ${error instanceof Error ? error.message : error}`);
       }
@@ -3533,6 +3606,7 @@ export class XppSymbolIndex {
           description: data.label || undefined,
           signature: sig,
         });
+        this.writeObjectSource('license-code', name, model, data.raw);
       } catch (error) {
         log.warn(`Skipped license-code ${file}: ${error instanceof Error ? error.message : error}`);
       }
@@ -3559,6 +3633,7 @@ export class XppSymbolIndex {
           description: data.label || undefined,
           signature: data.primaryTable || undefined,
         });
+        this.writeObjectSource('security-policy', name, model, data.raw);
         insertPolicy.run(
           name,
           data.primaryTable || null,
@@ -3591,6 +3666,7 @@ export class XppSymbolIndex {
           filePath: data.sourcePath || filePath,
           model,
         });
+        this.writeObjectSource('macro', name, model, data.raw);
         if (Array.isArray(data.defines)) {
           for (const d of data.defines) {
             if (!d?.name) continue;
@@ -3708,6 +3784,60 @@ export class XppSymbolIndex {
       ).run(new Date().toISOString());
     } catch {
       // Bookkeeping is best-effort
+    }
+  }
+
+  /** Remember the mtime a file had when it was indexed — see the indexed_files table. */
+  recordIndexedFile(filePath: string, mtimeMs: number, model: string): void {
+    try {
+      this.db.prepare(
+        `INSERT OR REPLACE INTO indexed_files (file_path, mtime_ms, model) VALUES (?, ?, ?)`,
+      ).run(filePath, mtimeMs, model);
+    } catch {
+      // Bookkeeping is best-effort: a missing row only costs a re-read next pass
+    }
+  }
+
+  forgetIndexedFile(filePath: string): void {
+    try {
+      this.db.prepare(`DELETE FROM indexed_files WHERE file_path = ?`).run(filePath);
+    } catch { /* best-effort, as above */ }
+  }
+
+  /** Lower-cased path → mtime recorded for every file of the model. */
+  getIndexedFileMtimes(model: string): Map<string, number> {
+    const rows = this.getReadDb().prepare(
+      `SELECT file_path, mtime_ms FROM indexed_files WHERE model = ?`,
+    ).all(model) as Array<{ file_path: string; mtime_ms: number }>;
+    return new Map(rows.map(r => [r.file_path.toLowerCase(), r.mtime_ms]));
+  }
+
+  /** Every distinct file path the symbols table holds for a model. */
+  getModelFilePaths(model: string): string[] {
+    const rows = this.getReadDb().prepare(
+      `SELECT DISTINCT file_path FROM symbols WHERE model = ? COLLATE NOCASE`,
+    ).all(model) as Array<{ file_path: string }>;
+    return rows.map(r => r.file_path);
+  }
+
+  /** Every path indexed_files records for a model, as stored. */
+  getIndexedFilePaths(model: string): string[] {
+    const rows = this.getReadDb().prepare(
+      `SELECT file_path FROM indexed_files WHERE model = ?`,
+    ).all(model) as Array<{ file_path: string }>;
+    return rows.map(r => r.file_path);
+  }
+
+  /**
+   * Every .label.txt path the labels DB holds rows for. Labels are not symbols, so
+   * getModelFilePaths never sees them; one row per file (~800 on a full build).
+   */
+  getAllLabelFilePaths(): string[] {
+    try {
+      const rows = this.labelsDb.prepare(`SELECT file_path FROM label_files`).all() as Array<{ file_path: string }>;
+      return rows.map(r => r.file_path);
+    } catch {
+      return [];
     }
   }
 
@@ -4478,7 +4608,7 @@ export class XppSymbolIndex {
     this.db.exec('DELETE FROM table_relations');
     this.db.exec('DELETE FROM form_datasources');
     this.db.exec('DELETE FROM form_patterns');
-    this.db.exec('DELETE FROM form_source');
+    this.db.exec('DELETE FROM object_source');
     this.db.exec('DELETE FROM edt_metadata');
     this.db.exec('DELETE FROM security_privilege_entries');
     this.db.exec('DELETE FROM security_duty_privileges');
@@ -4520,7 +4650,7 @@ export class XppSymbolIndex {
       this.db.prepare(`DELETE FROM table_relations WHERE model IN (${placeholders})`).run(...modelNames);
       this.db.prepare(`DELETE FROM form_datasources WHERE model IN (${placeholders})`).run(...modelNames);
       this.db.prepare(`DELETE FROM form_patterns WHERE model IN (${placeholders})`).run(...modelNames);
-      this.db.prepare(`DELETE FROM form_source WHERE model IN (${placeholders})`).run(...modelNames);
+      this.db.prepare(`DELETE FROM object_source WHERE model IN (${placeholders})`).run(...modelNames);
       this.db.prepare(`DELETE FROM edt_metadata WHERE model IN (${placeholders})`).run(...modelNames);
       this.db.prepare(`DELETE FROM security_privilege_entries WHERE model IN (${placeholders})`).run(...modelNames);
       this.db.prepare(`DELETE FROM security_duty_privileges WHERE model IN (${placeholders})`).run(...modelNames);
@@ -5062,6 +5192,123 @@ export class XppSymbolIndex {
     if (labelFileId) params.push(labelFileId);
     params.push(limit);
     return stmt.all(...params) as any[];
+  }
+
+  /**
+   * Labels whose text equals `text` after normalizeLabelText on both sides —
+   * the exact lookup behind labels(action="search", exact=true).
+   *
+   * Candidates come from labels_fts: every whitespace-separated chunk of the text
+   * that has a letter or digit becomes a quoted phrase on the `text` column, so
+   * FTS operators (`NOT`, `OR`) and punctuation are plain input, never syntax.
+   * unicode61 folds case and diacritics, so the candidates are a superset of the
+   * exact matches; the equality itself is decided here in JS. A text with no
+   * letter or digit gives FTS nothing to match, so it scans the language instead,
+   * through idx_labels_language_lower, pre-filtered to texts without an ASCII
+   * letter or digit (an equal text cannot have one).
+   *
+   * Candidates are compared shortest first and at most `candidateCap` of them. A
+   * cut-off set is reported as `truncated` with the length reached — a longer
+   * exact match (extra whitespace) would not have been compared, so the caller
+   * must not read the answer as "none exists".
+   *
+   * The language check is across the whole index, not the model/labelFileId
+   * narrowing, so "not indexed" means the language itself is missing.
+   *
+   * Matches come back in a fixed order: custom models first (isCustomModel), then
+   * label file id, label id and model, each case-insensitive with the stored
+   * spelling as the tie-break. With no custom model configured that is simply
+   * label file id, then label id. Translations are fetched for the first
+   * `maxMatches` in that order — the ones a caller lists.
+   */
+  findLabelsByExactText(
+    text: string,
+    opts: { language?: string; model?: string; labelFileId?: string; candidateCap?: number; maxMatches?: number } = {},
+  ): {
+    matches: Array<{
+      labelId: string;
+      labelFileId: string;
+      model: string;
+      language: string;
+      text: string;
+      /** isCustomModel(model) — CUSTOM_MODELS, EXTENSION_PREFIX, D365FO_MODEL_NAME, auto-detected. */
+      custom: boolean;
+      /** The label's other indexed languages; only on the first `maxMatches` matches. */
+      translations?: Array<{ language: string; text: string }>;
+    }>;
+    candidates: number;
+    truncated: boolean;
+    /** Text length of the longest candidate compared — only meaningful when truncated. */
+    comparedUpToLength: number;
+    languageIndexed: boolean;
+  } {
+    const { language = 'en-US', model, labelFileId, candidateCap = 50_000, maxMatches = 20 } = opts;
+    const wanted = normalizeLabelText(text);
+    const phrases = text.normalize('NFC').trim().split(/\s+/)
+      .filter(chunk => /[\p{L}\p{N}]/u.test(chunk))
+      .map(chunk => `text : "${chunk.replace(/"/g, '""')}"`);
+
+    let sql = phrases.length > 0
+      ? `SELECT l.label_id AS labelId, l.label_file_id AS labelFileId, l.model, l.language, l.text
+         FROM labels_fts f
+         JOIN labels l ON l.id = f.rowid
+         WHERE labels_fts MATCH ?
+           AND LOWER(l.language) = ?`
+      : `SELECT l.label_id AS labelId, l.label_file_id AS labelFileId, l.model, l.language, l.text
+         FROM labels l
+         WHERE LOWER(l.language) = ?
+           AND l.text NOT GLOB '*[A-Za-z0-9]*'`;
+    const params: any[] = phrases.length > 0 ? [phrases.join(' AND '), language.toLowerCase()] : [language.toLowerCase()];
+    if (model)       { sql += `\n           AND l.model = ?`;         params.push(model); }
+    if (labelFileId) { sql += `\n           AND l.label_file_id = ?`; params.push(labelFileId); }
+    sql += `\n         ORDER BY length(l.text), l.model, l.label_file_id, l.label_id\n         LIMIT ?`;
+    params.push(candidateCap + 1);
+
+    const rows = this.labelsDb.prepare(sql).all(...params) as Array<{
+      labelId: string; labelFileId: string; model: string; language: string; text: string;
+    }>;
+    const truncated = rows.length > candidateCap;
+    const compared = truncated ? rows.slice(0, candidateCap) : rows;
+    // Custom models first, so a caller that lists only the first N never loses its
+    // own copy of a text behind dozens of standard ones ("Buchungen" is 46 labels in
+    // the standard models alone). isStandardModel answers per model and reads the
+    // environment on every call, so it is asked once per model here.
+    const customByModel = new Map<string, boolean>();
+    const isCustom = (m: string) => {
+      let custom = customByModel.get(m);
+      if (custom === undefined) customByModel.set(m, custom = !isStandardModel(m));
+      return custom;
+    };
+    const matches: ReturnType<XppSymbolIndex['findLabelsByExactText']>['matches'] = compared
+      .filter(r => normalizeLabelText(r.text) === wanted)
+      .map(r => ({ ...r, custom: isCustom(r.model) }))
+      .sort((a, b) =>
+        Number(b.custom) - Number(a.custom) ||
+        compareIgnoreCase(a.labelFileId, b.labelFileId) ||
+        compareIgnoreCase(a.labelId, b.labelId) ||
+        compareIgnoreCase(a.model, b.model));
+
+    if (matches.length > 0) {
+      const others = this.labelsDb.prepare(`
+        SELECT language, text FROM labels
+        WHERE label_id = ? AND label_file_id = ? AND model = ? AND LOWER(language) <> ?
+        ORDER BY language`);
+      for (const m of matches.slice(0, maxMatches)) {
+        m.translations = others.all(m.labelId, m.labelFileId, m.model, m.language.toLowerCase()) as any[];
+      }
+    }
+
+    const languageIndexed = matches.length > 0 || rows.length > 0 ||
+      this.labelsDb.prepare('SELECT 1 FROM labels WHERE LOWER(language) = ? LIMIT 1').get(language.toLowerCase()) !== undefined;
+
+    return {
+      matches,
+      candidates: compared.length,
+      truncated,
+      // Code points, as SQLite's length() counted them for the ORDER BY.
+      comparedUpToLength: compared.length > 0 ? Array.from(String(compared[compared.length - 1].text ?? '')).length : 0,
+      languageIndexed,
+    };
   }
 
   /**

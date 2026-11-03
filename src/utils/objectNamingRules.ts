@@ -36,6 +36,20 @@ import {
   type PrefixCandidate,
 } from './effectivePrefix.js';
 import { getConfigManager } from './configManager.js';
+import {
+  applyNameFormat,
+  classFormatFor,
+  classFormatsActive,
+  elementFormatActive,
+  extensionNameFormatProblems,
+  formatClassExtensionName,
+  getExtensionNameFormats,
+  normalizeExtensionBaseType,
+  readClassExtensionName,
+  ELEMENT_FORMAT_ENV,
+  UNDEFINED_FORMAT_ENV,
+} from './extensionNameFormat.js';
+import { isReservedKeyword } from '../knowledge/compilerFacts.js';
 import { normalizeModelToken } from './modelToken.js';
 import { lookupSymbolNocase, lookupSymbolsNocase } from './symbolLookup.js';
 
@@ -122,6 +136,11 @@ export interface ObjectNamingInput {
    * `undefined` keeps the index probe, which is the only option without a bridge.
    */
   baseObjectExists?: boolean;
+  /**
+   * The type of the object an extension class extends (class, table, form, view,
+   * form-datasource …). Selects the extension class name format; never guessed.
+   */
+  baseObjectType?: string;
 }
 
 /** Every verdict the rules reach, before anything decides how to print it. */
@@ -141,6 +160,8 @@ export interface ObjectNamingCheck {
   useModelNameForClass: boolean;
   usePrefixLeadingForClass: boolean;
   classNamingStyle: string;
+  /** Set when a configured extension name format judged the name: which rule, and the verdict. */
+  formatNote?: string;
   errors: string[];
   warnings: string[];
   suggestions: string[];
@@ -324,18 +345,27 @@ export async function checkObjectNaming(
       }
     }
 
+    // A configured extension name format replaces the style rules for this name. It
+    // runs on the name as given — the token stripping above is the styles' reading.
+    const format = isExtension ? checkExtensionNameFormat(name, args.objectType, input.baseObjectName, args.baseObjectType) : null;
+    if (format) {
+      errors.push(...format.errors);
+      warnings.push(...format.warnings);
+      if (format.base) args.baseObjectName = format.base;
+    }
+
     // naming.prefixSource=as-given (#1134): the convention is the project's, stated in
     // its instruction file, so rule sets 1 and 2 — prefix, token and placement — do
     // not apply. What is left is whether the name can be an AOT name at all, the same
     // check the write path refuses on. The length was reported above.
     const asGiven = isAsGivenNamingMode();
-    if (asGiven && name.length <= MAX_NAME_LENGTH) {
+    if (asGiven && !format && name.length <= MAX_NAME_LENGTH) {
       const problem = asGivenNameProblem(name, args.objectType);
       if (problem) errors.push(problem);
     }
 
     // Rule set 1: extension naming rules
-    if (isExtension && !asGiven) {
+    if (isExtension && !asGiven && !format) {
       const baseObjectName = args.baseObjectName;
 
       if (!baseObjectName) {
@@ -554,6 +584,23 @@ export async function checkObjectNaming(
       }
     }
 
+    // Under a format, rule set 1 is skipped, and with it its base probe — which still
+    // belongs here: an extension of a missing object cannot build, whatever its name.
+    if (format?.base && format.errors.length === 0) {
+      const classBase = normalizeExtensionBaseType(args.baseObjectType);
+      const probeType = args.objectType === 'class-extension'
+        ? (classBase === 'class' || classBase === 'table' || classBase === 'form' ? classBase : undefined)
+        : args.objectType.replace(/-extension$/, '');
+      if (probeType && args.baseObjectExists === false) {
+        warnings.push(`Base object "${format.base}" does not exist as a ${probeType} (checked against the metadata provider).`);
+      } else if (probeType && args.baseObjectExists === undefined && !lookupSymbolNocase(db, format.base, [probeType])) {
+        warnings.push(
+          `Base object "${format.base}" not found in the symbol index as a ${probeType}. If it is a standard object ` +
+          `the index may be scoped to custom models — confirm with get_object_info before treating it as missing.`,
+        );
+      }
+    }
+
     // Rule set 2: new object naming rules
     if (!isExtension && !asGiven) {
       /** The candidate prefix the name turned out to carry, once one is found. */
@@ -709,6 +756,7 @@ export async function checkObjectNaming(
     useModelNameForClass,
     usePrefixLeadingForClass,
     classNamingStyle,
+    formatNote: format?.note,
     errors,
     warnings,
     suggestions,
@@ -758,4 +806,111 @@ function detectModelPrefix(db: any, proposedName: string): string {
   } catch {
     return '';
   }
+}
+
+/** What a configured extension name format says about one proposed name. */
+interface ExtensionFormatCheck {
+  errors: string[];
+  warnings: string[];
+  /** The extended object, when the name or the caller states it. */
+  base?: string;
+  /** The rule that judged the name, for the rendering. */
+  note: string;
+}
+
+/**
+ * Judge `name` by the configured extension name formats, or return null when no
+ * format applies to `objectType` (the style rules then run, as before).
+ *
+ * Where a format is defined the name must be exactly what it produces; only the
+ * base part compares case-insensitively, as X++ names do. Where none is — a base
+ * type without a format, under either EXTENSION_NAME_FORMAT_UNDEFINED value — any
+ * name is accepted that the compiler accepts: an identifier ending in _Extension,
+ * within the AOT length, not a reserved word. With no base type at all the name
+ * passes when some format produces it, and is otherwise only warned about: the
+ * format to hold it to depends on a type nobody stated.
+ */
+function checkExtensionNameFormat(
+  name: string,
+  objectType: string,
+  baseObjectName: string | undefined,
+  baseObjectType: string | undefined,
+): ExtensionFormatCheck | null {
+  const isClass = objectType === 'class-extension';
+  if (isClass ? !classFormatsActive() : !elementFormatActive()) return null;
+  const problems = extensionNameFormatProblems().filter(p => !p.startsWith(UNDEFINED_FORMAT_ENV));
+  if (problems.length > 0) return { errors: problems, warnings: [], note: 'the configured format cannot be used' };
+
+  if (!isClass) {
+    const format = getExtensionNameFormats().element;
+    const stated = name.includes('.') ? name.slice(0, name.indexOf('.')) : undefined;
+    const base = stated && baseObjectName && stated.toLowerCase() === baseObjectName.toLowerCase()
+      ? stated
+      : baseObjectName || stated;
+    const note = `${ELEMENT_FORMAT_ENV}="${format}"`;
+    if (!base) {
+      return {
+        errors: [`Name does not follow ${note}: no base before a dot. Expected: ${applyNameFormat(format, '<Base>')}`],
+        warnings: [],
+        note,
+      };
+    }
+    const expected = applyNameFormat(format, base);
+    return name === expected
+      ? { errors: [], warnings: [], base, note }
+      : { errors: [`Name does not follow ${note}.\n  Expected: ${expected}`], warnings: [], base, note };
+  }
+
+  const type = normalizeExtensionBaseType(baseObjectType);
+  const rule = classFormatFor(type);
+  const definedType = type === 'class' || type === 'table' || type === 'form';
+  if (type && definedType && rule.format !== undefined) {
+    // The base, from the reading under this type's format — else under another one,
+    // so a name in the wrong format still yields the name it should have.
+    const readings = readClassExtensionName(name, baseObjectName);
+    const reading = readings.find(r => r.format === rule.format) ?? readings[0];
+    const base = reading?.base ?? baseObjectName;
+    const note = `${rule.setting}="${rule.format}" + _Extension (${type})`;
+    if (!base) {
+      return {
+        errors: [`Name does not follow ${note}.\n  Expected: ${formatClassExtensionName(rule.format, '<Base>')}`],
+        warnings: [],
+        note,
+      };
+    }
+    const expected = formatClassExtensionName(rule.format, base);
+    return name === expected
+      ? { errors: [], warnings: [], base, note }
+      : { errors: [`Name does not follow ${note}.\n  Expected: ${expected}`], warnings: [], base, note };
+  }
+
+  // No format for this case: what the compiler accepts is all that is asked.
+  const validity = [asGivenNameProblem(name, 'class-extension')].filter((p): p is string => !!p);
+  if (isReservedKeyword(name)) validity.push(`"${name}" is a reserved X++ keyword.`);
+  if (type) {
+    return {
+      errors: validity,
+      warnings: [],
+      base: baseObjectName,
+      note: `no format for ${type} extension classes — any valid class name ending in _Extension`,
+    };
+  }
+  const reading = readClassExtensionName(name, baseObjectName)[0];
+  if (reading) {
+    return {
+      errors: validity,
+      warnings: [],
+      base: reading.base,
+      note: `${reading.setting}="${reading.format}" + _Extension (read from the name; pass baseObjectType to check it against its type)`,
+    };
+  }
+  return {
+    errors: validity,
+    warnings: [
+      `"${name}" matches no configured extension class name format. Pass baseObjectType (class | table | form) ` +
+      `to check it against that type's format; for other base types any valid class name is accepted.`,
+    ],
+    base: baseObjectName,
+    note: 'no base type given',
+  };
 }

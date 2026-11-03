@@ -3132,36 +3132,64 @@ function formatCocExtensions(r: BridgeExtensionClassResult, methodNameFilter: st
     return out;
   }
 
-  // Apply method filter if specified
-  let filtered = r.extensions;
-  if (methodNameFilter) {
-    filtered = r.extensions.filter(ext =>
-      ext.wrappedMethods?.some(m => m.toLowerCase() === methodNameFilter.toLowerCase())
-      || !ext.wrappedMethods || ext.wrappedMethods.length === 0
-    );
-  }
-
   // Dedupe by class name ONCE, before anything is counted. A class carries a single
   // [ExtensionOf] and the bridge keys its results by class name, so a duplicate cannot
   // reach here today — but the count and the list it introduces have to agree whatever
   // arrives, and skipping an entry inside the render loop after the heading above it had
   // already counted that entry is exactly how the two come apart.
-  const byClassName = new Map<string, (typeof filtered)[number]>();
-  for (const ext of filtered) {
+  const byClassName = new Map<string, CocExtensionEntry>();
+  for (const ext of r.extensions) {
     if (!byClassName.has(ext.className)) byClassName.set(ext.className, ext);
   }
   const unique = [...byClassName.values()];
 
-  out += `Found ${unique.length} extension class(es)${methodNameFilter ? ` wrapping "${methodNameFilter}"` : ''}:\n\n`;
+  if (!methodNameFilter) {
+    out += `Found ${unique.length} extension class(es):\n\n`;
+    return out + formatCocGroups(unique);
+  }
 
+  // With a method filter, "Found N … wrapping m" counts only the classes whose wrap list names
+  // m. It used to count every class with an EMPTY list as well — a leftover from when the list
+  // held every base method the class called — so "Found 12 extension class(es) wrapping
+  // validateWrite" listed ten classes that wrap something else. The bridge sends a list for
+  // every class (WrappedMethods = new List<string>()), so empty means "wraps nothing". Those
+  // classes are still worth seeing, under their own heading and count; a class with no list at
+  // all (an older bridge, another source) is unknown, and is never counted as a wrapper either.
+  const wanted = methodNameFilter.toLowerCase();
+  const wrappers: CocExtensionEntry[] = [];
+  const others: CocExtensionEntry[] = [];
+  const unknown: CocExtensionEntry[] = [];
+  for (const ext of unique) {
+    if (!ext.wrappedMethods) unknown.push(ext);
+    else if (ext.wrappedMethods.some(m => m.toLowerCase() === wanted)) wrappers.push(ext);
+    else others.push(ext);
+  }
+
+  out += `Found ${wrappers.length} extension class(es) wrapping "${methodNameFilter}":\n\n`;
+  out += formatCocGroups(wrappers);
+  if (others.length > 0) {
+    out += `Other extension classes of ${r.baseClassName} (no wrap of "${methodNameFilter}" recorded): ${others.length}\n\n`;
+    out += formatCocGroups(others);
+  }
+  if (unknown.length > 0) {
+    out += `Extension classes of ${r.baseClassName}, wraps unknown (the source sent no wrap list): ${unknown.length}\n\n`;
+    out += formatCocGroups(unknown);
+  }
+  return out;
+}
+
+type CocExtensionEntry = BridgeExtensionClassResult['extensions'][number];
+
+function formatCocGroups(extensions: CocExtensionEntry[]): string {
+  let out = '';
   // Grouped by the element each class actually extends, never pooled into one list. A name can
   // denote several objects at once — "SalesTable" is a table (14 extensions) AND a form (17),
   // and the form's data sources, controls and data fields are each extended separately again
   // (31 more across 12 elements). Reporting "49 extensions of SalesTable" told an agent about
   // to write a table CoC that 34 form extensions were its concern, and hid which of the form's
   // NINE data sources with an `active` method was already wrapped.
-  const groups = new Map<string, typeof unique>();
-  for (const ext of unique) {
+  const groups = new Map<string, typeof extensions>();
+  for (const ext of extensions) {
     const key = ext.extendedElement ?? '';
     const bucket = groups.get(key) ?? [];
     bucket.push(ext);
