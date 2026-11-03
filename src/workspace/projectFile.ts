@@ -18,6 +18,7 @@ import { Parser, Builder } from '../utils/xml.js';
 // withProjectFileLock this used to carry, so the second copy is retired rather
 // than moved along with the classes.
 import { withFileLock } from '../utils/atomicFileWrite.js';
+import { detectEol, withEol } from '../utils/eolUtils.js';
 import { recordCreatedProjectFolder, takeCreatedProjectFolder } from './createdArtifactLedger.js';
 import {
   axFolderForObjectType, resolveMembership, projectDisplayName, includeKey, normalizeInclude,
@@ -474,7 +475,9 @@ export class ProjectFileManager {
     // Write back to project file (with retry for transient VS file locks)
     const updatedXml = this.builder.buildObject(project);
     // Restore UTF-8 BOM if the original file had one (VS 2022 writes .rnrproj with BOM)
-    const output = hadBom ? '\uFEFF' + updatedXml : updatedXml;
+    // VS writes .rnrproj with CRLF; xml2js emits LF, which would rewrite every line.
+    const eolXml = withEol(updatedXml, detectEol(projectXml));
+    const output = hadBom ? '\uFEFF' + eolXml : eolXml;
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
         await fs.writeFile(projectPath, output, 'utf-8');
@@ -588,7 +591,9 @@ export class ProjectFileManager {
     }
 
     const updatedXml = this.builder.buildObject(project);
-    const output = hadBom ? '\uFEFF' + updatedXml : updatedXml;
+    // VS writes .rnrproj with CRLF; xml2js emits LF, which would rewrite every line.
+    const eolXml = withEol(updatedXml, detectEol(projectXml));
+    const output = hadBom ? '\uFEFF' + eolXml : eolXml;
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
         await fs.writeFile(projectPath, output, 'utf-8');
@@ -725,7 +730,9 @@ export class ProjectFileManager {
 
     // Write back
     const updatedXml = this.builder.buildObject(project);
-    const output = hadBom ? '\uFEFF' + updatedXml : updatedXml;
+    // VS writes .rnrproj with CRLF; xml2js emits LF, which would rewrite every line.
+    const eolXml = withEol(updatedXml, detectEol(projectXml));
+    const output = hadBom ? '\uFEFF' + eolXml : eolXml;
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
         await fs.writeFile(projectPath, output, 'utf-8');

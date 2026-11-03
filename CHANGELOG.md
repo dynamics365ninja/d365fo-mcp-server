@@ -28,6 +28,13 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Fixed
+- **Label file descriptors and the `.rnrproj` were written with LF line endings.** Visual
+  Studio writes both with CRLF. `labels(action="create")` wrote the `AxLabelFile\<Id>_<lang>.xml`
+  descriptor of a newly added language with LF (and a trailing newline VS doesn't write), so the
+  first save in VS showed every line as changed. Every `.rnrproj` update (adding an object,
+  removing one, adding label files) rebuilt the whole project file with LF.
+
 ## [1.22.0] — 2026-10-30
 
 ### Added

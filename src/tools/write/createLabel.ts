@@ -265,24 +265,26 @@ async function writeFileWithBom(filePath: string, content: string): Promise<void
   await writeFileAtomic(filePath, contentWithBom);
 }
 
-/** XML descriptor content for a new AxLabelFile locale */
-function buildAxLabelFileXml(
+/** XML descriptor content for a new AxLabelFile locale.
+ *  CRLF line endings, as Visual Studio writes them — an LF descriptor shows up
+ *  as a line-ending diff the first time VS saves it. */
+export function buildAxLabelFileXml(
   labelFileId: string,
   language: string,
   packageName: string,
   model: string,
 ): string {
   // D365FO requires <Language> for every locale except en-US (which is the implicit default).
-  const languageElement = language !== 'en-US' ? `\t<Language>${language}</Language>\n` : '';
+  const languageElement = language !== 'en-US' ? `\t<Language>${language}</Language>\r\n` : '';
   return (
-    `<?xml version="1.0" encoding="utf-8"?>\n` +
-    `<AxLabelFile xmlns:i="http://www.w3.org/2001/XMLSchema-instance">\n` +
-    `\t<Name>${labelFileId}_${language}</Name>\n` +
-    `\t<LabelContentFileName>${labelFileId}.${language}.label.txt</LabelContentFileName>\n` +
-    `\t<LabelFileId>${labelFileId}</LabelFileId>\n` +
+    `<?xml version="1.0" encoding="utf-8"?>\r\n` +
+    `<AxLabelFile xmlns:i="http://www.w3.org/2001/XMLSchema-instance">\r\n` +
+    `\t<Name>${labelFileId}_${language}</Name>\r\n` +
+    `\t<LabelContentFileName>${labelFileId}.${language}.label.txt</LabelContentFileName>\r\n` +
+    `\t<LabelFileId>${labelFileId}</LabelFileId>\r\n` +
     languageElement +
-    `\t<RelativeUriInModelStore>${packageName}\\${model}\\AxLabelFile\\LabelResources\\${language}\\${labelFileId}.${language}.label.txt</RelativeUriInModelStore>\n` +
-    `</AxLabelFile>\n`
+    `\t<RelativeUriInModelStore>${packageName}\\${model}\\AxLabelFile\\LabelResources\\${language}\\${labelFileId}.${language}.label.txt</RelativeUriInModelStore>\r\n` +
+    `</AxLabelFile>`  // no trailing newline, as in VS-created descriptors
   );
 }
 
