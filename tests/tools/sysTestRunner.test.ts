@@ -460,11 +460,11 @@ describe('run_systest_class — a SysTestConsole that cannot start hands over to
  * enough to be cut by the response cap.
  */
 describe('run_systest_class — a run whose tests fail', () => {
-  const CLASS = 'MTF_EInvoiceSendToGatewayServiceTests';
+  const CLASS = 'ContosoInvoiceSenderTests';
   const names = Array.from({ length: 43 }, (_, i) => `test_case${String(i + 1).padStart(2, '0')}`);
   const FAILING: Record<string, string> = {
     test_case07: 'Assert.areEqual failed: expected Sent, actual Pending',
-    test_case39: 'Assert.isTrue failed: gateway status was not updated',
+    test_case39: 'Assert.isTrue failed: invoice status was not updated',
   };
   const XML = '<?xml version="1.0"?><test-results><results>' +
     names.map(n => FAILING[n]
@@ -473,7 +473,7 @@ describe('run_systest_class — a run whose tests fail', () => {
     '</results></test-results>';
   // ~39 KB of console log, its stack traces long enough to bury everything after them.
   const STACK = Array.from({ length: 150 }, (_, i) =>
-    `   at Dynamics.AX.Application.MTF_EInvoiceSendToGatewayService.frame${i}() in xppSource://Source/Mountfield\\AxClass_MTF_EInvoiceSendToGatewayService.xpp:line ${i}`).join('\n');
+    `   at Dynamics.AX.Application.ContosoInvoiceSender.frame${i}() in xppSource://Source/ContosoExt\\AxClass_ContosoInvoiceSender.xpp:line ${i}`).join('\n');
   const LOG = `Executing test(s) ....\n${names.map(n => FAILING[n] ? `${n} failed: ${FAILING[n]}\n${STACK}` : `${n} passed`).join('\n')}\n` +
     'Rainier Test Suite : 43 Run, 2 Failed';
 
@@ -483,7 +483,7 @@ describe('run_systest_class — a run whose tests fail', () => {
     vi.resetAllMocks();
     readdirMock.mockResolvedValue(['SysTestConsole.17.0.exe']);
     cfgEnsureLoaded.mockResolvedValue(undefined);
-    cfgGetModelName.mockReturnValue('MountfieldTests');
+    cfgGetModelName.mockReturnValue('ContosoExtTests');
     cfgGetPackagePath.mockReturnValue(PKG);
     allowPaths([SYSTEST_CONSOLE_17]);
     readFileMock.mockImplementation(async (p: string) => {
