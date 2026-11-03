@@ -12,6 +12,7 @@ import type { XppSymbol } from './types.js';
 import { renderMethodSignature } from './xppDeclaration.js';
 import { isStandardModel } from '../utils/modelClassifier.js';
 import { labelIdSpellings, parseLabelReference } from '../utils/labelReference.js';
+import { normalizeLabelText } from '../utils/labelText.js';
 import { c, log } from '../utils/terminalUi.js';
 
 /**
@@ -24,6 +25,18 @@ const isCI = (): boolean => {
 
 /** How many distinct queries keep a memoized "did you mean" candidate pool. */
 const SUGGESTION_CACHE_ENTRIES = 32;
+
+/**
+ * Case-insensitive order with the exact spelling as tie-break, so two calls on
+ * the same rows always agree. Plain code-unit comparison, not localeCompare:
+ * the order must not depend on the process locale.
+ */
+function compareIgnoreCase(a: string, b: string): number {
+  const x = a.toLowerCase();
+  const y = b.toLowerCase();
+  if (x !== y) return x < y ? -1 : 1;
+  return a === b ? 0 : a < b ? -1 : 1;
+}
 
 /**
  * A multi-word query, split into the substrings a symbol name must ALL contain.
@@ -973,6 +986,20 @@ export class XppSymbolIndex {
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
+    `);
+
+    // The mtime each file had when it was last indexed incrementally. last_indexed_at
+    // is one global value that every write bumps, so it cannot say which files of a
+    // model changed since THEY were read; update_symbol_index(model) compares each
+    // file's mtime with its own row instead. Rows exist only for files an incremental
+    // pass indexed, so a model's first pass re-reads every file once.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS indexed_files (
+        file_path TEXT PRIMARY KEY COLLATE NOCASE,
+        mtime_ms REAL NOT NULL,
+        model TEXT NOT NULL COLLATE NOCASE
+      );
+      CREATE INDEX IF NOT EXISTS idx_indexed_files_model ON indexed_files(model);
     `);
 
     // Property stats: distribution of metadata property values across STANDARD models,
@@ -3760,6 +3787,60 @@ export class XppSymbolIndex {
     }
   }
 
+  /** Remember the mtime a file had when it was indexed — see the indexed_files table. */
+  recordIndexedFile(filePath: string, mtimeMs: number, model: string): void {
+    try {
+      this.db.prepare(
+        `INSERT OR REPLACE INTO indexed_files (file_path, mtime_ms, model) VALUES (?, ?, ?)`,
+      ).run(filePath, mtimeMs, model);
+    } catch {
+      // Bookkeeping is best-effort: a missing row only costs a re-read next pass
+    }
+  }
+
+  forgetIndexedFile(filePath: string): void {
+    try {
+      this.db.prepare(`DELETE FROM indexed_files WHERE file_path = ?`).run(filePath);
+    } catch { /* best-effort, as above */ }
+  }
+
+  /** Lower-cased path → mtime recorded for every file of the model. */
+  getIndexedFileMtimes(model: string): Map<string, number> {
+    const rows = this.getReadDb().prepare(
+      `SELECT file_path, mtime_ms FROM indexed_files WHERE model = ?`,
+    ).all(model) as Array<{ file_path: string; mtime_ms: number }>;
+    return new Map(rows.map(r => [r.file_path.toLowerCase(), r.mtime_ms]));
+  }
+
+  /** Every distinct file path the symbols table holds for a model. */
+  getModelFilePaths(model: string): string[] {
+    const rows = this.getReadDb().prepare(
+      `SELECT DISTINCT file_path FROM symbols WHERE model = ? COLLATE NOCASE`,
+    ).all(model) as Array<{ file_path: string }>;
+    return rows.map(r => r.file_path);
+  }
+
+  /** Every path indexed_files records for a model, as stored. */
+  getIndexedFilePaths(model: string): string[] {
+    const rows = this.getReadDb().prepare(
+      `SELECT file_path FROM indexed_files WHERE model = ?`,
+    ).all(model) as Array<{ file_path: string }>;
+    return rows.map(r => r.file_path);
+  }
+
+  /**
+   * Every .label.txt path the labels DB holds rows for. Labels are not symbols, so
+   * getModelFilePaths never sees them; one row per file (~800 on a full build).
+   */
+  getAllLabelFilePaths(): string[] {
+    try {
+      const rows = this.labelsDb.prepare(`SELECT file_path FROM label_files`).all() as Array<{ file_path: string }>;
+      return rows.map(r => r.file_path);
+    } catch {
+      return [];
+    }
+  }
+
   /** ISO timestamp of the last full or incremental index update, or null. */
   getLastIndexedAt(): string | null {
     try {
@@ -5111,6 +5192,123 @@ export class XppSymbolIndex {
     if (labelFileId) params.push(labelFileId);
     params.push(limit);
     return stmt.all(...params) as any[];
+  }
+
+  /**
+   * Labels whose text equals `text` after normalizeLabelText on both sides —
+   * the exact lookup behind labels(action="search", exact=true).
+   *
+   * Candidates come from labels_fts: every whitespace-separated chunk of the text
+   * that has a letter or digit becomes a quoted phrase on the `text` column, so
+   * FTS operators (`NOT`, `OR`) and punctuation are plain input, never syntax.
+   * unicode61 folds case and diacritics, so the candidates are a superset of the
+   * exact matches; the equality itself is decided here in JS. A text with no
+   * letter or digit gives FTS nothing to match, so it scans the language instead,
+   * through idx_labels_language_lower, pre-filtered to texts without an ASCII
+   * letter or digit (an equal text cannot have one).
+   *
+   * Candidates are compared shortest first and at most `candidateCap` of them. A
+   * cut-off set is reported as `truncated` with the length reached — a longer
+   * exact match (extra whitespace) would not have been compared, so the caller
+   * must not read the answer as "none exists".
+   *
+   * The language check is across the whole index, not the model/labelFileId
+   * narrowing, so "not indexed" means the language itself is missing.
+   *
+   * Matches come back in a fixed order: custom models first (isCustomModel), then
+   * label file id, label id and model, each case-insensitive with the stored
+   * spelling as the tie-break. With no custom model configured that is simply
+   * label file id, then label id. Translations are fetched for the first
+   * `maxMatches` in that order — the ones a caller lists.
+   */
+  findLabelsByExactText(
+    text: string,
+    opts: { language?: string; model?: string; labelFileId?: string; candidateCap?: number; maxMatches?: number } = {},
+  ): {
+    matches: Array<{
+      labelId: string;
+      labelFileId: string;
+      model: string;
+      language: string;
+      text: string;
+      /** isCustomModel(model) — CUSTOM_MODELS, EXTENSION_PREFIX, D365FO_MODEL_NAME, auto-detected. */
+      custom: boolean;
+      /** The label's other indexed languages; only on the first `maxMatches` matches. */
+      translations?: Array<{ language: string; text: string }>;
+    }>;
+    candidates: number;
+    truncated: boolean;
+    /** Text length of the longest candidate compared — only meaningful when truncated. */
+    comparedUpToLength: number;
+    languageIndexed: boolean;
+  } {
+    const { language = 'en-US', model, labelFileId, candidateCap = 50_000, maxMatches = 20 } = opts;
+    const wanted = normalizeLabelText(text);
+    const phrases = text.normalize('NFC').trim().split(/\s+/)
+      .filter(chunk => /[\p{L}\p{N}]/u.test(chunk))
+      .map(chunk => `text : "${chunk.replace(/"/g, '""')}"`);
+
+    let sql = phrases.length > 0
+      ? `SELECT l.label_id AS labelId, l.label_file_id AS labelFileId, l.model, l.language, l.text
+         FROM labels_fts f
+         JOIN labels l ON l.id = f.rowid
+         WHERE labels_fts MATCH ?
+           AND LOWER(l.language) = ?`
+      : `SELECT l.label_id AS labelId, l.label_file_id AS labelFileId, l.model, l.language, l.text
+         FROM labels l
+         WHERE LOWER(l.language) = ?
+           AND l.text NOT GLOB '*[A-Za-z0-9]*'`;
+    const params: any[] = phrases.length > 0 ? [phrases.join(' AND '), language.toLowerCase()] : [language.toLowerCase()];
+    if (model)       { sql += `\n           AND l.model = ?`;         params.push(model); }
+    if (labelFileId) { sql += `\n           AND l.label_file_id = ?`; params.push(labelFileId); }
+    sql += `\n         ORDER BY length(l.text), l.model, l.label_file_id, l.label_id\n         LIMIT ?`;
+    params.push(candidateCap + 1);
+
+    const rows = this.labelsDb.prepare(sql).all(...params) as Array<{
+      labelId: string; labelFileId: string; model: string; language: string; text: string;
+    }>;
+    const truncated = rows.length > candidateCap;
+    const compared = truncated ? rows.slice(0, candidateCap) : rows;
+    // Custom models first, so a caller that lists only the first N never loses its
+    // own copy of a text behind dozens of standard ones ("Buchungen" is 46 labels in
+    // the standard models alone). isStandardModel answers per model and reads the
+    // environment on every call, so it is asked once per model here.
+    const customByModel = new Map<string, boolean>();
+    const isCustom = (m: string) => {
+      let custom = customByModel.get(m);
+      if (custom === undefined) customByModel.set(m, custom = !isStandardModel(m));
+      return custom;
+    };
+    const matches: ReturnType<XppSymbolIndex['findLabelsByExactText']>['matches'] = compared
+      .filter(r => normalizeLabelText(r.text) === wanted)
+      .map(r => ({ ...r, custom: isCustom(r.model) }))
+      .sort((a, b) =>
+        Number(b.custom) - Number(a.custom) ||
+        compareIgnoreCase(a.labelFileId, b.labelFileId) ||
+        compareIgnoreCase(a.labelId, b.labelId) ||
+        compareIgnoreCase(a.model, b.model));
+
+    if (matches.length > 0) {
+      const others = this.labelsDb.prepare(`
+        SELECT language, text FROM labels
+        WHERE label_id = ? AND label_file_id = ? AND model = ? AND LOWER(language) <> ?
+        ORDER BY language`);
+      for (const m of matches.slice(0, maxMatches)) {
+        m.translations = others.all(m.labelId, m.labelFileId, m.model, m.language.toLowerCase()) as any[];
+      }
+    }
+
+    const languageIndexed = matches.length > 0 || rows.length > 0 ||
+      this.labelsDb.prepare('SELECT 1 FROM labels WHERE LOWER(language) = ? LIMIT 1').get(language.toLowerCase()) !== undefined;
+
+    return {
+      matches,
+      candidates: compared.length,
+      truncated,
+      // Code points, as SQLite's length() counted them for the ORDER BY.
+      comparedUpToLength: compared.length > 0 ? Array.from(String(compared[compared.length - 1].text ?? '')).length : 0,
+      languageIndexed,
+    };
   }
 
   /**
