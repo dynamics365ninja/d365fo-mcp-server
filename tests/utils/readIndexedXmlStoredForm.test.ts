@@ -1,11 +1,11 @@
 /**
- * readIndexedXml falls back to the copy the index stored (form_source) for a FORM whose
+ * readIndexedXml falls back to the copy the index stored (object_source) for a FORM whose
  * file this host cannot reach — a database-only host, such as the Azure read-only instance — and
  * nowhere else:
  *   - a file that is here wins, and is labelled 'file';
  *   - a stored copy is labelled 'stored' with its write time;
  *   - a file this machine can tell was deleted is NOT answered from a leftover row;
- *   - only forms ever consult form_source (other types use object_source);
+ *   - a form's copy never answers for another object type;
  *   - a missing table, row or garbage blob is a miss, never a throw;
  *   - the lookup keys on the symbol row's model, never another model's row.
  */
@@ -47,7 +47,7 @@ const addForm = (filePath: string, model = 'Model', name = 'SalesTable') =>
   index.addSymbol({ name, type: 'form', filePath, model } as any);
 
 const store = (model = 'Model', name = 'SalesTable', xml = XML) =>
-  index.db.prepare('INSERT OR REPLACE INTO form_source (form_name, model, xml_gz, indexed_at) VALUES (?, ?, ?, ?)')
+  index.db.prepare(`INSERT OR REPLACE INTO object_source (object_type, name, model, xml_gz, indexed_at) VALUES ('form', ?, ?, ?, ?)`)
     .run(name, model, gzipSync(Buffer.from(xml)), '2026-10-01T10:00:00.000Z');
 
 describe('readIndexedXml — stored form copy', () => {
@@ -99,11 +99,11 @@ describe('readIndexedXml — stored form copy', () => {
     addForm(AGENT_PATH);
     expect(await readIndexedXml(index.getReadDb(), 'SalesTable', ['form'])).toBeNull();
 
-    index.db.prepare('INSERT INTO form_source (form_name, model, xml_gz, indexed_at) VALUES (?, ?, ?, ?)')
+    index.db.prepare(`INSERT INTO object_source (object_type, name, model, xml_gz, indexed_at) VALUES ('form', ?, ?, ?, ?)`)
       .run('SalesTable', 'Model', Buffer.from('not gzip'), 'x');
     expect(await readIndexedXml(index.getReadDb(), 'SalesTable', ['form'])).toBeNull();
 
-    index.db.exec('DROP TABLE form_source');
+    index.db.exec('DROP TABLE object_source');
     expect(await readIndexedXml(index.getReadDb(), 'SalesTable', ['form'])).toBeNull();
   });
 

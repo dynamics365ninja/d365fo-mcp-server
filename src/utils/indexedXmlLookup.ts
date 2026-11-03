@@ -14,7 +14,7 @@
  *   3. the same path remapped onto the configured packages root (the DB may store
  *      Azure DevOps build-agent paths)
  *   4. extracted-metadata JSON files, which wrap the XML in a `raw` property
- *   5. the gzipped copy the index build stored (object_source; form_source for old DBs)
+ *   5. the gzipped copy the index build stored (object_source)
  */
 
 import * as fs from 'fs';
@@ -290,9 +290,8 @@ export function symbolTypesFor(objectType: string): string[] {
  *
  * Keyed by the symbol row's own type and model; model matches case-insensitively (the
  * build's model directory and the model parsed from a path can differ in case). Never
- * falls back to another model's row. A form also tries form_source, which databases
- * built before object_source carry. Any failure — a missing table, a stub DB, a corrupt
- * blob — is a miss (null).
+ * falls back to another model's row. Any failure — an old database without the table,
+ * a stub DB, a corrupt blob — is a miss (null).
  */
 export function readStoredObjectXml(
   db: unknown,
@@ -300,19 +299,10 @@ export function readStoredObjectXml(
   name: string,
   model: string,
 ): { xml: string; storedAt: string } | null {
-  return readStoredRow(db,
-    'SELECT xml_gz, indexed_at FROM object_source WHERE object_type = ? AND name = ? AND model = ? COLLATE NOCASE ORDER BY indexed_at DESC LIMIT 1',
-    [objectType, name, model])
-    ?? (objectType === 'form'
-      ? readStoredRow(db,
-        'SELECT xml_gz, indexed_at FROM form_source WHERE form_name = ? AND model = ? COLLATE NOCASE ORDER BY indexed_at DESC LIMIT 1',
-        [name, model])
-      : null);
-}
-
-function readStoredRow(db: unknown, sql: string, params: unknown[]): { xml: string; storedAt: string } | null {
   try {
-    const row = (db as any).prepare(sql).get(...params) as { xml_gz?: unknown; indexed_at?: unknown } | undefined;
+    const row = (db as any)
+      .prepare('SELECT xml_gz, indexed_at FROM object_source WHERE object_type = ? AND name = ? AND model = ? COLLATE NOCASE ORDER BY indexed_at DESC LIMIT 1')
+      .get(objectType, name, model) as { xml_gz?: unknown; indexed_at?: unknown } | undefined;
     if (!row || !(row.xml_gz instanceof Uint8Array)) return null;
     const xml = gunzipSync(row.xml_gz).toString('utf-8');
     if (!xml) return null;

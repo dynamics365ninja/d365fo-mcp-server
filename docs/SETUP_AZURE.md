@@ -214,6 +214,8 @@ Every object's original XML is stored (gzipped, table `object_source`; extension
 
 Existing blob JSON has no `raw`; objects from it have no stored copy until re-extracted. Run the **platform pipeline with extraction** (not `skipExtraction`) first for the standard models, then the **custom pipeline with extraction**, then the upgrade pipeline if you use it — the upgrade pipeline and custom `skipExtraction` runs rebuild from blob JSON and only get stored copies if that JSON carries `raw`. `form_datasources` (which forms use a table) needs no re-extraction.
 
+Upgrading from 1.22.0: its forms-only `form_source` table is no longer read, so forms lose their stored copy until the database is rebuilt this way. Run the pipelines before the App Service restarts on the new version.
+
 ### Uploading standard packages
 
 The platform pipeline needs the raw `PackagesLocalDirectory` as a zip in the `packages` container. On your D365FO VM, compress `K:\AosService\PackagesLocalDirectory`, upload it as `PackagesLocalDirectory.zip` (via **Azure Storage Explorer**), and re-upload only after a version upgrade or hotfix rollup.

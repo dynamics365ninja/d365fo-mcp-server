@@ -856,8 +856,8 @@ export class XppSymbolIndex {
 
     // Object Source — every object's original XML, gzipped, so a host that has only this
     // database (no AOT files, no extracted JSON) can still read its definition. Keyed by
-    // symbols.type because names repeat across types. form_source is the forms-only
-    // predecessor: no longer written, still read for databases built before this table.
+    // symbols.type because names repeat across types. It replaces the forms-only
+    // form_source, which this version neither writes nor reads.
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS object_source (
         object_type TEXT NOT NULL,
@@ -866,13 +866,6 @@ export class XppSymbolIndex {
         xml_gz BLOB NOT NULL,
         indexed_at TEXT NOT NULL,
         PRIMARY KEY (object_type, name, model)
-      );
-      CREATE TABLE IF NOT EXISTS form_source (
-        form_name TEXT NOT NULL,
-        model TEXT NOT NULL,
-        xml_gz BLOB NOT NULL,
-        indexed_at TEXT NOT NULL,
-        PRIMARY KEY (form_name, model)
       );
     `);
 
@@ -1725,7 +1718,6 @@ export class XppSymbolIndex {
     // and the model parsed from a path can differ in case.
     this.db.prepare('DELETE FROM form_datasources WHERE form_name = ? AND model = ? COLLATE NOCASE').run(formName, model);
     this.db.prepare('DELETE FROM form_patterns WHERE form_name = ? AND model = ? COLLATE NOCASE').run(formName, model);
-    this.db.prepare('DELETE FROM form_source WHERE form_name = ? AND model = ? COLLATE NOCASE').run(formName, model);
     this.db.prepare(`DELETE FROM object_source WHERE object_type = 'form' AND name = ? AND model = ?`).run(formName, model);
   }
 
@@ -4535,7 +4527,6 @@ export class XppSymbolIndex {
     this.db.exec('DELETE FROM table_relations');
     this.db.exec('DELETE FROM form_datasources');
     this.db.exec('DELETE FROM form_patterns');
-    this.db.exec('DELETE FROM form_source');
     this.db.exec('DELETE FROM object_source');
     this.db.exec('DELETE FROM edt_metadata');
     this.db.exec('DELETE FROM security_privilege_entries');
@@ -4578,7 +4569,6 @@ export class XppSymbolIndex {
       this.db.prepare(`DELETE FROM table_relations WHERE model IN (${placeholders})`).run(...modelNames);
       this.db.prepare(`DELETE FROM form_datasources WHERE model IN (${placeholders})`).run(...modelNames);
       this.db.prepare(`DELETE FROM form_patterns WHERE model IN (${placeholders})`).run(...modelNames);
-      this.db.prepare(`DELETE FROM form_source WHERE model IN (${placeholders})`).run(...modelNames);
       this.db.prepare(`DELETE FROM object_source WHERE model IN (${placeholders})`).run(...modelNames);
       this.db.prepare(`DELETE FROM edt_metadata WHERE model IN (${placeholders})`).run(...modelNames);
       this.db.prepare(`DELETE FROM security_privilege_entries WHERE model IN (${placeholders})`).run(...modelNames);

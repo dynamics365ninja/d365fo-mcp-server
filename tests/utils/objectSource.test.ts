@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { gzipSync, gunzipSync } from 'node:zlib';
+import { gunzipSync } from 'node:zlib';
 
 // A remap onto a configured packages root would make the file "reachable" on a dev box.
 vi.mock('../../src/utils/metadataResolver', async (orig) => ({
@@ -165,17 +165,9 @@ describe('readIndexedXml and the stored copy', () => {
     }
   });
 
-  it('still reads form_source for a form in a database built before object_source', async () => {
-    addTop('OldForm', 'form', 'AxForm');
-    index.db.prepare('INSERT INTO form_source (form_name, model, xml_gz, indexed_at) VALUES (?, ?, ?, ?)')
-      .run('OldForm', 'Model', gzipSync(Buffer.from('<AxForm/>')), '2026-01-01T00:00:00.000Z');
-
-    expect((await readIndexedXml(index.getReadDb(), 'OldForm', ['form']))?.source).toBe('stored');
-  });
-
-  it('is a miss, not an error, when neither table exists', async () => {
+  it('is a miss, not an error, in a database built before object_source', async () => {
     addTop('DemoMap', 'map', 'AxMap');
-    index.db.exec('DROP TABLE object_source; DROP TABLE form_source;');
+    index.db.exec('DROP TABLE object_source');
     expect(await readIndexedXml(index.getReadDb(), 'DemoMap', ['map'])).toBeNull();
   });
 });

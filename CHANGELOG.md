@@ -43,7 +43,15 @@ those are called out explicitly below.
   text. Single-file `update_symbol_index` keeps the copy in step. Extensions are not
   stored. Extracted JSON for every non-extension type now carries `raw` and grows
   accordingly (sizes in SETUP_AZURE.md); stored copies appear after a re-extract and
-  re-index. Databases built before this change still answer forms from `form_source`.
+  re-index.
+
+### Changed
+- **`object_source` replaces `form_source`; rebuild the database after upgrading.** This
+  version neither writes nor reads `form_source` (added in 1.22.0). Until a database is
+  rebuilt from a fresh extract, forms on a host without AOT files have no stored copy, as
+  before 1.22.0. On Azure, run the data pipelines before the App Service restarts on the
+  new version (order in SETUP_AZURE.md). An old `form_source` table is left in place and
+  ignored.
 
 ## [1.22.0] — 2026-10-30
 
