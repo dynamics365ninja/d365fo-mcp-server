@@ -20,7 +20,10 @@ import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershi
 import { validateWrittenXpp } from './inlineXppValidation.js';
 import { createPhaseTimer } from '../../utils/phaseTimer.js';
 import { isAsGivenNamingMode, registerCustomModel } from '../../utils/modelClassifier.js';
-import { COC_BASE_SYMBOL_TYPES, asGivenNameProblem, inferExtendedBase, normalizeObjectName } from '../../utils/objectNaming.js';
+import {
+  COC_BASE_SYMBOL_TYPES, asGivenNameProblem, formatNameProblemAsGiven, inferExtendedBase, normalizeObjectName,
+  resolveFormattedExtensionName,
+} from '../../utils/objectNaming.js';
 import { lookupSymbolsNocase } from '../../utils/symbolLookup.js';
 import { PackageResolver } from '../../utils/packageResolver.js';
 import { crossModelWriteRefusal, standDownNotice } from '../../utils/crossModelWriteGuard.js';
@@ -978,10 +981,16 @@ export async function handleCreateD365File(
     // tells "SalesTable + Mcp + CreditHold" — a name that already carries the token —
     // apart from a base that merely contains it. See ApplyObjectPrefixOptions.extendedBase.
     const statedBaseClass = (args.properties as Record<string, unknown> | undefined)?.baseClass;
+    const extensionOf = parseExtensionOfAttribute(args.sourceCode ?? args.xmlContent ?? '');
+    // The extended object's TYPE selects the class name format (EXTENSION_CLASS_NAME_FORMAT_*):
+    // from the [ExtensionOf(<kind>Str(…))] the caller wrote, else as stated. Never from the name.
+    const statedBaseType = (args.properties as Record<string, unknown> | undefined)?.baseObjectType;
+    const extendedBaseType =
+      extensionOf?.baseKind ?? (typeof statedBaseType === 'string' && statedBaseType ? statedBaseType : undefined);
     // With neither, the index stands in — the same inference prepare and
     // validate_object_naming use, so the name they predict is the name written.
     const extendedBase =
-      parseExtensionOfAttribute(args.sourceCode ?? args.xmlContent ?? '')?.baseObjectName ??
+      extensionOf?.baseObjectName ??
       (typeof statedBaseClass === 'string' && statedBaseClass ? statedBaseClass : undefined) ??
       inferExtendedBase(args.objectName, actualModelName, n => {
         try {
@@ -993,10 +1002,23 @@ export async function handleCreateD365File(
       });
     // naming.prefixSource=as-given: the name is final, so one that cannot be a
     // valid AOT name is refused with the reason instead of repaired (#1134).
-    const asGivenProblem = isAsGivenNamingMode() ? asGivenNameProblem(args.objectName, args.objectType) : null;
+    const formatOptions = { extendedBase, baseType: extendedBaseType };
+    const asGivenProblem = isAsGivenNamingMode()
+      ? asGivenNameProblem(args.objectName, args.objectType) ??
+        formatNameProblemAsGiven(args.objectName, args.objectType, formatOptions)
+      : null;
     if (asGivenProblem) {
       return {
         content: [{ type: 'text', text: `❌ Not created: ${asGivenProblem}` }],
+        isError: true,
+      };
+    }
+    // A configured name format that cannot name this extension stops the write:
+    // no format for the case (the user is asked), or a format that is wrong.
+    const formatted = resolveFormattedExtensionName(args.objectName, args.objectType, formatOptions);
+    if (formatted.kind === 'ask' || formatted.kind === 'invalid') {
+      return {
+        content: [{ type: 'text', text: `❌ Not created: ${formatted.message}` }],
         isError: true,
       };
     }
@@ -1005,7 +1027,7 @@ export async function handleCreateD365File(
       args.objectType,
       actualModelName,
       (note: string) => console.error(`[create_d365fo_file] ${note}`),
-      { extendedBase },
+      formatOptions,
     );
     if (finalObjectName !== args.objectName) {
       console.error(`[create_d365fo_file] Applied naming: ${args.objectName} → ${finalObjectName}`);

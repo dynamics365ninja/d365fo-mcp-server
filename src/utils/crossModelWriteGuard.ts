@@ -57,6 +57,7 @@
 
 import { resolveObjectPrefix, applyObjectPrefix, isAsGivenNamingMode, isNoPrefixMode } from './modelClassifier.js';
 import { reloadWritePolicy } from './loadEnv.js';
+import { resolveFormattedExtensionName } from './objectNaming.js';
 
 /** An extension of the target object that already exists in the active model. */
 export interface ExistingExtension {
@@ -241,6 +242,14 @@ export function suggestedExtensionName(
   activeModel: string,
 ): string | null {
   if (!EXTENSION_TYPE_OF[baseType]) return null;
+  // A configured name format names it the way create will; the base type is the
+  // type of the object the refused write targeted.
+  const formatted = resolveFormattedExtensionName(baseObject, EXTENSION_TYPE_OF[baseType], {
+    extendedBase: baseObject,
+    baseType,
+  });
+  if (formatted.kind === 'name') return formatted.name;
+  if (formatted.kind !== 'none') return null;
   const prefix = resolveObjectPrefix(activeModel);
   // naming.prefixSource=none still names extensions — after the model. as-given
   // names nothing: the convention is the project's, so only the shape is shown.

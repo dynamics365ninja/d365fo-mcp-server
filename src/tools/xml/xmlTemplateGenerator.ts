@@ -38,6 +38,13 @@
 
 import { escapeXml, decodeXmlEntitiesFromXppSource } from '../../utils/xmlEscape.js';
 import { extensionClassBaseOf } from '../../utils/modelClassifier.js';
+import { normalizeExtensionBaseType, readClassExtensionName } from '../../utils/extensionNameFormat.js';
+
+/** The [ExtensionOf] intrinsic for a one-argument base type. */
+const EXTENSION_OF_INTRINSIC: Record<string, string> = {
+  class: 'classStr', table: 'tableStr', form: 'formStr', view: 'viewStr', map: 'mapStr',
+  query: 'queryStr', 'data-entity': 'dataEntityViewStr',
+};
 import { readMethodCall } from '../../utils/methodBodyHint.js';
 import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../../utils/xppDocGen.js';
 import { xppMethodSourceForXml, reindentXppSource } from '../../utils/xppFormat.js';
@@ -545,9 +552,14 @@ ${methodsXml}\t</SourceCode>
     // helper that reads all three class styles. The old `/_[^_]+_Extension$/` only
     // fit the model-name shape: CustTableCtso_Extension "extended" itself.
     const baseClass = properties?.baseClass || extensionClassBaseOf(extensionName, properties?.modelName);
+    // The intrinsic follows the base's type: stated (properties.baseObjectType), else
+    // the class format that named it (…_TABLE → tableStr), else classStr as before.
+    const baseType =
+      normalizeExtensionBaseType(properties?.baseObjectType) ?? readClassExtensionName(extensionName)[0]?.type;
+    const intrinsic = EXTENSION_OF_INTRINSIC[baseType ?? ''] ?? 'classStr';
 
     const defaultSource = sourceCode ||
-      `[ExtensionOf(classStr(${baseClass}))]\nfinal class ${extensionName}\n{\n    // ⚠️  ALWAYS call next <methodName>() — verify exact signature with:\n    //     ${readMethodCall('class', baseClass, '<methodName>')}\n    //\n    // Template for wrapping a method:\n    //   public ReturnType methodName(ParamType _param)\n    //   {\n    //       ReturnType result = next methodName(_param);\n    //       return result;\n    //   }\n}`;
+      `[ExtensionOf(${intrinsic}(${baseClass}))]\nfinal class ${extensionName}\n{\n    // ⚠️  ALWAYS call next <methodName>() — verify exact signature with:\n    //     ${readMethodCall('class', baseClass, '<methodName>')}\n    //\n    // Template for wrapping a method:\n    //   public ReturnType methodName(ParamType _param)\n    //   {\n    //       ReturnType result = next methodName(_param);\n    //       return result;\n    //   }\n}`;
 
     return XmlTemplateGenerator.generateAxClassXml(extensionName, defaultSource, { ...properties });
   }

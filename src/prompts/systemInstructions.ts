@@ -12,6 +12,7 @@
  */
 
 import { isAsGivenNamingMode } from '../utils/modelClassifier.js';
+import { classFormatsActive } from '../utils/extensionNameFormat.js';
 
 /**
  * Get the system instructions prompt definition
@@ -124,7 +125,9 @@ To find why something is slow, use \`trace_d365fo\` if it is published (fetch it
 - No function calls in \`where\` — assign to a local variable first
 - No nested \`while select\` — use \`join\` or pre-load to \`Map\`/temp table
 - \`crossCompany\` goes on the OUTER (driving) buffer only
-- CoC: NEVER copy default parameter values into the wrapper signature; \`next\` at first-level statement scope; extension class \`final\` + \`[ExtensionOf(...)]\`, ${isAsGivenNamingMode()
+- CoC: NEVER copy default parameter values into the wrapper signature; \`next\` at first-level statement scope; extension class \`final\` + \`[ExtensionOf(...)]\`, ${classFormatsActive()
+  ? 'named by the configured class name format — pass the base name and the [ExtensionOf] (its kind picks the format); with no format for the case the tool asks for the name'
+  : isAsGivenNamingMode()
   ? 'named by the project\'s instruction file — the server renames nothing (naming.prefixSource=as-given); the name must end in `_Extension`'
   : 'named `{Target}{Prefix}_Extension`'}
 - \`doInsert\`/\`doUpdate\`/\`doDelete\` only for data-fix/migration

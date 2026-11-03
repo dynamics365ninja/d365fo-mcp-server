@@ -86,6 +86,21 @@ those are called out explicitly below.
   stored. Extracted JSON for every non-extension type now carries `raw` and grows
   accordingly (sizes in SETUP_AZURE.md); stored copies appear after a re-extract and
   re-index.
+- **Extension name formats.** The naming styles place one token at a fixed spot, so a
+  convention that fixes the whole name could not be expressed: `{0}.CTSO` for every
+  element extension, and a CoC-class token chosen by the type of the object extended
+  (`CTSO_{0}Cls_Extension`, `CTSO_{0}Dbt_Extension` for tables, `CTSO_{0}Frm_Extension`
+  for forms). New settings `EXTENSION_ELEMENT_NAME_FORMAT`, `EXTENSION_CLASS_NAME_FORMAT`,
+  `EXTENSION_CLASS_NAME_FORMAT_TABLE`, `EXTENSION_CLASS_NAME_FORMAT_FORM` (`{0}` = the
+  extended object, `_Extension` always appended to class formats) and
+  `EXTENSION_NAME_FORMAT_UNDEFINED` (`ask` | `class-format`). Create, the modify lookup,
+  `prepare`, `generate_object`, the cross-model suggestion and `validate_object_naming`
+  apply them. The extended object's type comes from the call (`[ExtensionOf(<kind>Str(…))]`,
+  `properties.baseObjectType`, `validate_object_naming(baseObjectType)`), never from
+  its name or the index, so the write-only companion and the shared server produce the
+  same name. Cases no format defines (form data sources/controls, views, entities, maps …,
+  or no type given) are answered with "ask the user for the name and call again with an
+  explicit name" by default. Empty (the default) = names exactly as before.
 
 ### Changed
 - **`object_source` replaces `form_source`; rebuild the database after upgrading.** This

@@ -79,6 +79,11 @@ How generated objects, extensions and fields are named.
 | `naming.suffix` | advanced | `EXTENSION_SUFFIX` | — | Optional suffix appended to new object names (MyTableZZ with suffix "ZZ"). Most projects use only a prefix — leave empty unless your convention requires one. |
 | `naming.extensionStyle` | advanced | `EXTENSION_NAMING_STYLE` | `prefix` | Whether extension classes/elements embed the prefix (per the Microsoft prefix guideline) or the model name (the Visual Studio default). Use model-name when your model name is long but your prefix is a short abbreviation. Values: `prefix` — CustTable.CrExtension — embeds the extension prefix; `model-name` — CustTable.ContosoRobotics — embeds the model name (VS default). |
 | `naming.extensionClassStyle` | advanced | `EXTENSION_CLASS_NAMING_STYLE` | `inherit` | Overrides naming.extensionStyle for CoC extension classes only, leaving element extensions alone. Some conventions spell the two differently — Visual Studio elements (CustTable.ContosoRobotics) with prefix-style classes (CustTableCtso_Extension) — which a single style cannot express: it renames one or the other. Leave on inherit unless your convention names classes differently from elements. Values: `inherit` — follow naming.extensionStyle — the default, behaviour unchanged; `prefix` — CustTableCtso_Extension — embeds the extension prefix, trailing; `model-name` — CustTable_ContosoRobotics_Extension — embeds the model name; `prefix-leading` — CtsoCustTable_Extension — embeds the extension prefix, leading (e.g. Avanade Development Guidelines). |
+| `naming.elementNameFormat` | advanced | `EXTENSION_ELEMENT_NAME_FORMAT` | — | A fixed name shape for every element extension (tables, forms, EDTs, enums, menus, menu items, security objects …), `{0}` = the extended object: `{0}.Contoso` names the InventTable extension `InventTable.Contoso`. Set, it replaces `naming.extensionStyle` for element extensions; create, prepare and validate_object_naming all apply it. Empty (the default) = the style decides, as before. See [Extension name formats](CUSTOM_EXTENSIONS.md#extension-name-formats). |
+| `naming.classNameFormat` | advanced | `EXTENSION_CLASS_NAME_FORMAT` | — | A fixed name shape for CoC extension classes, `{0}` = the extended object; `_Extension` is always appended: `Contoso_{0}Cls` names the SalesFormLetter extension `Contoso_SalesFormLetterCls_Extension`. Used for classes, and for tables and forms that have no format of their own. Which format applies depends on the TYPE of the extended object, which comes from the call (the `[ExtensionOf(tableStr(…))]` in sourceCode, or `properties.baseObjectType`) and is never guessed from a name. Set, it replaces `naming.extensionClassStyle`. Empty (the default) = the style decides, as before. |
+| `naming.classNameFormatTable` | advanced | `EXTENSION_CLASS_NAME_FORMAT_TABLE` | — | Like `naming.classNameFormat`, for extension classes of TABLES (`[ExtensionOf(tableStr(…))]`); `_Extension` is appended: `Contoso_{0}Dbt` → `Contoso_InventTableDbt_Extension`. Empty = `naming.classNameFormat`. |
+| `naming.classNameFormatForm` | advanced | `EXTENSION_CLASS_NAME_FORMAT_FORM` | — | Like `naming.classNameFormat`, for extension classes of FORMS (`[ExtensionOf(formStr(…))]`); `_Extension` is appended: `Contoso_{0}Frm` → `Contoso_InventTableFrm_Extension`. Empty = `naming.classNameFormat`. |
+| `naming.undefinedNameFormat` | advanced | `EXTENSION_NAME_FORMAT_UNDEFINED` | `ask` | Only read while an extension class name format is set. Decides the extension classes none of them defines — of form data sources and controls, views, data entities, maps …, and calls that do not state the extended object's type. `ask`: the tool does not invent a name; it answers "ask the user for the name and call again with an explicit name". `class-format`: `naming.classNameFormat` names them. An explicit full name (ending in `_Extension`) is accepted for these cases either way. Values: `ask` — the tool asks for the name — the user decides; `class-format` — naming.classNameFormat names them. |
 
 ### Metadata index
 
@@ -215,7 +220,12 @@ Downloading a pre-built index from blob storage instead of building it locally.
     "prefixSource": "model",
     "suffix": "",
     "extensionStyle": "prefix",
-    "extensionClassStyle": "inherit"
+    "extensionClassStyle": "inherit",
+    "elementNameFormat": "{0}.Contoso",
+    "classNameFormat": "Contoso_{0}Cls",
+    "classNameFormatTable": "Contoso_{0}Dbt",
+    "classNameFormatForm": "Contoso_{0}Frm",
+    "undefinedNameFormat": "ask"
   },
   "index": {
     "extractMode": "all",
