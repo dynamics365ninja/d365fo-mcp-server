@@ -349,6 +349,49 @@ describe('the rules added from compiler diagnostics fire on the bad shape', () =
     // order by lists: the only shape that fired on shipped code in the sweep.
     expect(has('    select trans order by TransDate desc, RecId asc;', 'KW001')).toBe(false);
     expect(has('    select trans\n        order by\n            trans.SortingRank asc,\n            trans.TransDate desc;', 'KW001')).toBe(false);
+    // A select expression with several sort keys: the middle key reads like a parameter.
+    expect(has(
+      '    return (select firstonly MyId from myTable\n' +
+      '                order by MyDate desc, CreatedDateTime desc, MyId desc\n' +
+      '                where myTable.MyRef == this.MyRef).MyId;',
+      'KW001',
+    )).toBe(false);
+  });
+
+  // Each shape below was compiled in a probe class: xppc rejects it.
+  it('KW001 — every name of a declaration list, not only the first', () => {
+    expect(has('    int a, count;', 'KW001')).toBe(true);
+    expect(has('    int a = max(b, c), count = 2;', 'KW001')).toBe(true);
+    expect(has('    str 20 x, index;', 'KW001')).toBe(true);
+    expect(has('    TransDate fromDate, toDate, from;', 'KW001')).toBe(true);
+    expect(has('    int a = max(b, count), c;', 'KW001')).toBe(false);
+    expect(has('    container c = [a, count], d;', 'KW001')).toBe(false);
+    expect(has('    int a, @count;', 'KW001')).toBe(false);
+    expect(has('    int a, in;', 'KW001')).toBe(false);
+  });
+
+  it('KW001 — a sized-string parameter', () => {
+    expect(has('    void foo(CustTable _t, str 20 select = "")\n    {\n    }', 'KW001')).toBe(true);
+    expect(has('    void foo(CustTable _t, str 20 _name = "")\n    {\n    }', 'KW001')).toBe(false);
+  });
+
+  it('KW001 — names the position in the fix', () => {
+    const fix = (code: string) => rulesOf(code).find(v => v.rule === 'KW001')?.fix ?? '';
+    expect(fix('    void foo(int index)\n    {\n    }')).toMatch(/cannot name a parameter/);
+    expect(fix('    for (int count = 0; count < 5; count++)\n    {\n    }')).toMatch(/cannot name a loop variable/);
+    expect(fix('    using (var index = new MyDisposable())\n    {\n    }')).toMatch(/cannot name a variable/);
+    expect(fix('    catch (System.Exception index)\n    {\n    }')).toMatch(/cannot name a variable/);
+    expect(fix('    int a, count;')).toMatch(/cannot name a variable/);
+  });
+
+  it('KW001 — stays silent on what the compiler accepts', () => {
+    // Probed: these compile. `boolean` is a type name but not in the set.
+    expect(has('    boolean boolean;', 'KW001')).toBe(false);
+    expect(has('    int @index;', 'KW001')).toBe(false);
+    expect(has('    void foo(int @index)\n    {\n    }', 'KW001')).toBe(false);
+    expect(has('    void foo(int in)\n    {\n    }', 'KW001')).toBe(false);
+    // A method named after a keyword compiles; method names are not declarators.
+    expect(has('    public int count()\n    {\n        return 1;\n    }', 'KW001')).toBe(false);
   });
 
   it('CS001 — C# shapes, but not the .NET generics the platform ships', () => {

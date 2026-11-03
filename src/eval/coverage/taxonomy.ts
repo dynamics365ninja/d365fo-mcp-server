@@ -260,9 +260,9 @@ export const TAXONOMY: CoverageLeaf[] = [
   },
   {
     id: 'declarations-scope', label: 'Declarations & scope (var/const/readonly/using)', domain: 'Code', source: 'topic', tier: 'core', weight: 4,
-    aotTypes: ['class'], knowledgeIds: ['xpp-declarations'],
+    aotTypes: ['class'], knowledgeIds: ['xpp-declarations', 'reserved-words'],
     caseIds: ['L2-declarations-scope'],
-    note: 'Taught, and exercised implicitly by every class case; the authored case pins what implicit use never shows — const vs readonly, the shadowing rejection, loop scope, prmIsDefault. Golden captured.',
+    note: 'Taught, and exercised implicitly by every class case; the authored case pins what implicit use never shows — const vs readonly, the shadowing rejection, loop scope, prmIsDefault. Golden captured. A reserved word as a declared name is taught (reserved-words) and validator-enforced (KW001, every name of a declaration list).',
   },
   {
     id: 'operators', label: 'Operators & precedence (&&/|| trap, like, is/as)', domain: 'Code', source: 'topic', tier: 'core', weight: 4,

@@ -56,6 +56,12 @@ export const GENERATE_OBJECT_PARAM_SPECS: Record<string, { type: string; descrip
       'event-handler: base class/table. form-datasource-extension: data source name (defaults to form name). ' +
       'form-control-extension: exact control name (find via get_object_info(objectType="form")).',
   },
+  className: {
+    type: 'string',
+    description:
+      '[pattern] CoC patterns under a configured extension class name format: the full class name (ending in ' +
+      '_Extension) the user chose for a case no format covers (form data source/control, map …) — the reply asks for it.',
+  },
   targetObject: {
     type: 'string',
     description: 'For the menu-item and security-privilege patterns: target form/class/report name.',
@@ -271,7 +277,7 @@ export const GENERATE_OBJECT_MODE_SPECS: Record<string, GenerateObjectModeSpec> 
     required: ['name', 'pattern'],
     optional: [
       'menuItemType', 'baseName', 'targetObject', 'serviceMethod', 'testMethods', 'testTargetType',
-      'modelName', 'datasetAccessor', 'documentType', 'designName',
+      'modelName', 'datasetAccessor', 'documentType', 'designName', 'className',
     ],
     note:
       'Text only, no write. Call analyze_code(mode="patterns") first, then generate_object(mode="pattern"), ' +

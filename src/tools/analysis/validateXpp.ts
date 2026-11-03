@@ -2444,12 +2444,47 @@ function checkExtensionMethodClassShape(code: string): ValidationViolation[] {
  * parameter, and it was the only shape that fired on shipped code. With them
  * excluded, a sweep of 95,753 shipped and ISV AxClass/AxTable/AxForm files
  * (1,075,169 source blocks) gives no KW001 at all.
+ *
+ * Every name of a declaration list is checked, not only the first: `int a, count;`
+ * fails with "'identifier' expected". So is a sized-string parameter
+ * (`str 20 select`). A `for`, `using` or `catch` header matches the parameter
+ * pattern, and the fix calls it a loop variable or a variable instead.
  */
 const RESERVED_TYPE_NAMES = /^(str|int|int64|real|date|utcdatetime|guid|container|anytype|var)$/i;
 
+function isDeclarationType(type: string): boolean {
+  return RESERVED_TYPE_NAMES.test(type) || !isReservedKeyword(type);
+}
+
+function isReservedName(name: string): boolean {
+  return isReservedKeyword(name) && !/^(asc|desc)$/i.test(name);
+}
+
 function isReservedDeclaration(type: string, name: string): boolean {
-  return isReservedKeyword(name) && !/^(asc|desc)$/i.test(name)
-    && (RESERVED_TYPE_NAMES.test(type) || !isReservedKeyword(type));
+  return isReservedName(name) && isDeclarationType(type);
+}
+
+/**
+ * The names after the first in a declaration list, with their offsets. `tail`
+ * starts at the `,` or `=` after the first name; the statement ends at the next
+ * `;` and is not one if a brace comes first. Commas inside (), [] and {} belong
+ * to an initializer, not to the list.
+ */
+function laterDeclaredNames(masked: string, tail: number): { name: string; index: number }[] {
+  const end = masked.indexOf(';', tail);
+  if (end < 0 || /[{}]/.test(masked.slice(tail, end))) return [];
+  const names: { name: string; index: number }[] = [];
+  let depth = 0;
+  for (let i = tail; i < end; i++) {
+    const ch = masked[i];
+    if (ch === '(' || ch === '[') depth++;
+    else if (ch === ')' || ch === ']') depth--;
+    else if (ch === ',' && depth === 0) {
+      const n = /^\s*([A-Za-z_]\w*)\s*(?:=|,|$)/.exec(masked.slice(i + 1, end));
+      if (n) names.push({ name: n[1], index: i + 1 + n[0].indexOf(n[1]) });
+    }
+  }
+  return names;
 }
 
 function checkReservedIdentifiers(code: string): ValidationViolation[] {
@@ -2458,7 +2493,7 @@ function checkReservedIdentifiers(code: string): ValidationViolation[] {
   const violations: ValidationViolation[] = [];
   const declRe =
     /^\s*(?:(?:public|protected|private|internal|static|final|const|readonly)\s+)*([A-Za-z_][\w.]*)(?:\s+\d+)?\s+([A-Za-z_]\w*)\s*[;,=]/gim;
-  const paramRe = /[(,]\s*([A-Za-z_][\w.]*)\s+([A-Za-z_]\w*)\s*(?=[,)=])/g;
+  const paramRe = /[(,]\s*([A-Za-z_][\w.]*)(?:\s+\d+)?\s+([A-Za-z_]\w*)\s*(?=[,)=])/g;
   const report = (index: number, name: string, what: string) => {
     const lineNo = lineNumber(masked, index);
     violations.push({
@@ -2473,10 +2508,21 @@ function checkReservedIdentifiers(code: string): ValidationViolation[] {
   };
   let m: RegExpExecArray | null;
   while ((m = declRe.exec(masked)) !== null) {
-    if (isReservedDeclaration(m[1], m[2])) report(m.index, m[2], 'variable');
+    if (!isDeclarationType(m[1]) || /^(asc|desc)$/i.test(m[2])) continue;
+    if (isReservedName(m[2])) report(m.index, m[2], 'variable');
+    if (m[0].endsWith(';')) continue;
+    for (const later of laterDeclaredNames(masked, m.index + m[0].length - 1)) {
+      if (isReservedName(later.name)) report(later.index, later.name, 'variable');
+    }
   }
   while ((m = paramRe.exec(masked)) !== null) {
-    if (isReservedDeclaration(m[1], m[2])) report(m.index, m[2], 'parameter');
+    if (!isReservedDeclaration(m[1], m[2])) continue;
+    const header = m[0].startsWith('(')
+      ? /(\w+)\s*$/.exec(masked.slice(Math.max(0, m.index - 20), m.index))?.[1].toLowerCase()
+      : undefined;
+    const what = header === 'for' ? 'loop variable'
+      : header === 'using' || header === 'catch' ? 'variable' : 'parameter';
+    report(m.index, m[2], what);
   }
   return violations;
 }

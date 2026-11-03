@@ -73,7 +73,7 @@ describe('indexOneFile — a form', () => {
       { datasource_name: 'Main', table_name: 'SalesTable' },
     ]);
     expect(rows(`SELECT pattern FROM form_patterns`).map(r => r.pattern)).toContain('SimpleList');
-    const src = rows(`SELECT xml_gz FROM form_source WHERE form_name = 'IncrementalDemoForm'`)[0];
+    const src = rows(`SELECT xml_gz FROM object_source WHERE object_type = 'form' AND name = 'IncrementalDemoForm'`)[0];
     expect(gunzipSync(src.xml_gz).toString('utf-8')).toBe(formXml('SalesTable'));
   });
 
@@ -91,8 +91,8 @@ describe('indexOneFile — a form', () => {
 
     expect(rows(`SELECT table_name FROM form_datasources ORDER BY table_name`).map(r => r.table_name))
       .toEqual(['CustTable', 'SalesLine']);
-    expect(rows(`SELECT COUNT(*) AS n FROM form_source`)[0].n).toBe(1);
-    const src = rows(`SELECT xml_gz FROM form_source`)[0];
+    expect(rows(`SELECT COUNT(*) AS n FROM object_source`)[0].n).toBe(1);
+    const src = rows(`SELECT xml_gz FROM object_source`)[0];
     expect(gunzipSync(src.xml_gz).toString('utf-8')).toBe(edited);
   });
 
@@ -106,6 +106,6 @@ describe('indexOneFile — a form', () => {
     expect(rows(`SELECT COUNT(*) AS n FROM symbols WHERE type = 'form'`)[0].n).toBe(0);
     expect(rows(`SELECT COUNT(*) AS n FROM form_datasources`)[0].n).toBe(0);
     expect(rows(`SELECT COUNT(*) AS n FROM form_patterns`)[0].n).toBe(0);
-    expect(rows(`SELECT COUNT(*) AS n FROM form_source`)[0].n).toBe(0);
+    expect(rows(`SELECT COUNT(*) AS n FROM object_source`)[0].n).toBe(0);
   });
 });

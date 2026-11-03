@@ -223,6 +223,19 @@ async function refreshBridgeForBatch(
 
 export const updateSymbolIndexTool = async (params: any, context: XppServerContext) => {
   const filePaths = normalizeFilePaths(params?.filePath);
+  const model = typeof params?.model === 'string' ? params.model.trim() : '';
+
+  if (model) {
+    if (filePaths.length > 0) {
+      return {
+        content: [{ type: 'text', text: '❌ Pass `filePath` or `model`, not both: `model` already covers every file of it.' }],
+        isError: true,
+      };
+    }
+    // Loaded on demand: modelReindex builds on indexOneFile from this module.
+    const { reindexModel } = await import('./modelReindex.js');
+    return reindexModel(model, context);
+  }
 
   // Refresh mode (no filePath): refreshes the bridge provider and drops workspace
   // caches, lighter than a full reindex. Per-object SQLite indexing still needs filePath.
@@ -346,6 +359,13 @@ async function reindexExtensionMetadata(
   return { name: data.name, baseObjectName: data.baseObjectName };
 }
 
+/** The mtime this file was read at, for update_symbol_index(model) to compare against. */
+function recordIndexed(filePath: string, model: string, symbolIndex: XppServerContext['symbolIndex']): void {
+  try {
+    symbolIndex.recordIndexedFile?.(filePath, fs.statSync(filePath).mtimeMs, model);
+  } catch { /* vanished after indexing — the next pass sees it as deleted */ }
+}
+
 export async function indexOneFile(
   filePath: string,
   context: XppServerContext,
@@ -386,6 +406,7 @@ export async function indexOneFile(
       // The bridge refresh that stops it seeing the deleted file is the caller's
       // per-batch one.
       symbolIndex.touchLastIndexed?.();
+      symbolIndex.forgetIndexedFile?.(filePath);
 
       const parts_cleaned: string[] = [];
       if (deletedCount > 0) parts_cleaned.push(`${deletedCount} symbol(s)`);
@@ -464,6 +485,7 @@ export async function indexOneFile(
       }
 
       symbolIndex.touchLastIndexed?.();
+      recordIndexed(filePath, model, symbolIndex);
 
       return ok(
         `✅ Label index updated for **${path.basename(filePath)}** (model: ${model}, language: ${language}).\n\n` +
@@ -473,6 +495,14 @@ export async function indexOneFile(
     }
 
     const parser = new XppMetadataParser();
+
+    // Kept for object_source; the parsers read the file themselves.
+    let sourceXml: string | undefined;
+    try {
+      sourceXml = fs.readFileSync(filePath, 'utf-8');
+    } catch {
+      sourceXml = undefined;
+    }
 
     console.error(`[update_symbol_index] Re-indexing ${objectType} "${objectName}" (model: ${model})`);
 
@@ -745,18 +775,12 @@ export async function indexOneFile(
       if (result.success && result.data) {
         const formData = result.data as any;
         // Same writer as the full build, so datasources, patterns and the stored source
-        // follow an edit. parseFormFile does not return the XML, hence the second read.
-        let xml: string | undefined;
-        try {
-          xml = fs.readFileSync(filePath, 'utf-8');
-        } catch {
-          xml = undefined;
-        }
+        // follow an edit.
         symbolIndex.writeFormSymbols(
           { ...formData, name: formData.name ?? objectName },
           model,
           filePath,
-          xml,
+          sourceXml,
         );
         insertedCount++;
       } else {
@@ -889,7 +913,17 @@ export async function indexOneFile(
       tx();
     }
 
+    // The stored copy follows the file, as in the full build (writeFormSymbols stores forms).
+    // Keyed by the indexed row's name, as the build keys it, not the file name's casing.
+    if (objectType !== 'form' && insertedCount > 0 && symbolIndex.writeObjectSource) {
+      const row = symbolIndex.db.prepare(
+        'SELECT name FROM symbols WHERE file_path = ? AND type = ? AND parent_name IS NULL LIMIT 1'
+      ).get(filePath, objectType) as { name?: string } | undefined;
+      symbolIndex.writeObjectSource(objectType, row?.name ?? objectName, model, sourceXml);
+    }
+
     symbolIndex.touchLastIndexed?.();
+    recordIndexed(filePath, model, symbolIndex);
 
     const extensionNote =
       extensionMetadataWritten === true

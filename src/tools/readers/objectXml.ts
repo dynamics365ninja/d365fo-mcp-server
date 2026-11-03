@@ -14,7 +14,7 @@ import {
   findD365FileOnDisk, findD365FileViaIndex, modelsHoldingObject,
   type SymbolFileLookupSource,
 } from '../../utils/objectFileLookup.js';
-import { readIndexedXml } from '../../utils/indexedXmlLookup.js';
+import { readIndexedXml, indexedXmlSourceLabel, symbolTypesFor } from '../../utils/indexedXmlLookup.js';
 
 /** Default ceiling on returned XML. A large form is well past any useful read. */
 const DEFAULT_MAX_CHARS = 40_000;
@@ -141,27 +141,16 @@ export async function readObjectXml(
     if (indexed) return renderObjectXml(indexed.filePath, objectType, objectName, options);
 
     // findD365FileViaIndex checks only the stored path, case-sensitively. readIndexedXml
-    // adds the local remap and, for a form on a database-only host, the stored copy; it
-    // ignores modelName, hence the filter.
-    if (objectType === 'form') {
-      const found = await readIndexedXml(options.index.getReadDb(), objectName, ['form']);
-      const modelOk = !options.modelName
-        || found?.ref.indexedModel.toLowerCase() === options.modelName.toLowerCase();
-      if (found && modelOk) {
-        if (found.source === 'stored') {
-          return renderXmlContent(
-            found.xml.replace(/^\uFEFF/, ''),
-            `**Source:** stored copy in the index${found.storedAt ? `, written ${found.storedAt}` : ''}` +
-              ` (${found.ref.indexedPath ?? 'no file path'}); no AOT file reachable on this host`,
-            objectType, objectName, options,
-          );
-        }
-        return renderXmlContent(
-          found.xml.replace(/^\uFEFF/, ''),
-          `**File:** ${found.ref.localPath}`,
-          objectType, objectName, options,
-        );
-      }
+    // adds the local remap and, on a database-only host, the stored copy; it ignores
+    // modelName, hence the filter.
+    const found = await readIndexedXml(options.index.getReadDb(), objectName, symbolTypesFor(objectType));
+    const modelOk = !options.modelName
+      || found?.ref.indexedModel.toLowerCase() === options.modelName.toLowerCase();
+    if (found && modelOk) {
+      const header = found.source === 'stored'
+        ? `**Source:** ${indexedXmlSourceLabel(found)}\n**Indexed path:** ${found.ref.indexedPath ?? '—'}`
+        : `**File:** ${found.ref.localPath}`;
+      return renderXmlContent(found.xml.replace(/^\uFEFF/, ''), header, objectType, objectName, options);
     }
     return objectXmlNotFound(
       objectType, objectName, options.modelName,

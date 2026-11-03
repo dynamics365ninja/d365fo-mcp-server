@@ -42,7 +42,7 @@ Three complementary data sources, one rule: **bridge-first when live metadata ma
 | Available on | all platforms | all platforms | Windows VM only |
 | Symbol search | ✅ < 10 ms | — | ✅ live |
 | Method signatures / source | ✅ snapshot | ✅ on demand | ✅ live |
-| Cross-references (callers) | ~ FTS approximation | — | ✅ exact (`DYNAMICSXREFDB`) |
+| Cross-references (callers) | ~ FTS approximation, or exact from a SQLite export of `DYNAMICSXREFDB` (`D365FO_XREF_SQLITE_PATH`) | — | ✅ exact (`DYNAMICSXREFDB`) |
 | Labels (20M+ rows) | ✅ sole source | — | create/rename only |
 | Create / modify objects | validated XML writers for types the provider cannot express | — | ✅ 13 create types, 27 modify ops |
 
@@ -86,7 +86,7 @@ Generated code must *prove* itself before touching disk. All gates are fail-clos
 |------|------------------|-------------|--------|
 | Provenance | `prepare` (mode=change/create) issues a grounding token (30 min TTL, object-bound). In-memory by default; with `GROUNDING_SECRET` set on both instances the token is HMAC-signed and portable, so the hybrid write-only companion (and scaled-out App Service) can validate it — without the secret, write-only mode bypasses enforcement | write called without a valid token | `GROUNDING_ENFORCE` + `GROUNDING_SECRET` |
 | References | `validate_code(mode="references")` — every type, field, method (incl. arity), enum, label checked against the index | any identifier unresolved | `GROUNDING_ENFORCE` |
-| Best practices | `validate_code(mode="syntax")` — **56 rules**: 52 static (ATTR001–003, BP001–006, COC001–006, CS001, DOC001, EXT001, FN001/002, KW001, MAC001, OP001, RPT001/002/101–103, SEL001–011, SET001, TST001–003, TTS001–003, XML001/006–010) + 4 data-driven (XML002–005) mined from standard models (`property_stats`). FN001/FN002/KW001/ATTR001/SEL010 read the captured compiler tables (`src/knowledge/compilerFacts.ts`) rather than a hand-kept list | error-severity violations | — (advisory in output) |
+| Best practices | `validate_code(mode="syntax")` — **56 rules**: 52 static (ATTR001–003, BP001–006, COC001–006, CS001, DOC001, EXT001, FN001/002, KW001, MAC001, OP001, RPT001/002/101–103, SEL001–011, SET001, TST001–003, TTS001–003, XML001/006–010) + 4 data-driven (XML002–005) mined from standard models (`property_stats`). FN001/FN002/KW001/ATTR001/SEL010 read the captured compiler tables (`src/knowledge/compilerFacts.ts`) rather than a hand-kept list; the `reserved-words` knowledge topic is generated from the same table | error-severity violations | — (advisory in output) |
 | Form patterns | `object_patterns (domain=form, action=validate)` — rules FP000–FP010 against the curated pattern catalog | structural violations (FP001–FP005, FP007) | `FORM_PATTERN_ENFORCE` |
 
 Supporting reliability mechanisms:
@@ -97,6 +97,7 @@ Supporting reliability mechanisms:
 | Agentic-loop detection | ≥3 identical calls in a 15-call window → corrective hint injected |
 | Index staleness detector | `get_workspace_info` warns when workspace files are newer than the index |
 | Structured xppc diagnostics | `build_d365fo_project` parses compiler output into actionable items with fix hints |
+| Extension name formats | optional `EXTENSION_*_NAME_FORMAT*` settings: one resolver (`resolveFormattedExtensionName`, `src/utils/objectNaming.ts`) names extensions for create, the modify lookup, `prepare`, `generate_object` and the cross-model suggestion, and `validate_object_naming` checks against the same formats. The base type comes from the call (`[ExtensionOf(<kind>Str)]`, a stated type), never from the index, so the write-only companion and the read-only server name alike |
 
 ### Form pattern engine
 
@@ -143,7 +144,7 @@ Key implementation points:
 - **DiskProvider discovery** — write methods hide behind internal interfaces; the bridge casts to reach `SaveObject()`.
 - **ModelSaveInfo** — every write resolves the owning model from its descriptor, so files land in the right model.
 - **Auto-invalidation** — after each write: bridge metadata cache + SQLite index are refreshed, so the next read sees the change.
-- **Graceful degradation** — bridge missing (Azure/Linux) → read tools fall back to SQLite; `xrefAvailable: false` → xref tools fall back to FTS. Not in `write-only` mode: the companion has no index to search, so `find_references` there answers from `DYNAMICSXREFDB` only and points to the shared server's `find_references` otherwise.
+- **Graceful degradation** — bridge missing (Azure/Linux) → read tools fall back to SQLite; `xrefAvailable: false` → xref tools read the SQLite export of `DYNAMICSXREFDB` named by `D365FO_XREF_SQLITE_PATH` when one is configured and valid (`src/xref/`: the bridge's four queries ported, bounded, opened read-only and immutable), else fall back to FTS. Not in `write-only` mode: the companion has no index to search, so `find_references` there answers from the cross-reference database only and points to the shared server's `find_references` otherwise.
 
 ### Bridge protocol & resilience
 
@@ -165,7 +166,7 @@ Dual-database design — symbol searches never scan label rows (**10–30× fast
 
 | Database | Content | Size | Key tables |
 |----------|---------|------|-----------|
-| `xpp-metadata.db` | symbols + analytics | ~2–3 GB | `symbols` (+FTS5), `form_datasources`, `form_patterns`, `form_source`, `table_relations`, `edt_metadata`, `security_*`, `menu_item_targets`, `property_stats` |
+| `xpp-metadata.db` | symbols + analytics | ~2–3 GB | `symbols` (+FTS5), `form_datasources`, `form_patterns`, `object_source`, `table_relations`, `edt_metadata`, `security_*`, `menu_item_targets`, `property_stats` |
 | `xpp-metadata-labels.db` | labels | ~0.5 GB (4 languages) – 8 GB (all 70) | `labels` (+FTS5 for en-US) |
 
 Each `symbols` row carries enhanced metadata beyond name/type/path: description, semantic tags, source snippet, complexity, used types, extends chain, usage statistics — richer context for generation. Statistical tables (`property_stats`, `form_patterns`) power the data-driven validators and advisors.

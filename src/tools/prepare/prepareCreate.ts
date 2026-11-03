@@ -19,7 +19,9 @@ import { createProvenanceToken } from '../../utils/provenanceStore.js';
 import { isAsGivenNamingMode } from '../../utils/modelClassifier.js';
 import { getConfigManager } from '../../utils/configManager.js';
 import { checkObjectNaming } from '../../utils/objectNamingRules.js';
-import { COC_BASE_SYMBOL_TYPES, inferExtendedBase, normalizeObjectName } from '../../utils/objectNaming.js';
+import {
+  COC_BASE_SYMBOL_TYPES, inferExtendedBase, normalizeObjectName, resolveFormattedExtensionName,
+} from '../../utils/objectNaming.js';
 import { renderPrepareOpSpec } from '../specs/opSpecs.js';
 import { rankContext, renderRankedContext } from '../../workspace/contextRanker.js';
 import { budgetRankedContext } from './prepareChange.js';
@@ -280,6 +282,10 @@ async function validateNaming(
   // the product ships camelCase classes, so the derived name legitimately starts
   // lowercase. Requiring PascalCase for those contradicts the extension rule
   // checkObjectNaming enforces below, leaving no name that satisfies both.
+  // A configured name format that cannot name this extension is what create will
+  // answer with: say it now, rather than predict a name create refuses to write.
+  const formatted = resolveFormattedExtensionName(baseName, objectType);
+  if (formatted.kind === 'ask' || formatted.kind === 'invalid') issues.push(`❌ ${formatted.message}`);
   const isExtensionForm = /_Extension$/.test(baseName) || baseName.includes('.');
   if (!/^[A-Z]/.test(baseName) && !isExtensionForm) {
     issues.push('❌ Name must start with an uppercase letter (PascalCase).');

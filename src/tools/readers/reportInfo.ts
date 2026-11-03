@@ -15,7 +15,7 @@ import type { XppServerContext } from '../../types/context.js';
 import { promises as fs } from 'fs';
 import { parseStringPromise } from '../../utils/xml.js';
 import { tryBridgeReport } from '../../bridge/bridgeAdapter.js';
-import { readIndexedXml, bridgeUnavailableNote } from '../../utils/indexedXmlLookup.js';
+import { readIndexedXml, indexedXmlSourceLabel, bridgeUnavailableNote } from '../../utils/indexedXmlLookup.js';
 import { assertWritePathAllowed } from '../../utils/pathContainment.js';
 import { truncateOnBlockBoundary } from '../../utils/payloadBudget.js';
 
@@ -67,6 +67,8 @@ interface ReportInfo {
   name: string;
   model: string;
   filePath: string;
+  /** Set when the XML is the copy the index stored, not a file. */
+  storedSource?: string;
   hasDataMethods: boolean;
   embeddedImageCount: number;
   dataSets: ReportDataSet[];
@@ -144,6 +146,7 @@ export async function getReportInfoTool(request: CallToolRequest, context: XppSe
       const parsed = await buildReportResponse(
         indexed.xml, indexed.ref.name, indexed.ref.model, indexed.ref.localPath ?? '',
         includeFields ?? true, includeRdl ?? false,
+        indexed.source === 'stored' ? indexedXmlSourceLabel(indexed) : undefined,
       );
       if (parsed) return parsed;
     }
@@ -181,6 +184,7 @@ async function buildReportResponse(
   filePath: string,
   includeFields: boolean,
   includeRdl: boolean,
+  storedSource?: string,
 ) {
   let axReport: any;
   try {
@@ -195,6 +199,7 @@ async function buildReportResponse(
     name:                first(axReport.Name) ?? reportName,
     model,
     filePath,
+    storedSource,
     hasDataMethods:      !!axReport.DataMethods && axReport.DataMethods[0] !== '',
     embeddedImageCount:  countItems(axReport.EmbeddedImages?.[0], 'AxReportEmbeddedImage'),
     dataSets:            extractDataSets(axReport, includeFields),
@@ -335,7 +340,7 @@ function formatOutput(info: ReportInfo, includeFields: boolean, includeRdl: bool
   lines.push(`# AxReport: \`${info.name}\``);
   lines.push('');
   lines.push(`**Model:** ${info.model}`);
-  lines.push(`**File:** \`${info.filePath}\``);
+  lines.push(info.storedSource ? `**Source:** ${info.storedSource}` : `**File:** \`${info.filePath}\``);
   lines.push(`**DataMethods:** ${info.hasDataMethods ? '✅ present' : '— none'}`);
   lines.push(`**EmbeddedImages:** ${info.embeddedImageCount}`);
   lines.push('');
