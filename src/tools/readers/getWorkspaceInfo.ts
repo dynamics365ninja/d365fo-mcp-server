@@ -35,6 +35,7 @@ import { activeCrossModelAllowance } from '../../utils/crossModelWriteGuard.js';
 import { parseModuleReferences } from '../../metadata/modelDescriptor.js';
 import { findModelDescriptorPath } from '../../utils/objectFileLookup.js';
 import { assertProjectPathAllowed } from '../../utils/pathContainment.js';
+import { describeXrefSource } from '../../xref/xrefSource.js';
 
 export async function getWorkspaceInfoTool(
   request: CallToolRequest,
@@ -399,6 +400,19 @@ export async function getWorkspaceInfoTool(
     lines.push(...(diagnostics ? ['', ...staleness.lines] : staleness.compactLines));
   } catch {
     // Freshness reporting is best-effort — never break get_workspace_info
+  }
+
+  // Where find_references gets its cross-references, and for an export how old they
+  // are. The compact output shows it only when an xref SQLite file is configured.
+  try {
+    const xref = describeXrefSource(context);
+    if (diagnostics) {
+      lines.push('', '## Cross-references', '', `Source   : ${xref.line}`, ...xref.detail);
+    } else if (xref.sqlite) {
+      lines.push(`Xref        : ${xref.line}`);
+    }
+  } catch {
+    // Best-effort, like the freshness check.
   }
 
   // Stdio session info — what VS 2022 sent during the MCP handshake. Debugging aid only.

@@ -362,6 +362,11 @@ export interface BridgeReferenceResult {
   /** Every matching reference, and how many of them are declarative metadata. Absent from older bridges. */
   total?: number;
   metadataTotal?: number;
+  /**
+   * Set by the xref SQLite provider when a count stopped at its cap: total and
+   * metadataTotal are then lower bounds. The bridge counts without a cap.
+   */
+  totalCapped?: boolean;
   references: BridgeReferenceInfo[];
   /** Set by the C# bridge when the xref query failed in-band (e.g. SQL error) — count is 0 but this is NOT an authoritative "no references". */
   error?: string;
@@ -755,6 +760,12 @@ export interface BridgeEventSubscriberResult {
   count: number;
   handlers: BridgeEventSubscriberEntry[];
   _source: string;
+  /**
+   * Set by the xref SQLite provider when it examined only the first `scanned`
+   * references to the target (its scan cap): more handlers may exist.
+   */
+  scanCapped?: boolean;
+  scanned?: number;
 }
 
 // ===========================
@@ -783,4 +794,6 @@ export interface BridgeApiUsageCallersResult {
   callersByClass: BridgeApiUsageCallersByClass[];
   callers: BridgeApiUsageCallerEntry[];
   _source: string;
+  /** Set by the xref SQLite provider when more callers exist than were returned. */
+  more?: boolean;
 }

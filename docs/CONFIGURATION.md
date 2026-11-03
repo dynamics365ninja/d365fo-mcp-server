@@ -96,6 +96,7 @@ What gets extracted into the SQLite index and where it is stored.
 | `index.labelLanguages` | setup | `LABEL_LANGUAGES` | `en-US` | Comma-separated language codes, or `all` for every language shipped with the model. Each extra language multiplies the label table (~125 MB apiece) — indexing only the languages you actually ship keeps the database small. |
 | `index.dbPath` | advanced | `DB_PATH` | `./data/xpp-metadata.db` | SQLite file holding the indexed X++ metadata. Relative paths resolve from the config file directory. |
 | `index.labelsDbPath` | advanced | `LABELS_DB_PATH` | `./data/xpp-metadata-labels.db` | Second SQLite file for labels (dual-database architecture keeps label writes from locking metadata reads). Defaults to <dbPath>-labels.db. |
+| `index.xrefSqlitePath` | advanced | `D365FO_XREF_SQLITE_PATH` | — | A SQLite export of DYNAMICSXREFDB (tables Modules, Names, References; meta.schema 1) for a server without the C# bridge, e.g. a shared read-only server. find_references and the extension/event/API-usage lookups then answer from it instead of a name-based search; the bridge still takes precedence when it has the database. Opened read-only and immutable on first use: replace the file by rename, never in place (on Windows an open file cannot be renamed over: stop the server, replace the file, start it again). A missing or invalid file is logged and ignored. get_workspace_info shows its export date. |
 | `index.metadataPath` | advanced | `METADATA_PATH` | `./extracted-metadata` | Working folder for the XML dumped during extraction, before it is loaded into the database. |
 | `index.bpCatalogPath` | advanced | `BP_CATALOG_PATH` | — | Per-instance JSON catalog of real BP-check monikers, extracted from this instance's own D365FO version (scripts/extract-bp-catalog.ps1). Falls back to the compiled-in snapshot when absent — this setting is only written once an instance has regenerated its own catalog. |
 | `index.labelSortOrder` | advanced | `LABEL_SORT_ORDER` | `alphabetical` | Alphabetical keeps .label.txt files sorted (smaller diffs, matches most teams); append adds new labels at the end of the file (preserves manual grouping). Values: `alphabetical` — insert in sorted position; `append` — add at the end of the file. |
@@ -235,6 +236,7 @@ Downloading a pre-built index from blob storage instead of building it locally.
     ],
     "dbPath": "./data/xpp-metadata.db",
     "labelsDbPath": "./data/xpp-metadata-labels.db",
+    "xrefSqlitePath": "",
     "metadataPath": "./extracted-metadata",
     "bpCatalogPath": "",
     "labelSortOrder": "alphabetical",

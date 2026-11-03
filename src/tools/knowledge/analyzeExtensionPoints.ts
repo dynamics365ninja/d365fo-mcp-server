@@ -12,6 +12,7 @@ import { scanFsExtensions, EXTENSION_FOLDER_CONFIG } from '../../utils/fsExtensi
 import { canonicalSymbolName } from '../../utils/symbolLookup.js';
 import { inheritanceAncestors } from '../../utils/inheritanceChain.js';
 import type { BridgeClient } from '../../bridge/bridgeClient.js';
+import { xrefSource } from '../../xref/xrefSource.js';
 
 /**
  * Access modifiers straight from IMetadataProvider, keyed by lowercase method
@@ -179,9 +180,10 @@ export async function analyzeExtensionPointsTool(request: CallToolRequest, conte
 
       // Bridge enrichment: when the DB index has no extension_metadata, try the C# bridge
       // (DYNAMICSXREFDB), which provides compiler-resolved extension data with method-level CoC detail.
-      if (existingExtensions.length === 0 && context.bridge?.isReady && context.bridge.xrefAvailable) {
+      const xref = xrefSource(context);
+      if (existingExtensions.length === 0 && xref?.isReady && xref.xrefAvailable) {
         try {
-          const bridgeExts = await context.bridge.findExtensionClasses(objName);
+          const bridgeExts = await xref.findExtensionClasses(objName);
           if (bridgeExts && bridgeExts.count > 0) {
             existingExtensions = bridgeExts.extensions.map((ext: any) => ({
               extension_name: ext.className,

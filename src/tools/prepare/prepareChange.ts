@@ -22,6 +22,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
 import { createProvenanceToken } from '../../utils/provenanceStore.js';
 import { tryBridgeCocExtensions } from '../../bridge/bridgeAdapter.js';
+import { isSqliteXref, xrefSource } from '../../xref/xrefSource.js';
 import { checkObjectNaming } from '../../utils/objectNamingRules.js';
 import { lookupSymbolNocase, lookupSymbolsNocase, type SymbolHit } from '../../utils/symbolLookup.js';
 import { findDeclaringAncestor } from '../../utils/inheritanceChain.js';
@@ -268,10 +269,11 @@ async function fetchCocExtensions(
   methodName: string | undefined,
   context: XppServerContext,
 ): Promise<string> {
-  // Bridge first (DYNAMICSXREFDB — authoritative)
-  if (context.bridge) {
+  // Bridge first (DYNAMICSXREFDB — authoritative), else its SQLite export
+  const xref = xrefSource(context);
+  if (xref) {
     try {
-      const result = await tryBridgeCocExtensions(context.bridge, objectName, methodName);
+      const result = await tryBridgeCocExtensions(xref, objectName, methodName);
       if (result) {
         const text = result.content
           .filter((i: any) => i?.type === 'text')
@@ -327,6 +329,8 @@ async function fetchCocExtensions(
  * fact the caller should know rather than chase.
  */
 function bridgeFallbackReason(context: XppServerContext): string {
+  // The file answers every lookup it can run, empty or not: reaching here means the query failed.
+  if (isSqliteXref(xrefSource(context))) return 'the xref SQLite file query failed';
   const bridge = context.bridge as { isReady?: boolean; xrefAvailable?: boolean } | undefined;
   if (!bridge?.isReady) return 'bridge not connected';
   if (!bridge.xrefAvailable) return 'bridge connected, but the xref database (DYNAMICSXREFDB) is not available';

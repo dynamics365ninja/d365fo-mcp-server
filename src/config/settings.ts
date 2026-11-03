@@ -557,6 +557,21 @@ export const SETTINGS: Setting[] = [
     default: './data/xpp-metadata-labels.db',
   },
   {
+    path: 'index.xrefSqlitePath',
+    env: 'D365FO_XREF_SQLITE_PATH',
+    section: 'index',
+    tier: 'advanced',
+    type: 'path',
+    label: 'Cross-reference SQLite file',
+    description:
+      'A SQLite export of DYNAMICSXREFDB (tables Modules, Names, References; meta.schema 1) for a server without ' +
+      'the C# bridge, e.g. a shared read-only server. find_references and the extension/event/API-usage lookups ' +
+      'then answer from it instead of a name-based search; the bridge still takes precedence when it has the ' +
+      'database. Opened read-only and immutable on first use: replace the file by rename, never in place (on Windows ' +
+      'an open file cannot be renamed over: stop the server, replace the file, start it again). ' +
+      'A missing or invalid file is logged and ignored. get_workspace_info shows its export date.',
+  },
+  {
     path: 'index.metadataPath',
     env: 'METADATA_PATH',
     section: 'index',
