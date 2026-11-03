@@ -159,6 +159,20 @@ those are called out explicitly below.
   warning. The same item under the same parent again is a skip.
   XML only, no bridge change; `menu` is unchanged, except that the AxMenu fallback now
   escapes the item name.
+- **`add-submenu`, and items into a submenu of your own menu.** No operation wrote a
+  submenu, and the `menu-navigation` knowledge topic told agents to hand-write one with a
+  `<SubMenu>` field that no shipped file has. `add-submenu` (`submenuName`,
+  `submenuLabel`, `parentMenuElement`) writes an inline `AxMenuElementSubMenu` with an
+  empty `<Elements />`: on a `menu-extension` as a root entry with `<Parent>`, or nested in
+  a submenu the extension adds; on a `menu` (a menu of your own model) in the root or in a
+  submenu of that menu. A name already used anywhere in the menu is refused (a `<Parent>`
+  names submenus by plain name), the same one under the same parent again is a skip.
+  `add-menu-item-to-menu` takes `parentMenuElement` on a `menu` too, through the XML
+  writer, since the C# op has no parent. That writer also no longer inserts before the
+  first `</Elements>` in the file, which in a menu whose first element is a submenu put the
+  item inside that submenu, and it skips an item already in the target collection. The
+  knowledge topic now shows the inline shape, `AxMenuElementMenuReference` for menu
+  objects, and the two operations instead of hand-written XML.
 
 ### Changed
 - **`object_source` replaces `form_source`; rebuild the database after upgrading.** This

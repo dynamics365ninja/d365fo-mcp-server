@@ -3909,27 +3909,26 @@ finally
   {
     id: 'menu-navigation',
     title: 'Menus, Menu Items & Submenu Nesting',
-    keywords: ['menu', 'submenu', 'sub-menu', 'navigation', 'axmenu', 'axmenuelement', 'menu item', 'nesting', 'inquiries and reports'],
+    keywords: ['menu', 'submenu', 'sub-menu', 'navigation', 'axmenu', 'axmenuelement', 'menu item', 'nesting', 'inquiries and reports', 'menu extension', 'axmenuextension'],
     summary:
-      'An AxMenu is a flat <Elements> collection of AxMenuElement entries. A menu ITEM reference ' +
-      '(display/action/output) is an AxMenuElementMenuItem. A NESTED SUBMENU (another AxMenu shown ' +
-      'as a folder inside this one, e.g. "Inquiries and reports") is a DIFFERENT element type — ' +
-      'AxMenuElementSubMenu — with its own field name, not a menu-item reference.',
+      'An AxMenu\'s <Elements> holds AxMenuElement entries discriminated by i:type: a menu ITEM ' +
+      '(AxMenuElementMenuItem), an inline SUBMENU (AxMenuElementSubMenu — a folder such as "Inquiries ' +
+      'and reports", with its own Name, Label and nested <Elements>), a reference to ANOTHER menu object ' +
+      '(AxMenuElementMenuReference), a Tile or a Separator. A standard menu is changed through an ' +
+      'AxMenuExtension, never edited itself. Two operations write both: add-submenu and add-menu-item-to-menu.',
     rules: [
-      'Menu-item reference: <AxMenuElement i:type="AxMenuElementMenuItem"><Name>X</Name><MenuItemName>X</MenuItemName></AxMenuElement>',
-      'Submenu reference (nesting another AxMenu inside this one): <AxMenuElement i:type="AxMenuElementSubMenu"><Name>X</Name><SubMenu>X</SubMenu></AxMenuElement> — ' +
-        'the field is <SubMenu>, NOT <MenuName> and NOT <MenuItemName>. Verified against the real ' +
-        'Microsoft.Dynamics.AX.Metadata.dll type names: AxMenuElementMenuItem, AxMenuElementSubMenu, ' +
-        'AxMenuElementSeparator, AxMenuElementTile, AxMenuElementMenuReference (a different, legacy concept — not the one you want for a plain submenu).',
-      '❌ There is no tool operation to add a submenu automatically: add-menu-item-to-menu\'s menuItemToAddType only accepts "display"/"action"/"output" (menu ITEMS). To nest a submenu you must hand-author the <AxMenuElementSubMenu> element into the parent menu\'s XML (d365fo_file create/modify with overwrite) — this is a genuine, current tool gap, not a workaround to avoid.',
-      'A menu ITEM into a STANDARD menu: create a menu-extension ("<BaseMenu>.<Prefix>Extension"), then d365fo_file(action="modify", objectType="menu-extension", operation="add-menu-item-to-menu", params={ menuItemToAdd, menuItemToAddType, parentMenuElement }) — parentMenuElement is the plain name of the base menu\'s submenu (e.g. "Inquiries", nested ones too), omitted = top level. It writes <AxMenuExtensionElement><Parent>…</Parent><MenuElement i:type="AxMenuElementMenuItem">…</MenuElement></AxMenuExtensionElement>, or nests the item inside a submenu the extension adds itself; never edit the standard AxMenu itself.',
-      'A submenu is itself just a normal AxMenu object (create it with d365fo_file(action="create", objectType="menu")) — build its own items first, THEN add the AxMenuElementSubMenu reference to it from the parent menu.',
-      'This applies both to brand-new standalone menus AND to menu-extensions (AxMenuExtension) nesting into a standard menu (e.g. under "Inquiries and reports") — neither path has a dedicated add-submenu tool operation.',
-      'Always verify with build_d365fo_project after hand-authoring: a wrong element type name (e.g. the plausible-looking but nonexistent "AxMenuElementMenu"/"MenuName") is NOT caught by xppc itself — it only surfaces when the separate GenerateMetadata runtime-metadata step tries to deserialize the file ("cannot be deserialized as AxMenu ... no knowledge of any type that maps to this name").',
+      'Use the operations, never hand-written or overwritten XML: d365fo_file(action="modify", objectType="menu" (a menu of your own model) | "menu-extension" (a standard menu), operation="add-submenu", params={ submenuName, submenuLabel, parentMenuElement }) and operation="add-menu-item-to-menu", params={ menuItemToAdd, menuItemToAddType, parentMenuElement }. parentMenuElement is the PLAIN name of the submenu it goes under (nested ones too, e.g. "EInvoice" under Setup), omitted = top level.',
+      'A menu ITEM into a STANDARD menu: create a menu-extension ("<BaseMenu>.<Prefix>Extension"), then add-menu-item-to-menu on it. To group items in a new folder, add-submenu on the extension first, then add-menu-item-to-menu with parentMenuElement=<the new submenu>.',
+      'Menu item: <AxMenuElement xmlns="" i:type="AxMenuElementMenuItem"><Name>X</Name><MenuItemName>X</MenuItemName><MenuItemType>Action|Output</MenuItemType></AxMenuElement> — MenuItemType may be left out for Display.',
+      'Submenu: an INLINE folder, <AxMenuElement xmlns="" i:type="AxMenuElementSubMenu"><Name>X</Name><Label>@Model:Id</Label><Elements>…its items…</Elements></AxMenuElement>. Do not write a <SubMenu> field: none of 101 submenus in 44 shipped menu and extension files has one. A submenu is NOT a separate AxMenu object.',
+      'Another menu OBJECT inside a menu is an AxMenuElementMenuReference with <MenuName> — how every MainMenu.* extension hooks a module menu into the main menu.',
+      'In an AxMenuExtension each root entry is <AxMenuExtensionElement><Parent>submenu of the base menu</Parent><MenuElement i:type="…">…</MenuElement></AxMenuExtensionElement>; a submenu the extension adds itself holds its items nested in its own <Elements>, without <Parent>. The operations write both shapes.',
+      'Submenu names must be unique in the whole menu (base menu and all its extensions): a <Parent> names a submenu by its plain name. A <Parent> naming no submenu fails the build.',
+      'Always verify with build_d365fo_project: a wrong element type name (e.g. the plausible-looking but nonexistent "AxMenuElementMenu") is NOT caught by xppc itself — it only surfaces when the separate GenerateMetadata runtime-metadata step tries to deserialize the file ("cannot be deserialized as AxMenu ... no knowledge of any type that maps to this name").',
     ],
     examples: [
       {
-        label: 'Parent menu with two items and one nested submenu',
+        label: 'A menu of your own model: one item and an inline submenu with its item',
         code: `<AxMenu xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
   <Name>MyModule</Name>
   <Label>@MyModel:MyModule</Label>
@@ -3938,14 +3937,15 @@ finally
       <Name>MyEquipment</Name>
       <MenuItemName>MyEquipment</MenuItemName>
     </AxMenuElement>
-    <AxMenuElement xmlns="" i:type="AxMenuElementMenuItem">
-      <Name>MyAgreement</Name>
-      <MenuItemName>MyAgreement</MenuItemName>
-    </AxMenuElement>
-    <!-- Nested submenu: MySetup is itself a separate AxMenu object -->
     <AxMenuElement xmlns="" i:type="AxMenuElementSubMenu">
       <Name>MySetup</Name>
-      <SubMenu>MySetup</SubMenu>
+      <Label>@MyModel:Setup</Label>
+      <Elements>
+        <AxMenuElement xmlns="" i:type="AxMenuElementMenuItem">
+          <Name>MyParameters</Name>
+          <MenuItemName>MyParameters</MenuItemName>
+        </AxMenuElement>
+      </Elements>
     </AxMenuElement>
   </Elements>
 </AxMenu>`,

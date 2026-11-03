@@ -148,8 +148,13 @@ describe('layer direction', () => {
     // 4,787 lines). The writer and the parent check went to directXmlWriters.ts and
     // tools/xml/menuExtensionXml.ts, so what landed here is the parentMenuElement
     // argument, the import and the four-line branch in the switch arm.
+    //
+    // Raised 4,790 -> 4,800 for add-submenu (4,787 -> 4,798 lines). The writers went
+    // to directXmlWriters.ts and tools/xml/menuXml.ts, so what landed here is two
+    // argument lines, the import, the add-submenu arm and the branch that sends an
+    // item for a submenu of a menu to the XML writer (the C# op has no parent).
     const src = readFileSync('src/tools/write/modifyD365File.ts', 'utf8');
-    expect(src.split('\n').length).toBeLessThan(4790);
+    expect(src.split('\n').length).toBeLessThan(4800);
   });
 
   it('the dispatcher routes rather than implementing', () => {

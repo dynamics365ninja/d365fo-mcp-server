@@ -61,7 +61,7 @@ const MENU_ITEM_TYPE_VALUE: Record<MenuExtensionItemType, string | null> = {
   output: 'Output',
 };
 
-interface ElementSpan {
+export interface ElementSpan {
   tag: string;
   open: number;
   openEnd: number;
@@ -75,7 +75,7 @@ interface ElementSpan {
  * to its own close. Depth is what keeps a submenu's nested <Elements> from being
  * taken for the collection that holds it.
  */
-function* directChildren(xml: string, from: number): Generator<ElementSpan> {
+export function* directChildren(xml: string, from: number): Generator<ElementSpan> {
   const re = /<(\/?)([A-Za-z_][\w.:-]*)\b[^>]*?(\/?)>/g;
   re.lastIndex = from;
   let depth = 0;
@@ -98,28 +98,28 @@ function* directChildren(xml: string, from: number): Generator<ElementSpan> {
   }
 }
 
-function child(xml: string, el: ElementSpan, tag: string): ElementSpan | null {
+export function child(xml: string, el: ElementSpan, tag: string): ElementSpan | null {
   if (el.selfClosed) return null;
   for (const c of directChildren(xml, el.openEnd)) if (c.tag === tag) return c;
   return null;
 }
 
 /** Text of a direct child, as written in the file (still XML-escaped). */
-function childText(xml: string, el: ElementSpan, tag: string): string | null {
+export function childText(xml: string, el: ElementSpan, tag: string): string | null {
   const c = child(xml, el, tag);
   return c ? xml.slice(c.openEnd, c.close).trim() : null;
 }
 
-function iType(xml: string, el: ElementSpan): string | null {
+export function iType(xml: string, el: ElementSpan): string | null {
   return /\bi:type="([^"]*)"/.exec(xml.slice(el.open, el.openEnd))?.[1] ?? null;
 }
 
 /** Whitespace before an element on its own line — the indent its children are one tab deeper than. */
-function lineIndent(xml: string, at: number): string {
+export function lineIndent(xml: string, at: number): string {
   return xml.slice(xml.lastIndexOf('\n', at) + 1, at);
 }
 
-const same = (a: string | null | undefined, b: string) => (a ?? '').toLowerCase() === b.toLowerCase();
+export const same = (a: string | null | undefined, b: string) => (a ?? '').toLowerCase() === b.toLowerCase();
 
 /**
  * Names of every submenu in an AxMenu or AxMenuExtension, at any depth, as written
@@ -138,22 +138,25 @@ export function menuSubmenuNames(xml: string): string[] {
   return names;
 }
 
-/** The <Elements> of the submenu named `name` that this extension adds, at any depth. */
-function ownSubmenuElements(xml: string, collection: ElementSpan, name: string): ElementSpan | null {
+/**
+ * The <Elements> of the submenu named `name` in this file, at any depth: one an
+ * extension adds, or an inline submenu of an AxMenu.
+ */
+export function findSubmenuElements(xml: string, collection: ElementSpan, name: string): ElementSpan | null {
   for (const c of directChildren(xml, collection.openEnd)) {
     const el = c.tag === 'AxMenuExtensionElement' ? child(xml, c, 'MenuElement') : c;
     if (!el || iType(xml, el) !== 'AxMenuElementSubMenu') continue;
     const elements = child(xml, el, 'Elements');
     if (!elements) continue;
     if (same(childText(xml, el, 'Name'), name)) return elements;
-    const deeper = elements.selfClosed ? null : ownSubmenuElements(xml, elements, name);
+    const deeper = elements.selfClosed ? null : findSubmenuElements(xml, elements, name);
     if (deeper) return deeper;
   }
   return null;
 }
 
 /** Insert `block` (lines already indented) at the end of a collection, either spelling of empty included. */
-function appendTo(xml: string, collection: ElementSpan, block: string): string {
+export function appendTo(xml: string, collection: ElementSpan, block: string): string {
   const indent = lineIndent(xml, collection.open);
   if (collection.selfClosed || !xml.slice(collection.openEnd, collection.close).trim()) {
     return `${xml.slice(0, collection.open)}<${collection.tag}>\n${block}${indent}</${collection.tag}>${xml.slice(collection.end)}`;
@@ -184,7 +187,7 @@ export function addMenuExtensionItem(xml: string, spec: MenuExtensionItemSpec): 
     !!el && iType(xmlOf, el) === 'AxMenuElementMenuItem' && same(childText(xmlOf, el, 'MenuItemName'), name);
 
   // A submenu this extension adds takes the item INSIDE it, as the shipped files do.
-  const own = parent ? ownSubmenuElements(xml, collection, parent) : null;
+  const own = parent ? findSubmenuElements(xml, collection, parent) : null;
   if (own) {
     if (!own.selfClosed) {
       for (const c of directChildren(xml, own.openEnd)) if (isThisItem(xml, c)) return { kind: 'already-present' };
@@ -221,4 +224,95 @@ export function addMenuExtensionItem(xml: string, spec: MenuExtensionItemSpec): 
     `${ind}\t</MenuElement>\n` +
     `${ind}</AxMenuExtensionElement>\n`;
   return { kind: 'added', xml: appendTo(xml, collection, block), menuItemType, nested: false };
+}
+
+/** Where each submenu in this file sits: its plain name and its parent ('' = top level). */
+export function submenuLocations(xml: string, collection: ElementSpan, parent = ''): Array<{ name: string; parent: string }> {
+  const out: Array<{ name: string; parent: string }> = [];
+  if (collection.selfClosed) return out;
+  for (const c of directChildren(xml, collection.openEnd)) {
+    const wrapped = c.tag === 'AxMenuExtensionElement';
+    const el = wrapped ? child(xml, c, 'MenuElement') : c;
+    if (!el || iType(xml, el) !== 'AxMenuElementSubMenu') continue;
+    const name = childText(xml, el, 'Name') ?? '';
+    out.push({ name, parent: wrapped ? (childText(xml, c, 'Parent') ?? '') : parent });
+    const elements = child(xml, el, 'Elements');
+    if (elements) out.push(...submenuLocations(xml, elements, name));
+  }
+  return out;
+}
+
+export interface MenuSubmenuSpec {
+  name: string;
+  /** Label id (@Model:Id); written as given. */
+  label?: string;
+  parent?: string;
+}
+
+export type AddSubmenuResult =
+  /** `nested`: placed inside a submenu of this file, rather than as a root entry. */
+  | { kind: 'added'; xml: string; nested: boolean }
+  /** A submenu of that name is already under the same parent — idempotent no-op. */
+  | { kind: 'already-present' }
+  /** The name is taken by a submenu under another parent; a <Parent> could not tell them apart. */
+  | { kind: 'exists'; parent: string }
+  /** AxMenu only: the parent is no submenu of this menu. */
+  | { kind: 'no-parent'; submenus: string[] }
+  | { kind: 'no-collection' }
+  | { kind: 'unsupported' };
+
+/**
+ * An <AxMenuElement i:type="AxMenuElementSubMenu"> with an empty collection, for an
+ * AxMenu or for nesting inside a submenu an extension adds. `split` puts the
+ * attribute on its own line, as the shipped files do; the AxMenu writer keeps the
+ * one-line tag it has always written.
+ */
+export function submenuElementBlock(ind: string, name: string, label: string, split: boolean): string {
+  return (
+    (split ? `${ind}<AxMenuElement xmlns=""\n${ind}\ti:type="AxMenuElementSubMenu">\n` : `${ind}<AxMenuElement xmlns="" i:type="AxMenuElementSubMenu">\n`) +
+    `${ind}\t<Name>${name}</Name>\n` +
+    (label ? `${ind}\t<Label>${label}</Label>\n` : '') +
+    `${ind}\t<Elements />\n` +
+    `${ind}</AxMenuElement>\n`
+  );
+}
+
+/**
+ * Add a submenu to an AxMenuExtension: a root entry with <Parent> for a submenu of
+ * the base menu (or none for the top level), nested for a submenu the extension
+ * adds itself. Shape as shipped — 68 added submenus in a sample of 43 extensions:
+ * Name, then optional properties (Label in 49), then <Elements>, `<Elements />`
+ * when empty.
+ */
+export function addMenuExtensionSubmenu(xml: string, spec: MenuSubmenuSpec): AddSubmenuResult {
+  const root = /<AxMenuExtension\b[^>]*>/.exec(xml);
+  if (!root) return { kind: 'unsupported' };
+  const rootEl = { tag: 'AxMenuExtension', open: root.index, openEnd: root.index + root[0].length, close: 0, end: 0, selfClosed: false };
+  const collection = child(xml, rootEl, 'Elements');
+  if (!collection) return { kind: 'no-collection' };
+
+  const name = escapeXml(spec.name.trim());
+  const label = spec.label?.trim() ? escapeXml(spec.label.trim()) : '';
+  const parent = spec.parent?.trim() ? escapeXml(spec.parent.trim()) : '';
+
+  const taken = submenuLocations(xml, collection).find(l => same(l.name, name));
+  if (taken) return same(taken.parent, parent) ? { kind: 'already-present' } : { kind: 'exists', parent: taken.parent };
+
+  const own = parent ? findSubmenuElements(xml, collection, parent) : null;
+  if (own) {
+    const block = submenuElementBlock(`${lineIndent(xml, own.open)}\t`, name, label, true);
+    return { kind: 'added', xml: appendTo(xml, own, block), nested: true };
+  }
+  const ind = `${lineIndent(xml, collection.open)}\t`;
+  const block =
+    `${ind}<AxMenuExtensionElement xmlns="">\n` +
+    (parent ? `${ind}\t<Parent>${parent}</Parent>\n` : '') +
+    `${ind}\t<MenuElement xmlns=""\n` +
+    `${ind}\t\ti:type="AxMenuElementSubMenu">\n` +
+    `${ind}\t\t<Name>${name}</Name>\n` +
+    (label ? `${ind}\t\t<Label>${label}</Label>\n` : '') +
+    `${ind}\t\t<Elements />\n` +
+    `${ind}\t</MenuElement>\n` +
+    `${ind}</AxMenuExtensionElement>\n`;
+  return { kind: 'added', xml: appendTo(xml, collection, block), nested: false };
 }

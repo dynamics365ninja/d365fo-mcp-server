@@ -94,6 +94,7 @@ import {
   directXmlModifyProperty,
   directXmlAddMenuItemToMenu,
   directXmlAddMenuItemToMenuExtension,
+  directXmlAddSubmenu,
   viaXmlFallback,
   directXmlAddControl,
   coerceNoYesFlag,
@@ -542,7 +543,7 @@ export const ModifyD365FileArgsSchema = z.object({
     'remove-diagnostic-suppression', 'add-diagnostic-suppression',
     'add-module-reference', 'remove-module-reference',
     'add-enum-value', 'modify-enum-value', 'remove-enum-value',
-    'add-display-method', 'add-table-method', 'add-menu-item-to-menu',
+    'add-display-method', 'add-table-method', 'add-menu-item-to-menu', 'add-submenu',
     'add-query-range', 'remove-query-range',
     'report-design',
   ]).describe(
@@ -609,9 +610,11 @@ export const ModifyD365FileArgsSchema = z.object({
     'Used with add-menu-item-to-menu. Defaults to display.'
   ),
   parentMenuElement: z.string().optional().describe(
-    'Submenu of the base menu the item goes under (e.g. "Inquiries"). Used with add-menu-item-to-menu ' +
-    'on a menu-extension; omit it for the top level of the base menu.'
+    'Submenu the item or submenu goes under (plain name, e.g. "Inquiries"). Used with add-menu-item-to-menu ' +
+    'and add-submenu; omit it for the top level.'
   ),
+  submenuName: z.string().optional().describe('Name of the submenu to add. Used with add-submenu.'),
+  submenuLabel: z.string().optional().describe('Label id of the new submenu (e.g. "@MyModel:Rentals"). Used with add-submenu.'),
 
   // For add-control (form-extension only)
   controlName: z.string().optional().describe(
@@ -3169,6 +3172,9 @@ async function runModify(
         // No bridge path for a menu extension, and the AxMenu fallback below writes the wrong shape into one.
         if ((args as any).menuItemToAdd && objectType === 'menu-extension') {
           bridgeResult = viaXmlFallback(await directXmlAddMenuItemToMenuExtension(actualFilePath, args as any, symbolIndex));
+        } else if ((args as any).menuItemToAdd && (args as any).parentMenuElement) {
+          // The C# op has no parent: an item into a submenu of a menu is XML only.
+          bridgeResult = viaXmlFallback(await directXmlAddMenuItemToMenu(actualFilePath, (args as any).menuItemToAdd, (args as any).menuItemToAddType ?? 'display', (args as any).parentMenuElement));
         } else if ((args as any).menuItemToAdd) {
           bridgeResult = await bridgeAddMenuItemToMenu(
             context.bridge,
@@ -3189,6 +3195,11 @@ async function runModify(
             }
           }
         }
+        break;
+      }
+      case 'add-submenu': {
+        // No C# op adds a submenu: XML only, on a menu and a menu extension alike.
+        if ((args as any).submenuName) bridgeResult = viaXmlFallback(await directXmlAddSubmenu(actualFilePath, args as any, symbolIndex));
         break;
       }
       default:
