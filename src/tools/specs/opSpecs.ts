@@ -38,7 +38,7 @@ const D365FO_FILE_OBJECT_TYPES: readonly string[] =
 const TOOL_PREFIXES = ['d365fo_file.', 'd365fo_file:', 'generate_object.', 'generate_object:'];
 
 /** Topics that resolve to the `labels` write-plumbing contract. */
-const LABELS_TOPICS = ['labels', 'label', 'labels.create', 'labels.rename', 'create-label'];
+const LABELS_TOPICS = ['labels', 'label', 'labels.create', 'labels.rename', 'create-label', 'labels.search', 'labels.exact'];
 
 /**
  * Real questions that are not op-specs, answered with the tool that does answer them.
@@ -283,7 +283,7 @@ export function renderOpSpecIndex(unknownTopic?: string): string {
     'build / verify / run_bp_check resolution overrides (topic="sdlc-overrides", passed flat):',
     '  packagePath, packageName, projectPath, targetFilter, targetElementType',
     '',
-    'labels write plumbing (topic="labels", nested in `params`):',
+    'labels write plumbing and exact search (topic="labels", nested in `params`):',
     `  ${Object.keys(LABELS_OVERRIDE_PARAMS).join(', ')}`,
   ].join('\n');
 }
