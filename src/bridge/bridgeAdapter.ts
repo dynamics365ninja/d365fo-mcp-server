@@ -1606,6 +1606,11 @@ const XML_ONLY_MODIFY_PAIRS: Record<string, ReadonlySet<string>> = {
   // this pair the caller would get "the bridge could not resolve the object" instead
   // of the operation actually running.
   'report-design': new Set(['report']),
+  // The C# AddMenuItemToMenu reads an AxMenu and cannot resolve "BaseMenu.Suffix",
+  // and `menu-extension` cannot join BRIDGE_MODIFY_TYPES without claiming every other
+  // op on it too. Without this pair the extension the cross-model guard sends an
+  // agent to create could not be filled at all.
+  'add-menu-item-to-menu': new Set(['menu-extension']),
 };
 
 /**

@@ -142,6 +142,21 @@ those are called out explicitly below.
   under the extension class, and only the index knows those classes) and naming the
   explicit path. Full and read-only modes are unchanged. Clients that see both
   servers' `find_references` can hide one in their tool picker.
+- **`add-menu-item-to-menu` on a `menu-extension`, with `parentMenuElement`.** The
+  cross-model write guard sends an agent that wants an item in a standard menu to a
+  menu extension, and create wrote one, but every modify on it was refused with
+  "not supported by the bridge", so the extension could not be filled. The op now
+  writes an `<AxMenuExtensionElement>` with `<Parent>` and a
+  `<MenuElement i:type="AxMenuElementMenuItem">`, in the shape of the shipped
+  extensions (Display without `MenuItemType`), appended to the root `<Elements>`.
+  `parentMenuElement` names the submenu of the base menu, nested ones by their plain name;
+  omitted, the item goes on the top level. A submenu the extension adds itself takes the
+  item inside its own `<Elements>`, as shipped extensions do. A submenu that is neither in
+  the base menu nor added by this or another indexed extension of it is refused with the
+  list of those that are; when the base menu cannot be read, the item is written with a
+  warning. The same item under the same parent again is a skip.
+  XML only, no bridge change; `menu` is unchanged, except that the AxMenu fallback now
+  escapes the item name.
 
 ### Changed
 - **`object_source` replaces `form_source`; rebuild the database after upgrading.** This

@@ -93,6 +93,7 @@ import {
   directXmlReplaceCode,
   directXmlModifyProperty,
   directXmlAddMenuItemToMenu,
+  directXmlAddMenuItemToMenuExtension,
   viaXmlFallback,
   directXmlAddControl,
   coerceNoYesFlag,
@@ -606,6 +607,10 @@ export const ModifyD365FileArgsSchema = z.object({
   menuItemToAddType: z.enum(['display', 'action', 'output']).optional().describe(
     'Type of menu item to add: display (form), action (class), output (report). ' +
     'Used with add-menu-item-to-menu. Defaults to display.'
+  ),
+  parentMenuElement: z.string().optional().describe(
+    'Submenu of the base menu the item goes under (e.g. "Inquiries"). Used with add-menu-item-to-menu ' +
+    'on a menu-extension; omit it for the top level of the base menu.'
   ),
 
   // For add-control (form-extension only)
@@ -3161,7 +3166,10 @@ async function runModify(
         break;
       }
       case 'add-menu-item-to-menu': {
-        if ((args as any).menuItemToAdd) {
+        // No bridge path for a menu extension, and the AxMenu fallback below writes the wrong shape into one.
+        if ((args as any).menuItemToAdd && objectType === 'menu-extension') {
+          bridgeResult = viaXmlFallback(await directXmlAddMenuItemToMenuExtension(actualFilePath, args as any, symbolIndex));
+        } else if ((args as any).menuItemToAdd) {
           bridgeResult = await bridgeAddMenuItemToMenu(
             context.bridge,
             objectName,

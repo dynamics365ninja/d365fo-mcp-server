@@ -9,6 +9,14 @@ describe('canBridgeModify', () => {
     expect(canBridgeModify('Menu', 'add-menu-item-to-menu')).toBe(true);
   });
 
+  it('accepts add-menu-item-to-menu on a menu-extension, and nothing else on one', () => {
+    // An XML-only pair: the cross-model guard sends the agent to a menu-extension,
+    // which could be created but not filled. The pair must not open other ops on it.
+    expect(canBridgeModify('menu-extension', 'add-menu-item-to-menu')).toBe(true);
+    expect(canBridgeModify('menu-extension', 'add-method')).toBe(false);
+    expect(canBridgeModify('menu-extension', 'modify-property')).toBe(false);
+  });
+
   it('accepts the common type/operation combinations', () => {
     expect(canBridgeModify('table', 'add-index')).toBe(true);
     expect(canBridgeModify('table', 'add-relation')).toBe(true);
