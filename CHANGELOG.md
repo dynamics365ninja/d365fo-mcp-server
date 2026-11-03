@@ -29,6 +29,33 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`reserved-words` knowledge topic.** `get_knowledge(topic="reserved keywords")`
+  answered with the `switch` topic. The new topic lists the compiler's own keyword
+  set (`XPP_KEYWORDS`, read when the module loads, so a recapture updates it),
+  grouped by kind, with the `in` exemption, the `@` escape, the positions the
+  compiler rejects and where the language reference differs from the compiler.
+- **Exact label lookup: `labels(action="search", exact=true)`.** The search matches
+  words in the label id, text and comment, ranked by relevance, so "the label whose text
+  is exactly X" came back as dozens of candidates to compare by hand; and from the third
+  search call every answer opened with a STOP notice, which ended a legitimate workflow
+  that checks one text per label and language before creating it. With `exact=true` the
+  answer is the labels whose text equals the given text after normalising both sides
+  (Unicode NFC, trimmed, inner whitespace collapsed, case-insensitive including non-ASCII
+  such as umlauts), across every label file and model of that language (`model` /
+  `labelFileId` narrow it). Text from `query` (string or array, in `language`) and/or
+  `texts=[{language, text}, …]` (max 12). Each match is listed as
+  `@File:Id  [model]  <language>: "<text>"` with the label's other indexed translations,
+  in a fixed order: custom models first (`CUSTOM_MODELS`, `EXTENSION_PREFIX`,
+  `D365FO_MODEL_NAME`), then label file id, then label id. `maxMatches` (1..50, default
+  20) sets how many are listed; the cut comes after sorting, so a custom copy is never the
+  one left out ("Buchungen" alone is 45 standard labels). With more than one match, a
+  distribution line says where all of them are
+  (`46 exact matches: ApplicationPlatform: SYS 27, RET 17, GLS 1`). A miss is `no exact match for "<text>" (<language>)`, with "language X is not indexed"
+  when it has no rows. The lookup is deterministic, so it is not counted toward the
+  search-call budget, records no search history and never carries the STOP notice or the
+  "create your own label" advice. `exact`, `texts` and `maxMatches` are accepted flat or in `params` and
+  documented in the op-spec (`get_knowledge(kind="op-spec", topic="labels")`); the
+  published schema is unchanged. Normal searches are byte-for-byte unchanged.
 - **`update_symbol_index(model="X")` re-indexes what changed in one custom model,
   without naming the files.** After a git pull, a branch switch or a Visual Studio
   session the agent does not know which files moved, so it listed them one by one or
@@ -44,6 +71,24 @@ those are called out explicitly below.
   with `model`. The stale-index warning in `get_workspace_info` now suggests this call
   instead of the single newest file. The tool's description was tightened so the schema
   stays inside its budget.
+
+### Fixed
+- **KW001 missed the later names of a declaration list and sized-string
+  parameters.** `int a, count;` and `void f(str 20 select)` passed, although a probe
+  class showed xppc rejecting both ("'identifier' expected", "invalid name for a
+  parameter"). A reserved word as a `for`, `using` or `catch` variable was already
+  caught, but the fix called it a parameter; it now says loop variable / variable.
+- **`extension_info(mode="coc", method=…)` counted classes that wrap nothing as wrappers.**
+  "Found 12 extension class(es) wrapping "validateWrite"" listed 12 classes for `SalesTable`
+  where 2 wrap it: the filter also kept every class with an empty wrap list, a leftover from
+  when the list held every base method a class called. The bridge sends a list for every
+  class, so empty means "wraps nothing". The count now covers only the classes whose list
+  names the method (case-insensitive). The other extension classes still follow, grouped by
+  extended element as before, under "Other extension classes of <object> (no wrap of "<m>"
+  recorded): N". A class with no list at all (an older bridge) goes under "wraps unknown"
+  and is not counted. The filesystem fallback of the index path had the same clause and
+  gets the same split. Without a method filter the output is unchanged; the index path's
+  database rows still include classes with an empty list, because there it can mean unknown.
 
 ## [1.22.0] — 2026-10-30
 
