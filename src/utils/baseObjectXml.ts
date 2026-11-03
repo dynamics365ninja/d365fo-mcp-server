@@ -13,6 +13,7 @@ import * as path from 'path';
 import { getConfigManager, fallbackPackagePath } from './configManager.js';
 import { resolveDbPathLocally } from './metadataResolver.js';
 import { findD365FileOnDisk } from './objectFileLookup.js';
+import { readIndexedXml, symbolTypesFor } from './indexedXmlLookup.js';
 
 /**
  * Locate the base form XML on disk, trying DB path → remapped path → filesystem scan.
@@ -82,7 +83,17 @@ export async function findBaseObjectXml(
 
   // 2. Filesystem scan using model from config
   const diskPath = await findD365FileOnDisk(objectType, objectName);
-  if (diskPath) return tryRead(diskPath);
+  if (diskPath) {
+    const content = await tryRead(diskPath);
+    if (content) return content;
+  }
+
+  // 3. The copy the index stored (database-only hosts), after every file probe so a
+  //    local edit since indexing wins. Never for a file this host knows is deleted.
+  try {
+    const found = await readIndexedXml(symbolIndex.getReadDb(), objectName, symbolTypesFor(objectType));
+    if (found) return found.xml;
+  } catch { /* ignore */ }
 
   return null;
 }

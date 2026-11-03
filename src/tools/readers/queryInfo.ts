@@ -15,7 +15,9 @@ import type { XppServerContext } from '../../types/context.js';
 import { tryBridgeQuery } from '../../bridge/bridgeAdapter.js';
 import { buildObjectTypeMismatchMessage } from '../../utils/metadataResolver.js';
 import {
-  readIndexedXml,
+  resolveIndexedObject,
+  storedCopyFor,
+  indexedXmlSourceLabel,
   readXmlFile,
   indexedSourceNote,
   bridgeUnavailableNote,
@@ -58,13 +60,11 @@ export async function getQueryInfoTool(request: CallToolRequest, context: XppSer
     // 2. Symbol index → XML. The bridge returning nothing is NOT proof the query is
     //    missing — it also happens when the bridge is down or its provider does not
     //    cover that package, while `search` still resolves the object.
-    const indexed = await readIndexedXml(
-      context.symbolIndex.getReadDb(), args.queryName, ['query'], args.modelName,
-    );
-    if (indexed) {
-      const formatted = await formatQueryXml(
-        indexed.ref.name, indexed.ref.model, indexed.xml, `XML: ${indexed.ref.localPath}`, args,
-      );
+    const db = context.symbolIndex.getReadDb();
+    const ref = await resolveIndexedObject(db, args.queryName, ['query'], args.modelName);
+    const fileXml = ref?.localPath ? await readXmlFile(ref.localPath) : null;
+    if (ref && fileXml) {
+      const formatted = await formatQueryXml(ref.name, ref.model, fileXml, `XML: ${ref.localPath}`, args);
       if (formatted) return formatted;
     }
 
@@ -75,6 +75,15 @@ export async function getQueryInfoTool(request: CallToolRequest, context: XppSer
       const formatted = xml && await formatQueryXml(
         args.queryName, args.modelName ?? 'Unknown', xml,
         `live file (not yet in bridge metadata): ${diskPath}`, args,
+      );
+      if (formatted) return formatted;
+    }
+
+    // 4. The copy the index stored — a database-only host
+    const stored = ref && storedCopyFor(db, ref);
+    if (stored) {
+      const formatted = await formatQueryXml(
+        stored.ref.name, stored.ref.model, stored.xml, indexedXmlSourceLabel(stored), args,
       );
       if (formatted) return formatted;
     }

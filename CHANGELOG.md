@@ -71,6 +71,29 @@ those are called out explicitly below.
   with `model`. The stale-index warning in `get_workspace_info` now suggests this call
   instead of the single newest file. The tool's description was tightened so the schema
   stays inside its budget.
+- **Every object type can be read from the database alone, and data entities show their
+  entity properties.** Builds on the stored form XML from 1.22.0 (#1178): the index now
+  stores every object's original XML (gzipped, table `object_source`, keyed by object type,
+  name and model), so on a host with no AOT files and no bridge, such as the Azure
+  read-only instance, `options={include:"xml"}` returns the XML of any stored object
+  (including `data-entity`, and `class-extension` through its AxClass), and views, data
+  entities, maps, queries and reports render from the stored copy, labelled as such.
+  `findBaseObjectXml` (clone and extension scaffolding) reads it too. A file on the host
+  always wins over the stored copy. When the XML is read (no bridge, no older extracted
+  JSON), the data-entity reader now shows public entity and collection name, OData
+  (`IsPublic`), DMF, category, the data source tree, each field's data source and label
+  text. Single-file `update_symbol_index` keeps the copy in step. Extensions are not
+  stored. Extracted JSON for every non-extension type now carries `raw` and grows
+  accordingly (sizes in SETUP_AZURE.md); stored copies appear after a re-extract and
+  re-index.
+
+### Changed
+- **`object_source` replaces `form_source`; rebuild the database after upgrading.** This
+  version neither writes nor reads `form_source` (added in 1.22.0). Until a database is
+  rebuilt from a fresh extract, forms on a host without AOT files have no stored copy, as
+  before 1.22.0. On Azure, run the data pipelines before the App Service restarts on the
+  new version (order in SETUP_AZURE.md). An old `form_source` table is left in place and
+  ignored.
 
 ### Fixed
 - **KW001 missed the later names of a declaration list and sized-string

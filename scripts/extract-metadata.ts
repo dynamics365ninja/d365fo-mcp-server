@@ -114,6 +114,19 @@ function sourcePathReplacer(key: string, value: unknown): unknown {
  */
 const writtenByModel = new Map<string, Set<string>>();
 
+/**
+ * The object's original XML rides along as `raw` (the convention enums and forms use) so
+ * the index build can store it: a host with only the database has no AOT files to read.
+ * The parsers do not return the XML, hence the second read (OS-cached).
+ */
+async function withRaw<T extends object>(filePath: string, data: T): Promise<T & { raw?: string }> {
+  try {
+    return { ...data, raw: await fs.readFile(filePath, 'utf-8') };
+  } catch {
+    return data;
+  }
+}
+
 /** Write one metadata JSON and record it as live for this run's orphan sweep. */
 async function writeMetadataJson(
   outputFile: string,
@@ -1011,7 +1024,7 @@ async function extractClasses(
       const outputDir = path.join(OUTPUT_PATH, modelName, 'classes');
       await fs.mkdir(outputDir, { recursive: true });
       const outputFile = path.join(outputDir, `${classData.name}.json`);
-      await writeMetadataJson(outputFile, classData, isCustom, modelName);
+      await writeMetadataJson(outputFile, await withRaw(filePath, classData), isCustom, modelName);
 
       stats.classes++;
 
@@ -1088,7 +1101,7 @@ async function extractTables(
       const outputDir = path.join(OUTPUT_PATH, modelName, 'tables');
       await fs.mkdir(outputDir, { recursive: true });
       const outputFile = path.join(outputDir, `${tableData.name}.json`);
-      await writeMetadataJson(outputFile, tableData, isCustom, modelName);
+      await writeMetadataJson(outputFile, await withRaw(filePath, tableData), isCustom, modelName);
 
       stats.tables++;
     } catch (error) {
@@ -1176,7 +1189,7 @@ async function extractQueries(
       const outputDir = path.join(OUTPUT_PATH, modelName, 'queries');
       await fs.mkdir(outputDir, { recursive: true });
       const outputFile = path.join(outputDir, `${queryName}.json`);
-      await writeMetadataJson(outputFile, queryInfo, isCustom, modelName);
+      await writeMetadataJson(outputFile, await withRaw(filePath, queryInfo), isCustom, modelName);
 
       stats.queries++;
     } catch (error) {
@@ -1219,7 +1232,7 @@ async function extractViews(
         const outputDir = path.join(OUTPUT_PATH, modelName, 'views');
         await fs.mkdir(outputDir, { recursive: true });
         const outputFile = path.join(outputDir, `${viewData.name}.json`);
-        await writeMetadataJson(outputFile, viewData, isCustom, modelName);
+        await writeMetadataJson(outputFile, await withRaw(filePath, viewData), isCustom, modelName);
 
         if (viewData.type === 'data-entity') {
           stats.dataEntities++;
@@ -1310,7 +1323,7 @@ async function extractEdts(
       const outputDir = path.join(OUTPUT_PATH, modelName, 'edts');
       await fs.mkdir(outputDir, { recursive: true });
       const outputFile = path.join(outputDir, `${edtInfo.name}.json`);
-      await writeMetadataJson(outputFile, edtInfo, isCustom, modelName);
+      await writeMetadataJson(outputFile, await withRaw(filePath, edtInfo), isCustom, modelName);
 
       stats.edts++;
     } catch (error) {
@@ -1358,7 +1371,7 @@ async function extractReports(
       };
 
       const outputFile = path.join(outputDir, `${name}.json`);
-      await writeMetadataJson(outputFile, stub, isCustom, modelName);
+      await writeMetadataJson(outputFile, await withRaw(filePath, stub), isCustom, modelName);
 
       stats.reports++;
     } catch (error) {
@@ -1389,7 +1402,7 @@ async function extractSecurityPrivileges(
       if (!result.success || !result.data) { stats.errors++; return; }
       const privilegeData = result.data;
       const outputFile = path.join(outputDir, `${privilegeData.name}.json`);
-      await writeMetadataJson(outputFile, { ...privilegeData, model: modelName, type: 'security-privilege' }, isCustom, modelName);
+      await writeMetadataJson(outputFile, await withRaw(filePath, { ...privilegeData, model: modelName, type: 'security-privilege' }), isCustom, modelName);
       stats.securityPrivileges++;
     } catch (error) {
       log.err(`Error extracting security privilege ${file}: ${error instanceof Error ? error.message : error}`);
@@ -1419,7 +1432,7 @@ async function extractSecurityDuties(
       if (!result.success || !result.data) { stats.errors++; return; }
       const dutyData = result.data;
       const outputFile = path.join(outputDir, `${dutyData.name}.json`);
-      await writeMetadataJson(outputFile, { ...dutyData, model: modelName, type: 'security-duty' }, isCustom, modelName);
+      await writeMetadataJson(outputFile, await withRaw(filePath, { ...dutyData, model: modelName, type: 'security-duty' }), isCustom, modelName);
       stats.securityDuties++;
     } catch (error) {
       log.err(`Error extracting security duty ${file}: ${error instanceof Error ? error.message : error}`);
@@ -1449,7 +1462,7 @@ async function extractSecurityRoles(
       if (!result.success || !result.data) { stats.errors++; return; }
       const roleData = result.data;
       const outputFile = path.join(outputDir, `${roleData.name}.json`);
-      await writeMetadataJson(outputFile, { ...roleData, model: modelName, type: 'security-role' }, isCustom, modelName);
+      await writeMetadataJson(outputFile, await withRaw(filePath, { ...roleData, model: modelName, type: 'security-role' }), isCustom, modelName);
       stats.securityRoles++;
     } catch (error) {
       log.err(`Error extracting security role ${file}: ${error instanceof Error ? error.message : error}`);
@@ -1484,7 +1497,7 @@ async function extractMenuItems(
       if (!result.success || !result.data) { stats.errors++; return; }
       const menuItemData = result.data;
       const outputFile = path.join(outputDir, `${menuItemData.name}.json`);
-      await writeMetadataJson(outputFile, { ...menuItemData, model: modelName, type: `menu-item-${itemType}` }, isCustom, modelName);
+      await writeMetadataJson(outputFile, await withRaw(filePath, { ...menuItemData, model: modelName, type: `menu-item-${itemType}` }), isCustom, modelName);
       (stats as any)[statKey]++;
     } catch (error) {
       log.err(`Error extracting menu item (${itemType}) ${file}: ${error instanceof Error ? error.message : error}`);
@@ -1565,7 +1578,7 @@ async function extractServices(
       if (!result.success || !result.data) { stats.errors++; return; }
       const serviceData = result.data;
       const outputFile = path.join(outputDir, `${serviceData.name}.json`);
-      await writeMetadataJson(outputFile, { ...serviceData, model: modelName, type: 'service' }, isCustom, modelName);
+      await writeMetadataJson(outputFile, await withRaw(filePath, { ...serviceData, model: modelName, type: 'service' }), isCustom, modelName);
       stats.services++;
     } catch (error) {
       log.err(`Error extracting service ${file}: ${error instanceof Error ? error.message : error}`);
@@ -1595,7 +1608,7 @@ async function extractServiceGroups(
       if (!result.success || !result.data) { stats.errors++; return; }
       const serviceGroupData = result.data;
       const outputFile = path.join(outputDir, `${serviceGroupData.name}.json`);
-      await writeMetadataJson(outputFile, { ...serviceGroupData, model: modelName, type: 'service-group' }, isCustom, modelName);
+      await writeMetadataJson(outputFile, await withRaw(filePath, { ...serviceGroupData, model: modelName, type: 'service-group' }), isCustom, modelName);
       stats.serviceGroups++;
     } catch (error) {
       log.err(`Error extracting service group ${file}: ${error instanceof Error ? error.message : error}`);
@@ -1633,7 +1646,7 @@ async function extractSimpleType(
       if (!result.success || !result.data) { stats.errors++; return; }
       const parsedData = result.data;
       const outputFile = path.join(outputDir, `${parsedData.name}.json`);
-      await writeMetadataJson(outputFile, { ...parsedData, model: modelName, type }, isCustom, modelName);
+      await writeMetadataJson(outputFile, await withRaw(filePath, { ...parsedData, model: modelName, type }), isCustom, modelName);
       (stats as any)[statKey]++;
     } catch (error) {
       log.err(`Error extracting ${label} ${file}: ${error instanceof Error ? error.message : error}`);
