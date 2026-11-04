@@ -143,8 +143,13 @@ describe('layer direction', () => {
     // (+1, #1167), the line-ending read before the bridge replace-code (+2, #1168),
     // marking a replace-code no-op skipped (+2, #1171), and the atomic batch's
     // pre-image capture (+5, here). The batch logic itself went to d365foFile.ts.
+    //
+    // Raised 4,780 -> 4,790 for add-menu-item-to-menu on a menu-extension (4,779 ->
+    // 4,787 lines). The writer and the parent check went to directXmlWriters.ts and
+    // tools/xml/menuExtensionXml.ts, so what landed here is the parentMenuElement
+    // argument, the import and the four-line branch in the switch arm.
     const src = readFileSync('src/tools/write/modifyD365File.ts', 'utf8');
-    expect(src.split('\n').length).toBeLessThan(4780);
+    expect(src.split('\n').length).toBeLessThan(4790);
   });
 
   it('the dispatcher routes rather than implementing', () => {

@@ -23,6 +23,7 @@ import { removeFormControl } from '../../utils/formControlRemoval.js';
 import { findBaseObjectXml } from '../../utils/baseObjectXml.js';
 import { checkNewControlPosition, findFormControl, formDefinesControl, placeFormControl, type PlaceFormControlSpec } from '../../utils/formControlPlacement.js';
 import { addSecurityEntryPoint, removeSecurityEntryPoint } from '../xml/securityPrivilegeXml.js';
+import { addMenuExtensionItem, menuSubmenuNames } from '../xml/menuExtensionXml.js';
 import { removeDiagnosticSuppression, addDiagnosticSuppression, emptySuppressionListXml } from '../../utils/ignoreDiagnosticListXml.js';
 import { buildSuppressionXml } from '../../knowledge/bpMonikers/index.js';
 import { upsertAxTableProperty, upsertAxTableSubscriberAccessLevel, AX_TABLE_NON_EXISTENT_PROPERTIES } from '../../utils/axTablePropertyOrder.js';
@@ -340,8 +341,8 @@ export const directXmlAddMenuItemToMenu = serializedOnFile(async (
     // unambiguous).
     const newElement =
       `\t\t<AxMenuElement xmlns="" i:type="AxMenuElementMenuItem">\n` +
-      `\t\t\t<Name>${menuItemToAdd}</Name>\n` +
-      `\t\t\t<MenuItemName>${menuItemToAdd}</MenuItemName>\n` +
+      `\t\t\t<Name>${escapeXml(menuItemToAdd)}</Name>\n` +
+      `\t\t\t<MenuItemName>${escapeXml(menuItemToAdd)}</MenuItemName>\n` +
       `\t\t\t<MenuItemType>${menuItemType}</MenuItemType>\n` +
       `\t\t</AxMenuElement>`;
 
@@ -366,6 +367,103 @@ export const directXmlAddMenuItemToMenu = serializedOnFile(async (
     console.error(`[modify_d365fo_file] directXmlAddMenuItemToMenu failed: ${err}`);
     return null;
   }
+});
+
+/** Submenus the OTHER indexed extensions of `baseMenu` add; a <Parent> may name one. */
+async function otherExtensionSubmenus(baseMenu: string, self: string, symbolIndex: any): Promise<string[]> {
+  let names: string[];
+  try {
+    const rows = symbolIndex.getReadDb()
+      .prepare(`SELECT DISTINCT name FROM symbols WHERE type = 'menu-extension' AND name LIKE ?`)
+      .all(`${baseMenu}.%`) as { name: string }[];
+    // LIKE reads `_` as a wildcard, so the prefix is confirmed here.
+    names = rows.map(r => r.name).filter(n =>
+      n.toLowerCase().startsWith(`${baseMenu.toLowerCase()}.`) && n.toLowerCase() !== self.toLowerCase());
+  } catch {
+    return [];
+  }
+  const xmls = await Promise.all(names.map(n => findBaseObjectXml('menu-extension', n, symbolIndex).catch(() => null)));
+  return xmls.flatMap(x => (x ? menuSubmenuNames(x) : []));
+}
+
+/**
+ * add-menu-item-to-menu on a menu-extension. XML only: the C# AddMenuItemToMenu
+ * reads an AxMenu and cannot resolve an extension name, and the AxMenu writer above
+ * writes the wrong shape for one (see menuExtensionXml.ts).
+ *
+ * `parentMenuElement` is checked before anything is written: a <Parent> naming no submenu
+ * fails the next build (verified on a dev VM), and the refusal names the submenus that do
+ * exist while the agent can still correct the call. It may be a submenu of the base
+ * menu (the extension name before the first dot), one this extension adds itself
+ * (the item is then nested inside it), or one another extension of the same base
+ * menu adds — shipped extensions do all three. When the name is found nowhere and
+ * the base menu could not be read, the item is written with a warning that the
+ * parent went unchecked.
+ */
+export const directXmlAddMenuItemToMenuExtension = serializedOnFile(async (
+  filePath: string,
+  args: { menuItemToAdd: string; menuItemToAddType?: string; parentMenuElement?: string },
+  symbolIndex: unknown,
+): Promise<{ success: boolean; message: string; skipped?: boolean }> => {
+  const content = (await fs.readFile(filePath, 'utf-8')).replace(/^﻿/, '').replace(/\r\n/g, '\n');
+  const extensionName = /<Name>([^<]*)<\/Name>/.exec(content)?.[1].trim() ?? path.basename(filePath, '.xml');
+  const baseMenu = extensionName.split('.')[0];
+  const menuItemName = args.menuItemToAdd;
+  const parent = args.parentMenuElement?.trim();
+
+  let parentNote = '';
+  let canonicalParent = parent;
+  if (parent) {
+    const baseXml = await findBaseObjectXml('menu', baseMenu, symbolIndex).catch(() => null);
+    let known = [...new Set([...(baseXml ? menuSubmenuNames(baseXml) : []), ...menuSubmenuNames(content)])];
+    const find = () => known.find(n => n.toLowerCase() === escapeXml(parent).toLowerCase());
+    // Only on a miss: the other extensions of the base menu are a file read each.
+    if (!find()) known = [...new Set([...known, ...await otherExtensionSubmenus(baseMenu, extensionName, symbolIndex)])];
+    const hit = find();
+    if (hit) {
+      canonicalParent = hit.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+    } else if (baseXml) {
+      return {
+        success: false,
+        message:
+          `Submenu '${parent}' is not in menu '${baseMenu}', nor added by ${extensionName} or another extension ` +
+          `of it in the index — nothing was written. A <Parent> naming no submenu fails the build.\n` +
+          `   Submenus: ${known.length ? known.join(', ') : '(none — omit parentMenuElement for the top level)'}`,
+      };
+    } else {
+      parentNote = `\n⚠️ Base menu '${baseMenu}' could not be read, so submenu '${parent}' was NOT checked — verify it exists.`;
+    }
+  }
+
+  const outcome = addMenuExtensionItem(content, { menuItemName, menuItemType: args.menuItemToAddType, parent: canonicalParent });
+  const where = !canonicalParent
+    ? 'on the top level'
+    : outcome.kind === 'added' && outcome.nested
+      ? `inside submenu '${canonicalParent}', which this extension adds,`
+      : `under submenu '${canonicalParent}'`;
+  switch (outcome.kind) {
+    case 'unsupported':
+      return { success: false, message: `${filePath} is not an AxMenuExtension — nothing was written.` };
+    case 'no-collection':
+      return {
+        success: false,
+        message:
+          `${filePath} has no <Elements> collection to add to — nothing was written. ` +
+          `A menu extension written by this tool always has one; a hand-edited file may not.`,
+      };
+    case 'already-present':
+      return {
+        success: true,
+        skipped: true,
+        message: `Menu item '${menuItemName}' is already ${where} of ${extensionName} — skipped (idempotent). File: ${filePath}`,
+      };
+  }
+  await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
+  console.error(`[modify_d365fo_file] ✅ directXmlAddMenuItemToMenuExtension: added '${menuItemName}' to ${filePath}`);
+  return {
+    success: true,
+    message: `✅ Menu item '${menuItemName}' (${outcome.menuItemType}) added ${where} of menu '${baseMenu}'. File: ${filePath}${parentNote}`,
+  };
 });
 
 /**

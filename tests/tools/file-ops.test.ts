@@ -1882,6 +1882,50 @@ describe('modify_d365fo_file', () => {
     expect(writtenContent).toContain('<MenuItemType>Display</MenuItemType>');
   });
 
+  it('add-menu-item-to-menu on a menu-extension bypasses the bridge and writes the extension shape', async () => {
+    // The C# AddMenuItemToMenu reads an AxMenu and cannot resolve "Base.Suffix"; the
+    // AxMenu fallback would write a bare <AxMenuElement> into the extension. Neither runs.
+    const fsMod = await import('fs/promises');
+    const extXml =
+      `<?xml version="1.0" encoding="utf-8"?>\n` +
+      `<AxMenuExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">\n` +
+      `\t<Name>ContosoMain.ContosoExtension</Name>\n` +
+      `\t<Customizations />\n` +
+      `\t<Elements />\n` +
+      `\t<MenuElementModifications />\n` +
+      `\t<PropertyModifications />\n` +
+      `</AxMenuExtension>`;
+    (fsMod.readFile as any).mockResolvedValue(extXml);
+
+    const addMenuItemToMenu = vi.fn();
+    (ctx as any).bridge = { isReady: true, metadataAvailable: true, addMenuItemToMenu, refreshProvider: vi.fn() };
+
+    const result = await modifyD365FileTool(
+      req('modify_d365fo_file', {
+        objectType: 'menu-extension',
+        objectName: 'ContosoMain.ContosoExtension',
+        operation: 'add-menu-item-to-menu',
+        menuItemToAdd: 'ContosoRentEquipmentTable',
+        menuItemToAddType: 'action',
+        filePath: 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxMenuExtension\\ContosoMain.ContosoExtension.xml',
+      }),
+      ctx,
+    );
+
+    expect(result.isError).toBeFalsy();
+    expect(addMenuItemToMenu).not.toHaveBeenCalled();
+    expect(result.content[0].text).toContain("applied via this server's XML writer");
+    const written = (fsMod.writeFile as any).mock.calls.find((c: any[]) =>
+      c[0].includes('ContosoMain.ContosoExtension.xml'),
+    );
+    expect(written).toBeDefined();
+    const writtenContent: string = written[1];
+    expect(writtenContent).toContain('<AxMenuExtensionElement xmlns="">');
+    expect(writtenContent).toContain('i:type="AxMenuElementMenuItem"');
+    expect(writtenContent).toContain('<MenuItemType>Action</MenuItemType>');
+    expect(writtenContent).not.toContain('<AxMenuElement ');
+  });
+
   it('add-control on a form-extension bypasses the bridge and writes the XML directly', async () => {
     // The C# AddControl reads _provider.Forms.Read(name), which never resolves a form
     // EXTENSION ("Base.Suffix") — those live in FormExtensions. The call cannot succeed,
