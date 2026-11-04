@@ -369,20 +369,6 @@ export const directXmlAddMenuItemToMenu = serializedOnFile(async (
   }
 });
 
-/**
- * add-menu-item-to-menu on a menu-extension. XML only: the C# AddMenuItemToMenu
- * reads an AxMenu and cannot resolve an extension name, and the AxMenu writer above
- * writes the wrong shape for one (see menuExtensionXml.ts).
- *
- * `parentMenuElement` is checked before anything is written: a <Parent> naming no submenu
- * fails the next build (verified on a dev VM), and the refusal names the submenus that do
- * exist while the agent can still correct the call. It may be a submenu of the base
- * menu (the extension name before the first dot), one this extension adds itself
- * (the item is then nested inside it), or one another extension of the same base
- * menu adds — shipped extensions do all three. When the name is found nowhere and
- * the base menu could not be read, the item is written with a warning that the
- * parent went unchecked.
- */
 /** Submenus the OTHER indexed extensions of `baseMenu` add; a <Parent> may name one. */
 async function otherExtensionSubmenus(baseMenu: string, self: string, symbolIndex: any): Promise<string[]> {
   let names: string[];
@@ -400,6 +386,20 @@ async function otherExtensionSubmenus(baseMenu: string, self: string, symbolInde
   return xmls.flatMap(x => (x ? menuSubmenuNames(x) : []));
 }
 
+/**
+ * add-menu-item-to-menu on a menu-extension. XML only: the C# AddMenuItemToMenu
+ * reads an AxMenu and cannot resolve an extension name, and the AxMenu writer above
+ * writes the wrong shape for one (see menuExtensionXml.ts).
+ *
+ * `parentMenuElement` is checked before anything is written: a <Parent> naming no submenu
+ * fails the next build (verified on a dev VM), and the refusal names the submenus that do
+ * exist while the agent can still correct the call. It may be a submenu of the base
+ * menu (the extension name before the first dot), one this extension adds itself
+ * (the item is then nested inside it), or one another extension of the same base
+ * menu adds — shipped extensions do all three. When the name is found nowhere and
+ * the base menu could not be read, the item is written with a warning that the
+ * parent went unchecked.
+ */
 export const directXmlAddMenuItemToMenuExtension = serializedOnFile(async (
   filePath: string,
   args: { menuItemToAdd: string; menuItemToAddType?: string; parentMenuElement?: string },

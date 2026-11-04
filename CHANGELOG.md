@@ -153,7 +153,9 @@ those are called out explicitly below.
   omitted, the item goes on the top level. A submenu the extension adds itself takes the
   item inside its own `<Elements>`, as shipped extensions do. A submenu that is neither in
   the base menu nor added by this or another indexed extension of it is refused with the
-  list of those that are; when the base menu cannot be read, the item is written with a
+  list of those that are. The index holds no menus, so the base menu is read from disk,
+  from whichever model of the package roots has it (`OrganizationAdministration` is in
+  ApplicationSuite\Foundation); when it cannot be read, the item is written with a
   warning. The same item under the same parent again is a skip.
   XML only, no bridge change; `menu` is unchanged, except that the AxMenu fallback now
   escapes the item name.
