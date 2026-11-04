@@ -465,6 +465,27 @@ describe('ProjectFileManager', () => {
       expect(xml).toContain('Label Files\\');
     });
 
+    it('keeps the CRLF line endings Visual Studio writes the project with', async () => {
+      const projectPath = 'K:\\Test\\Test.rnrproj';
+      fileStore.set(projectPath, REALISTIC_RNRPROJ_WITH_BOM.replace(/\n/g, '\r\n'));
+
+      await new ProjectFileManager().addLabelToProject(projectPath, 'TestLabels', ['en-US']);
+
+      const xml = fileStore.get(projectPath)!;
+      expect(xml.startsWith('\uFEFF')).toBe(true);
+      expect(xml).toContain('\r\n');
+      expect(xml.replace(/\r\n/g, '')).not.toContain('\n');
+    });
+
+    it('keeps LF line endings when the project already uses them', async () => {
+      const projectPath = 'K:\\Test\\Test.rnrproj';
+      fileStore.set(projectPath, REALISTIC_RNRPROJ_WITH_BOM);
+
+      await new ProjectFileManager().addLabelToProject(projectPath, 'TestLabels', ['en-US']);
+
+      expect(fileStore.get(projectPath)!).not.toContain('\r\n');
+    });
+
     it('returns empty array when all entries already exist', async () => {
       const projectPath = 'K:\\Test\\Test.rnrproj';
       fileStore.set(projectPath, REALISTIC_RNRPROJ_WITH_BOM);
