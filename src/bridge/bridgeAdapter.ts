@@ -61,6 +61,8 @@ import type {
   BridgeApiUsageCallersResult,
   BridgeReferenceInfo,
 } from './bridgeTypes.js';
+import { xrefSourceLabel, isSqliteXref, type XrefSource } from '../xref/xrefSource.js';
+import { XREF_SQLITE_COUNT_CAP } from '../xref/sqliteXrefProvider.js';
 
 /** Standard MCP tool response shape */
 export interface ToolResult {
@@ -648,7 +650,7 @@ export type BridgeReferencesOutcome =
   | { status: 'unavailable' };
 
 export async function tryBridgeReferences(
-  bridge: BridgeClient | undefined,
+  bridge: XrefSource | undefined,
   target: string | string[],
   limit = 50,
   displayName?: string,
@@ -673,11 +675,14 @@ export async function tryBridgeReferences(
   let exact = true;
   let exactTotal = 0;
   let exactMetadata = 0;
+  // The SQLite provider counts up to a cap: its totals are then lower bounds.
+  let totalCapped = false;
   for (const t of targets) {
     try {
       const r = await bridge.findReferences(t);
       if (r?.error) errored = true;
       if (r?.references?.length) merged.push(...r.references);
+      if (r?.totalCapped) totalCapped = true;
       if (typeof r?.total === 'number') {
         exactTotal += r.total;
         exactMetadata += r.metadataTotal ?? 0;
@@ -700,7 +705,7 @@ export async function tryBridgeReferences(
   // properties rather than X++ code — so they get a dedicated formatter that
   // groups by source object type and surfaces the referencing property.
   if (formatAs === 'label') {
-    return { status: 'ok', result: formatLabelReferences(merged, label, limit) };
+    return { status: 'ok', result: formatLabelReferences(merged, label, limit, xrefSourceLabel(bridge)) };
   }
 
   {
@@ -710,11 +715,19 @@ export async function tryBridgeReferences(
     const metadataTotal = exact ? exactMetadata : returnedMetadata;
     const sampled = exact && refs.count < exactTotal;
 
+    // Lower-bound marks for the SQLite cap only; a bridge's output stays as it was.
+    const plus = totalCapped ? '+' : '';
+    const who = isSqliteXref(bridge) ? 'The xref SQLite file' : 'The bridge';
     let out = `# References to \`${label}\`\n\n`;
-    out += `**Total:** ${total}${capped ? '+' : ''} reference(s) found${sampled ? ` (showing ${refs.count})` : ''}\n`;
-    out += `_Source: C# bridge (DYNAMICSXREFDB) — X++ code and declarative metadata references_\n\n`;
-    if (sampled) {
-      out += `> ℹ️ The bridge returns up to ${XREF_ROW_CAP} rows per lookup for code and for metadata: the totals are exact, ` +
+    out += `**Total:** ${total}${capped || totalCapped ? '+' : ''} reference(s) found${sampled ? ` (showing ${refs.count})` : ''}\n`;
+    out += `_Source: ${xrefSourceLabel(bridge)} — X++ code and declarative metadata references_\n\n`;
+    if (sampled && totalCapped) {
+      out += `> ℹ️ ${who} returns up to ${XREF_ROW_CAP} rows per lookup for code and for metadata and counts up to ` +
+        `${isSqliteXref(bridge) ? bridge.countCap : XREF_SQLITE_COUNT_CAP} references each: more exist than counted, ` +
+        `and the rows below are a sample. ` +
+        `Narrow the target (e.g. \`Owner.member\`) for a complete list.\n\n`;
+    } else if (sampled) {
+      out += `> ℹ️ ${who} returns up to ${XREF_ROW_CAP} rows per lookup for code and for metadata: the totals are exact, ` +
         `the rows below are a sample. Narrow the target (e.g. \`Owner.member\`) for a complete list.\n\n`;
     } else if (capped) {
       out += `> ⚠️ At least one lookup reached the bridge's limit of ${XREF_ROW_CAP} rows, so the real total is higher. ` +
@@ -736,7 +749,7 @@ export async function tryBridgeReferences(
     for (const [type, count] of byType) {
       out += `- **${type}**: ${count} reference(s)\n`;
     }
-    out += `- From X++ code: ${total - metadataTotal} · from declarative metadata: ${metadataTotal}\n`;
+    out += `- From X++ code: ${total - metadataTotal}${plus} · from declarative metadata: ${metadataTotal}${plus}\n`;
     out += `\n`;
 
     // Top callers
@@ -771,7 +784,7 @@ export async function tryBridgeReferences(
     ];
     for (const [heading, rows, share, groupTotal] of groups) {
       if (rows.length === 0) continue;
-      out += `### ${heading} (${share < groupTotal ? `${share} of ${groupTotal}` : share})\n\n`;
+      out += `### ${heading} (${share < groupTotal ? `${share} of ${groupTotal}${plus}` : share})\n\n`;
       for (const r of rows.slice(0, share)) out += renderRow(r);
       out += `\n`;
     }
@@ -900,7 +913,7 @@ function parseLabelSource(sourcePath: string): ParsedLabelSource {
  * explicit — a label is typically referenced far more from metadata (form
  * captions, field/EDT labels, menu-item captions, …) than from X++ code.
  */
-function formatLabelReferences(references: BridgeReferenceInfo[], label: string, limit: number): ToolResult {
+function formatLabelReferences(references: BridgeReferenceInfo[], label: string, limit: number, source: string): ToolResult {
   type LabelRefRow = ParsedLabelSource & { module?: string; line: number };
   const parsed: LabelRefRow[] = references.map(r => ({
     ...parseLabelSource(r.sourcePath),
@@ -910,7 +923,7 @@ function formatLabelReferences(references: BridgeReferenceInfo[], label: string,
 
   let out = `# References to label \`${label}\`\n\n`;
   out += `**Total:** ${references.length} reference(s) found\n`;
-  out += `_Source: C# bridge (DYNAMICSXREFDB) — includes both X++ code and declarative metadata references_\n\n`;
+  out += `_Source: ${source} — includes both X++ code and declarative metadata references_\n\n`;
 
   // Summary: count by source object type (most-referenced first). This counts
   // ALL references, whereas the detail section below is capped at `limit` — so
@@ -3095,7 +3108,7 @@ function formatCompletion(r: BridgeCompletionResult, prefix?: string): string {
 // FIND COC EXTENSIONS via XREF (Phase 6)
 
 export async function tryBridgeCocExtensions(
-  bridge: BridgeClient | undefined,
+  bridge: XrefSource | undefined,
   baseClassName: string,
   methodName?: string,
 ): Promise<ToolResult | null> {
@@ -3103,29 +3116,20 @@ export async function tryBridgeCocExtensions(
   try {
     const result = await bridge.findExtensionClasses(baseClassName);
     if (!result) return null;
-    return { content: [{ type: 'text', text: formatCocExtensions(result, methodName) }] };
+    return { content: [{ type: 'text', text: formatCocExtensions(result, methodName, xrefSourceLabel(bridge)) }] };
   } catch (e) {
     recordBridgeFailure(`findExtensionClasses(${baseClassName})`, e);
     return null;
   }
 }
 
-function formatCocExtensions(r: BridgeExtensionClassResult, methodNameFilter?: string): string {
+function formatCocExtensions(r: BridgeExtensionClassResult, methodNameFilter: string | undefined, source: string): string {
   let out = `CoC Extensions of: ${r.baseClassName}\n`;
-  out += `_Source: C# bridge (DYNAMICSXREFDB)_\n\n`;
+  out += `_Source: ${source}_\n\n`;
 
   if (r.count === 0) {
     out += `No class extensions found via cross-reference database.\n`;
     return out;
-  }
-
-  // Apply method filter if specified
-  let filtered = r.extensions;
-  if (methodNameFilter) {
-    filtered = r.extensions.filter(ext =>
-      ext.wrappedMethods?.some(m => m.toLowerCase() === methodNameFilter.toLowerCase())
-      || !ext.wrappedMethods || ext.wrappedMethods.length === 0
-    );
   }
 
   // Dedupe by class name ONCE, before anything is counted. A class carries a single
@@ -3133,22 +3137,59 @@ function formatCocExtensions(r: BridgeExtensionClassResult, methodNameFilter?: s
   // reach here today — but the count and the list it introduces have to agree whatever
   // arrives, and skipping an entry inside the render loop after the heading above it had
   // already counted that entry is exactly how the two come apart.
-  const byClassName = new Map<string, (typeof filtered)[number]>();
-  for (const ext of filtered) {
+  const byClassName = new Map<string, CocExtensionEntry>();
+  for (const ext of r.extensions) {
     if (!byClassName.has(ext.className)) byClassName.set(ext.className, ext);
   }
   const unique = [...byClassName.values()];
 
-  out += `Found ${unique.length} extension class(es)${methodNameFilter ? ` wrapping "${methodNameFilter}"` : ''}:\n\n`;
+  if (!methodNameFilter) {
+    out += `Found ${unique.length} extension class(es):\n\n`;
+    return out + formatCocGroups(unique);
+  }
 
+  // With a method filter, "Found N … wrapping m" counts only the classes whose wrap list names
+  // m. It used to count every class with an EMPTY list as well — a leftover from when the list
+  // held every base method the class called — so "Found 12 extension class(es) wrapping
+  // validateWrite" listed ten classes that wrap something else. The bridge sends a list for
+  // every class (WrappedMethods = new List<string>()), so empty means "wraps nothing". Those
+  // classes are still worth seeing, under their own heading and count; a class with no list at
+  // all (an older bridge, another source) is unknown, and is never counted as a wrapper either.
+  const wanted = methodNameFilter.toLowerCase();
+  const wrappers: CocExtensionEntry[] = [];
+  const others: CocExtensionEntry[] = [];
+  const unknown: CocExtensionEntry[] = [];
+  for (const ext of unique) {
+    if (!ext.wrappedMethods) unknown.push(ext);
+    else if (ext.wrappedMethods.some(m => m.toLowerCase() === wanted)) wrappers.push(ext);
+    else others.push(ext);
+  }
+
+  out += `Found ${wrappers.length} extension class(es) wrapping "${methodNameFilter}":\n\n`;
+  out += formatCocGroups(wrappers);
+  if (others.length > 0) {
+    out += `Other extension classes of ${r.baseClassName} (no wrap of "${methodNameFilter}" recorded): ${others.length}\n\n`;
+    out += formatCocGroups(others);
+  }
+  if (unknown.length > 0) {
+    out += `Extension classes of ${r.baseClassName}, wraps unknown (the source sent no wrap list): ${unknown.length}\n\n`;
+    out += formatCocGroups(unknown);
+  }
+  return out;
+}
+
+type CocExtensionEntry = BridgeExtensionClassResult['extensions'][number];
+
+function formatCocGroups(extensions: CocExtensionEntry[]): string {
+  let out = '';
   // Grouped by the element each class actually extends, never pooled into one list. A name can
   // denote several objects at once — "SalesTable" is a table (14 extensions) AND a form (17),
   // and the form's data sources, controls and data fields are each extended separately again
   // (31 more across 12 elements). Reporting "49 extensions of SalesTable" told an agent about
   // to write a table CoC that 34 form extensions were its concern, and hid which of the form's
   // NINE data sources with an `active` method was already wrapped.
-  const groups = new Map<string, typeof unique>();
-  for (const ext of unique) {
+  const groups = new Map<string, typeof extensions>();
+  for (const ext of extensions) {
     const key = ext.extendedElement ?? '';
     const bucket = groups.get(key) ?? [];
     bucket.push(ext);
@@ -3208,7 +3249,7 @@ function describeXrefElement(path: string): string {
 // FIND EVENT HANDLERS via XREF (Phase 6)
 
 export async function tryBridgeEventHandlers(
-  bridge: BridgeClient | undefined,
+  bridge: XrefSource | undefined,
   targetName: string,
   eventName?: string,
   handlerType?: string,
@@ -3217,20 +3258,23 @@ export async function tryBridgeEventHandlers(
   try {
     const result = await bridge.findEventSubscribers(targetName, eventName, handlerType);
     if (!result) return null;
-    return { content: [{ type: 'text', text: formatEventHandlers(result) }] };
+    return { content: [{ type: 'text', text: formatEventHandlers(result, xrefSourceLabel(bridge)) }] };
   } catch (e) {
     recordBridgeFailure(`findEventSubscribers(${targetName})`, e);
     return null;
   }
 }
 
-function formatEventHandlers(r: BridgeEventSubscriberResult): string {
+function formatEventHandlers(r: BridgeEventSubscriberResult, source: string): string {
   let out = `Event Handlers for: ${r.targetName}\n`;
-  out += `_Source: C# bridge (DYNAMICSXREFDB)_\n\n`;
+  out += `_Source: ${source}_\n\n`;
+  const scanNote = r.scanCapped
+    ? `> ⚠️ Only the first ${r.scanned ?? '?'} references to ${r.targetName} were examined: more handlers may exist.\n`
+    : '';
 
   if (r.count === 0) {
     out += `No event handlers found via cross-reference database.\n`;
-    return out;
+    return out + scanNote;
   }
 
   out += `Found ${r.count} handler(s):\n\n`;
@@ -3254,13 +3298,13 @@ function formatEventHandlers(r: BridgeEventSubscriberResult): string {
     }
     out += `\n`;
   }
-  return out;
+  return out + scanNote;
 }
 
 // API USAGE CALLERS via XREF (P5)
 
 export async function tryBridgeApiUsageCallers(
-  bridge: BridgeClient | undefined,
+  bridge: XrefSource | undefined,
   apiName: string,
   limit = 200,
 ): Promise<ToolResult | null> {
@@ -3268,17 +3312,18 @@ export async function tryBridgeApiUsageCallers(
   try {
     const result = await bridge.findApiUsageCallers(apiName, limit);
     if (!result || result.totalCallers === 0) return null;
-    return { content: [{ type: 'text', text: formatApiUsageCallers(result) }] };
+    return { content: [{ type: 'text', text: formatApiUsageCallers(result, xrefSourceLabel(bridge)) }] };
   } catch (e) {
     recordBridgeFailure(`findApiUsageCallers(${apiName})`, e);
     return null;
   }
 }
 
-function formatApiUsageCallers(r: BridgeApiUsageCallersResult): string {
+function formatApiUsageCallers(r: BridgeApiUsageCallersResult, source: string): string {
   let out = `# API Usage: ${r.apiName}\n\n`;
-  out += `**Total references:** ${r.totalCallers} from ${r.uniqueClasses} unique class(es)\n`;
-  out += `_Source: C# bridge (DYNAMICSXREFDB)_\n\n`;
+  out += `**Total references:** ${r.totalCallers}${r.more ? '+' : ''} from ${r.uniqueClasses} unique class(es)` +
+    `${r.more ? ` (more available: the first ${r.totalCallers} found are shown)` : ''}\n`;
+  out += `_Source: ${source}_\n\n`;
 
   out += `## Top Callers by Class\n\n`;
   for (const cls of r.callersByClass.slice(0, 30)) {

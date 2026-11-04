@@ -63,12 +63,42 @@ export const LABELS_OVERRIDE_PARAMS: Record<string, string> = {
   allowExtensionLabelFile:
     '[create|rename] Allow writing to a label file EXTENSION ("_Extension" marker). Default false — ' +
     "new labels belong in the model's ORIGINAL label file.",
+  exact:
+    '[search] true = exact lookup: the labels whose TEXT equals the given text after normalising both ' +
+    'sides (Unicode NFC, trimmed, inner whitespace runs as one space, case-insensitive incl. umlauts). ' +
+    'No word match, substring, stemming or ranking. Searches every label file and model in that ' +
+    'language; model / labelFileId narrow it. Text from query (string or string[], in `language`, ' +
+    'default en-US) and/or texts[]. Answer, one block per text: `"<text>" (<language>) — N exact match(es):`, ' +
+    'with more than one match a distribution line `N exact matches: <model> (custom): <file> n; ' +
+    '<model>: <file> n, <file> n` (custom models first, then by count; at most 8 model/label-file groups, ' +
+    'then "and N more groups"), then `@File:Id  [model]  <language>: "<text>"` per listed match followed by ' +
+    'that label\'s other indexed languages, one line each, then `… and N more exact match(es)`. Listed ' +
+    'order is fixed: custom models (CUSTOM_MODELS, EXTENSION_PREFIX, D365FO_MODEL_NAME) first, then label ' +
+    'file id, then label id, case-insensitive; the cut (maxMatches) comes after sorting, so a custom copy ' +
+    'is never the one left out. With no custom model configured every model counts as standard. ' +
+    'No match: `no exact match for "<text>" (<language>)`, with "language X is not indexed" when it has ' +
+    'no rows, and a warning when the candidate set was cut off. Not counted toward the search-call budget ' +
+    'and never answered with a STOP notice: it is deterministic, so one call per label and language is fine.',
+  maxMatches:
+    '[search, exact=true] Integer 1..50, default 20: exact matches listed per text (each with its ' +
+    'translations). The count, the distribution line and "… and N more" always cover all of them. ' +
+    'Out of range is an error.',
+  texts:
+    '[search, exact=true] [{language, text}, …], max 12 per call together with query — e.g. ' +
+    '[{language:"en-US", text:"Posting"}, {language:"de", text:"Buchungen"}]. Each entry is looked up ' +
+    'on its own; a missing language means `language` (default en-US).',
 };
 
 /** The contract rendered for get_knowledge(kind="op-spec", topic="labels"). */
 export function renderLabelsOpSpec(): string {
   return [
-    'labels — write plumbing (action=create / action=rename)',
+    'labels — write plumbing (action=create / action=rename) and exact search (action=search, exact=true)',
+    '',
+    'Exact lookup — "which label\'s text is exactly X?", one call per label is fine:',
+    '  labels(action="search", exact=true, query="Posting")',
+    '  labels(action="search", params={exact:true, texts:[{language:"en-US", text:"Posting"},',
+    '                                                     {language:"de", text:"Buchungen"}]})',
+    '  labels(action="search", exact=true, query="Buchungen", language="de", maxMatches=5)',
     '',
     'FIRST, the shape that removes the round trips (measured over 1,515 real MCP',
     'calls: 268 `labels` calls against 171 writes, and `labels`→`labels` the most',

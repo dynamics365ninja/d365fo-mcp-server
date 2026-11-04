@@ -2,7 +2,7 @@
  * get_object_info(form) on a host with only the database: no AOT file, no bridge.
  *
  * The form reader and the include="xml" path both answer from the copy the index
- * stored (form_source), label it as a stored copy, and still answer "not found" when
+ * stored (object_source), label it as a stored copy, and still answer "not found" when
  * there is no copy — and never from another model's copy.
  */
 
@@ -60,7 +60,7 @@ beforeEach(() => {
 afterEach(() => index.close());
 
 const store = (model = 'Model', xml = XML) =>
-  index.db.prepare('INSERT OR REPLACE INTO form_source (form_name, model, xml_gz, indexed_at) VALUES (?, ?, ?, ?)')
+  index.db.prepare(`INSERT OR REPLACE INTO object_source (object_type, name, model, xml_gz, indexed_at) VALUES ('form', ?, ?, ?, ?)`)
     .run('DbOnlyDemoForm', model, gzipSync(Buffer.from(xml)), STORED_AT);
 
 const formInfo = async (args: Record<string, unknown> = {}) =>
@@ -130,7 +130,7 @@ describe('include="xml" from the stored copy', () => {
     expect(res.text).toContain('no file on disk');
   });
 
-  it('does not use form_source for any other object type', async () => {
+  it('does not use a form\'s stored copy for any other object type', async () => {
     store();
     index.addSymbol({ name: 'DbOnlyDemoForm', type: 'class', filePath: AGENT_PATH.replace('AxForm', 'AxClass'), model: 'Model' } as any);
     const res = await readObjectXml('class', 'DbOnlyDemoForm', { index });

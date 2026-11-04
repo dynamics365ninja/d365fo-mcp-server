@@ -962,6 +962,11 @@ export const D365FO_FILE_CREATE_PROPERTY_SPECS: Record<string, string> = {
     'CHOOSE isExtensible DELIBERATELY: it also bars `<`/`>`/`<=`/`>=` on the enum ("Cannot use extensible ' +
     'enumerated type in non-equality comparison"), so any enum whose values get RANKED in X++ — a tier, a ' +
     'severity, a no-downgrade check — must be isExtensible:false',
+  'class-extension':
+    'baseClass? (the extended object; default: the [ExtensionOf] in sourceCode), baseObjectType? (class|table|form|' +
+    'view|map|form-datasource|… — default: the [ExtensionOf] kind). The type picks the configured extension class ' +
+    'name format (EXTENSION_CLASS_NAME_FORMAT*); without one, or for a type no format covers, the reply asks for ' +
+    'the full name — pass it as objectName (ending in _Extension). No format configured: both are optional as before',
   'enum-extension': 'enumValues[{name,label?,value?,countryRegionCodes?}]',
   'table-extension':
     'fields[{name,edt?,enumType?,label?,mandatory?,fieldType?}] — enum fields need ' +

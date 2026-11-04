@@ -262,20 +262,23 @@ export function checkIndexStaleness(
   );
 
   if (scan.newestMtime > indexedAtMs + TOLERANCE_MS) {
+    // The newest file is only the one the scan happened to see last; after a pull
+    // or a branch switch there are more. The model form finds all of them.
+    const model = path.basename(modelMetadataDir);
     lines.push(
       '',
       '⚠️  **INDEX IS STALE** — the workspace contains files newer than the last index update.',
       `   Newest change: ${scan.newestFile}`,
       '   Symbol lookups may return outdated signatures/fields for recently edited objects.',
-      `   Fix: call \`update_symbol_index(filePath="${scan.newestFile.replace(/\\/g, '\\\\')}")\` for the changed file(s),`,
-      '   or run `npm run build-database` (EXTRACT_MODE=custom) for a full custom-model refresh.',
+      `   Fix: call \`update_symbol_index(model="${model}")\` — it re-indexes every changed, new and deleted file of the model,`,
+      '   or run `npm run build-database` (EXTRACT_MODE=custom) for a full custom-model rebuild.',
     );
     return {
       status: 'stale',
       lines,
       compactLines: [
         `Index       : ⚠️  STALE — indexed ${ageHours} h ago, workspace has newer files (lookups may be outdated)`,
-        `              Fix: update_symbol_index(filePath="${scan.newestFile.replace(/\\/g, '\\\\')}")`,
+        `              Fix: update_symbol_index(model="${model}")`,
       ],
     };
   }

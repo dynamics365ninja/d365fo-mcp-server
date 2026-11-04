@@ -1,6 +1,6 @@
 /**
  * The extractor attaches a form's original XML to its JSON as `raw`, and the index
- * build turns that into a form_source row.
+ * build turns that into an object_source row.
  *
  * extractForms -> JSON -> XppSymbolIndex.indexMetadataDirectory is the real build
  * path, run here end to end on a one-form model. JSON written before `raw` existed has
@@ -72,14 +72,14 @@ describe('extractForms', () => {
 });
 
 describe('index build from the extracted JSON', () => {
-  it('stores the XML as form_source when the JSON carries raw', async () => {
+  it('stores the XML as object_source when the JSON carries raw', async () => {
     await extractOneForm();
     const { XppSymbolIndex } = await import('../../src/metadata/symbolIndex');
     const index = new XppSymbolIndex(':memory:', ':memory:');
     try {
       await index.indexMetadataDirectory(path.join(root, 'out'), 'DemoPkg');
 
-      const row = index.db.prepare(`SELECT xml_gz FROM form_source WHERE form_name = 'RawDemoForm'`).get() as any;
+      const row = index.db.prepare(`SELECT xml_gz FROM object_source WHERE object_type = 'form' AND name = 'RawDemoForm'`).get() as any;
       expect(gunzipSync(row.xml_gz).toString('utf-8')).toBe(FORM_XML);
       expect((index.db.prepare('SELECT COUNT(*) AS n FROM form_datasources').get() as any).n).toBe(1);
     } finally {
@@ -101,7 +101,7 @@ describe('index build from the extracted JSON', () => {
       expect((index.db.prepare(`SELECT COUNT(*) AS n FROM symbols WHERE type = 'form'`).get() as any).n).toBe(1);
       expect((index.db.prepare('SELECT COUNT(*) AS n FROM form_datasources').get() as any).n).toBe(1);
       expect((index.db.prepare('SELECT COUNT(*) AS n FROM form_patterns').get() as any).n).toBeGreaterThan(0);
-      expect((index.db.prepare('SELECT COUNT(*) AS n FROM form_source').get() as any).n).toBe(0);
+      expect((index.db.prepare('SELECT COUNT(*) AS n FROM object_source').get() as any).n).toBe(0);
     } finally {
       index.close();
     }

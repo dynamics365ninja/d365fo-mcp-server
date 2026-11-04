@@ -82,11 +82,17 @@ export const DB_BACKED_LOCAL_TOOLS = new Set([
  *    (create/rename) need K:\ and error clearly when unreachable.
  *  - d365fo_file: generate works on Azure; create/modify/delete need K:\ and
  *    error clearly when unreachable.
+ *  - find_references: the cross-reference database (DYNAMICSXREFDB) is only
+ *    reachable through the C# bridge, which only the local companion runs; the
+ *    shared read-only server answers from its symbol index by name. In
+ *    write-only mode it answers from the bridge only and points to the shared
+ *    server for everything else (no index there to fall back on).
  */
 export const ALWAYS_TOOLS = new Set([
   'get_object_info',
   'labels',
   'd365fo_file',
+  'find_references',
 ]);
 
 /**

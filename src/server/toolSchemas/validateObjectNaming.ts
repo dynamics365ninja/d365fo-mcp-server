@@ -6,7 +6,7 @@
 
 export const validateObjectNamingTool = {
     name: 'validate_object_naming',
-    description: 'Validate a proposed D365FO object name against naming conventions: extension naming, ISV prefix, type-specific suffixes, and conflict detection against the symbol index.',
+    description: 'Validate a proposed D365FO object name: extension naming/formats, ISV prefix, type suffixes, conflicts in the symbol index.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -16,15 +16,18 @@ export const validateObjectNamingTool = {
           enum: ['class', 'table', 'form', 'enum', 'edt', 'query', 'view', 'report',
             'table-extension', 'class-extension', 'form-extension', 'enum-extension', 'edt-extension',
             'menu-item', 'security-privilege', 'security-duty', 'security-role', 'data-entity'],
-          description: 'Type of the D365FO object',
         },
         baseObjectName: {
           type: 'string',
-          description: 'Required for extension types: name of the object being extended',
+          description: 'Extension types: the object being extended',
+        },
+        baseObjectType: {
+          type: 'string',
+          description: 'class-extension: its type (class|table|form|…); picks the name format',
         },
         modelPrefix: {
           type: 'string',
-          description: 'Expected ISV/model prefix (2-4 uppercase letters, e.g. "WHS"). Auto-detected if omitted.',
+          description: 'ISV/model prefix (e.g. "WHS"); auto-detected if omitted.',
         },
       },
       required: ['proposedName', 'objectType'],
