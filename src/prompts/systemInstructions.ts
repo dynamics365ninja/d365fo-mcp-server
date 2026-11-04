@@ -3,8 +3,10 @@
  * Optimized for MCP-capable AI clients (GitHub Copilot, Claude Code) in Visual Studio 2022 / 2026
  *
  * NOTE: This file is the MCP prompt source of truth for AI system instructions.
- * The static instruction layers (.github/copilot-instructions.md, CLAUDE.md)
- * mirror these rules. If you update rules here, sync them there too.
+ * The static instruction layer (.github/copilot-instructions.md, which users
+ * also copy into their workspace as CLAUDE.md — docs/SETUP.md) mirrors these
+ * rules. If you update rules here, sync them there too. The repo-root
+ * CLAUDE.md is for contributors to this repo and must NOT mirror these rules.
  *
  * Kept deliberately under 200 lines: the prompt holds only the tool decision
  * tree and hard prohibitions. Everything that is a rule about CODE lives in
