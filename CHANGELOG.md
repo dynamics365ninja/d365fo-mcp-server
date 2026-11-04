@@ -172,6 +172,24 @@ those are called out explicitly below.
   which `tests/validation/platformPatternMatcher.test.ts` holds the validator to in
   CI. `npm run oracle:form-sweep` validates every shipped form and fails on any
   error.
+- **`get_object_info` for `menu` and `menu-extension`.** It had neither type, so an agent
+  placing an item had no tool to find a submenu: on a dev VM it grepped
+  PackagesLocalDirectory for the menu XML and read it raw. `objectType="menu"` renders the
+  menu as a tree of submenus (with label) and items (with their menu item and kind), with a
+  count, and a line per extension of the menu: how many items it adds and which submenus,
+  under which parent. `{"submenusOnly": true}` gives the submenu tree alone with an item
+  count each. `objectType="menu-extension"` takes a full extension name (that one) or a
+  base menu name (all of them) and lists each entry under its parent, with its position,
+  nested items and the customizations of base elements. Both read through the index, the
+  configured model and then every package folder, so a write-only companion reads standard
+  menus too; `{"include": "xml"}` falls back to the package folders for both types as well.
+  A read-only server reads only the files its index points to and still finds on its disk
+  (some models' source, not the standard packages), and its index keeps no menu XML. When
+  it cannot read a menu it says so, lists the extensions of the menu the index knows by
+  name and model, and points to the local companion, instead of "not found" with search
+  advice. Extensions the index knows but whose file was not read are counted in the
+  heading ("5 of 7 read") and listed by name and model above the rendered ones, so a
+  partial list does not read as the whole one.
 
 ### Changed
 - **`build_d365fo_project` and `run_systest_class` are no longer marked as closed-world
