@@ -651,11 +651,14 @@ function renderIndexAnswer(
       // Owner + model on each hit, and deduplicated on all three: without the
       // owner, three fields called SalesLine on three different tables render as
       // the same row printed three times, which reads as a rendering bug rather
-      // than as three distinct objects.
+      // than as three distinct objects. Members only: an extension's parentName is
+      // its base object, which the name already carries (OrganizationAdministration.
+      // OrganizationAdministration.ContosoExtension) or which makes it read as a member
+      // (SalesTable.SalesTableContoso_Extension); the type says what it extends.
       const seen = new Set<string>();
       const rendered: string[] = [];
       for (const r of exactHits) {
-        const owner = r.parentName ? `${r.parentName}.` : '';
+        const owner = r.parentName && !r.type.endsWith('-extension') ? `${r.parentName}.` : '';
         const line =
           `${owner}${r.name} (${r.type})${r.model ? ` in ${r.model}` : ''}` +
           `${r.staleIndexRow ? ' — ⚠️ STALE index row, no file on this machine' : ''}`;
