@@ -28,6 +28,8 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+## [1.23.0] — 2026-11-05
+
 ### Added
 - **`reserved-words` knowledge topic.** `get_knowledge(topic="reserved keywords")`
   answered with the `switch` topic. The new topic lists the compiler's own keyword
