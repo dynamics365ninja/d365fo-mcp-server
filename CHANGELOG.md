@@ -169,6 +169,14 @@ those are called out explicitly below.
   ignored.
 
 ### Fixed
+- **`search` put an extension's base object in front of its name.** The exact-match line
+  prefixes the owner to tell same-named members apart, and an extension's index row
+  carries its base object as owner, so a menu extension read
+  `OrganizationAdministration.OrganizationAdministration.ContosoExtension` and a class
+  extension `SalesTable.SalesTableContoso_Extension`, as if it were a member of
+  `SalesTable`. The workspace-aware listing (`includeWorkspace` with `workspacePath`)
+  had the same prefix. Extensions are now named alone, with their type, in both;
+  members keep the owner.
 - **KW001 missed the later names of a declaration list and sized-string
   parameters.** `int a, count;` and `void f(str 20 select)` passed, although a probe
   class showed xppc rejecting both ("'identifier' expected", "invalid name for a
