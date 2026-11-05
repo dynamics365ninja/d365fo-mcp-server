@@ -42,7 +42,9 @@ those are called out explicitly below.
   extension classes. No method body or source is stored; entries say "binary ISV, signatures
   only". The import refuses a model whose references mostly do not resolve against the
   platform it was read with (`--force` overrides). `build-database` also indexes label texts
-  found under `<METADATA_PATH>/<Model>/AxLabelFile`. See docs/BINARY_ISV_MODELS.md.
+  found under `<METADATA_PATH>/<Model>/AxLabelFile`. `BinaryModelExtractor --models` takes
+  names and masks by module or display name (`Contoso*,!ContosoDemo*`); `--no-aot` skips the
+  object XML and labels when only signatures are needed. See docs/BINARY_ISV_MODELS.md.
 
 ### Fixed
 - **`get_object_info` for a form no longer prints an empty code block per method** when the

@@ -40,10 +40,10 @@ structured signatures while a compiled `AxMethod` has no `Source` text for the X
    ```
    dotnet build bridge/BinaryModelExtractor -c Release -p:D365BinPath=<PLD>\bin -o <extractorDir>
    ```
-3. **Dump** the models you want (module names or display names; omit `--models` for every non-kernel model):
+3. **Dump** the models you want (names or masks, by module or display name: `Contoso*`, `*,!ContosoDemo*`; omit `--models` for every non-kernel model):
 
    ```
-   <extractorDir>\BinaryModelExtractor.exe --packages-path <PLD> --out <dump> --models Acme,AcmeExtras [--languages en-US,cs|all]
+   <extractorDir>\BinaryModelExtractor.exe --packages-path <PLD> --out <dump> --models "Contoso*,!ContosoDemo*" [--languages en-US,cs|all] [--no-aot]
    ```
 4. **Import and index** (any OS; copy `<dump>` over if step 3 ran elsewhere):
 

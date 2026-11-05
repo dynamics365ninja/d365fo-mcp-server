@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace BinaryModelExtractor
 {
@@ -17,7 +18,7 @@ namespace BinaryModelExtractor
     /// model, plus the non-class objects as serialized AOT XML (see AotExport).
     ///
     ///   BinaryModelExtractor.exe --packages-path &lt;PackagesLocalDirectory&gt; --out &lt;dir&gt;
-    ///       [--models A,B] [--languages en-US,cs|all] [--no-aot] [--bin-path &lt;bin&gt;]
+    ///       [--models &lt;mask&gt;] [--languages en-US,cs|all] [--no-aot] [--bin-path &lt;bin&gt;]
     ///
     /// The provider needs &lt;PLD&gt;\bin (platform assemblies), &lt;PLD&gt;\StaticMetadata and the
     /// packages' own bin\ folders. Nothing that looks like a method body is written:
@@ -47,7 +48,7 @@ namespace BinaryModelExtractor
             }
             if (pld == null || outDir == null)
             {
-                Console.Error.WriteLine("usage: BinaryModelExtractor --packages-path <PLD> --out <dir> [--models A,B] [--bin-path <bin>]");
+                Console.Error.WriteLine("usage: BinaryModelExtractor --packages-path <PLD> --out <dir> [--models <mask>] [--bin-path <bin>]");
                 return 2;
             }
             _bin = binPath ?? Path.Combine(pld, "bin");
@@ -71,8 +72,8 @@ namespace BinaryModelExtractor
 
             var byModel = new Dictionary<string, ModelDump>(StringComparer.OrdinalIgnoreCase);
             // --models matches a model's display name or its module name.
-            bool wanted(string m) => modelFilter == null || modelFilter.Contains(m)
-                || (ModelProps.TryGetValue(m, out var props) && props.TryGetValue("Module", out var mod) && modelFilter.Contains(mod));
+            bool wanted(string m) => modelFilter == null || MatchesMasks(modelFilter, m,
+                ModelProps.TryGetValue(m, out var props) && props.TryGetValue("Module", out var mod) ? mod : null);
             ModelDump Get(string m) { if (!byModel.TryGetValue(m, out var d)) byModel[m] = d = new ModelDump { Model = m }; return d; }
 
             int skipped = 0;
@@ -150,6 +151,19 @@ namespace BinaryModelExtractor
             }
             if (skipped > 0) Console.WriteLine($"(skipped {skipped} objects outside --models)");
             return 0;
+        }
+
+        /// <summary>
+        /// --models entries: names and masks (* and ?), a leading ! excludes; a mask matches the display
+        /// name or the module name. Only exclusions select every model but those.
+        /// </summary>
+        static bool MatchesMasks(HashSet<string> masks, params string?[] names)
+        {
+            bool Hit(string mask) => names.Any(n => n != null && Regex.IsMatch(n,
+                "^" + Regex.Escape(mask.Trim()).Replace("\\*", ".*").Replace("\\?", ".") + "$", RegexOptions.IgnoreCase));
+            var include = masks.Where(m => !m.StartsWith("!")).ToList();
+            var exclude = masks.Where(m => m.StartsWith("!")).Select(m => m.Substring(1)).ToList();
+            return (include.Count == 0 || include.Any(Hit)) && !exclude.Any(Hit);
         }
 
         static readonly Dictionary<string, Dictionary<string, string>> ModelProps = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
