@@ -24,6 +24,7 @@ import { log } from '../src/utils/terminalUi.js';
 import {
   binaryIsvInfo,
   checkBinaryCompat,
+  KERNEL_MODEL,
   convertBinaryModel,
   sourcePathFor,
   type BinaryModelDump,
@@ -193,7 +194,8 @@ for (const { d, m } of converted) {
     fs.cpSync(labelSrc, path.join(base, 'AxLabelFile'), { recursive: true });
     labels += Object.values(d.Labels ?? {}).reduce((a, b) => a + b, 0);
   }
-  models.push(m.model);
+  // The platform kernel (StaticMetadata) is Microsoft metadata, not a custom model.
+  if (m.model !== KERNEL_MODEL) models.push(m.model);
   classes += m.classes.length;
   tables += m.tables.length;
   edts += m.edts.length;

@@ -21,6 +21,9 @@ import { parseExtensionOfAttribute, parseXppClassHeader, type XppVisibility } fr
 
 export const BINARY_ISV_NOTE = 'binary ISV, signatures only';
 
+/** Module name the extractor gives the objects the provider serves from StaticMetadata (Common, xRecord, Object, ...). */
+export const KERNEL_MODEL = 'Kernel';
+
 // ---- extractor dump shapes (BinaryModelExtractor/Program.cs, JSON is PascalCase) ----
 
 export interface DumpAttr {
@@ -372,6 +375,7 @@ export function toTableInfo(t: DumpTable, model: string, info: BinaryIsvInfo): X
     label: t.Label || t.Name,
     tableGroup: t.TableGroup || 'Main',
     primaryIndex: t.PrimaryIndex,
+    extends: t.Extends,
     clusteredIndex: clustered,
     fields,
     indexes: (t.Indexes ?? []).map(i => ({

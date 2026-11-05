@@ -44,7 +44,8 @@ those are called out explicitly below.
   platform it was read with (`--force` overrides). `build-database` also indexes label texts
   found under `<METADATA_PATH>/<Model>/AxLabelFile`. `BinaryModelExtractor --models` takes
   names and masks by module or display name (`Contoso*,!ContosoDemo*`); `--no-aot` skips the
-  object XML and labels when only signatures are needed. See docs/BINARY_ISV_MODELS.md.
+  object XML and labels when only signatures are needed; `--kernel` also dumps the platform
+  kernel (`Common`, `xRecord`, `Object`, ...) as the model `Kernel`. See docs/BINARY_ISV_MODELS.md.
 
 ### Fixed
 - **`get_object_info` for a form no longer prints an empty code block per method** when the

@@ -18,7 +18,7 @@ namespace BinaryModelExtractor
     /// model, plus the non-class objects as serialized AOT XML (see AotExport).
     ///
     ///   BinaryModelExtractor.exe --packages-path &lt;PackagesLocalDirectory&gt; --out &lt;dir&gt;
-    ///       [--models &lt;mask&gt;] [--languages en-US,cs|all] [--no-aot] [--bin-path &lt;bin&gt;]
+    ///       [--models &lt;mask&gt;] [--languages en-US,cs|all] [--no-aot] [--kernel] [--bin-path &lt;bin&gt;]
     ///
     /// The provider needs &lt;PLD&gt;\bin (platform assemblies), &lt;PLD&gt;\StaticMetadata and the
     /// packages' own bin\ folders. Nothing that looks like a method body is written:
@@ -28,12 +28,13 @@ namespace BinaryModelExtractor
     static class Program
     {
         static string _bin = "";
+        const string KernelModel = "Kernel";
 
         static int Main(string[] args)
         {
             string? pld = null, outDir = null, binPath = null, models = null;
             var languages = "en-US";
-            bool noAot = false;
+            bool noAot = false, kernel = false;
             for (int i = 0; i < args.Length; i++)
             {
                 switch (args[i])
@@ -44,6 +45,7 @@ namespace BinaryModelExtractor
                     case "--models": models = args[++i]; break;
                     case "--languages": languages = args[++i]; break;
                     case "--no-aot": noAot = true; break;
+                    case "--kernel": kernel = true; break;
                 }
             }
             if (pld == null || outDir == null)
@@ -58,12 +60,12 @@ namespace BinaryModelExtractor
                 return File.Exists(p) ? Assembly.LoadFrom(p) : null;
             };
             return Extract(pld, outDir, models == null ? null : new HashSet<string>(models.Split(','), StringComparer.OrdinalIgnoreCase),
-                languages == "all" ? null : new HashSet<string>(languages.Split(','), StringComparer.OrdinalIgnoreCase), noAot);
+                languages == "all" ? null : new HashSet<string>(languages.Split(','), StringComparer.OrdinalIgnoreCase), noAot, kernel);
         }
 
         // Separate method: JIT must not touch D365FO types before AssemblyResolve is registered.
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static int Extract(string pld, string outDir, HashSet<string>? modelFilter, HashSet<string>? languages, bool noAot)
+        static int Extract(string pld, string outDir, HashSet<string>? modelFilter, HashSet<string>? languages, bool noAot, bool kernel)
         {
             var factory = new Microsoft.Dynamics.AX.Metadata.Storage.MetadataProviderFactory();
             var prov = factory.CreateRuntimeProvider(new Microsoft.Dynamics.AX.Metadata.Storage.Runtime.RuntimeProviderConfiguration(pld));
@@ -72,7 +74,8 @@ namespace BinaryModelExtractor
 
             var byModel = new Dictionary<string, ModelDump>(StringComparer.OrdinalIgnoreCase);
             // --models matches a model's display name or its module name.
-            bool wanted(string m) => modelFilter == null || MatchesMasks(modelFilter, m,
+            // Objects the provider serves from StaticMetadata (Common, xRecord, Object, ...) have no model: --kernel dumps them as "Kernel".
+            bool wanted(string m) => m == KernelModel ? kernel : modelFilter == null || MatchesMasks(modelFilter, m,
                 ModelProps.TryGetValue(m, out var props) && props.TryGetValue("Module", out var mod) ? mod : null);
             ModelDump Get(string m) { if (!byModel.TryGetValue(m, out var d)) byModel[m] = d = new ModelDump { Model = m }; return d; }
 
@@ -82,7 +85,7 @@ namespace BinaryModelExtractor
                 foreach (var k in keys().ToList())
                 {
                     string model;
-                    try { model = modelOf(k) ?? "Unknown"; } catch { model = "Unknown"; }
+                    try { model = modelOf(k) ?? KernelModel; } catch { model = KernelModel; }
                     if (!wanted(model)) { skipped++; continue; }
                     try { var o = read(k); if (o != null) add(Get(model), o); }
                     catch (Exception ex) { Get(model).Errors.Add(kind + " " + k + ": " + ex.GetType().Name + ": " + ex.Message); }
@@ -119,6 +122,16 @@ namespace BinaryModelExtractor
             foreach (var k in prov.Maps.GetPrimaryKeys()) names.Add(k);
 
             var provVersion = FileVersion("Microsoft.Dynamics.AX.Metadata.dll");
+            if (byModel.ContainsKey(KernelModel))
+            {
+                var v = (provVersion ?? "0.0.0.0").Split('.');
+                string V(int i) => i < v.Length ? v[i] : "0";
+                ModelProps[KernelModel] = new Dictionary<string, string>
+                {
+                    ["Name"] = KernelModel, ["Module"] = KernelModel, ["DisplayName"] = "Platform kernel (StaticMetadata)", ["Publisher"] = "Microsoft",
+                    ["VersionMajor"] = V(0), ["VersionMinor"] = V(1), ["VersionBuild"] = V(2), ["VersionRevision"] = V(3),
+                };
+            }
             var opts = new JsonSerializerOptions { WriteIndented = true, DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
             foreach (var d in byModel.Values)
             {

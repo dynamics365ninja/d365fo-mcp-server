@@ -3,7 +3,7 @@
  * Fixture is hand-written in the extractor's output shape (no vendor data).
  */
 import { describe, it, expect } from 'vitest';
-import { convertBinaryModel, type BinaryModelDump } from '../../src/metadata/binaryModelImport.js';
+import { convertBinaryModel, KERNEL_MODEL, type BinaryModelDump } from '../../src/metadata/binaryModelImport.js';
 
 const dump = (over: Partial<BinaryModelDump> = {}): BinaryModelDump => ({
   Model: 'Contoso Tools',
@@ -21,7 +21,8 @@ const dump = (over: Partial<BinaryModelDump> = {}): BinaryModelDump => ({
       Extends: 'Object',
       IsFinal: false,
       IsInternal: false,
-      Declaration: '/// <summary>\n/// Prints things.\n/// </summary>\npublic class ContosoPrinter extends Object\n{\n}',
+      Declaration:
+        '/// <summary>\n/// Prints things.\n/// </summary>\npublic class ContosoPrinter extends Object\n{\n}',
       Attributes: [],
       Methods: [
         {
@@ -109,5 +110,29 @@ describe('convertBinaryModel', () => {
     expect(m.tables[0]).toMatchObject({ name: 'ContosoLog', primaryIndex: 'IdIdx' });
     expect((m.tables[0].indexes as Array<{ unique: boolean }>)[0].unique).toBe(true);
     expect((m.enums[0].values as unknown[]).length).toBe(2);
+  });
+
+  it('keeps the base table of a table that extends another, and imports the platform kernel like any model', () => {
+    const k = convertBinaryModel(
+      dump({
+        Model: 'Kernel',
+        ModelInfo: {
+          Module: 'Kernel',
+          Publisher: 'Microsoft',
+          VersionMajor: '7',
+          VersionMinor: '0',
+          VersionBuild: '1',
+          VersionRevision: '2',
+        },
+        Classes: [],
+        Tables: [
+          { Name: 'Common', Methods: [{ Name: 'update', Visibility: 'public', ReturnType: 'void' }] },
+          { Name: 'ContosoChild', Extends: 'ContosoBase' },
+        ],
+      }),
+    );
+    expect(k.model).toBe(KERNEL_MODEL);
+    expect(k.tables.find(t => t.name === 'ContosoChild')?.extends).toBe('ContosoBase');
+    expect(k.tables.find(t => t.name === 'Common')?.methods).toHaveLength(1);
   });
 });

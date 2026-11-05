@@ -57,6 +57,13 @@ structured signatures while a compiled `AxMethod` has no `Source` text for the X
 
 `LABEL_LANGUAGES` still selects which of the dumped languages are indexed (`--languages` on the extractor only limits what is dumped).
 
+### Platform kernel
+
+`BinaryModelExtractor --kernel` also dumps what the provider serves from `StaticMetadata` (`Common`, `xRecord`,
+`Object`, the kernel classes and tables) as the model `Kernel`, with the platform's version. An import writes it
+like any other model but does not record it as custom. Tools that need the full inheritance of a table or class
+(the version scripts resolve a method through `extends` up to `Common`) take it from there.
+
 ## What is indexed
 
 | Object | What the tools get | Source in the dump |
