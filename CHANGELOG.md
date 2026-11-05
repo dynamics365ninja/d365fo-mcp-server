@@ -165,13 +165,19 @@ those are called out explicitly below.
   `submenuLabel`, `parentMenuElement`) writes an inline `AxMenuElementSubMenu` with an
   empty `<Elements />`: on a `menu-extension` as a root entry with `<Parent>`, or nested in
   a submenu the extension adds; on a `menu` (a menu of your own model) in the root or in a
-  submenu of that menu. A name already used anywhere in the menu is refused (a `<Parent>`
-  names submenus by plain name), the same one under the same parent again is a skip.
+  submenu of that menu. A name already used anywhere in the menu, by a submenu or by a
+  menu item, is refused (element names are unique in a menu, and a duplicate fails the
+  build); the same submenu under the same parent again is a skip.
   `add-menu-item-to-menu` takes `parentMenuElement` on a `menu` too, through the XML
   writer, since the C# op has no parent. That writer also no longer inserts before the
   first `</Elements>` in the file, which in a menu whose first element is a submenu put the
-  item inside that submenu, and it skips an item already in the target collection. The
-  knowledge topic now shows the inline shape, `AxMenuElementMenuReference` for menu
+  item inside that submenu, and it skips an item already in the target collection. An
+  item placed where another element of the menu already has its name (the same item in a
+  second submenu, or an item the base menu of an extension already holds) was written
+  with that name and failed the build; it is now named `<item>1`, `<item>2`, … with
+  `MenuItemName` unchanged, as shipped menus do, and the reply says so. On a
+  `menu-extension` this reads the base menu and its other extensions for a top-level item
+  too. The knowledge topic now shows the inline shape, `AxMenuElementMenuReference` for menu
   objects, and the two operations instead of hand-written XML.
 
 ### Changed

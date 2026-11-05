@@ -43,11 +43,20 @@ export interface MenuExtensionItemSpec {
   menuItemType?: string;
   /** Submenu of the base menu (or of this extension) the item goes under; empty = top level. */
   parent?: string;
+  /**
+   * Element names the base menu and the other extensions of it already use (as
+   * written, XML-escaped). The new element's <Name> must differ from them and from
+   * every name in this file — see menuElementNames.
+   */
+  takenNames?: readonly string[];
 }
 
 export type AddMenuExtensionItemResult =
-  /** `nested`: placed inside a submenu this extension adds, rather than as a root entry. */
-  | { kind: 'added'; xml: string; menuItemType: MenuExtensionItemType; nested: boolean }
+  /**
+   * `nested`: placed inside a submenu this extension adds, rather than as a root entry.
+   * `elementName`: the <Name> written — the menu item's name, or a free `<item>N`.
+   */
+  | { kind: 'added'; xml: string; menuItemType: MenuExtensionItemType; nested: boolean; elementName: string }
   /** The same menu item is already under the same parent — idempotent no-op. */
   | { kind: 'already-present' }
   /** No root <Elements> collection to insert into. */
@@ -139,6 +148,41 @@ export function menuSubmenuNames(xml: string): string[] {
 }
 
 /**
+ * Names of EVERY element in an AxMenu or AxMenuExtension — items, submenus, menu
+ * references, tiles, separators — at any depth, as written in the file (still
+ * XML-escaped). A menu's element names are unique across the menu and all of its
+ * extensions, whatever the element kind: none of the 81 shipped AxMenu files has a
+ * duplicate among its 7,087 elements, none of the 1,428 elements of the 249 shipped
+ * extensions reuses a name of its base menu, and a menu item placed twice in one
+ * menu carries a different name each time (105 cases). A duplicate fails the build
+ * ("The name 'X' is not unique. Multiple elements have the same name.").
+ */
+export function menuElementNames(xml: string): string[] {
+  const names: string[] = [];
+  const re = /<[A-Za-z_][\w.:-]*\b[^>]*\bi:type="AxMenuElement[A-Za-z]*"[^>]*>/g;
+  for (let m = re.exec(xml); m; m = re.exec(xml)) {
+    if (m[0].endsWith('/>')) continue;
+    const el = { tag: '', open: m.index, openEnd: m.index + m[0].length, close: 0, end: 0, selfClosed: false };
+    const name = childText(xml, el, 'Name');
+    if (name) names.push(name);
+  }
+  return names;
+}
+
+/**
+ * `name` when no element of the menu has it, else the first free `name1`, `name2`, …
+ * (a shipped menu that holds an item twice names the second one differently).
+ * Escaped in, escaped out.
+ */
+export function freeElementName(name: string, taken: readonly string[]): string {
+  const used = new Set(taken.map(t => t.toLowerCase()));
+  if (!used.has(name.toLowerCase())) return name;
+  let n = 1;
+  while (used.has(`${name}${n}`.toLowerCase())) n++;
+  return `${name}${n}`;
+}
+
+/**
  * The <Elements> of the submenu named `name` in this file, at any depth: one an
  * extension adds, or an inline submenu of an AxMenu.
  */
@@ -186,6 +230,9 @@ export function addMenuExtensionItem(xml: string, spec: MenuExtensionItemSpec): 
   const isThisItem = (xmlOf: string, el: ElementSpan | null) =>
     !!el && iType(xmlOf, el) === 'AxMenuElementMenuItem' && same(childText(xmlOf, el, 'MenuItemName'), name);
 
+  // <Name> is unique in the whole menu (menuElementNames); <MenuItemName> stays the item.
+  const elementName = () => freeElementName(name, [...menuElementNames(xml), ...(spec.takenNames ?? [])]);
+
   // A submenu this extension adds takes the item INSIDE it, as the shipped files do.
   const own = parent ? findSubmenuElements(xml, collection, parent) : null;
   if (own) {
@@ -193,14 +240,15 @@ export function addMenuExtensionItem(xml: string, spec: MenuExtensionItemSpec): 
       for (const c of directChildren(xml, own.openEnd)) if (isThisItem(xml, c)) return { kind: 'already-present' };
     }
     const ind = `${lineIndent(xml, own.open)}\t`;
+    const elName = elementName();
     const block =
       `${ind}<AxMenuElement xmlns=""\n` +
       `${ind}\ti:type="AxMenuElementMenuItem">\n` +
-      `${ind}\t<Name>${name}</Name>\n` +
+      `${ind}\t<Name>${elName}</Name>\n` +
       `${ind}\t<MenuItemName>${name}</MenuItemName>\n` +
       (typeValue ? `${ind}\t<MenuItemType>${typeValue}</MenuItemType>\n` : '') +
       `${ind}</AxMenuElement>\n`;
-    return { kind: 'added', xml: appendTo(xml, own, block), menuItemType, nested: true };
+    return { kind: 'added', xml: appendTo(xml, own, block), menuItemType, nested: true, elementName: elName };
   }
 
   if (!collection.selfClosed) {
@@ -213,17 +261,18 @@ export function addMenuExtensionItem(xml: string, spec: MenuExtensionItemSpec): 
   }
 
   const ind = `${lineIndent(xml, collection.open)}\t`;
+  const elName = elementName();
   const block =
     `${ind}<AxMenuExtensionElement xmlns="">\n` +
     (parent ? `${ind}\t<Parent>${parent}</Parent>\n` : '') +
     `${ind}\t<MenuElement xmlns=""\n` +
     `${ind}\t\ti:type="AxMenuElementMenuItem">\n` +
-    `${ind}\t\t<Name>${name}</Name>\n` +
+    `${ind}\t\t<Name>${elName}</Name>\n` +
     `${ind}\t\t<MenuItemName>${name}</MenuItemName>\n` +
     (typeValue ? `${ind}\t\t<MenuItemType>${typeValue}</MenuItemType>\n` : '') +
     `${ind}\t</MenuElement>\n` +
     `${ind}</AxMenuExtensionElement>\n`;
-  return { kind: 'added', xml: appendTo(xml, collection, block), menuItemType, nested: false };
+  return { kind: 'added', xml: appendTo(xml, collection, block), menuItemType, nested: false, elementName: elName };
 }
 
 /** Where each submenu in this file sits: its plain name and its parent ('' = top level). */
@@ -256,6 +305,8 @@ export type AddSubmenuResult =
   | { kind: 'already-present' }
   /** The name is taken by a submenu under another parent; a <Parent> could not tell them apart. */
   | { kind: 'exists'; parent: string }
+  /** The name is taken by an element that is no submenu (a menu item, …): names are unique in a menu. */
+  | { kind: 'name-in-use' }
   /** AxMenu only: the parent is no submenu of this menu. */
   | { kind: 'no-parent'; submenus: string[] }
   | { kind: 'no-collection' }
@@ -297,6 +348,7 @@ export function addMenuExtensionSubmenu(xml: string, spec: MenuSubmenuSpec): Add
 
   const taken = submenuLocations(xml, collection).find(l => same(l.name, name));
   if (taken) return same(taken.parent, parent) ? { kind: 'already-present' } : { kind: 'exists', parent: taken.parent };
+  if (menuElementNames(xml).some(n => same(n, name))) return { kind: 'name-in-use' };
 
   const own = parent ? findSubmenuElements(xml, collection, parent) : null;
   if (own) {

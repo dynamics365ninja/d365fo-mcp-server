@@ -117,6 +117,23 @@ describe('addMenuItem (AxMenu)', () => {
     expect(addMenuItem(BASE_MENU, { menuItemName: 'ContosoTaxRegime', parent: 'Setup' }).kind).toBe('added');
   });
 
+  // Element names are unique in a menu whatever the kind: 0 duplicates in 7,087 shipped
+  // elements, and an item placed twice is named differently each time (105 cases).
+  it('names the same item in another submenu <item>N, keeping MenuItemName', () => {
+    const r = addMenuItem(BASE_MENU, { menuItemName: 'ContosoTaxRegime', parent: 'Setup' });
+    expect(r.kind === 'added' && r.elementName).toBe('ContosoTaxRegime1');
+    expect(xmlOf(r)).toContain('<Name>ContosoTaxRegime1</Name>\n\t\t\t\t\t<MenuItemName>ContosoTaxRegime</MenuItemName>');
+    const third = addMenuItem(xmlOf(r), { menuItemName: 'ContosoTaxRegime' });
+    expect(third.kind === 'added' && third.elementName).toBe('ContosoTaxRegime2');
+  });
+
+  it('does not give an item the name of a tile or a submenu either', () => {
+    const r = addMenuItem(BASE_MENU, { menuItemName: 'ContosoWorkspace' });
+    expect(r.kind === 'added' && r.elementName).toBe('ContosoWorkspace1');
+    const s = addMenuItem(BASE_MENU, { menuItemName: 'setup' });
+    expect(s.kind === 'added' && s.elementName).toBe('setup1');
+  });
+
   it('opens the empty <Elements /> of a new menu, and escapes', () => {
     const xml = xmlOf(addMenuItem(EMPTY_MENU, { menuItemName: 'Contoso&Co' }));
     expect(xml).toContain('\t<Elements>\n\t\t<AxMenuElement xmlns="" i:type="AxMenuElementMenuItem">\n\t\t\t<Name>Contoso&amp;Co</Name>');
@@ -159,6 +176,11 @@ describe('addMenuSubmenu (AxMenu)', () => {
     expect(addMenuSubmenu(BASE_MENU, { name: 'einvoice', parent: 'Setup' }).kind).toBe('already-present');
     expect(addMenuSubmenu(BASE_MENU, { name: 'EInvoice' })).toEqual({ kind: 'exists', parent: 'Setup' });
     expect(addMenuSubmenu(BASE_MENU, { name: 'Workspaces', parent: 'Setup' })).toEqual({ kind: 'exists', parent: '' });
+  });
+
+  it('refuses a name a menu item or a tile of the menu already has', () => {
+    expect(addMenuSubmenu(BASE_MENU, { name: 'ContosoTaxRegime', parent: 'Setup' })).toEqual({ kind: 'name-in-use' });
+    expect(addMenuSubmenu(BASE_MENU, { name: 'contosoworkspace' })).toEqual({ kind: 'name-in-use' });
   });
 
   it('names the submenus when the parent is not in the menu', () => {

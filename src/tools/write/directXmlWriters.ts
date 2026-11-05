@@ -23,7 +23,7 @@ import { removeFormControl } from '../../utils/formControlRemoval.js';
 import { findBaseObjectXml } from '../../utils/baseObjectXml.js';
 import { checkNewControlPosition, findFormControl, formDefinesControl, placeFormControl, type PlaceFormControlSpec } from '../../utils/formControlPlacement.js';
 import { addSecurityEntryPoint, removeSecurityEntryPoint } from '../xml/securityPrivilegeXml.js';
-import { type AddSubmenuResult, addMenuExtensionItem, addMenuExtensionSubmenu, menuSubmenuNames } from '../xml/menuExtensionXml.js';
+import { type AddSubmenuResult, addMenuExtensionItem, addMenuExtensionSubmenu, menuElementNames, menuSubmenuNames } from '../xml/menuExtensionXml.js';
 import { addMenuItem, addMenuSubmenu } from '../xml/menuXml.js';
 import { removeDiagnosticSuppression, addDiagnosticSuppression, emptySuppressionListXml } from '../../utils/ignoreDiagnosticListXml.js';
 import { buildSuppressionXml } from '../../knowledge/bpMonikers/index.js';
@@ -365,7 +365,9 @@ export const directXmlAddMenuItemToMenu = serializedOnFile(async (
     console.error(`[modify_d365fo_file] ✅ directXmlAddMenuItemToMenu: added '${menuItemToAdd}' to ${filePath}`);
     return {
       success: true,
-      message: `✅ Menu item '${menuItemToAdd}' (${outcome.menuItemType}) added${where} via direct XML${parent ? '' : ' fallback'}. File: ${filePath}`,
+      message:
+        `✅ Menu item '${menuItemToAdd}' (${outcome.menuItemType}) added${where} via direct XML${parent ? '' : ' fallback'}. ` +
+        `File: ${filePath}${renamedElementNote(menuItemToAdd, outcome.elementName)}`,
     };
   } catch (err) {
     console.error(`[modify_d365fo_file] directXmlAddMenuItemToMenu failed: ${err}`);
@@ -373,8 +375,20 @@ export const directXmlAddMenuItemToMenu = serializedOnFile(async (
   }
 });
 
-/** Submenus the OTHER indexed extensions of `baseMenu` add; a <Parent> may name one. */
-async function otherExtensionSubmenus(baseMenu: string, self: string, symbolIndex: any): Promise<string[]> {
+/**
+ * The element name actually written, when it is not the menu item's own: a menu's
+ * element names are unique (menuElementNames), so the same item a second time gets
+ * `<item>N`.
+ */
+function renamedElementNote(menuItemName: string, elementName: string): string {
+  return fromXmlText(elementName).toLowerCase() === menuItemName.trim().toLowerCase()
+    ? ''
+    : `\nℹ️ Another element of the menu is already named '${menuItemName.trim()}' (element names are unique in a menu, ` +
+      `base menu and extensions included), so this element is named '${fromXmlText(elementName)}'; it still opens '${menuItemName.trim()}'.`;
+}
+
+/** The XML of the OTHER indexed extensions of `baseMenu`. */
+async function otherExtensionXmls(baseMenu: string, self: string, symbolIndex: any): Promise<string[]> {
   let names: string[];
   try {
     const rows = symbolIndex.getReadDb()
@@ -387,7 +401,12 @@ async function otherExtensionSubmenus(baseMenu: string, self: string, symbolInde
     return [];
   }
   const xmls = await Promise.all(names.map(n => findBaseObjectXml('menu-extension', n, symbolIndex).catch(() => null)));
-  return xmls.flatMap(x => (x ? menuSubmenuNames(x) : []));
+  return xmls.filter((x): x is string => !!x);
+}
+
+/** Submenus the OTHER indexed extensions of `baseMenu` add; a <Parent> may name one. */
+async function otherExtensionSubmenus(baseMenu: string, self: string, symbolIndex: any): Promise<string[]> {
+  return (await otherExtensionXmls(baseMenu, self, symbolIndex)).flatMap(menuSubmenuNames);
 }
 
 /**
@@ -444,17 +463,22 @@ export const directXmlAddMenuItemToMenuExtension = serializedOnFile(async (
   const menuItemName = args.menuItemToAdd;
   const parent = args.parentMenuElement?.trim();
 
+  // Read with or without a parent: the element's <Name> must be new in the whole
+  // menu — the base menu and its other extensions too — or the build fails.
+  const baseXml = await findBaseObjectXml('menu', baseMenu, symbolIndex).catch(() => null);
+  const othersXml = await otherExtensionXmls(baseMenu, extensionName, symbolIndex);
   let parentNote = '';
   let canonicalParent = parent;
   if (parent) {
-    const baseXml = await findBaseObjectXml('menu', baseMenu, symbolIndex).catch(() => null);
-    const checked = await checkExtensionParent(content, extensionName, baseMenu, baseXml, parent, symbolIndex);
+    const checked = await checkExtensionParent(
+      content, extensionName, baseMenu, baseXml, parent, symbolIndex, othersXml.flatMap(menuSubmenuNames));
     if ('refusal' in checked) return { success: false, message: checked.refusal };
     canonicalParent = checked.parent;
     parentNote = checked.note;
   }
 
-  const outcome = addMenuExtensionItem(content, { menuItemName, menuItemType: args.menuItemToAddType, parent: canonicalParent });
+  const takenNames = [...(baseXml ? menuElementNames(baseXml) : []), ...othersXml.flatMap(menuElementNames)];
+  const outcome = addMenuExtensionItem(content, { menuItemName, menuItemType: args.menuItemToAddType, parent: canonicalParent, takenNames });
   const where = !canonicalParent
     ? 'on the top level'
     : outcome.kind === 'added' && outcome.nested
@@ -481,9 +505,20 @@ export const directXmlAddMenuItemToMenuExtension = serializedOnFile(async (
   console.error(`[modify_d365fo_file] ✅ directXmlAddMenuItemToMenuExtension: added '${menuItemName}' to ${filePath}`);
   return {
     success: true,
-    message: `✅ Menu item '${menuItemName}' (${outcome.menuItemType}) added ${where} of menu '${baseMenu}'. File: ${filePath}${parentNote}`,
+    message:
+      `✅ Menu item '${menuItemName}' (${outcome.menuItemType}) added ${where} of menu '${baseMenu}'. ` +
+      `File: ${filePath}${parentNote}${renamedElementNote(menuItemName, outcome.elementName)}`,
   };
 });
+
+/** A submenu name another element (a menu item, …) of the menu already has. */
+function nameInUseMessage(name: string, menuName: string): string {
+  return (
+    `'${name}' is already the name of an element (a menu item or another non-submenu element) of menu '${menuName}' — ` +
+    `nothing was written. Element names are unique in a menu, base menu and extensions included, and a duplicate fails ` +
+    `the build ("Multiple elements have the same name"): choose another submenuName.`
+  );
+}
 
 /**
  * add-submenu, on a menu (an AxMenu of one's own model) or on a menu extension.
@@ -512,14 +547,19 @@ export const directXmlAddSubmenu = serializedOnFile(async (
     const { extensionName, baseMenu } = extensionNames(content, filePath);
     menuName = baseMenu;
     const baseXml = await findBaseObjectXml('menu', baseMenu, symbolIndex).catch(() => null);
-    const others = await otherExtensionSubmenus(baseMenu, extensionName, symbolIndex);
-    if ([...(baseXml ? menuSubmenuNames(baseXml) : []), ...others].some(n => fromXmlText(n).toLowerCase() === name.toLowerCase())) {
+    const othersXml = await otherExtensionXmls(baseMenu, extensionName, symbolIndex);
+    const others = othersXml.flatMap(menuSubmenuNames);
+    const isName = (n: string) => fromXmlText(n).toLowerCase() === name.toLowerCase();
+    if ([...(baseXml ? menuSubmenuNames(baseXml) : []), ...others].some(isName)) {
       return {
         success: false,
         message:
           `Submenu '${name}' already exists in menu '${baseMenu}' (the base menu or another extension of it) — nothing was written. ` +
           `To put items into it, use add-menu-item-to-menu with parentMenuElement="${name}".`,
       };
+    }
+    if ([...(baseXml ? menuElementNames(baseXml) : []), ...othersXml.flatMap(menuElementNames)].some(isName)) {
+      return { success: false, message: nameInUseMessage(name, baseMenu) };
     }
     if (!baseXml) note += `\n⚠️ Base menu '${baseMenu}' could not be read, so '${name}'${parent ? ` and submenu '${parent}' were` : ' was'} NOT checked against it.`;
     if (parent) {
@@ -553,6 +593,8 @@ export const directXmlAddSubmenu = serializedOnFile(async (
           `of menu '${menuName}' — nothing was written. A <Parent> names a submenu by its plain name, so a second one of ` +
           `that name could not be told apart. To put items into it, use add-menu-item-to-menu with parentMenuElement="${name}".`,
       };
+    case 'name-in-use':
+      return { success: false, message: nameInUseMessage(name, menuName) };
     case 'already-present':
       return { success: true, skipped: true, message: `Submenu '${name}' is already ${where} of menu '${menuName}' — skipped (idempotent). File: ${filePath}` };
   }

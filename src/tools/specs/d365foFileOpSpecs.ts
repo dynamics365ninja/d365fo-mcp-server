@@ -915,6 +915,7 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       'against the base menu and the submenus this and the other indexed extensions of it add; an ' +
       'unknown one is refused with the list. A submenu this extension adds takes the item inside it. ' +
       'Appended at the end of its parent; the same item under the same parent again is skipped. ' +
+      'Element names are unique in the whole menu: an item whose name another element has is named <item>N. ' +
       'On objectType="menu" (a menu of your own model) parentMenuElement is a submenu of that menu.',
   },
   'add-submenu': {
@@ -923,7 +924,7 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
     note:
       'objectType="menu" (a menu of your own model: an inline submenu) or "menu-extension" (a standard ' +
       'menu). parentMenuElement = the submenu it goes under, plain name, omitted = top level; checked like ' +
-      'add-menu-item-to-menu\'s. The name must be new in the whole menu (a <Parent> names submenus by plain ' +
+      'add-menu-item-to-menu\'s. The name must be new in the whole menu, items included (a <Parent> names submenus by plain ' +
       'name): one that exists elsewhere is refused, the same one under the same parent again is skipped. ' +
       'Then fill it with add-menu-item-to-menu, parentMenuElement=<submenuName>.',
   },

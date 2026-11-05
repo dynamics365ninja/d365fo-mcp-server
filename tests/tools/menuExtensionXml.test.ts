@@ -386,12 +386,33 @@ describe('directXmlAddMenuItemToMenuExtension', () => {
     expect(await fs.readFile(file, 'utf-8')).toContain('<Parent>ContosoPlanningPolicies</Parent>');
   });
 
-  it('does not read other extensions when the base menu already has the parent', async () => {
+  it('reads the other extensions once, for both the parent and the element name', async () => {
     vi.mocked(findBaseObjectXml).mockResolvedValue(BASE_MENU);
     const getReadDb = vi.fn();
     const file = await extFile(EMPTY_EXT);
-    await directXmlAddMenuItemToMenuExtension(file, { menuItemToAdd: 'ContosoRentForm', parentMenuElement: 'Setup' }, { getReadDb });
-    expect(getReadDb).not.toHaveBeenCalled();
+    await directXmlAddMenuItemToMenuExtension(file, { menuItemToAdd: 'ContosoRentForm', parentMenuElement: 'Periodic' }, { getReadDb });
+    expect(getReadDb).toHaveBeenCalledTimes(1);
+  });
+
+  // Element names are unique across a menu and its extensions: none of the 1,428
+  // elements of the 249 shipped extensions reuses a name of its base menu.
+  it('names an item the base menu or another extension already has <item>N', async () => {
+    vi.mocked(findBaseObjectXml).mockImplementation(async (type: string, name: string) =>
+      type === 'menu' ? BASE_MENU : name === 'ContosoMain.ContosoSubmenus' ? SUBMENU_EXT : null);
+    const symbolIndex = { getReadDb: () => ({ prepare: () => ({ all: () => [{ name: 'ContosoMain.ContosoSubmenus' }] }) }) };
+    const file = await extFile(EMPTY_EXT);
+    const r = await directXmlAddMenuItemToMenuExtension(file, { menuItemToAdd: 'ContosoTaxRegime', parentMenuElement: 'Setup' }, symbolIndex);
+    expect(r.success).toBe(true);
+    expect(r.message).toContain("so this element is named 'ContosoTaxRegime1'; it still opens 'ContosoTaxRegime'");
+    // A name another extension uses (its submenu), on the top level.
+    const s = await directXmlAddMenuItemToMenuExtension(file, { menuItemToAdd: 'ContosoIntentLetters' }, symbolIndex);
+    expect(s.message).toContain("named 'ContosoIntentLetters1'");
+    const written = await fs.readFile(file, 'utf-8');
+    expect(written).toContain('<Name>ContosoTaxRegime1</Name>\r\n\t\t\t\t<MenuItemName>ContosoTaxRegime</MenuItemName>');
+    expect(written).toContain('<Name>ContosoIntentLetters1</Name>');
+    // A name nobody has keeps the item's own name, without the note.
+    const plain = await directXmlAddMenuItemToMenuExtension(file, { menuItemToAdd: 'ContosoRentForm' }, symbolIndex);
+    expect(plain.message).not.toContain('ℹ️');
   });
 
   it('writes with a warning when the base menu cannot be read', async () => {
@@ -402,11 +423,11 @@ describe('directXmlAddMenuItemToMenuExtension', () => {
     expect(await fs.readFile(file, 'utf-8')).toContain('<Parent>Inquiries</Parent>');
   });
 
-  it('does not look up the base menu for a top-level item', async () => {
+  it('reads the base menu for a top-level item too: its element names are taken', async () => {
     const file = await extFile(EMPTY_EXT);
     const r = await directXmlAddMenuItemToMenuExtension(file, { menuItemToAdd: 'ContosoRentForm' }, {});
     expect(r.message).toContain('on the top level');
-    expect(findBaseObjectXml).not.toHaveBeenCalled();
+    expect(findBaseObjectXml).toHaveBeenCalledWith('menu', 'ContosoMain', {});
   });
 
   it('reports a second identical call as a skip and leaves the file as it was', async () => {
@@ -484,6 +505,18 @@ describe('addMenuExtensionSubmenu', () => {
       .toEqual({ kind: 'exists', parent: '' });
   });
 
+  it('refuses the element name of an item of this extension (not its MenuItemName)', () => {
+    expect(addMenuExtensionSubmenu(SUBMENU_EXT, { name: 'ContosoVendIntentLetter', parent: 'Setup' })).toEqual({ kind: 'name-in-use' });
+    expect(addMenuExtensionSubmenu(SUBMENU_EXT, { name: 'ContosoIntentLetter', parent: 'Setup' }).kind).toBe('added');
+  });
+
+  it('addMenuExtensionItem takes a free name when the item name is taken', () => {
+    const r = addMenuExtensionItem(EMPTY_EXT, { menuItemName: 'ContosoRentForm', takenNames: ['ContosoRentForm', 'contosorentform1'] });
+    if (r.kind !== 'added') throw new Error(r.kind);
+    expect(r.elementName).toBe('ContosoRentForm2');
+    expect(r.xml).toContain('<Name>ContosoRentForm2</Name>\n\t\t\t\t<MenuItemName>ContosoRentForm</MenuItemName>');
+  });
+
   it('submenuLocations gives each submenu its parent, root entries by <Parent>', () => {
     const withParent = addMenuExtensionSubmenu(SUBMENU_EXT, { name: 'ContosoRentals', parent: 'Setup' });
     if (withParent.kind !== 'added') throw new Error(withParent.kind);
@@ -545,6 +578,29 @@ describe('directXmlAddSubmenu', () => {
       expect(r.message).toContain(`parentMenuElement="${submenuName}"`);
     }
     expect(await fs.readFile(f, 'utf-8')).toBe(before);
+  });
+
+  it('refuses a name a menu item or tile of the base menu already has', async () => {
+    vi.mocked(findBaseObjectXml).mockResolvedValue(BASE_MENU);
+    const f = await file(EMPTY_EXT, 'ContosoMain.ContosoExtension');
+    const before = await fs.readFile(f, 'utf-8');
+    for (const submenuName of ['ContosoSystemDate', 'contosoworkspace']) {
+      const r = await directXmlAddSubmenu(f, { submenuName, parentMenuElement: 'Setup' }, {});
+      expect(r.success).toBe(false);
+      expect(r.message).toContain(`'${submenuName}' is already the name of an element`);
+      expect(r.message).toContain('choose another submenuName');
+    }
+    expect(await fs.readFile(f, 'utf-8')).toBe(before);
+  });
+
+  it('on an AxMenu: refuses a name an item of the menu has, and names a repeated item <item>N', async () => {
+    const f = await file(BASE_MENU, 'ContosoMain');
+    const sub = await directXmlAddSubmenu(f, { submenuName: 'ContosoTaxRegime' }, {});
+    expect(sub.success).toBe(false);
+    expect(sub.message).toContain("'ContosoTaxRegime' is already the name of an element");
+    const item = await directXmlAddMenuItemToMenu(f, 'ContosoTaxRegime', 'display', 'Setup');
+    expect(item?.message).toContain("so this element is named 'ContosoTaxRegime1'");
+    expect(await fs.readFile(f, 'utf-8')).toContain('<Name>ContosoTaxRegime1</Name>');
   });
 
   it('refuses an unknown parent with the list, like the item op', async () => {

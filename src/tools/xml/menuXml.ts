@@ -19,12 +19,13 @@
 import { escapeXml } from '../../utils/xmlEscape.js';
 import {
   type AddSubmenuResult, type ElementSpan, type MenuSubmenuSpec,
-  appendTo, child, childText, directChildren, findSubmenuElements, iType, lineIndent,
-  menuSubmenuNames, same, submenuElementBlock, submenuLocations,
+  appendTo, child, childText, directChildren, findSubmenuElements, freeElementName, iType, lineIndent,
+  menuElementNames, menuSubmenuNames, same, submenuElementBlock, submenuLocations,
 } from './menuExtensionXml.js';
 
 export type AddMenuItemResult =
-  | { kind: 'added'; xml: string; menuItemType: string }
+  /** `elementName`: the <Name> written — the item's name, or a free `<item>N` when another element has it. */
+  | { kind: 'added'; xml: string; menuItemType: string; elementName: string }
   | { kind: 'already-present' }
   /** The parent is no submenu of this menu. */
   | { kind: 'no-parent'; submenus: string[] }
@@ -61,14 +62,17 @@ export function addMenuItem(xml: string, spec: { menuItemName: string; menuItemT
       }
     }
   }
+  // The same item in another submenu of this menu needs another <Name>: element
+  // names are unique in a menu (menuElementNames), and a duplicate fails the build.
+  const elementName = freeElementName(name, menuElementNames(xml));
   const ind = `${lineIndent(xml, t.collection.open)}\t`;
   const block =
     `${ind}<AxMenuElement xmlns="" i:type="AxMenuElementMenuItem">\n` +
-    `${ind}\t<Name>${name}</Name>\n` +
+    `${ind}\t<Name>${elementName}</Name>\n` +
     `${ind}\t<MenuItemName>${name}</MenuItemName>\n` +
     `${ind}\t<MenuItemType>${menuItemType}</MenuItemType>\n` +
     `${ind}</AxMenuElement>\n`;
-  return { kind: 'added', xml: appendTo(xml, t.collection, block), menuItemType };
+  return { kind: 'added', xml: appendTo(xml, t.collection, block), menuItemType, elementName };
 }
 
 export function addMenuSubmenu(xml: string, spec: MenuSubmenuSpec): AddSubmenuResult {
@@ -81,6 +85,7 @@ export function addMenuSubmenu(xml: string, spec: MenuSubmenuSpec): AddSubmenuRe
   const name = escapeXml(spec.name.trim());
   const taken = submenuLocations(xml, t.rootElements).find(l => same(l.name, name));
   if (taken) return same(taken.parent, parent) ? { kind: 'already-present' } : { kind: 'exists', parent: taken.parent };
+  if (menuElementNames(xml).some(n => same(n, name))) return { kind: 'name-in-use' };
 
   const label = spec.label?.trim() ? escapeXml(spec.label.trim()) : '';
   const block = submenuElementBlock(`${lineIndent(xml, t.collection.open)}\t`, name, label, false);
