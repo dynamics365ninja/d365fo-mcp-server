@@ -338,6 +338,17 @@ export async function searchTool(request: CallToolRequest, context: XppServerCon
 }
 
 /**
+ * The owner in front of a hit's name, for members only. It tells same-named members
+ * apart (three fields called SalesLine on three tables). An extension's parentName is
+ * its base object, which the name already carries (OrganizationAdministration.
+ * OrganizationAdministration.ContosoExtension) or which makes it read as a member
+ * (SalesTable.SalesTableContoso_Extension); the type says what it extends.
+ */
+function ownerPrefix(parentName: string | undefined, type: string | undefined): string {
+  return parentName && !String(type ?? '').endsWith('-extension') ? `${parentName}.` : '';
+}
+
+/**
  * Perform hybrid search (external + workspace)
  */
 async function performHybridSearch(
@@ -435,7 +446,7 @@ async function performHybridSearch(
     .map((r) => {
       const source = r.source === 'workspace' ? '🔹 WORKSPACE' : '📦 EXTERNAL';
       if (r.symbol) {
-        const parentPrefix = r.symbol.parentName ? `${r.symbol.parentName}.` : '';
+        const parentPrefix = ownerPrefix(r.symbol.parentName, r.symbol.type);
         const signature = r.symbol.signature ? ` - ${r.symbol.signature}` : '';
         return `${source} [${r.symbol.type.toUpperCase()}] ${parentPrefix}${r.symbol.name}${signature}`;
       }
@@ -651,11 +662,11 @@ function renderIndexAnswer(
       // Owner + model on each hit, and deduplicated on all three: without the
       // owner, three fields called SalesLine on three different tables render as
       // the same row printed three times, which reads as a rendering bug rather
-      // than as three distinct objects.
+      // than as three distinct objects. Members only (ownerPrefix).
       const seen = new Set<string>();
       const rendered: string[] = [];
       for (const r of exactHits) {
-        const owner = r.parentName ? `${r.parentName}.` : '';
+        const owner = ownerPrefix(r.parentName, r.type);
         const line =
           `${owner}${r.name} (${r.type})${r.model ? ` in ${r.model}` : ''}` +
           `${r.staleIndexRow ? ' — ⚠️ STALE index row, no file on this machine' : ''}`;
