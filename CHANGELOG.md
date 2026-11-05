@@ -174,7 +174,9 @@ those are called out explicitly below.
   carries its base object as owner, so a menu extension read
   `OrganizationAdministration.OrganizationAdministration.ContosoExtension` and a class
   extension `SalesTable.SalesTableContoso_Extension`, as if it were a member of
-  `SalesTable`. Extensions are now named alone, with their type; members keep the owner.
+  `SalesTable`. The workspace-aware listing (`includeWorkspace` with `workspacePath`)
+  had the same prefix. Extensions are now named alone, with their type, in both;
+  members keep the owner.
 - **KW001 missed the later names of a declaration list and sized-string
   parameters.** `int a, count;` and `void f(str 20 select)` passed, although a probe
   class showed xppc rejecting both ("'identifier' expected", "invalid name for a

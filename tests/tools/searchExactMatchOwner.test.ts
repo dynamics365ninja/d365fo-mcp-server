@@ -16,6 +16,12 @@ vi.mock('../../src/utils/indexedXmlLookup', async (orig) => {
   return { ...actual, indexedPathIsMissing: async () => false };
 });
 
+// The workspace-aware path validates the folder against the configured roots first.
+vi.mock('../../src/workspace/workspaceUtils', async (orig) => {
+  const actual = await orig<typeof import('../../src/workspace/workspaceUtils')>();
+  return { ...actual, validateWorkspacePath: async () => ({ valid: true }) };
+});
+
 import { searchTool } from '../../src/tools/analysis/search';
 import type { XppServerContext } from '../../src/types/context';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
@@ -71,5 +77,28 @@ describe('exact-match line', () => {
     ]);
     expect(line).toContain('ContosoTable.ContosoLine (field)');
     expect(line).toContain('ContosoOtherTable.ContosoLine (field)');
+  });
+});
+
+describe('workspace-aware listing', () => {
+  /** includeWorkspace + workspacePath: rows come from hybridSearch, one line per hit. */
+  async function hybridText(query: string, rows: any[]): Promise<string> {
+    const ctx = buildContext([]) as any;
+    ctx.hybridSearch = {
+      search: vi.fn(async () => rows.map(symbol => ({ source: 'external', symbol }))),
+    };
+    const res = await searchTool(req({ query, includeWorkspace: true, workspacePath: 'K:/Contoso' }), ctx);
+    return res.content[0].text as string;
+  }
+
+  it('names an extension once there too', async () => {
+    const text = await hybridText('ContosoMain.ContosoExt', [sym('ContosoMain.ContosoExt', 'menu-extension', 'ContosoMain')]);
+    expect(text).toContain('[MENU-EXTENSION] ContosoMain.ContosoExt');
+    expect(text).not.toContain('ContosoMain.ContosoMain.');
+  });
+
+  it('keeps the owner on a member there', async () => {
+    const text = await hybridText('ContosoLine', [sym('ContosoLine', 'field', 'ContosoTable')]);
+    expect(text).toContain('[FIELD] ContosoTable.ContosoLine');
   });
 });
