@@ -23,7 +23,10 @@ vi.mock('../../src/utils/configManager.js', () => ({
   }),
   fallbackPackagePath: () => state.root,
 }));
-vi.mock('../../src/utils/objectFileLookup.js', () => ({ findD365FileOnDisk: async () => null }));
+vi.mock('../../src/utils/objectFileLookup.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/utils/objectFileLookup.js')>()),
+  findD365FileOnDisk: async () => null,
+}));
 
 import { findBaseObjectXml } from '../../src/utils/baseObjectXml.js';
 

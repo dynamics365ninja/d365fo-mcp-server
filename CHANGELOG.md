@@ -28,6 +28,19 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Fixed
+- **Menu checks on a write-only companion: the other extensions of the base menu.** The
+  parent check of `add-menu-item-to-menu` and `add-submenu` on a `menu-extension`, and the
+  element-name checks of both (a submenu name already in use is refused, a repeated item
+  is named `<item>N`), read the other extensions of the base menu from the index only. A
+  write-only companion has no index, so a parent another extension adds was refused
+  there, and a name one of them uses was written and failed the next build ("The name '…'
+  is not unique"). Without index rows they are now read from the package folders
+  (`<root>/<Package>/<Model>/AxMenuExtension/<BaseMenu>.*.xml`); backup copies a modify
+  leaves next to a file (`….xml.backup-…`) are not read. The scan is the one that finds a
+  standard base menu (`findAotFilesInAllPackages`), now shared and taking the
+  package/model folder list once per process, and matching file names in any casing.
+
 ## [1.23.0] — 2026-11-05
 
 ### Added
