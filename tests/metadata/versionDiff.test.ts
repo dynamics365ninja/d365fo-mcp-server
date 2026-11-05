@@ -155,6 +155,35 @@ describe('diffSnapshots', () => {
     expect(d.enumValuesRemoved).toEqual(['ContosoMode.B']);
   });
 
+  it('diffs the methods of tables like those of classes', () => {
+    const a = snapshot();
+    a.tables[0].methods = [
+      { name: 'update', visibility: 'public', returnType: 'void', parameters: [] },
+      {
+        name: 'find',
+        visibility: 'public',
+        isStatic: true,
+        returnType: 'ContosoLog',
+        parameters: [{ name: '_id', type: 'int64' }],
+      },
+    ];
+    const b = snapshot();
+    b.tables[0].methods = [
+      {
+        name: 'find',
+        visibility: 'public',
+        isStatic: true,
+        returnType: 'ContosoLog',
+        parameters: [{ name: '_id', type: 'RefRecId' }],
+      },
+      { name: 'exists', visibility: 'public', returnType: 'boolean', parameters: [] },
+    ];
+    const d = diffSnapshots(a, b);
+    expect(d.methodsRemoved).toEqual(['ContosoLog.update']);
+    expect(d.methodsAdded).toEqual(['ContosoLog.exists']);
+    expect(d.methodsChanged.map(c => `${c.class}.${c.method}`)).toEqual(['ContosoLog.find']);
+  });
+
   it('writes a method the same way whichever shape it came from', () => {
     expect(canonicalMethod({ name: 'f', returnType: 'void', parameters: [], attributes: ['[B]', '[A]'] })).toBe(
       '[A][B] public void f()',

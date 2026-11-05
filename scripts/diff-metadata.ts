@@ -1,22 +1,17 @@
 /**
  * API changes between two versions of the same models.
  *
- *   npm run diff-metadata -- <metadataDirFrom> <metadataDirTo> [--models A,B] [--json out.json] [--examples 5]
+ *   npm run diff-metadata -- <metadataDirFrom> <metadataDirTo> [--models <mask>] [--json out.json] [--examples 5]
  *
  * Both directories are extracted-metadata outputs (`extract-metadata`, or `extract-binary-models` for
- * models shipped without source). Models present in both are compared; the others are listed.
+ * models shipped without source). `--models` takes names and masks (`Contoso*,!ContosoDemo*`). Models selected in both are compared; the others are listed.
  * See src/metadata/versionDiff.ts for what counts as a change.
  */
 import '../src/bootstrapEnv.js';
 import * as fs from 'fs';
+import { listModelNames, selectOnBothSides } from '../src/metadata/modelSelector.js';
 import { log } from '../src/utils/terminalUi.js';
-import {
-  diffSnapshots,
-  isEmptyDiff,
-  listModels,
-  loadModelSnapshot,
-  type ModelDiff,
-} from '../src/metadata/versionDiff.js';
+import { diffSnapshots, isEmptyDiff, loadModelSnapshot, type ModelDiff } from '../src/metadata/versionDiff.js';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(name);
@@ -27,21 +22,16 @@ const valueFlags = new Set(['--models', '--json', '--examples']);
 const positional = process.argv.slice(2).filter((a, i, all) => !a.startsWith('--') && !valueFlags.has(all[i - 1]));
 const [fromDir, toDir] = positional;
 if (!fromDir || !toDir) {
-  log.err('usage: diff-metadata <metadataDirFrom> <metadataDirTo> [--models A,B] [--json out.json] [--examples N]');
+  log.err('usage: diff-metadata <metadataDirFrom> <metadataDirTo> [--models <mask>] [--json out.json] [--examples N]');
   process.exit(2);
 }
-const wanted = arg('--models')
-  ?.split(',')
-  .map(m => m.trim())
-  .filter(Boolean);
 const jsonOut = arg('--json');
 const examples = Number(arg('--examples') ?? 5);
 
-const from = new Set(listModels(fromDir));
-const to = new Set(listModels(toDir));
-const models = [...to].filter(m => from.has(m) && (!wanted || wanted.includes(m))).sort();
-for (const m of [...to].filter(m => !from.has(m))) log.info(`${m}: only in ${toDir}`);
-for (const m of [...from].filter(m => !to.has(m))) log.info(`${m}: only in ${fromDir}`);
+const sides = selectOnBothSides(arg('--models'), listModelNames(fromDir), listModelNames(toDir));
+const models = sides.both;
+for (const m of sides.onlyInTo) log.info(`${m}: only in ${toDir}`);
+for (const m of sides.onlyInFrom) log.info(`${m}: only in ${fromDir}`);
 if (models.length === 0) {
   log.err('no model is present in both directories');
   process.exit(1);

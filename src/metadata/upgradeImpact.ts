@@ -32,6 +32,7 @@
  * Calls that cannot be typed are not reported (a missed finding is better than a false error here).
  */
 
+import type { SideSelection } from './modelSelector.js';
 import {
   diffSnapshots,
   isObsolete,
@@ -68,13 +69,43 @@ export interface ImpactFinding {
 
 export interface ImpactChecked {
   ourMethods: number;
+  /** Methods without stored source (a binary model): only their signatures, overrides and wraps are checked. */
+  methodsWithoutBodies: number;
+  /** Models whose methods have no bodies at all; calls inside them are invisible to this check. */
+  modelsWithoutBodies: string[];
   calls: number;
   cocWrappers: number;
   handlers: number;
   fieldAccesses: number;
 }
 
+/** What the model masks selected, for the report. */
+export interface ImpactSelection {
+  models: string;
+  deps: string;
+  depsSides: SideSelection;
+}
+
+/** Something our code relies on that the dependency changed, with no action implied. */
+export interface ImpactAffected {
+  model: string;
+  object: string;
+  line?: number;
+  dependency: string;
+  message: string;
+}
+
+/** A method the dependency stopped declaring but whose type still has, by inheritance. */
+export interface DroppedOverride {
+  type: string;
+  method: string;
+  inheritedFrom: string;
+}
+
 export interface ImpactReport {
+  selection?: ImpactSelection;
+  /** Seconds per step of the run (slicing, extraction, analysis), when the caller measured them. */
+  timings?: Record<string, number>;
   from: string;
   to: string;
   ourModels: string[];
@@ -83,6 +114,9 @@ export interface ImpactReport {
   diffs: ModelDiff[];
   /** How much of our code the check could place against the compared dependencies (a clean report with 0 here proves nothing). */
   checked: ImpactChecked;
+  /** Overrides the dependencies dropped (the method is now inherited), from the diff. */
+  overridesDropped: DroppedOverride[];
+  affected: ImpactAffected[];
   findings: ImpactFinding[];
   totals: Record<ImpactLevel, number>;
 }
@@ -124,19 +158,53 @@ interface FoundMethod {
   method: RawMethod;
 }
 
-/** A method of a class or table, following `extends` inside the compared models. */
-function findMethod(idx: DependencyIndex, typeName: string, methodName: string): FoundMethod | undefined {
-  let cur: string | undefined = typeName;
-  for (let depth = 0; cur && depth < 12; depth++) {
-    const c = idx.classes.get(lc(cur));
-    const t = c ? undefined : idx.tables.get(lc(cur));
-    const methods = c?.methods ?? t?.methods ?? [];
-    const m = methods.find(x => lc(x.name) === lc(methodName));
-    if (m) return { owner: c?.name ?? t?.name ?? cur, method: m };
-    cur = c?.extends;
-  }
-  return undefined;
+/** What the hierarchy says about a method: where it is declared, or that part of the hierarchy is not in the metadata. */
+interface Resolution {
+  found?: FoundMethod;
+  /** First ancestor missing from the compared metadata. The member may be declared there, so "not found" proves nothing. */
+  incompleteAt?: string;
 }
+
+const tableBase = (t: RawTable): string | undefined =>
+  t.extends ?? /<Extends>\s*([A-Za-z_]\w*)\s*<\/Extends>/.exec(t.raw ?? '')?.[1];
+
+/**
+ * The effective member of a class or table: the first declaration up the hierarchy. A class goes up
+ * through `extends` (and `implements`) to `Object`, a table through its base table to `Common` - the roots
+ * the language gives them - and all of it is read from the compared metadata, so the platform kernel has to
+ * be part of it (`BinaryModelExtractor --kernel`) for the chain to be complete.
+ */
+function resolveMethod(idx: DependencyIndex, typeName: string, methodName: string): Resolution {
+  const seen = new Set<string>();
+  const visit = (name: string, depth: number): Resolution => {
+    if (depth > 16 || seen.has(lc(name))) return {};
+    seen.add(lc(name));
+    const c = idx.classes.get(lc(name));
+    const t = c ? undefined : idx.tables.get(lc(name));
+    if (!c && !t) return { incompleteAt: name };
+    const m = (c?.methods ?? t?.methods ?? []).find(x => lc(x.name) === lc(methodName));
+    if (m) return { found: { owner: (c?.name ?? t?.name) as string, method: m } };
+    const parents = c
+      ? [c.extends ?? (lc(c.name) === 'object' ? undefined : 'Object'), ...(c.implements ?? [])]
+      : [tableBase(t as RawTable) ?? (lc(t?.name) === 'common' ? undefined : 'Common')];
+    let incompleteAt: string | undefined;
+    for (const parent of parents) {
+      if (!parent) continue;
+      const r = visit(parent, depth + 1);
+      if (r.found) return r;
+      incompleteAt ??= r.incompleteAt;
+    }
+    return { incompleteAt };
+  };
+  return visit(typeName, 0);
+}
+
+const findMethod = (idx: DependencyIndex, typeName: string, methodName: string): FoundMethod | undefined =>
+  resolveMethod(idx, typeName, methodName).found;
+
+/** The type declared the method itself in one version and only inherits it in the other. */
+const overrideDropped = (before: FoundMethod, after: FoundMethod, type: string): boolean =>
+  lc(before.owner) === lc(type) && lc(after.owner) !== lc(type);
 
 // ---- small renderers ----
 
@@ -153,19 +221,6 @@ function paramTypesDiffer(a: RawMethod, b: RawMethod): boolean {
   const pb = b.parameters ?? [];
   return pa.length !== pb.length || pa.some((p, i) => norm(p.type) !== norm(pb[i].type));
 }
-
-/**
- * Methods every table buffer has from the kernel (`Common`). A table that stops overriding one of them
- * still has it: a wrapper or call still compiles, but whatever the table's override did is gone.
- */
-const COMMON_METHODS = new Set(
-  'insert update delete doinsert doupdate dodelete validatewrite validatedelete validatefield validatefieldvalue modifiedfield modifiedfieldvalue initvalue postload defaultrow aosvalidateinsert aosvalidateupdate aosvalidatedelete aosvalidateread write'.split(
-    ' ',
-  ),
-);
-
-const isKernelTableMethod = (idx: DependencyIndex, type: string, method: string | undefined): boolean =>
-  idx.tables.has(lc(type)) && COMMON_METHODS.has(lc(method));
 
 const visibilityRank = (v: string | undefined): number => ({ private: 1, protected: 2, internal: 2 })[v ?? ''] ?? 3;
 
@@ -304,6 +359,45 @@ export function* ourMethods(ours: ModelSnapshot[]): Generator<Subject> {
   }
 }
 
+/**
+ * The type names a class or table states in its declaration, signatures and fields, per object.
+ * For a method with source the body is scanned instead (it names the same types and more), so only
+ * the methods without bodies contribute their signatures here.
+ */
+export function* ourStructures(ours: ModelSnapshot[]): Generator<{ subject: Subject; ids: Set<string> }> {
+  const placeholder: RawMethod = { name: '', source: '' };
+  for (const s of ours) {
+    for (const cls of s.classes) {
+      const ids = new Set<string>();
+      for (const n of [cls.extends, ...(cls.implements ?? [])]) if (n) ids.add(lc(n));
+      for (const m of cls.methods ?? []) {
+        if ((m.source ?? '').trim()) continue;
+        for (const n of [m.returnType, ...(m.parameters ?? []).map(p => p.type)]) if (n) ids.add(lc(n));
+      }
+      if (ids.size) yield { subject: { model: s.model, cls, method: placeholder, object: cls.name ?? '' }, ids };
+    }
+    for (const t of s.tables) {
+      const ids = new Set<string>();
+      for (const f of t.fields ?? []) for (const n of [f.extendedDataType, f.enumType]) if (n) ids.add(lc(n));
+      for (const m of t.methods ?? []) {
+        if ((m.source ?? '').trim()) continue;
+        for (const n of [m.returnType, ...(m.parameters ?? []).map(p => p.type)]) if (n) ids.add(lc(n));
+      }
+      if (ids.size) {
+        yield {
+          subject: {
+            model: s.model,
+            cls: { name: t.name, sourcePath: t.sourcePath },
+            method: placeholder,
+            object: t.name ?? '',
+          },
+          ids,
+        };
+      }
+    }
+  }
+}
+
 /** `[SysObsolete(..., true)]`: the second argument is the error flag. */
 function obsoleteIsError(attrs: string[]): boolean {
   const a = attrs.find(x => /^\[\s*SysObsolete\b/i.test(x));
@@ -337,7 +431,26 @@ export function analyzeImpact(input: {
     .map(s => diffSnapshots(s, toByModel.get(s.model) as ModelSnapshot));
   const findings: ImpactFinding[] = [];
   const seen = new Set<string>();
-  const checked: ImpactChecked = { ourMethods: 0, calls: 0, cocWrappers: 0, handlers: 0, fieldAccesses: 0 };
+  const checked: ImpactChecked = {
+    ourMethods: 0,
+    methodsWithoutBodies: 0,
+    modelsWithoutBodies: [],
+    calls: 0,
+    cocWrappers: 0,
+    handlers: 0,
+    fieldAccesses: 0,
+  };
+  const modelBodies = new Map<string, number>();
+  const affected: ImpactAffected[] = [];
+  const noted = new Set<string>();
+  const note = (s: Subject, n: Omit<ImpactAffected, 'model' | 'object'>): void => {
+    const key = `${s.object}|${n.dependency}|${n.line ?? ''}|${n.message}`;
+    if (noted.has(key)) return;
+    noted.add(key);
+    affected.push({ model: s.model, object: s.object, ...n });
+  };
+  const cannotVerify = (res: Resolution): string =>
+    `The method is gone from the compared types, but ${res.incompleteAt} is not part of the compared metadata and may still declare it (extract the platform kernel to verify).`;
 
   const add = (s: Subject, f: Omit<ImpactFinding, 'model' | 'object' | 'file'>): void => {
     const key = `${s.object}|${f.kind}|${f.dependency}|${f.line ?? ''}`;
@@ -370,18 +483,55 @@ export function analyzeImpact(input: {
       obsoleteClasses.set(k, obsoleteIsError(attrs));
   }
 
+  const checkNames = (s: Subject, ids: Set<string>): void => {
+    for (const id of ids) {
+      if (removedTypes.has(id)) {
+        add(s, {
+          level: 'error',
+          kind: 'type-removed',
+          dependency: a.classes.get(id)?.name ?? a.tables.get(id)?.name ?? a.edts.get(id)?.name ?? id,
+          message: 'The class, table, EDT or enum this code names no longer exists.',
+        });
+      } else if (edtChanged.has(id)) {
+        add(s, {
+          level: 'behaviour',
+          kind: 'edt-changed',
+          dependency: a.edts.get(id)?.name ?? id,
+          message: `The EDT changed: ${edtChanged.get(id)}.`,
+        });
+      } else if (obsoleteClasses.has(id)) {
+        const isErr = obsoleteClasses.get(id) === true;
+        add(s, {
+          level: isErr ? 'error' : 'warning',
+          kind: 'obsolete',
+          dependency: a.classes.get(id)?.name ?? id,
+          message: isErr ? 'The class is [SysObsolete] with the error flag.' : 'The class is [SysObsolete].',
+        });
+      }
+    }
+  };
+
   for (const s of ourMethods(input.ours)) {
     checked.ourMethods++;
     const source = s.method.source ?? '';
+    if (!source.trim()) checked.methodsWithoutBodies++;
+    modelBodies.set(s.model, (modelBodies.get(s.model) ?? 0) + (source.trim() ? 1 : 0));
     const clean = stripSource(source);
     const ext = s.cls.extensionOf;
     const thisType = ext && (ext.baseKind === 'class' || ext.baseKind === 'table') ? ext.baseObjectName : s.cls.name;
     const types = variableTypes(clean, thisType);
 
     // -- Chain of Command: the wrapper must still match the method it wraps --
-    if (ext && (ext.baseKind === 'class' || ext.baseKind === 'table') && /\bnext\s+[A-Za-z_]\w*\s*\(/.test(clean)) {
-      const oldBase = findMethod(a, ext.baseObjectName, s.method.name ?? '');
-      const newBase = findMethod(b, ext.baseObjectName, s.method.name ?? '');
+    const compilerSaysWrapped = !!s.cls.chainOfCommand?.wrapped?.some(w => lc(w) === lc(s.method.name));
+    if (
+      ext &&
+      (ext.baseKind === 'class' || ext.baseKind === 'table') &&
+      (/\bnext\s+[A-Za-z_]\w*\s*\(/.test(clean) || compilerSaysWrapped)
+    ) {
+      const oldRes = resolveMethod(a, ext.baseObjectName, s.method.name ?? '');
+      const newRes = resolveMethod(b, ext.baseObjectName, s.method.name ?? '');
+      const oldBase = oldRes.found;
+      const newBase = newRes.found;
       const baseKnownBefore = a.classes.has(lc(ext.baseObjectName)) || a.tables.has(lc(ext.baseObjectName));
       const baseKnownNow = b.classes.has(lc(ext.baseObjectName)) || b.tables.has(lc(ext.baseObjectName));
       if (baseKnownBefore) checked.cocWrappers++;
@@ -392,24 +542,30 @@ export function analyzeImpact(input: {
           dependency: ext.baseObjectName,
           message: `${ext.baseObjectName}, the target of [ExtensionOf], no longer exists.`,
         });
-      } else if (oldBase && !newBase && baseKnownNow && isKernelTableMethod(b, ext.baseObjectName, s.method.name)) {
-        add(s, {
-          level: 'behaviour',
-          kind: 'kernel-override-removed',
-          dependency: `${ext.baseObjectName}.${s.method.name}`,
-          message: `${ext.baseObjectName} no longer overrides ${s.method.name}(): the wrapper still compiles and chains to the kernel method, but the logic the table ran there is gone.`,
-          before: signature(oldBase.method),
-        });
       } else if (oldBase && !newBase && baseKnownNow) {
-        add(s, {
-          level: 'error',
-          kind: 'coc-method-removed',
-          dependency: `${ext.baseObjectName}.${s.method.name}`,
-          message: `The method this wrapper chains to was removed from ${ext.baseObjectName}.`,
-          before: signature(oldBase.method),
-          fix: 'Remove the wrapper, or move the logic to the replacement the new version offers.',
-        });
+        if (newRes.incompleteAt) {
+          note(s, { dependency: `${ext.baseObjectName}.${s.method.name}`, message: cannotVerify(newRes) });
+        } else {
+          add(s, {
+            level: 'error',
+            kind: 'coc-method-removed',
+            dependency: `${ext.baseObjectName}.${s.method.name}`,
+            message: `The method this wrapper chains to is gone from ${ext.baseObjectName} and everything it inherits from.`,
+            before: signature(oldBase.method),
+            fix: 'Remove the wrapper, or move the logic to the replacement the new version offers.',
+          });
+        }
       } else if (oldBase && newBase) {
+        if (overrideDropped(oldBase, newBase, ext.baseObjectName)) {
+          add(s, {
+            level: 'behaviour',
+            kind: 'override-dropped',
+            dependency: `${ext.baseObjectName}.${s.method.name}`,
+            message: `${ext.baseObjectName} no longer declares ${s.method.name}(); the wrapper now wraps the method inherited from ${newBase.owner}, and the logic the dependency had in it is gone. Check that you did not rely on it.`,
+            before: signature(oldBase.method),
+            after: `inherited from ${newBase.owner}: ${signature(newBase.method)}`,
+          });
+        }
         const nb = newBase.method;
         const nbAttrs = methodAttributes(nb);
         const nbFlags = methodFlags(nb);
@@ -473,11 +629,17 @@ export function analyzeImpact(input: {
           ? { type: prepost[2], member: prepost[3], isDelegate: false }
           : undefined;
       if (!target) continue;
-      const before = findMethod(a, target.type, target.member);
-      const after = findMethod(b, target.type, target.member);
+      const beforeRes = resolveMethod(a, target.type, target.member);
+      const afterRes = resolveMethod(b, target.type, target.member);
+      const before = beforeRes.found;
+      const after = afterRes.found;
       const dep = `${target.type}.${target.member}`;
       if (!before) continue;
       checked.handlers++;
+      if (!after && afterRes.incompleteAt) {
+        note(s, { dependency: dep, message: cannotVerify(afterRes) });
+        continue;
+      }
       if (!after) {
         add(s, {
           level: 'error',
@@ -528,8 +690,11 @@ export function analyzeImpact(input: {
     if (s.cls.extends && !ext) {
       const oldM = findMethod(a, s.cls.extends, s.method.name ?? '');
       if (oldM && lc(oldM.owner) === lc(s.cls.extends)) {
-        const newM = findMethod(b, s.cls.extends, s.method.name ?? '');
-        if (!newM) {
+        const newRes = resolveMethod(b, s.cls.extends, s.method.name ?? '');
+        const newM = newRes.found;
+        if (!newM && newRes.incompleteAt) {
+          note(s, { dependency: `${s.cls.extends}.${s.method.name}`, message: cannotVerify(newRes) });
+        } else if (!newM) {
           add(s, {
             level: 'behaviour',
             kind: 'override-orphaned',
@@ -566,33 +731,36 @@ export function analyzeImpact(input: {
 
     // -- Calls into the dependency --
     for (const call of scanCalls(clean, types)) {
-      const before = findMethod(a, call.type, call.member);
-      const after = findMethod(b, call.type, call.member);
+      const beforeRes = resolveMethod(a, call.type, call.member);
+      const afterRes = resolveMethod(b, call.type, call.member);
+      const before = beforeRes.found;
+      const after = afterRes.found;
       const dep = `${call.type}${call.isStatic ? '::' : '.'}${call.member}`;
       if (!before) continue;
       checked.calls++;
-      const typeStillThere = b.classes.has(lc(call.type)) || b.tables.has(lc(call.type));
+      const typeThere = b.classes.has(lc(call.type)) || b.tables.has(lc(call.type));
       if (!after) {
-        if (typeStillThere && isKernelTableMethod(b, call.type, call.member)) {
-          add(s, {
-            level: 'behaviour',
-            kind: 'kernel-override-removed',
-            line: call.line,
-            dependency: dep,
-            message: `${call.type} no longer overrides ${call.member}(): the call compiles against the kernel method, but the logic the table ran there is gone.`,
-            before: signature(before.method),
-          });
-        } else if (typeStillThere) {
+        // A removed type is reported once, as type-removed.
+        if (typeThere && afterRes.incompleteAt) {
+          note(s, { line: call.line, dependency: dep, message: cannotVerify(afterRes) });
+        } else if (typeThere) {
           add(s, {
             level: 'error',
             kind: 'method-removed',
             line: call.line,
             dependency: dep,
-            message: 'The method was removed.',
+            message: `The method is gone from ${call.type} and everything it inherits from.`,
             before: signature(before.method),
           });
         }
         continue;
+      }
+      if (overrideDropped(before, after, call.type)) {
+        note(s, {
+          line: call.line,
+          dependency: dep,
+          message: `${call.type} no longer declares ${call.member}(); the call now reaches the method inherited from ${after.owner}.`,
+        });
       }
       const o = before.method;
       const n = after.method;
@@ -745,34 +913,23 @@ export function analyzeImpact(input: {
     }
 
     // -- Names that vanished or changed --
-    const ids = new Set(clean.match(/\b[A-Za-z_]\w*\b/g)?.map(lc) ?? []);
-    for (const id of ids) {
-      if (removedTypes.has(id)) {
-        add(s, {
-          level: 'error',
-          kind: 'type-removed',
-          dependency: a.classes.get(id)?.name ?? a.tables.get(id)?.name ?? a.edts.get(id)?.name ?? id,
-          message: 'The class, table, EDT or enum this code names no longer exists.',
-        });
-      } else if (edtChanged.has(id)) {
-        add(s, {
-          level: 'behaviour',
-          kind: 'edt-changed',
-          dependency: a.edts.get(id)?.name ?? id,
-          message: `The EDT changed: ${edtChanged.get(id)}.`,
-        });
-      } else if (obsoleteClasses.has(id)) {
-        const isErr = obsoleteClasses.get(id) === true;
-        add(s, {
-          level: isErr ? 'error' : 'warning',
-          kind: 'obsolete',
-          dependency: a.classes.get(id)?.name ?? id,
-          message: isErr ? 'The class is [SysObsolete] with the error flag.' : 'The class is [SysObsolete].',
-        });
-      }
-    }
+    checkNames(s, new Set(clean.match(/\b[A-Za-z_]\w*\b/g)?.map(lc) ?? []));
   }
 
+  // -- Signatures, inheritance and field types: all a model without bodies has to check --
+  for (const subject of ourStructures(input.ours)) checkNames(subject.subject, subject.ids);
+
+  const overridesDropped: DroppedOverride[] = [];
+  for (const d of diffs) {
+    for (const removed of d.methodsRemoved) {
+      const dot = removed.lastIndexOf('.');
+      const type = removed.slice(0, dot);
+      const method = removed.slice(dot + 1);
+      const now = findMethod(b, type, method);
+      if (now && lc(now.owner) !== lc(type)) overridesDropped.push({ type, method, inheritedFrom: now.owner });
+    }
+  }
+  checked.modelsWithoutBodies = input.ours.map(m => m.model).filter(m => (modelBodies.get(m) ?? 0) === 0);
   const totals: Record<ImpactLevel, number> = { error: 0, behaviour: 0, warning: 0 };
   for (const f of findings) totals[f.level]++;
   return {
@@ -783,6 +940,8 @@ export function analyzeImpact(input: {
     notCompared: input.notCompared ?? { onlyInFrom: [], onlyInTo: [] },
     diffs,
     checked,
+    overridesDropped,
+    affected,
     findings,
     totals,
   };
@@ -824,6 +983,23 @@ export function renderImpactMarkdown(r: ImpactReport): string {
   const lines: string[] = [];
   lines.push(`# Upgrade impact: ${r.from} -> ${r.to}`, '');
   lines.push(`Our models: ${r.ourModels.join(', ') || '-'}. Dependencies compared: ${r.dependencyModels.length}.`, '');
+  if (r.selection) {
+    const sel = r.selection.depsSides;
+    lines.push('## Selected models', '');
+    lines.push(`- \`--models ${r.selection.models}\`: ${r.ourModels.join(', ') || '-'}`);
+    lines.push(
+      `- \`--deps ${r.selection.deps}\`: ${sel.from.length} in ${r.from}, ${sel.to.length} in ${r.to}, ${sel.both.length} compared`,
+    );
+    if (sel.onlyInFrom.length) lines.push(`  - only in ${r.from} (not compared): ${sel.onlyInFrom.join(', ')}`);
+    if (sel.onlyInTo.length) lines.push(`  - only in ${r.to} (not compared): ${sel.onlyInTo.join(', ')}`);
+    lines.push('');
+  }
+  if (r.checked.modelsWithoutBodies.length) {
+    lines.push(
+      `> **Coverage limit.** ${r.checked.modelsWithoutBodies.join(', ')} ${r.checked.modelsWithoutBodies.length === 1 ? 'has' : 'have'} no method bodies (a compiled model), so calls, field accesses and event-handler attributes inside its methods are not visible. For it only signatures, overrides, Chain of Command wraps (from the compiler's record), inheritance and the types of fields and parameters are checked; ${r.checked.methodsWithoutBodies} of ${r.checked.ourMethods} methods have no body.`,
+      '',
+    );
+  }
   lines.push(
     `Checked against the compared dependencies: ${r.checked.calls} calls, ${r.checked.cocWrappers} Chain of Command wrappers, ${r.checked.handlers} event handlers, ${r.checked.fieldAccesses} field accesses (in ${r.checked.ourMethods} methods).`,
     '',
@@ -844,6 +1020,18 @@ export function renderImpactMarkdown(r: ImpactReport): string {
     lines.push('Not compared (present in only one version, a gap in the extract rather than a breaking change):');
     if (r.notCompared.onlyInFrom.length) lines.push(`- only in ${r.from}: ${r.notCompared.onlyInFrom.join(', ')}`);
     if (r.notCompared.onlyInTo.length) lines.push(`- only in ${r.to}: ${r.notCompared.onlyInTo.join(', ')}`);
+    lines.push('');
+  }
+
+  if (r.overridesDropped.length) {
+    lines.push('Overrides the dependencies dropped (the type no longer declares the method and now inherits it):', '');
+    for (const d of r.overridesDropped.slice(0, 50)) {
+      lines.push(`- \`${d.type}.${d.method}\` — now inherited from \`${d.inheritedFrom}\``);
+      const dep = memberKey(`${d.type}.${d.method}`);
+      const ours = [...r.findings, ...r.affected].filter(f => memberKey(f.dependency) === dep);
+      for (const f of ours) lines.push(`  - used by \`${f.object}\`${f.line ? ` line ${f.line}` : ''}`);
+    }
+    if (r.overridesDropped.length > 50) lines.push(`- ... and ${r.overridesDropped.length - 50} more`);
     lines.push('');
   }
 
@@ -869,6 +1057,18 @@ export function renderImpactMarkdown(r: ImpactReport): string {
       }
       lines.push('');
     }
+  }
+  if (r.affected.length) {
+    lines.push(`### Affected by a change in the dependency, no action implied (${r.affected.length})`, '');
+    for (const n of r.affected.slice(0, 100)) {
+      lines.push(`- \`${n.object}\`${n.line ? ` line ${n.line}` : ''}: \`${n.dependency}\` — ${n.message}`);
+    }
+    if (r.affected.length > 100) lines.push(`- ... and ${r.affected.length - 100} more`);
+    lines.push('');
+  }
+  if (r.timings) {
+    const steps = Object.entries(r.timings).map(([step, seconds]) => `${step} ${seconds.toFixed(1)} s`);
+    lines.push(`_Run time: ${steps.join(', ')}._`, '');
   }
   return lines.join('\n');
 }

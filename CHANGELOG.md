@@ -29,6 +29,22 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`diff-metadata --models` takes masks and exclusions.** `Contoso*`, `ContosoApp_*,Fabrikam*` and
+  `*,!ContosoDemo*` select models by module name or display name; models selected on only one
+  side are listed instead of silently dropped.
+- **`upgrade-impact --platform-upgrade` shows what a new Microsoft platform build does to
+  the models installed on top of it.** Give it the old and the new PackagesLocalDirectory
+  and your models (ISV or customer); it cuts out only the Microsoft classes, tables, EDTs and
+  enums your code names and what they inherit from, extracts them with `extract-metadata`
+  and runs the usual check. `--models` and `--deps` take masks (`Contoso*`, `ContosoApp_*,Fabrikam*`,
+  `*,!ContosoDemo*`) and the report lists what each mask selected on each side. A model without
+  method bodies (a compiled ISV) is checked on signatures, overrides, Chain of Command wraps
+  and field and parameter types; the report states that calls inside its methods are not
+  visible. Methods are resolved through `extends`/`implements` and the base tables up to `Common`
+  (the platform kernel comes from `BinaryModelExtractor --kernel`), never from a list of
+  names: a method a type merely stopped declaring is still there, so it is reported as a
+  change of the dependency, as a behaviour change for a Chain of Command wrapper of it, and
+  only as "affected" for a plain call.
 - **`npm run upgrade-impact` shows what an update of a model does to your own code, without a
   build.** Given the extracted metadata of two versions of the models you depend on and the
   source of your models, it reports per object of yours what will not compile (a called

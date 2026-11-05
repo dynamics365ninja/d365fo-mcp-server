@@ -71,6 +71,8 @@ export interface RawClass {
   extends?: string;
   implements?: string[];
   extensionOf?: { baseObjectName: string; baseKind: string; memberName?: string };
+  /** Binary-ISV classes: the compiler's record of the methods this extension class wraps. */
+  chainOfCommand?: { target?: string; targetType?: string; wrapped?: string[] };
   isAbstract?: boolean;
   isFinal?: boolean;
   visibility?: string;
@@ -80,6 +82,9 @@ export interface RawClass {
 
 export interface RawTable {
   name?: string;
+  /** The base table; source tables carry it only in the stored XML (`raw`). */
+  extends?: string;
+  raw?: string;
   sourcePath?: string;
   methods?: RawMethod[];
   fields?: Array<{ name: string; type?: string; extendedDataType?: string; enumType?: string }>;
@@ -259,6 +264,21 @@ export function diffSnapshots(from: ModelSnapshot, to: ModelSnapshot): ModelDiff
   out.tablesAdded = td.added;
   out.tablesRemoved = td.removed;
   for (const tn of td.common) {
+    // Table methods are diffed like class methods: a table that stops declaring one is a change of the table.
+    const tma = byName((ta.get(tn) as RawTable).methods ?? []);
+    const tmb = byName((tb.get(tn) as RawTable).methods ?? []);
+    const tmd = setDiff(tma, tmb);
+    out.methodsAdded.push(...tmd.added.map(m => `${tn}.${m}`));
+    out.methodsRemoved.push(...tmd.removed.map(m => `${tn}.${m}`));
+    for (const mn of tmd.common) {
+      const x = tma.get(mn) as RawMethod;
+      const y = tmb.get(mn) as RawMethod;
+      const sa = canonicalMethod(x);
+      const sb = canonicalMethod(y);
+      if (sa === sb) continue;
+      out.methodsChanged.push({ class: tn, method: mn, before: sa, after: sb });
+      if (isObsolete(methodAttributes(y)) && !isObsolete(methodAttributes(x))) out.newlyObsolete.push(`${tn}.${mn}`);
+    }
     const fa = byName((ta.get(tn) as RawTable).fields ?? []);
     const fb = byName((tb.get(tn) as RawTable).fields ?? []);
     const fd = setDiff(fa, fb);
