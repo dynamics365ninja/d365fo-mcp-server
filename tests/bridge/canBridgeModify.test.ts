@@ -17,6 +17,12 @@ describe('canBridgeModify', () => {
     expect(canBridgeModify('menu-extension', 'modify-property')).toBe(false);
   });
 
+  it('accepts add-submenu on a menu and a menu-extension (no C# op; XML writer)', () => {
+    expect(canBridgeModify('menu', 'add-submenu')).toBe(true);
+    expect(canBridgeModify('menu-extension', 'add-submenu')).toBe(true);
+    expect(canBridgeModify('menu-extension', 'add-method')).toBe(false);
+  });
+
   it('accepts the common type/operation combinations', () => {
     expect(canBridgeModify('table', 'add-index')).toBe(true);
     expect(canBridgeModify('table', 'add-relation')).toBe(true);

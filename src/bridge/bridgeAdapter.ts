@@ -1556,6 +1556,9 @@ const BRIDGE_MODIFY_OPS = new Set([
   'add-module-reference', 'remove-module-reference',
   'add-display-method', 'add-table-method',
   'add-field-modification', 'add-menu-item-to-menu',
+  // No C# op adds a submenu: served by a direct-XML writer on a menu (already in
+  // BRIDGE_MODIFY_TYPES) and, through XML_ONLY_MODIFY_PAIRS, on a menu extension.
+  'add-submenu',
   // No C# op exists for query ranges on entities — served entirely by a
   // direct-XML writer (data-entity is already in BRIDGE_MODIFY_TYPES).
   'add-query-range', 'remove-query-range',
@@ -1611,6 +1614,7 @@ const XML_ONLY_MODIFY_PAIRS: Record<string, ReadonlySet<string>> = {
   // op on it too. Without this pair the extension the cross-model guard sends an
   // agent to create could not be filled at all.
   'add-menu-item-to-menu': new Set(['menu-extension']),
+  'add-submenu': new Set(['menu-extension']),
 };
 
 /**

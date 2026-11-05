@@ -314,7 +314,7 @@ describe('tool inventory contract', () => {
       // enum values
       'enumValueName', 'enumValueLabel', 'enumValueInt', 'enumValueCountryRegionCodes',
       // add-menu-item-to-menu
-      'menuItemToAdd', 'menuItemToAddType', 'parentMenuElement',
+      'menuItemToAdd', 'menuItemToAddType', 'parentMenuElement', 'submenuName', 'submenuLabel',
       // aliases / lookup
       'methodCode', 'sourceCode', 'baseFormName', 'filePath',
     ];

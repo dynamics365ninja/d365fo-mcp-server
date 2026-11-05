@@ -65,17 +65,22 @@ describe('get_xpp_knowledge', () => {
   });
 
   it('documents AxMenuElementSubMenu (not AxMenuElementMenu) for "submenu" topic', async () => {
-    // Regression (eval scenario 1 — Equipment Rental): hand-authoring a nested submenu into a
-    // brand-new AxMenu (no tool operation exists for this — add-menu-item-to-menu only accepts
-    // display/action/output) is easy to get wrong. A plausible-looking
-    // <AxMenuElementMenu>/<MenuName> guess is NOT a real type — xppc itself doesn't catch it, only
-    // the separate GenerateMetadata step fails to deserialize it. Verified live against
-    // Microsoft.Dynamics.AX.Metadata.dll: the real type is AxMenuElementSubMenu with a <SubMenu>
-    // field. This was previously undocumented anywhere in the knowledge base.
+    // Regression (eval scenario 1 — Equipment Rental): a hand-authored nested submenu is easy to
+    // get wrong. A plausible-looking <AxMenuElementMenu>/<MenuName> guess is NOT a real type —
+    // xppc itself doesn't catch it, only the separate GenerateMetadata step fails to deserialize
+    // it. The real type is AxMenuElementSubMenu (Microsoft.Dynamics.AX.Metadata.dll).
+    //
+    // The topic then taught a <SubMenu>X</SubMenu> field pointing at a separate AxMenu. No
+    // shipped file has one: a submenu is an inline folder with its own <Elements> (33 in
+    // OrganizationAdministration, 68 in a sample of 43 extensions). It now points at the
+    // operations that write submenus and items instead of at hand-written XML.
     const result = await xppKnowledgeTool(req({ topic: 'submenu' }));
     const text = getText(result);
     expect(text).toContain('AxMenuElementSubMenu');
-    expect(text).toContain('SubMenu');
+    expect(text).toContain('add-submenu');
+    expect(text).toContain('parentMenuElement');
+    expect(text).not.toMatch(/<SubMenu>\w/);
+    expect(text).not.toContain('genuine, current tool gap');
     expect(text).not.toContain('❌ No matching');
   });
 
