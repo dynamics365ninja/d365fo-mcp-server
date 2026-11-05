@@ -253,7 +253,7 @@ function formatViewLike(
       out += `### Mapped Fields (${mapped.length})\n\n`;
       out += `| Field Name | Data Source | Data Field | Label |\n|---|---|---|---|\n`;
       for (const f of mapped) {
-        out += `| ${f.name} | ${f.dataSource ?? '—'} | ${f.dataField ?? '—'} | ${label(f.labelId)?.replace(/\|/g, '\\|') ?? '—'} |\n`;
+        out += `| ${f.name} | ${f.dataSource ?? '—'} | ${f.dataField ?? '—'} | ${label(f.labelId)?.replace(/\\/g, '\\\\').replace(/\|/g, '\\|') ?? '—'} |\n`;
       }
       out += '\n';
     }
