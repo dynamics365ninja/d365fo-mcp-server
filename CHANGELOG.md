@@ -29,6 +29,17 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`npm run upgrade-impact` shows what an update of a model does to your own code, without a
+  build.** Given the extracted metadata of two versions of the models you depend on and the
+  source of your models, it reports per object of yours what will not compile (a called
+  method removed, made private or given a new required parameter, a changed parameter or
+  return type, a removed field or enum value, a Chain of Command wrapper or `[SubscribesTo]`
+  handler that no longer matches its base method or delegate, a `final` method you override,
+  `[SysObsolete]` with the error flag), what compiles but behaves differently (an override that
+  overrides nothing, a field with another EDT) and what only warns (`[SysObsolete]`, a new
+  optional parameter), with the old and new signature and the fix. Dependencies present in
+  only one version are listed, not reported as removed. Markdown report, `--json` for tools,
+  exit code 1 when something will not compile. See docs/VERSION_COMPARE.md.
 - **`npm run diff-metadata` compares two versions of a model.** After an ISV or Microsoft
   update there was no way to see what moved in the API short of reading both models. The
   script takes two extracted-metadata directories (from `extract-metadata`, or from

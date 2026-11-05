@@ -49,7 +49,7 @@ export interface ModelDiff {
   enumValuesRemoved: string[];
 }
 
-interface RawMethod {
+export interface RawMethod {
   name?: string;
   visibility?: string;
   returnType?: string;
@@ -57,12 +57,20 @@ interface RawMethod {
   parameters?: Array<{ name: string; type: string; defaultValue?: string }>;
   /** Present on binary-ISV methods, already rendered (`[Hookable(False)]`). */
   attributes?: string[];
+  /** Binary-ISV modifiers; a source method states them in its declaration line. */
+  isFinal?: boolean;
+  isDelegate?: boolean;
+  parametersUnknown?: boolean;
   source?: string;
 }
 
-interface RawClass {
+export interface RawClass {
   name?: string;
+  sourcePath?: string;
+  model?: string;
   extends?: string;
+  implements?: string[];
+  extensionOf?: { baseObjectName: string; baseKind: string; memberName?: string };
   isAbstract?: boolean;
   isFinal?: boolean;
   visibility?: string;
@@ -70,19 +78,21 @@ interface RawClass {
   methods?: RawMethod[];
 }
 
-interface RawTable {
+export interface RawTable {
   name?: string;
+  sourcePath?: string;
+  methods?: RawMethod[];
   fields?: Array<{ name: string; type?: string; extendedDataType?: string; enumType?: string }>;
 }
 
-interface RawEdt {
+export interface RawEdt {
   name?: string;
   extends?: string;
   baseType?: string;
   stringSize?: number;
 }
 
-interface RawEnum {
+export interface RawEnum {
   name?: string;
   values?: Array<{ name: string }>;
   /** Source enums are stored as their XML only. */
@@ -145,9 +155,9 @@ export function leadingAttributes(text: string | undefined): string[] {
   return attrs;
 }
 
-const isObsolete = (attrs: string[]): boolean => attrs.some(a => /^\[\s*SysObsolete\b/i.test(a));
+export const isObsolete = (attrs: string[]): boolean => attrs.some(a => /^\[\s*SysObsolete\b/i.test(a));
 
-function methodAttributes(m: RawMethod): string[] {
+export function methodAttributes(m: RawMethod): string[] {
   return m.attributes ?? leadingAttributes(m.source);
 }
 
@@ -292,4 +302,21 @@ export function diffSnapshots(from: ModelSnapshot, to: ModelSnapshot): ModelDiff
 
 export function isEmptyDiff(d: ModelDiff): boolean {
   return Object.entries(d).every(([k, v]) => !Array.isArray(v) || v.length === 0 || k === 'model');
+}
+
+export interface MethodFlags {
+  final: boolean;
+  delegate: boolean;
+  abstract: boolean;
+}
+
+/** `final`/`delegate`/`abstract` of a method: the stored flags for a binary model, the declaration line for source. */
+export function methodFlags(m: RawMethod): MethodFlags {
+  if (m.attributes !== undefined || m.isFinal !== undefined || m.isDelegate !== undefined) {
+    return { final: !!m.isFinal, delegate: !!m.isDelegate, abstract: false };
+  }
+  const text = (m.source ?? '').replace(/\r\n/g, '\n');
+  const lines = text.split('\n').filter(l => l.trim() && !/^\s*(\/\/|\/\*|\*|\[)/.test(l));
+  const head = (lines[0] ?? '').split('(')[0];
+  return { final: /\bfinal\b/.test(head), delegate: /\bdelegate\b/.test(head), abstract: /\babstract\b/.test(head) };
 }
