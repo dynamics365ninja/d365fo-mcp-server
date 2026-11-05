@@ -29,6 +29,13 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`npm run diff-metadata` compares two versions of a model.** After an ISV or Microsoft
+  update there was no way to see what moved in the API short of reading both models. The
+  script takes two extracted-metadata directories (from `extract-metadata`, or from
+  `extract-binary-models` for a binary ISV model) and lists added and removed classes,
+  methods, tables and fields, EDT and enum changes, changed method signatures with before
+  and after, and the methods and classes that gained `[SysObsolete]`. `--models` limits it,
+  `--json` writes the full lists. See docs/VERSION_COMPARE.md.
 - **`d365fo_file(action="modify", operation="modify-property")` sets OperationalDomain and
   SubscriberAccessLevel on existing tables and menu items.** Menu items had no writer for
   either (the bridge's setter has no case for them), and SubscriberAccessLevel holds child
