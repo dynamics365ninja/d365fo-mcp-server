@@ -426,6 +426,19 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
       'Correct+Create+Delete+Read+Update (plus Invoke on a ServiceOperation). DEFAULTS to "view", so a maintain privilege must say so explicitly. ' +
       'Nothing else is accepted — "full"/"edit" used to be taken and silently degraded to Read-only.',
   },
+  // security role/duty references
+  dutyName: {
+    type: 'string',
+    description:
+      'add-duty / remove-duty: REQUIRED — AOT name of the AxSecurityDuty to reference. ONE name; send ' +
+      'several as operations[] entries. Matched case-insensitively.',
+  },
+  privilegeName: {
+    type: 'string',
+    description:
+      'add-privilege / remove-privilege: REQUIRED — AOT name of the AxSecurityPrivilege to reference. ONE ' +
+      'name; send several as operations[] entries. Matched case-insensitively.',
+  },
   // BP-check suppressions
   diagnosticPath: {
     type: 'string',
@@ -830,6 +843,48 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       + 'A privilege left with no entry points and no data-entity permissions grants nothing — delete '
       + 'it with d365fo_file(action="delete") and drop its BP suppression entry.',
   },
+  'add-duty': {
+    required: ['dutyName'],
+    optional: [],
+    note:
+      'objectType="security-role" or "security-role-extension". Appends one <AxSecurityDutyReference> to ' +
+      '<Duties>. To a STANDARD role, add through a security-role-extension ("<BaseRole>.<Prefix>Extension"). ' +
+      'Idempotent, case-insensitively: a duty already listed is SKIPPED and reported. Checked against the ' +
+      'symbol index: a name that exists only as a privilege is REFUSED (use add-privilege); an unknown name ' +
+      'is WARNED about and still written, because it may come later in the same batch or not be indexed ' +
+      'yet. On an extension, a duty the base role already references is warned about and still written.',
+  },
+  'remove-duty': {
+    required: ['dutyName'],
+    optional: [],
+    note:
+      'objectType="security-role" or "security-role-extension". Removes one <AxSecurityDutyReference>. A ' +
+      'name that is not listed comes back with the list that is there; a name listed twice is REFUSED ' +
+      'rather than guessed. Removing the last one collapses the list to <Duties />. An extension lists ' +
+      'only what it adds: a duty of the base role cannot be removed through it.',
+  },
+  'add-privilege': {
+    required: ['privilegeName'],
+    optional: [],
+    note:
+      'objectType="security-role", "security-duty", "security-role-extension" or "security-duty-extension". ' +
+      'Appends one <AxSecurityPrivilegeReference> to <Privileges>. To a STANDARD role or duty, add through ' +
+      'its extension ("<Base>.<Prefix>Extension"). Idempotent, case-insensitively: a privilege already ' +
+      'listed is SKIPPED and reported. Checked against the symbol index: a name that exists only as a duty ' +
+      'is REFUSED (a role takes it through add-duty); an unknown name is WARNED about and still written, ' +
+      'because it may come later in the same batch or not be indexed yet. On an extension, a privilege the ' +
+      'base object already references is warned about and still written.',
+  },
+  'remove-privilege': {
+    required: ['privilegeName'],
+    optional: [],
+    note:
+      'objectType="security-role", "security-duty", "security-role-extension" or "security-duty-extension". ' +
+      'Removes one <AxSecurityPrivilegeReference>. A name that is not listed comes back with the list that ' +
+      'is there; a name listed twice is REFUSED rather than guessed. Removing the last one collapses the ' +
+      'list to <Privileges />. An extension lists only what it adds: a privilege of the base object cannot ' +
+      'be removed through it.',
+  },
   'remove-diagnostic-suppression': {
     required: ['diagnosticPath'],
     optional: ['diagnosticMoniker'],
@@ -1004,8 +1059,8 @@ export const D365FO_FILE_CREATE_PROPERTY_SPECS: Record<string, string> = {
     'label, targetObject, objectType (MenuItemDisplay|MenuItemAction|MenuItemOutput|ServiceOperation), ' +
     'accessLevel (view|read = Read only, maintain = Correct+Create+Delete+Read+Update, plus Invoke on a ServiceOperation — nothing else is accepted; "full"/"edit" ' +
     'used to degrade silently to Read-only), dataEntity (grants perms)',
-  'security-duty': 'label, privileges[]',
-  'security-role': 'label, duties[], privileges[]',
+  'security-duty': 'label, privileges[] (change the list later with add-privilege / remove-privilege)',
+  'security-role': 'label, duties[], privileges[] (change the lists later with add-duty / add-privilege and their remove- operations)',
   'menu-item-display': 'label, object, objectType',
   'menu-item-action': 'label, object, objectType',
   'menu-item-output': 'label, object, objectType',

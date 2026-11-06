@@ -46,6 +46,8 @@ const AOT_FOLDER_BY_OBJECT_TYPE: Record<string, string> = {
   'security-privilege': 'AxSecurityPrivilege',
   'security-duty': 'AxSecurityDuty',
   'security-role': 'AxSecurityRole',
+  'security-duty-extension': 'AxSecurityDutyExtension',
+  'security-role-extension': 'AxSecurityRoleExtension',
   'ignore-diagnostic-list': 'AxIgnoreDiagnosticList',
 };
 
