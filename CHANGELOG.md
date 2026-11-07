@@ -28,6 +28,15 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Fixed
+- **`run_systest_class` on UDE said it could not find SysTestConsole, as if a path were
+  wrong.** No path can make it work: SysTestConsole only runs tests against a local AOS,
+  and on UDE the AOS is hosted in the cloud, so even where it is found it stops with
+  "Failed to obtain app setting ... Common.HostingEnvironment" before any test runs. On
+  UDE the tool now answers straight away, without looking for a runner, that tests
+  cannot run there and should be run from Visual Studio Test Explorer. A classic VM
+  detected as UDE can set `environment.type` to `traditional`.
+
 ## [1.23.0] — 2026-11-05
 
 ### Added
