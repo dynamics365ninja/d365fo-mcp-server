@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // --- hoisted mocks -----------------------------------------------------------
-const { accessMock, readdirMock, execFileMock, readFileMock, cfgEnsureLoaded, cfgGetModelName, cfgGetPackagePath } = vi.hoisted(() => {
+const { accessMock, readdirMock, execFileMock, readFileMock, cfgEnsureLoaded, cfgGetModelName, cfgGetPackagePath, cfgGetDevEnvironmentType } = vi.hoisted(() => {
   const accessMock = vi.fn();
   // Bin listing for the versioned SysTestConsole lookup; empty unless a test lists files.
   const readdirMock = vi.fn().mockResolvedValue([]);
@@ -13,7 +13,9 @@ const { accessMock, readdirMock, execFileMock, readFileMock, cfgEnsureLoaded, cf
   const cfgEnsureLoaded = vi.fn();
   const cfgGetModelName = vi.fn().mockReturnValue('Contoso');
   const cfgGetPackagePath = vi.fn().mockReturnValue('K:\\AOSService\\PackagesLocalDirectory');
-  return { accessMock, readdirMock, execFileMock, readFileMock, cfgEnsureLoaded, cfgGetModelName, cfgGetPackagePath };
+  // Unset (undefined after vi.resetAllMocks) reads as a classic VM; the UDE block sets it.
+  const cfgGetDevEnvironmentType = vi.fn();
+  return { accessMock, readdirMock, execFileMock, readFileMock, cfgEnsureLoaded, cfgGetModelName, cfgGetPackagePath, cfgGetDevEnvironmentType };
 });
 
 vi.mock('child_process', () => ({ execFile: execFileMock }));
@@ -26,6 +28,7 @@ vi.mock('../../src/utils/configManager.js', () => ({
     ensureLoaded: cfgEnsureLoaded,
     getModelName: cfgGetModelName,
     getPackagePath: cfgGetPackagePath,
+    getDevEnvironmentType: cfgGetDevEnvironmentType,
   }),
 }));
 vi.mock('../../src/utils/operationLocks.js', () => ({
@@ -159,6 +162,81 @@ describe('run_systest_class — binary resolution', () => {
     const result = await sysTestRunnerTool({ className: 'ContosoMyTest', testMethod: 'testFoo' }, {});
 
     expect(result.content[0].text).toContain('but SysTestConsole.17.0.exe has no per-method filter');
+  });
+});
+
+/**
+ * A UDE box has no local AOS, so SysTestConsole cannot run there from any Bin: it dies with
+ * "Failed to obtain app setting from for: Common.HostingEnvironment". Before the guard, the tool
+ * looked under the custom packages path (no Bin on UDE) and answered "not found", which sent the
+ * reader to fix a path that could never help.
+ */
+describe('run_systest_class — on a UDE environment', () => {
+  const UDE_CUSTOM = 'C:\\Contoso\\Metadata';
+  const UDE_FRAMEWORK = 'C:\\Users\\Contoso\\AppData\\Local\\Microsoft\\Dynamics365\\10.0.2000.1\\PackagesLocalDirectory';
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    readdirMock.mockResolvedValue(['SysTestConsole.17.0.exe']);
+    cfgEnsureLoaded.mockResolvedValue(undefined);
+    cfgGetModelName.mockReturnValue('ContosoExtTests');
+    cfgGetPackagePath.mockReturnValue(UDE_CUSTOM);
+    cfgGetDevEnvironmentType.mockResolvedValue('ude');
+    // A runner that WOULD be found: the guard must not depend on the lookup failing.
+    allowPaths([path.join(UDE_CUSTOM, 'Bin', 'SysTestConsole.17.0.exe'), path.join(UDE_FRAMEWORK, 'Bin', 'SysTestConsole.17.0.exe')]);
+  });
+
+  it('says tests cannot run here, without starting or even looking for a runner', async () => {
+    const result = await sysTestRunnerTool({ className: 'ContosoMyTest' }, {});
+    const text = result.content[0].text;
+
+    expect(result.isError).toBe(true);
+    expect(text).toContain('cannot run tests on a UDE');
+    expect(text).toMatch(/No test ran/);
+    expect(text).toContain('Common.HostingEnvironment');
+    expect(execFileMock).not.toHaveBeenCalled();
+    expect(readdirMock).not.toHaveBeenCalled();
+    // Not the old answer, which read like a path problem.
+    expect(text).not.toContain('Neither SysTestConsole.exe nor SysTestRunner.exe found');
+    expect(text).not.toContain('Tests FAILED');
+  });
+
+  it('points at Visual Studio Test Explorer for the class that was asked for', async () => {
+    const text = (await sysTestRunnerTool({ className: 'ContosoMyTest' }, {})).content[0].text;
+
+    expect(text).toContain('Run `ContosoMyTest` from Visual Studio Test Explorer');
+    expect(text).toContain('packagePath');
+  });
+
+  it('does not run even when packagePath names the framework directory', async () => {
+    const result = await sysTestRunnerTool({ className: 'ContosoMyTest', packagePath: UDE_FRAMEWORK }, {});
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('cannot run tests on a UDE');
+    expect(execFileMock).not.toHaveBeenCalled();
+  });
+
+  it('tells a misdetected classic VM how to say so', async () => {
+    const text = (await sysTestRunnerTool({ className: 'ContosoMyTest' }, {})).content[0].text;
+
+    expect(text).toContain('`environment.type`');
+    expect(text).toContain('D365FO_DEV_ENVIRONMENT_TYPE');
+    expect(text).toContain('"traditional"');
+  });
+
+  it('still runs SysTestConsole when the environment is traditional', async () => {
+    cfgGetDevEnvironmentType.mockResolvedValue('traditional');
+    cfgGetPackagePath.mockReturnValue(PKG);
+    allowPaths([SYSTEST_CONSOLE]);
+    readdirMock.mockResolvedValue([]);
+    execFileMock.mockImplementation((_f: string, _a: string[], _o: any, cb: Function) => {
+      cb(null, { stdout: '✅ Tests passed', stderr: '' });
+    });
+
+    const result = await sysTestRunnerTool({ className: 'ContosoMyTest' }, {});
+
+    expect(result.isError).toBeFalsy();
+    expect(execFileMock.mock.calls[0][0]).toBe(SYSTEST_CONSOLE);
   });
 });
 

@@ -213,6 +213,38 @@ export function renderRedPhaseNote(
   return '';
 }
 
+/**
+ * The answer on a UDE box, where SysTestConsole cannot run a test at all.
+ *
+ * SysTestConsole executes in local-AOS mode: it boots the AOS kernel in its own process from the
+ * local runtime configuration. A UDE machine has no local runtime; its AOS is hosted in the cloud,
+ * so the runner dies before the first test with "Failed to obtain app setting from for:
+ * Common.HostingEnvironment", whichever Bin it is started from. Visual Studio's test adapter does
+ * not use SysTestConsole there: it sends the tests to the cloud runtime instead.
+ *
+ * Before this was said, the tool answered "not found", which read like a configuration problem;
+ * pointing packagePath at the framework directory only swapped that for the HostingEnvironment
+ * crash. So the reply says plainly that no setting makes this work.
+ */
+function udeNotSupported(className: string) {
+  return {
+    content: [{
+      type: 'text',
+      text: '❌ run_systest_class cannot run tests on a UDE (Unified Developer Experience) environment.\n\n' +
+        'No test ran, and nothing is wrong with the test class. SysTestConsole only runs tests against a ' +
+        'local AOS, and on UDE the AOS is hosted in the cloud; the runner stops with "Failed to obtain app ' +
+        'setting ... Common.HostingEnvironment" before any test starts. Visual Studio runs UDE tests through ' +
+        'the cloud runtime instead.\n\n' +
+        `Run \`${className}\` from Visual Studio Test Explorer (after deploying the model) and ask the user ` +
+        'for the result. Changing packagePath or the runner\'s .config does not help.\n\n' +
+        'If this machine is not a UDE box, set `environment.type` (D365FO_DEV_ENVIRONMENT_TYPE) to ' +
+        '"traditional": UDE is detected from the XPP config files in ' +
+        '%LOCALAPPDATA%\\Microsoft\\Dynamics365\\XPPConfig.',
+    }],
+    isError: true,
+  };
+}
+
 export const sysTestRunnerTool = async (params: any, _context: any) => {
   const { className, testMethod } = params;
   // Hoisted out of the try: the failure diagnosis in the catch reads the
@@ -229,6 +261,11 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
   try {
     const configManager = getConfigManager();
     await configManager.ensureLoaded();
+
+    // Before any Bin lookup: on UDE no SysTestConsole can run, wherever it is found.
+    if (await configManager.getDevEnvironmentType() === 'ude') {
+      return udeNotSupported(className);
+    }
 
     const resolvedModelName = params.modelName || configManager.getModelName();
     if (!resolvedModelName) {
