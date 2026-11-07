@@ -1,5 +1,5 @@
 import { execFile } from 'child_process';
-import { parseSysTestXml } from './sysTestXml.js';
+import { parseSysTestXml, type SysTestCaseOutcome } from './sysTestXml.js';
 import util from 'util';
 import path from 'path';
 import os from 'os';
@@ -9,6 +9,17 @@ import { defaultPackagesRoot } from '../../utils/packagesRoot.js';
 import { readAppSetting } from '../../utils/appSettings.js';
 import { withOperationLock } from '../../utils/operationLocks.js';
 import { wasCreatedThisSession } from '../../workspace/createdArtifactLedger.js';
+import { findD365FileOnDisk } from '../../utils/objectFileLookup.js';
+import { DEFAULT_DATAVERSE_CLIENT_ID, getDataverseAccessToken, readDataverseSettings } from '../../utils/dataverseAuth.js';
+import {
+  buildTestSuiteXml,
+  type DataverseClient,
+  findRuntimeAssembly,
+  parseTrxResults,
+  readTestClass,
+  runTestRequestInCloud,
+  saveTrx,
+} from './udeSysTest.js';
 
 const execFileAsync = util.promisify(execFile);
 
@@ -214,34 +225,192 @@ export function renderRedPhaseNote(
 }
 
 /**
- * The answer on a UDE box, where SysTestConsole cannot run a test at all.
- *
- * SysTestConsole executes in local-AOS mode: it boots the AOS kernel in its own process from the
- * local runtime configuration. A UDE machine has no local runtime; its AOS is hosted in the cloud,
- * so the runner dies before the first test with "Failed to obtain app setting from for:
- * Common.HostingEnvironment", whichever Bin it is started from. Visual Studio's test adapter does
- * not use SysTestConsole there: it sends the tests to the cloud runtime instead.
- *
- * Before this was said, the tool answered "not found", which read like a configuration problem;
- * pointing packagePath at the framework directory only swapped that for the HostingEnvironment
- * crash. So the reply says plainly that no setting makes this work.
+ * Counts, then the failures, then the passes: which test failed and why is the answer being
+ * asked for, and the response cap keeps the head of the text. '' when there is nothing to list.
  */
-function udeNotSupported(className: string) {
+export function renderOutcomeList(outcomes: readonly SysTestCaseOutcome[]): string {
+  if (outcomes.length === 0) return '';
+  const failed = outcomes.filter(o => !o.passed);
+  const passed = outcomes.filter(o => o.passed);
+  return `\n\n${passed.length}/${outcomes.length} passed` +
+    (failed.length > 0 ? `, ${failed.length} failed.` : '.') +
+    '\n\n' + [...failed, ...passed]
+    .map(o => `${o.passed ? '✅' : '❌'} ${o.name}${o.message ? ` — ${o.message}` : ''}`)
+    .join('\n');
+}
+
+const notRun = (text: string) => ({ content: [{ type: 'text', text: `❌ ${text}` }], isError: true });
+
+/** How many base classes up the test methods of a class are looked for. */
+const MAX_TEST_BASE_DEPTH = 5;
+
+/** An X++ class or method name. They become file paths here, so nothing else is accepted. */
+const XPP_IDENTIFIER = /^[A-Za-z_]\w*$/;
+
+/** For a box wrongly detected as UDE: the setup replies point at UDE-only settings otherwise. */
+const NOT_UDE_HINT = '\n\nIf this machine is not a UDE box, set `environment.type` (D365FO_DEV_ENVIRONMENT_TYPE) to ' +
+  '"traditional": UDE is detected from the XPP config files in %LOCALAPPDATA%\\Microsoft\\Dynamics365\\XPPConfig.';
+
+/**
+ * A test class on a UDE box, run in the cloud runtime (see udeSysTest.ts for the protocol).
+ *
+ * SysTestConsole cannot be used there at all: it runs tests against a local AOS, and a UDE
+ * machine has none — started from the framework Bin it dies with "Failed to obtain app setting
+ * from for: Common.HostingEnvironment" before the first test. Visual Studio's test adapter sends
+ * UDE tests to the cloud runtime through the environment's Dataverse instead, and so does this.
+ *
+ * Tests run against the code DEPLOYED to the environment, not the local build, so the reply says
+ * which environment ran them and that an undeployed change is not in the result.
+ */
+async function runSysTestOnUde(
+  params: { className: string; testMethod?: string; modelName?: string },
+  configManager: ReturnType<typeof getConfigManager>,
+) {
+  const className = String(params.className ?? '').trim();
+  // `Class::method` and `Class.method` are what the results print; accept them as well.
+  const focus = params.testMethod?.trim().replace(/^.*(::|\.)/, '') || undefined;
+  const fallback = `Until then, run \`${className}\` from Visual Studio Test Explorer and ask the user for the result.`;
+
+  if (!XPP_IDENTIFIER.test(className)) return notRun(`Invalid parameter: className "${className}" is not an X++ class name.`);
+  if (focus && !XPP_IDENTIFIER.test(focus)) return notRun(`Invalid parameter: testMethod "${focus}" is not an X++ method name.`);
+
+  const modelName = params.modelName || configManager.getModelName() || await configManager.getAutoDetectedModelName();
+  if (!modelName) return notRun('Cannot determine model name.\n\nProvide modelName parameter or set it in .mcp.json.');
+  try {
+    assertSafePath(modelName, 'modelName');
+  } catch (error: any) {
+    return notRun(`Invalid parameter: ${error.message}`);
+  }
+
+  // The class file names the package, which names the module assembly the runtime loads.
+  const classFile = await findD365FileOnDisk('class', className, modelName);
+  if (!classFile) {
+    return notRun(`Class \`${className}\` was not found in model \`${modelName}\`, so no test ran.\n\n` +
+      'Check the class name, or pass modelName when the test class lives in another model.');
+  }
+  const packageName = path.basename(path.resolve(classFile, '..', '..', '..'));
+
+  // The test methods: the cloud runtime runs only the methods a request lists.
+  const own = readTestClass(await fs.readFile(classFile, 'utf-8'));
+  if (!own) return notRun(`The declaration of \`${className}\` could not be read, so no test ran.`);
+  if (own.isAbstract) return notRun(`\`${className}\` is abstract; SysTest runs only concrete test classes. No test ran.`);
+  const methods = new Map(own.methods.map(m => [m.name.toLowerCase(), m]));
+  const notes: string[] = [];
+  let base = own.extends;
+  for (let depth = 0; base && !/^SysTest/i.test(base) && depth < MAX_TEST_BASE_DEPTH; depth++) {
+    const baseFile = await findD365FileOnDisk('class', base, modelName);
+    const baseClass = baseFile ? readTestClass(await fs.readFile(baseFile, 'utf-8')) : null;
+    if (!baseClass) {
+      notes.push(`Test methods inherited from \`${base}\` were not looked for: it is not in model \`${modelName}\`.`);
+      break;
+    }
+    // A method the class overrides is already listed under the class's own spelling.
+    for (const m of baseClass.methods) if (!methods.has(m.name.toLowerCase())) methods.set(m.name.toLowerCase(), m);
+    base = baseClass.extends;
+  }
+
+  let selected = [...methods.values()];
+  if (focus) {
+    selected = selected.filter(m => m.name.toLowerCase() === focus.toLowerCase());
+    if (selected.length === 0) {
+      const names = [...methods.values()].map(m => m.name).join(', ') || '(none)';
+      return notRun(`\`${className}\` has no test method named "${focus}", so no test ran.\n\nIts test methods: ${names}.`);
+    }
+  }
+  const inactive = selected.filter(m => m.inactive);
+  const toRun = selected.filter(m => !m.inactive);
+  if (inactive.length > 0) {
+    notes.push(`Skipped, marked [SysTestInactiveTest]: ${inactive.map(m => m.name).join(', ')}.`);
+  }
+  if (toRun.length === 0) {
+    return notRun(`\`${className}\` has no test method to run, so no test ran.\n\n` +
+      'A test method is public, returns void, takes no parameters and is named test… or marked [SysTestMethod].' +
+      (notes.length ? `\n\n${notes.join('\n')}` : ''));
+  }
+
+  // The built module assembly, under the runtime packages folder the cloud runtime knows it by.
+  const runtimeDir = (await configManager.getActiveXppConfig())?.runtimePackagesDirectory;
+  if (!runtimeDir) {
+    return notRun('The XPP config names no RuntimePackagesDirectory, so the test request cannot name the module ' +
+      `assembly. No test ran.\n\n${fallback}${NOT_UDE_HINT}`);
+  }
+  const assemblyPath = await findRuntimeAssembly(runtimeDir, packageName);
+  if (!assemblyPath) {
+    return notRun(`Dynamics.AX.${packageName}.dll was not found under ${runtimeDir}. Build the model ` +
+      `(build_d365fo_project) and deploy it to the environment, then run the tests again. No test ran.`);
+  }
+
+  const dataverse = readDataverseSettings();
+  if (!dataverse) {
+    return notRun('Tests on UDE run in the cloud runtime, which this server reaches through the Dataverse ' +
+      'environment the UDE belongs to — and no Dataverse URL is configured. No test ran.\n\n' +
+      'Set `environment.dataverseUrl` (D365FO_DATAVERSE_URL) to that environment\'s URL, e.g. ' +
+      'https://contoso-dev.crm.dynamics.com — not the Finance and Operations URL. `pac org list` or the Power ' +
+      'Platform admin center shows it. Then restart the server. The first run opens a sign-in page in the browser.' +
+      `\n\n${fallback}${NOT_UDE_HINT}`);
+  }
+
+  // Signed in before the lock is taken: a sign-in can take minutes, and a second run of the same
+  // class waiting on the lock should not spend its wait on someone else's browser tab.
+  try {
+    await getDataverseAccessToken(dataverse);
+  } catch (error: any) {
+    return notRun(`Signing in to ${dataverse.url} failed: ${error?.message ?? error}\n\nNo test ran. ` +
+      'Run the tool again to get a new sign-in page.' +
+      (dataverse.clientId === DEFAULT_DATAVERSE_CLIENT_ID
+        ? ' If your tenant blocks the default client, set `environment.dataverseClientId` to your own public ' +
+          'client (redirect URI http://localhost).'
+        : '') +
+      `\n\n${fallback}`);
+  }
+
+  const { xml, cases } = buildTestSuiteXml(assemblyPath, className, toRun.map(m => m.name), classFile);
+  let trx: string;
+  try {
+    const client: DataverseClient = { url: dataverse.url, getToken: () => getDataverseAccessToken(dataverse) };
+    ({ trx } = await withOperationLock(`systest:${modelName}:${className}`, () =>
+      runTestRequestInCloud(client, `${packageName}_${className}_${Date.now()}.tsx`, xml, {
+        log: line => console.error(`[run_systest_class] ${line}`),
+      })));
+  } catch (error: any) {
+    const message = String(error?.message ?? error);
+    if (/Timeout waiting for filesystem lock/i.test(message)) {
+      return notRun(`Another run of \`${className}\` was still in progress and did not finish in time, so this one ` +
+        'did not start. No test ran. Run it again once the other run has reported.');
+    }
+    return notRun(`The tests could not be run in the cloud runtime of ${dataverse.url}: ${message}\n\n` +
+      'No test result came back, and this says nothing about the test class itself. A run that cannot start often ' +
+      'means the model is not deployed to the environment, or the sign-in has no access to it.' +
+      `\n\n${fallback}`);
+  }
+
+  const resultFile = await saveTrx(className, trx);
+  const returned = parseTrxResults(trx);
+  if (returned.length === 0) {
+    return notRun(`The cloud runtime of ${dataverse.url} finished, but its results name no test. No test result ` +
+      `came back for ${cases.length} requested method(s).` + (resultFile ? `\n\nResult file: ${resultFile}` : ''));
+  }
+  // A requested method missing from the results did not pass, whatever the others did: count
+  // it as failed, so a run cut short can never read as green.
+  const outcomes: SysTestCaseOutcome[] = [
+    ...returned,
+    ...cases
+      .filter(c => !returned.some(o => o.name.toLowerCase() === c.name.toLowerCase()))
+      .map(c => ({ name: c.name, passed: false, message: 'No result came back for this test.' })),
+  ];
+  const status = outcomes.some(o => !o.passed) ? '❌ Tests FAILED' : '✅ Tests passed';
+
   return {
     content: [{
       type: 'text',
-      text: '❌ run_systest_class cannot run tests on a UDE (Unified Developer Experience) environment.\n\n' +
-        'No test ran, and nothing is wrong with the test class. SysTestConsole only runs tests against a ' +
-        'local AOS, and on UDE the AOS is hosted in the cloud; the runner stops with "Failed to obtain app ' +
-        'setting ... Common.HostingEnvironment" before any test starts. Visual Studio runs UDE tests through ' +
-        'the cloud runtime instead.\n\n' +
-        `Run \`${className}\` from Visual Studio Test Explorer (after deploying the model) and ask the user ` +
-        'for the result. Changing packagePath or the runner\'s .config does not help.\n\n' +
-        'If this machine is not a UDE box, set `environment.type` (D365FO_DEV_ENVIRONMENT_TYPE) to ' +
-        '"traditional": UDE is detected from the XPP config files in ' +
-        '%LOCALAPPDATA%\\Microsoft\\Dynamics365\\XPPConfig.',
+      text: `${status}\n\nClass: ${className}${focus ? `::${toRun[0].name}` : ''}\nModel: ${modelName}` +
+        `\nRan in the cloud runtime of ${dataverse.url}, against the code deployed there — a change that is not ` +
+        'deployed yet is not in this result.' +
+        notes.map(n => `\n⚠️ ${n}`).join('') +
+        renderOutcomeList(outcomes) +
+        renderRedPhaseNote(className, outcomes) +
+        (resultFile ? `\n\nResult file: ${resultFile}` : ''),
     }],
-    isError: true,
   };
 }
 
@@ -264,7 +433,7 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
 
     // Before any Bin lookup: on UDE no SysTestConsole can run, wherever it is found.
     if (await configManager.getDevEnvironmentType() === 'ude') {
-      return udeNotSupported(className);
+      return await runSysTestOnUde(params, configManager);
     }
 
     const resolvedModelName = params.modelName || configManager.getModelName();
@@ -391,7 +560,6 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
     // test name is enough to report a green run as failed.
     const outcomes = parseSysTestXml(xmlResult);
     const failedOutcomes = outcomes.filter(o => !o.passed);
-    const passedOutcomes = outcomes.filter(o => o.passed);
     const hasFailed = outcomes.length > 0
       ? failedOutcomes.length > 0
       : /failed|error|exception/i.test(output);
@@ -404,15 +572,7 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
       ? `\n⚠️ testMethod="${testMethod}" was requested but ${runnerName} has no per-method filter — the whole class ran.`
       : '';
 
-    // Counts, then the failures, then the passes: which test failed and why is the
-    // answer being asked for, and the response cap keeps the head of the text.
-    const perMethod = outcomes.length > 0
-      ? `\n\n${passedOutcomes.length}/${outcomes.length} passed` +
-        (failedOutcomes.length > 0 ? `, ${failedOutcomes.length} failed.` : '.') +
-        '\n\n' + [...failedOutcomes, ...passedOutcomes]
-        .map(o => `${o.passed ? '✅' : '❌'} ${o.name}${o.message ? ` — ${o.message}` : ''}`)
-        .join('\n')
-      : '';
+    const perMethod = renderOutcomeList(outcomes);
     // The document itself is rendered above, so it is named rather than repeated:
     // what is shown at the end is the console log, plus the document only when it
     // could not be read into results.

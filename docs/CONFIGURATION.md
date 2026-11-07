@@ -53,6 +53,9 @@ Which developer box this is and where its X++ packages live.
 | `environment.xppConfigName` | setup | `XPP_CONFIG_NAME` | — | Name of a config file in %LOCALAPPDATA%\\Microsoft\\Dynamics365\\XPPConfig. Pinning one keeps the server on a specific environment/version; leave empty to always use the newest config. |
 | `environment.customPackagesPath` | advanced | `D365FO_CUSTOM_PACKAGES_PATH` | — | Where custom model XML is written and tracked by git. Normally read from the XPP config — override only when your working tree lives somewhere else. |
 | `environment.microsoftPackagesPath` | advanced | `D365FO_MICROSOFT_PACKAGES_PATH` | — | Read-only Microsoft packages folder. Normally read from the XPP config. |
+| `environment.dataverseUrl` | setup | `D365FO_DATAVERSE_URL` | — | URL of the Dataverse environment your UDE belongs to, e.g. https://contoso-dev.crm.dynamics.com — not the Finance and Operations URL. run_systest_class sends tests to the cloud runtime through it, signing in as you in the browser. `pac org list` or the Power Platform admin center shows it. |
+| `environment.dataverseClientId` | advanced | `D365FO_DATAVERSE_CLIENT_ID` | `51f81489-12ee-4a9e-aaae-a2591f45987d` | Public client (app registration) used to sign in to Dataverse. Defaults to Microsoft's sample Dataverse client, the one Power Platform Tools signs in with; set your own when your tenant blocks it. It needs the http://localhost redirect URI. |
+| `environment.dataverseTenant` | advanced | `D365FO_DATAVERSE_TENANT` | `organizations` | Microsoft Entra tenant id or domain to sign in to. The default, "organizations", signs in to your home tenant; set the environment's tenant when you are a guest in it. |
 
 ### Workspace
 
@@ -207,7 +210,10 @@ Downloading a pre-built index from blob storage instead of building it locally.
     "customModels": "ContosoRobotics,ContosoBank",
     "xppConfigName": "",
     "customPackagesPath": "",
-    "microsoftPackagesPath": ""
+    "microsoftPackagesPath": "",
+    "dataverseUrl": "https://contoso-dev.crm.dynamics.com",
+    "dataverseClientId": "51f81489-12ee-4a9e-aaae-a2591f45987d",
+    "dataverseTenant": "organizations"
   },
   "workspace": {
     "modelName": "",

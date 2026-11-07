@@ -14,6 +14,8 @@ export interface XppEnvironmentConfig {
   customPackagesPath: string;       // ModelStoreFolder
   microsoftPackagesPath: string;    // FrameworkDirectory
   referencePackagesPaths: string[]; // ReferencePackagesPaths — all folders xppc should reference
+  /** RuntimePackagesDirectory — junctions to every package root, where built module assemblies are found. */
+  runtimePackagesDirectory?: string;
   xrefDbName?: string;
   xrefDbServer?: string;
   description?: string;
@@ -24,6 +26,7 @@ interface XppConfigJson {
   ModelStoreFolder?: string;
   FrameworkDirectory?: string;
   ReferencePackagesPaths?: string[];
+  RuntimePackagesDirectory?: string;
   CrossReferencesDatabaseName?: string;
   CrossReferencesDbServerName?: string;
   Description?: string;
@@ -101,6 +104,7 @@ export class XppConfigProvider {
           customPackagesPath: json.ModelStoreFolder,
           microsoftPackagesPath: json.FrameworkDirectory,
           referencePackagesPaths: json.ReferencePackagesPaths ?? [],
+          runtimePackagesDirectory: json.RuntimePackagesDirectory || undefined,
           xrefDbName: json.CrossReferencesDatabaseName,
           xrefDbServer: json.CrossReferencesDbServerName,
           description: json.Description,
