@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>12.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <AssemblyName>BinaryModelExtractor</AssemblyName>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <MSBuildWarningsAsMessages>MSB3277;MSB3106</MSBuildWarningsAsMessages>
+    <D365BinPath Condition="'$(D365BinPath)' == ''">$(D365FO_BIN_PATH)</D365BinPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="$(D365BinPath)\Microsoft.Dynamics.AX.Metadata.dll"><Private>false</Private></Reference>
+    <Reference Include="$(D365BinPath)\Microsoft.Dynamics.AX.Metadata.Core.dll"><Private>false</Private></Reference>
+    <Reference Include="$(D365BinPath)\Microsoft.Dynamics.AX.Metadata.Storage.dll"><Private>false</Private></Reference>
+  </ItemGroup>
+  <Target Name="RequireD365BinPath" BeforeTargets="ResolveAssemblyReferences" Condition="'$(D365BinPath)' == ''">
+    <Error Text="Set -p:D365BinPath=&lt;PackagesLocalDirectory&gt;/bin (or the D365FO_BIN_PATH environment variable)." />
+  </Target>
+</Project>
