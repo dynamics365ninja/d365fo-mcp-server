@@ -28,6 +28,25 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Added
+- **`d365fo_file(action="modify")` changes the duties and privileges of roles and duties.**
+  After `create` nothing could change these lists: the only way was
+  `create(overwrite=true)` with the complete list or hand-written XML, and
+  `security-role-extension` and `security-duty-extension` were not modifiable at all. The
+  new operations are `add-duty` / `remove-duty` (`dutyName`; on `security-role` and
+  `security-role-extension`) and `add-privilege` / `remove-privilege` (`privilegeName`; on
+  those and on `security-duty` and `security-duty-extension`). They take one name each, so
+  several go in `operations[]`. An add appends to the list, and a reference already there
+  is skipped and reported (names compare case-insensitively). A name the symbol index
+  knows only as the other kind is refused with the operation to use; an unknown name is
+  warned about and still written, and on an index with no such objects (a write-only
+  companion) the reply says it could not check. An add on an extension warns when the base
+  role or duty already holds the reference. A remove collapses an emptied list to
+  `<Duties />` / `<Privileges />`, answers a name that is not there with the list that is,
+  and refuses a name listed twice. A modify of a missing role or duty extension whose
+  standard base is in the index now offers the one `create` call that does it, and the
+  refusal to modify a standard role or duty names the extension types.
+
 ## [1.23.0] — 2026-11-05
 
 ### Added
