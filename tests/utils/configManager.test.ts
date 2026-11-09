@@ -67,7 +67,7 @@ function makeManager(context: Record<string, string | undefined> = {}) {
   (mgr as any).config = { servers: { context } };
   // Prevent auto-detection and XPP config loading side effects
   (mgr as any).autoDetectionAttempted = true;
-  (mgr as any).xppConfigLoaded = true;
+  (mgr as any).xppConfigLoad = Promise.resolve();
   (mgr as any).xppConfig = null;
   return mgr as ReturnType<typeof getConfigManager>;
 }
@@ -282,7 +282,7 @@ describe('UDE context (customPackagesPath / microsoftPackagesPath)', () => {
       devEnvironmentType: 'ude',
     });
     // Prevent XPP auto-detection from running
-    (mgr as any).xppConfigLoaded = true;
+    (mgr as any).xppConfigLoad = Promise.resolve();
     (mgr as any).xppConfig = null;
 
     expect(await mgr.getCustomPackagesPath()).toBe('C:\\CustomXppCode');
@@ -293,7 +293,7 @@ describe('UDE context (customPackagesPath / microsoftPackagesPath)', () => {
 
   it('reports dev environment as ude when devEnvironmentType=ude', async () => {
     const mgr = makeManager({ devEnvironmentType: 'ude' });
-    (mgr as any).xppConfigLoaded = true;
+    (mgr as any).xppConfigLoad = Promise.resolve();
     (mgr as any).xppConfig = null;
 
     expect(await mgr.getDevEnvironmentType()).toBe('ude');
@@ -301,7 +301,7 @@ describe('UDE context (customPackagesPath / microsoftPackagesPath)', () => {
 
   it('reports dev environment as traditional when devEnvironmentType=traditional', async () => {
     const mgr = makeManager({ devEnvironmentType: 'traditional' });
-    (mgr as any).xppConfigLoaded = true;
+    (mgr as any).xppConfigLoad = Promise.resolve();
     (mgr as any).xppConfig = null;
 
     expect(await mgr.getDevEnvironmentType()).toBe('traditional');
@@ -440,7 +440,7 @@ describe('getWorkspaceInfoDiagnostics provenance', () => {
   it('labels packageSource as env var when D365FO_PACKAGE_PATH is set', async () => {
     process.env.D365FO_PACKAGE_PATH = 'K:\\AosService\\PackagesLocalDirectory';
     const mgr = makeManager({});
-    (mgr as any).xppConfigLoaded = true;
+    (mgr as any).xppConfigLoad = Promise.resolve();
     (mgr as any).xppConfig = null;
 
     const diag = await mgr.getWorkspaceInfoDiagnostics();
@@ -450,7 +450,7 @@ describe('getWorkspaceInfoDiagnostics provenance', () => {
 
   it('labels packageSource as .mcp.json when packagePath comes from file config only', async () => {
     const mgr = makeManager({ packagePath: 'K:\\AosService\\PackagesLocalDirectory' });
-    (mgr as any).xppConfigLoaded = true;
+    (mgr as any).xppConfigLoad = Promise.resolve();
     (mgr as any).xppConfig = null;
 
     const diag = await mgr.getWorkspaceInfoDiagnostics();
@@ -460,7 +460,7 @@ describe('getWorkspaceInfoDiagnostics provenance', () => {
   it('returns customPackagesPath and its source from env var', async () => {
     process.env.D365FO_CUSTOM_PACKAGES_PATH = 'C:\\repos\\MyProject\\src\\Metadata';
     const mgr = makeManager({});
-    (mgr as any).xppConfigLoaded = true;
+    (mgr as any).xppConfigLoad = Promise.resolve();
     (mgr as any).xppConfig = null;
 
     const diag = await mgr.getWorkspaceInfoDiagnostics();
@@ -471,7 +471,7 @@ describe('getWorkspaceInfoDiagnostics provenance', () => {
 
   it('returns customPackagesPath and its source from .mcp.json', async () => {
     const mgr = makeManager({ customPackagesPath: 'C:\\repos\\MyProject\\src\\Metadata' });
-    (mgr as any).xppConfigLoaded = true;
+    (mgr as any).xppConfigLoad = Promise.resolve();
     (mgr as any).xppConfig = null;
 
     const diag = await mgr.getWorkspaceInfoDiagnostics();
@@ -481,7 +481,7 @@ describe('getWorkspaceInfoDiagnostics provenance', () => {
 
   it('returns null customPackagesPath when neither env var nor config is set', async () => {
     const mgr = makeManager({});
-    (mgr as any).xppConfigLoaded = true;
+    (mgr as any).xppConfigLoad = Promise.resolve();
     (mgr as any).xppConfig = null;
 
     const diag = await mgr.getWorkspaceInfoDiagnostics();
