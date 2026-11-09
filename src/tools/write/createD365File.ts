@@ -764,6 +764,8 @@ function writtenAfterBridgeCreate(objectType: string, key: string): boolean {
 export interface CreateOutcome {
   finalObjectName?: string;
   filePath?: string;
+  /** The object was already on disk and overwrite was not set: nothing was written. */
+  alreadyExisted?: boolean;
 }
 
 export async function handleCreateD365File(
@@ -1334,6 +1336,7 @@ export async function handleCreateD365File(
 
     if (fileExisted) {
       if (!args.overwrite) {
+        if (outcome) outcome.alreadyExisted = true;
         // Surface what's already on disk so the caller doesn't have to read the
         // file in chunks just to discover its contents. Previously this branch
         // returned only "already exists", forcing repeated read_file calls.

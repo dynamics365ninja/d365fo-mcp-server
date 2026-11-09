@@ -44,6 +44,17 @@ those are called out explicitly below.
   table-only. `relationOnDelete` (None, Restricted, Cascade, CascadeRestricted) is written
   after Cardinality and before RelatedTable, as in shipped metadata. When the relation
   exists only its OnDelete changes. A new relation gets it after the add.
+- **New table fields get the EDT or base enum they need, created first.** A field with only
+  a primitive type drew BPErrorTableFieldNotDefinedUsingType, and a field naming an EDT or
+  enum that did not exist failed the build (the scaffold refused it). `d365fo_file` create
+  of a table, `add-field` on a table or table extension (single or in `operations[]`) and
+  `generate_object` scaffold of a table now create the missing EDT (base type from the
+  field, or implied by its name, with its label and string size) or enum (values from
+  `enumValues` / `fieldEnumValues`, each labelled). A primitive-only field reuses the EDT of
+  its name and base type or gets a new one named after the field. An Int64 `…RecId` EDT
+  extends RefRecId. The type takes the field's label and the field drops its copy
+  (BPErrorFieldLabelIsCopyOf…). The reply lists every type created. `autoCorrect=false`
+  writes the fields as passed. Nothing is created when the symbol index cannot be read.
 
 ### Fixed
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp

@@ -705,6 +705,7 @@ export const ModifyD365FileArgsSchema = z.object({
   fieldLabel: z.string().optional().describe('Field label'),
   fieldHelpText: z.string().optional().describe('Field help text (modify-field).'),
   fieldEnumType: z.string().optional().describe('Enum name for an enum-typed field. On add-field this replaces fieldType entirely — it writes AxTableFieldEnum + EnumType and needs no EDT. Also settable later with modify-field.'),
+  fieldEnumValues: z.array(z.unknown()).optional().describe('add-field: values of the enum created when fieldEnumType does not exist (names or {name,label}).'),
   fieldStringSize: z.string().optional().describe('String size to set on the field (modify-field, for string-typed fields).'),
   ...ENTITY_AND_FIELD_ZOD_PARAMS,
   fields: z.array(z.object({

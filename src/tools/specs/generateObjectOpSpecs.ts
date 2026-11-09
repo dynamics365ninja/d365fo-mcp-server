@@ -296,6 +296,10 @@ export const GENERATE_OBJECT_MODE_SPECS: Record<string, GenerateObjectModeSpec> 
       'label', 'tableGroup', 'tableType', 'generateCommonFields', 'preview',
       'fields', 'fieldsHint', 'copyFrom', 'modelName', 'projectPath', 'solutionPath',
     ],
+    note:
+      'fields[{name,edt?,type?,enumType?,enumValues?,stringSize?,label?}]: an EDT or enum a field names that does not ' +
+      'exist is created first, and a field with only a primitive type gets an EDT named after it (or the existing ' +
+      'one of that name and base type). Listed in the reply. autoCorrect=false skips this.',
   },
   'scaffold:form': {
     required: ['name'],

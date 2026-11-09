@@ -103,7 +103,11 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
       'Enum name for an enum-typed field. On add-field this is all an enum field needs — ' +
       'it writes AxTableFieldEnum + EnumType, no EDT.',
   },
-  fieldStringSize: { type: 'string', description: 'String size to set on a string-typed field.' },
+  fieldStringSize: { type: 'string', description: 'String size to set on a string-typed field (on add-field: of the EDT created for it).' },
+  fieldEnumValues: {
+    type: 'array of string | {name,label?}',
+    description: 'add-field: the values of the enum created when fieldEnumType does not exist yet. Each gets a label.',
+  },
   autoCorrect: {
     type: 'boolean (default true)',
     description:
@@ -606,9 +610,12 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   },
   'add-field': {
     required: ['fieldName'],
-    optional: ['fieldType', 'fieldBaseType', 'fieldEnumType', 'fieldMandatory', 'fieldLabel', 'dataField', 'dataSource', 'fieldGroupName', 'autoCorrect'],
+    optional: ['fieldType', 'fieldBaseType', 'fieldEnumType', 'fieldEnumValues', 'fieldStringSize', 'fieldMandatory', 'fieldLabel', 'dataField', 'dataSource', 'fieldGroupName', 'autoCorrect'],
     mutationOneOf: ['fieldType', 'fieldEnumType', 'dataField', 'dataSource', 'fieldBaseType'],
     note:
+      'Table/table-extension: a fieldType EDT or fieldEnumType enum that does not exist is created first ' +
+      '(fieldBaseType, fieldStringSize, fieldLabel and fieldEnumValues shape it), and fieldBaseType alone gets ' +
+      'an EDT named after the field (reused when one of that name and base type exists). ' +
       'Enum field: pass fieldEnumType="<enum name>" and NO fieldType — an enum-typed table field ' +
       'is an AxTableFieldEnum with an EnumType and needs no EDT. (fieldType is the EDT name here, ' +
       'never an XML element name like "AxTableFieldEnum" — that one is read as fieldEnumType when the ' +
@@ -991,7 +998,8 @@ export const D365FO_FILE_CREATE_PROPERTY_SPECS: Record<string, string> = {
     '{read:"Allow"} | "No Access" | "None"; default what xppbp expects: No Access on TempDB/InMemory/Staging, ' +
     'Read=Allow otherwise), operationalDomain? (Company|Shared|Local; default Local on TempDB/InMemory/Staging, ' +
     'else Company, or Shared with saveDataPerCompany:false), created/modifiedBy/DateTime?, ' +
-    'fields[{name,type?|edt?|fieldType?,enumType?,label?,mandatory?,allowEdit?,ignoreEdtRelation?}] — enum fields need ' +
+    'fields[{name,type?|edt?|fieldType?,enumType?,enumValues?,label?,mandatory?,allowEdit?,ignoreEdtRelation?}] — enum fields need ' +
+    'A missing EDT/enum, or one for a primitive-only field, is created first (see add-field). ' +
     'enumType ONLY (it makes the field an AxTableFieldEnum by itself; fieldType is optional), ' +
     'allowEdit:false writes AllowEdit=No (staging key fields), ignoreEdtRelation:true writes IgnoreEDTRelation=Yes ' +
     '(EDT with a relation), validTimeStateFieldType? (Date|UtcDateTime — then ADD the ValidFrom/ValidTo ' +

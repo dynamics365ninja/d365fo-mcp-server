@@ -35,6 +35,10 @@ import { resetRecentPrepares } from './prepare/prepare.js';
 import { testCoverageNote } from './prepare/testFirst.js';
 import * as debouncedRefresh from '../bridge/debouncedRefresh.js';
 import { truncateOnBlockBoundary } from '../utils/payloadBudget.js';
+import {
+  provisionFieldTypes, renderProvisionNotes, slotFromAddField, slotsFromFieldSpecs,
+  type FieldTypeSlot, type ProvisionResult,
+} from './write/fieldTypeProvisioning.js';
 import { writeFile } from 'fs/promises';
 
 export const D365_FILE_ACTIONS = ['generate', 'create', 'project', 'modify', 'delete', 'undo'] as const;
@@ -87,6 +91,39 @@ const MAX_OPERATION_CHARS = 4_000;
  * the create's own answer has to survive intact, isError included, with the
  * reason the edits were skipped appended to it.
  */
+/**
+ * Create the EDTs and enums the fields of this write need, before it runs: the
+ * fields of a table create, and every add-field on a table or table extension
+ * (single, or in operations[]). See write/fieldTypeProvisioning.ts. autoCorrect=false
+ * writes the fields as passed.
+ */
+async function provisionFieldTypesFor(
+  args: Record<string, unknown>,
+  operations: unknown,
+  context: XppServerContext,
+): Promise<ProvisionResult> {
+  if (args.autoCorrect === false) return { notes: [] };
+  if (args.objectType !== 'table' && args.objectType !== 'table-extension') return { notes: [] };
+  const slots: FieldTypeSlot[] = slotsFromFieldSpecs((args.properties as Record<string, unknown> | undefined)?.fields);
+  const ops = Array.isArray(operations) ? operations : typeof args.operation === 'string' ? [args] : [];
+  for (const op of ops) {
+    const slot = op && typeof op === 'object' ? slotFromAddField(op as Record<string, unknown>) : undefined;
+    if (slot) slots.push(slot);
+  }
+  return provisionFieldTypes(slots, args, context);
+}
+
+/** The refusal when a type the fields need could not be created. */
+function provisionError(p: ProvisionResult): any {
+  return {
+    content: [{
+      type: 'text',
+      text: `❌ ${p.error}\nThe fields were NOT written.${renderProvisionNotes(p)}`,
+    }],
+    isError: true,
+  };
+}
+
 function appendToResult(result: any, note: string): any {
   const content = result?.content;
   const first = Array.isArray(content) ? content[0] : undefined;
@@ -550,8 +587,13 @@ export async function d365foFileTool(request: CallToolRequest, context: XppServe
     // Stamped BEFORE the create so the refresh check below can tell "the bridge
     // rebuilt the provider as part of this create" from "the last rebuild was
     // some earlier call's".
+    const types = await provisionFieldTypesFor(createArgs, operations, context);
+    if (types.error) return provisionError(types);
     const createStartedAt = Date.now();
-    const created = await handleCreateD365File(subRequest('create_d365fo_file', createArgs), context, outcome);
+    const created = appendToResult(
+      await handleCreateD365File(subRequest('create_d365fo_file', createArgs), context, outcome),
+      renderProvisionNotes(types),
+    );
 
     if (!Array.isArray(operations) || operations.length === 0) return created;
     // Never run edits against an object that was not created.
@@ -609,10 +651,12 @@ export async function d365foFileTool(request: CallToolRequest, context: XppServe
     };
   }
   if (action === 'modify') {
+    const types = await provisionFieldTypesFor(rest, rest.operations, context);
+    if (types.error) return provisionError(types);
     const modified = Array.isArray(rest.operations)
       ? await runModifyBatch(rest, context)
       : await modifyWithExtensionAutoCreate(rest, context, {});
-    return withTestCoverageNote(modified, rest, context);
+    return withTestCoverageNote(appendToResult(modified, renderProvisionNotes(types)), rest, context);
   }
   if (action === 'delete') {
     return handleDeleteD365File(subRequest('delete_d365fo_file', rest), context);
