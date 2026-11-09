@@ -12,7 +12,7 @@ export function buildProgressMessage(toolName: string, args: Record<string, any>
         return `🔍 Batch search: ${a.queries.map((q: any) => `"${q.query ?? q}"`).join(', ')}`;
       }
       if (a.scope === 'extensions') {
-        return `🔍 Searching custom extensions: "${a.query ?? ''}"`;
+        return `🔍 Searching custom models: "${a.query ?? ''}"`;
       }
       return `🔍 Searching D365FO index: "${a.query ?? ''}"${a.type ? ` [${a.type}]` : ''}`;
     case 'get_object_info':

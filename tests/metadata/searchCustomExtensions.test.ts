@@ -27,7 +27,7 @@ const sym = (name: string, type: string, model: string, parentName?: string) =>
 
 beforeAll(() => {
   previousCustomModels = process.env.CUSTOM_MODELS;
-  process.env.CUSTOM_MODELS = 'CustomFin,CustomReg';
+  process.env.CUSTOM_MODELS = 'CustomFin,CustomReg,ContosoRobotics';
 
   index = new XppSymbolIndex(':memory:', ':memory:');
 
@@ -48,6 +48,15 @@ beforeAll(() => {
   sym('ConTable_Extension', 'class-extension', 'CustomFin');
   sym('ConTableXExtension', 'class-extension', 'CustomFin');
 
+  // #1212: model ContosoRobotics, object prefix CR — the model name does not start with it.
+  sym('CRPartnerHelper', 'class', 'ContosoRobotics');
+  sym('CRPartnerContract', 'class', 'ContosoRobotics');
+  sym('crPack', 'method', 'ContosoRobotics', 'CRPartnerContract');
+  sym('SalesTable_CR_Extension', 'class-extension', 'ContosoRobotics');
+  sym('SalesTable.CRExtension', 'table-extension', 'ContosoRobotics');
+  sym('OtherCRThing', 'class', 'ContosoRobotics');
+  sym('PartnerSetup', 'class', 'ContosoRobotics');
+
   // Microsoft rows. `validateWriteExtension` is the exact shape that leaked into the
   // production run's results: a method whose own name ends in "Extension".
   sym('validateWriteExtension', 'method', 'ApplicationSuite', 'CatCartLine');
@@ -64,18 +73,29 @@ const names = (rows: Array<{ name: string; model?: string }>) =>
   rows.map(r => `${r.model}:${r.name}`).sort();
 
 describe('searchCustomExtensions', () => {
-  it('finds members of custom extensions and excludes standard models', () => {
+  it('finds custom symbols and excludes standard models', () => {
     const hits = index.searchCustomExtensions('validateWrite');
 
     expect(names(hits as any)).toEqual([
+      'CustomFin:validateWrite',
       'CustomFin:validateWrite',
       'CustomReg:validateWrite',
     ]);
     // The Microsoft row is the regression: it used to be returned, captioned as custom.
     expect(hits.some(h => h.name === 'validateWriteExtension')).toBe(false);
-    // A method on a non-extension custom class is in a custom model but not in an
-    // extension — the scope is "extensions", not "everything custom".
-    expect(hits.every(h => h.parentName?.includes('_Extension'))).toBe(true);
+    // The scope is "custom models", as the tool describes it (#1212): the method on the
+    // plain custom class CustomFinHelper is in. Extension members still come first.
+    expect(hits.map(h => h.parentName)).toEqual([
+      'CustTableCustomFin_Extension',
+      'VendTableCustomReg_Extension',
+      'CustomFinHelper',
+    ]);
+  });
+
+  it('returns plain custom objects, and a type filter narrows to extensions', () => {
+    expect(index.searchCustomExtensions('CustomFin', undefined, 20, ['class'])
+      .map(h => h.name)).toEqual(['CustomFinHelper']);
+    expect(index.searchCustomExtensions('Helper', undefined, 20, ['class-extension'])).toEqual([]);
   });
 
   it('honours the type filter without losing the model index', () => {
@@ -87,10 +107,32 @@ describe('searchCustomExtensions', () => {
     expect(index.searchCustomExtensions('CustTable', undefined, 20, ['method'])).toEqual([]);
   });
 
-  it('narrows by model prefix', () => {
+  it('still narrows by model name prefix', () => {
     expect(index.searchCustomExtensions('validateWrite', 'CustomReg').map(h => h.model))
       .toEqual(['CustomReg']);
     expect(index.searchCustomExtensions('validateWrite', 'Nope')).toEqual([]);
+  });
+
+  // #1212: a model whose name does not start with its object prefix. The documented
+  // prefix is the OBJECT prefix, so it has to match object names, not only model names.
+  it('narrows by object prefix when the model name does not start with it', () => {
+    expect(index.searchCustomExtensions('CR', 'CR', 20, ['class']).map(h => h.name))
+      .toEqual(['CRPartnerContract', 'CRPartnerHelper']);
+    // A member matches through the object it belongs to.
+    expect(index.searchCustomExtensions('Pack', 'CR').map(h => h.name)).toEqual(['crPack']);
+    // An extension carries the prefix in the middle of its name.
+    expect(index.searchCustomExtensions('SalesTable', 'CR').map(h => h.name).sort())
+      .toEqual(['SalesTable.CRExtension', 'SalesTable_CR_Extension']);
+    // A plain object that merely CONTAINS the prefix is not a match.
+    expect(index.searchCustomExtensions('Other', 'CR')).toEqual([]);
+  });
+
+  it('ranks names that start with the query ahead of names that contain it', () => {
+    expect(index.searchCustomExtensions('Partner', undefined, 20, ['class']).map(h => h.name))
+      .toEqual(['PartnerSetup', 'CRPartnerContract', 'CRPartnerHelper']);
+    // An exact name beats extension-shaped rows and longer names that start with it.
+    expect(index.searchCustomExtensions('crpartnerhelper').map(h => h.name)[0])
+      .toBe('CRPartnerHelper');
   });
 
   it('seeks on idx_symbols_model, with and without a type filter', () => {
