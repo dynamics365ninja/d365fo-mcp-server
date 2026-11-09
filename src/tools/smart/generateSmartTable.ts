@@ -25,6 +25,7 @@ import { writeFileAtomic } from '../../utils/atomicFileWrite.js';
 import * as debouncedRefresh from '../../bridge/debouncedRefresh.js';
 import { recordCreatedArtifact } from '../../workspace/createdArtifactLedger.js';
 import { isKernelEdt, kernelEdtBaseType } from '../../knowledge/kernelEdts.js';
+import { resolveEdtRelations } from '../xml/edtRelationResolver.js';
 
 interface GenerateSmartTableArgs {
   name: string;
@@ -507,32 +508,28 @@ export async function handleGenerateSmartTable(
   // BP rule BPErrorEDTNotMigrated: a field whose EDT carries an implicit relation
   // (e.g. ItemId → InventTable) requires an explicit table relation. Auto-detect
   // from edt_metadata.reference_table and generate matching relations.
+  // The EDT's own <Relations> names the table AND the related field
+  // (CustAccount → CustTable.AccountNum). edt_metadata.reference_table only
+  // holds the legacy ReferenceTable property, so it missed such EDTs and could
+  // only guess the related field from the EDT name. See edtRelationResolver.ts.
   {
     const db = symbolIndex.getReadDb();
+    const edtTargets = await resolveEdtRelations(
+      [...new Set(fields.map(f => f.edt).filter((e): e is string => !!e))],
+      db,
+    );
     for (const f of fields) {
       if (!f.edt) continue;
       // Skip if a relation for this field already exists
       if (relations.some(r => r.constraints.some(c => c.field === f.name))) continue;
-
-      try {
-        const edtRow = db.prepare(
-          `SELECT reference_table FROM edt_metadata WHERE edt_name = ? AND reference_table IS NOT NULL AND reference_table != '' LIMIT 1`
-        ).get(f.edt) as { reference_table: string } | undefined;
-
-        if (edtRow?.reference_table) {
-          // The EDT name is typically the PK field name on the target table too
-          // (e.g. ItemId EDT → InventTable.ItemId).
-          const relatedField = f.edt;
-          relations.push({
-            name: f.name,
-            targetTable: edtRow.reference_table,
-            constraints: [{ field: f.name, relatedField }],
-          });
-          console.log(`[generateSmartTable] Auto-migrated EDT relation: ${f.name} (${f.edt}) → ${edtRow.reference_table}.${relatedField}`);
-        }
-      } catch {
-        // Skip if edt_metadata query fails
-      }
+      const target = edtTargets[f.edt];
+      if (!target) continue;
+      relations.push({
+        name: f.name,
+        targetTable: target.table,
+        constraints: [{ field: f.name, relatedField: target.relatedField }],
+      });
+      console.log(`[generateSmartTable] Auto-migrated EDT relation: ${f.name} (${f.edt}) → ${target.table}.${target.relatedField}`);
     }
   }
 
@@ -782,7 +779,7 @@ export async function handleGenerateSmartTable(
   // Text-only path: non-Windows (bridge unavailable, the local companion writes the file)
   // or an explicit preview=true, which is the only way to scaffold without a disk write.
   if (isNonWindows || preview) {
-    const xml = builder.buildTableXml({
+    const xml = withTableBpDefaults(builder.buildTableXml({
       name: finalName,
       label: label || finalName,
       tableGroup,
@@ -791,7 +788,7 @@ export async function handleGenerateSmartTable(
       indexes,
       relations,
       methods: generatedMethods.length > 0 ? generatedMethods : undefined,
-    });
+    }));
 
     console.log(`[generateSmartTable] Generated XML for Azure/Linux (${xml.length} bytes)`);
 
@@ -931,14 +928,16 @@ export async function handleGenerateSmartTable(
     if (bridgeResult?.success && bridgeResult.filePath) {
       console.log(`[generateSmartTable] ✅ Created via C# bridge: ${bridgeResult.filePath}`);
 
-      // CreateSmartTable writes no SubscriberAccessLevel; give the table Visual
-      // Studio's Read=Allow (none on TempDB/InMemory), as the XML builder does.
+      // CreateSmartTable writes neither OperationalDomain nor the access level
+      // xppbp expects, puts parent-pointing delete actions on the new table and
+      // leaves key fields editable: the reconcile writes the BP defaults
+      // (bpCreateDefaults.ts, tableBpDefaults.ts), as the XML builder path does.
       // The bridge refreshed its provider from the pre-patch bytes, so refresh
       // again after this write — otherwise the next bridge Update() serialises
       // the cached copy back over it.
       try {
         const onDisk = await fs.promises.readFile(bridgeResult.filePath, 'utf-8');
-        const reconciled = reconcileTableCreateProperties(onDisk, undefined);
+        const reconciled = reconcileTableCreateProperties(onDisk, undefined, { dropWriterDeleteActions: true });
         if (reconciled.xml !== onDisk) {
           await writeFileAtomic(bridgeResult.filePath, normalizeD365Xml(reconciled.xml));
           void debouncedRefresh.refresh(bridge);
@@ -1023,7 +1022,7 @@ export async function handleGenerateSmartTable(
 
   // ── Fallback: SmartXmlBuilder → fs.writeFile (no bridge or bridge unavailable) ──
   // Generate XML
-  const xml = builder.buildTableXml({
+  const xml = withTableBpDefaults(builder.buildTableXml({
     name: finalName,
     label: label || finalName,
     tableGroup,
@@ -1032,7 +1031,7 @@ export async function handleGenerateSmartTable(
     indexes,
     relations,
     methods: generatedMethods.length > 0 ? generatedMethods : undefined,
-  });
+  }));
 
   console.log(`[generateSmartTable] Generated XML via SmartXmlBuilder (${xml.length} bytes)`);
 
@@ -1659,3 +1658,13 @@ export function suggestEdtFromFieldName(fieldName: string): string {
 }
 
 // extractModelFromProject and findProjectInSolution moved to ../utils/projectUtils.ts
+
+/**
+ * The SmartXmlBuilder document with the create reconcile's BP defaults applied
+ * (key fields, field-group coverage, relation properties, OperationalDomain,
+ * SubscriberAccessLevel), so the preview, the non-Windows text and the fallback
+ * write match what the bridge path ends up with.
+ */
+function withTableBpDefaults(xml: string): string {
+  return reconcileTableCreateProperties(xml, undefined, { dropWriterDeleteActions: true }).xml;
+}
