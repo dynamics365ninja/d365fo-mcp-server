@@ -131,6 +131,11 @@ export interface ModelVisibility {
  * Locate `<Model>.xml`. `<root>/<Model>/Descriptor/<Model>.xml` is the common
  * layout and costs one stat; ISV models inside a differently-named package fall
  * back to a single bounded sweep of the root's package folders.
+ *
+ * Model names are case-insensitive in D365FO, and the guard compares them that
+ * way. On Windows the stat already ignores case; on a case-sensitive file system
+ * the sweep compares each package's descriptor file names case-insensitively, so
+ * `contosotests` finds `ContosoTests/Descriptor/ContosoTests.xml` there too.
  */
 function findDescriptor(packagesRoot: string, modelName: string): { file: string; pkg: string } | null {
   const direct = path.join(packagesRoot, modelName, 'Descriptor', `${modelName}.xml`);
@@ -141,9 +146,24 @@ function findDescriptor(packagesRoot: string, modelName: string): { file: string
   } catch {
     return null;
   }
-  for (const pkg of entries) {
-    const file = path.join(packagesRoot, pkg, 'Descriptor', `${modelName}.xml`);
-    if (existsSync(file)) return { file, pkg };
+  const wanted = `${modelName}.xml`.toLowerCase();
+  // The package named like the model first, then the rest, as the stat above does.
+  const ordered = [
+    ...entries.filter(e => e.toLowerCase() === modelName.toLowerCase()),
+    ...entries.filter(e => e.toLowerCase() !== modelName.toLowerCase()),
+  ];
+  for (const pkg of ordered) {
+    const dir = path.join(packagesRoot, pkg, 'Descriptor');
+    const exact = path.join(dir, `${modelName}.xml`);
+    if (existsSync(exact)) return { file: exact, pkg };
+    let files: string[];
+    try {
+      files = readdirSync(dir);
+    } catch {
+      continue;
+    }
+    const match = files.find(f => f.toLowerCase() === wanted);
+    if (match) return { file: path.join(dir, match), pkg };
   }
   return null;
 }
