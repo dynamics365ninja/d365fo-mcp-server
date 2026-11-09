@@ -451,6 +451,14 @@ describe('menu item notes', () => {
     }
   });
 
+  it('gives no SubscriberAccessLevel hint for an item on a form or report (xppbp decides from its data sources)', () => {
+    // A Display item on a form over TempDB tables is expected Local + No Access, any other Read.
+    for (const v of ['NoAccess', 'Read', 'All']) {
+      expect(ok(setBpAccessProperty(MENU('AxMenuItemDisplay', 'Form'), 'SubscriberAccessLevel', v)).bpNote).toBeUndefined();
+      expect(ok(setBpAccessProperty(MENU('AxMenuItemOutput', 'SSRSReport'), 'SubscriberAccessLevel', v)).bpNote).toBeUndefined();
+    }
+  });
+
   it('accepts any allowed permission on a Display item that opens a class', () => {
     expect(ok(setBpAccessProperty(MENU('AxMenuItemDisplay', 'Class'), 'SubscriberAccessLevel', 'Read')).bpNote).toBeUndefined();
     expect(ok(setBpAccessProperty(MENU('AxMenuItemDisplay', 'Class'), 'SubscriberAccessLevel', 'NoAccess')).bpNote).toMatch(/expects/);

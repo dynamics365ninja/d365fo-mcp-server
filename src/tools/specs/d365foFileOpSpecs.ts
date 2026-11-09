@@ -976,7 +976,7 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       'alphabetically after Name), children in serializer order, xmlns="" on menu item children. An ' +
       'existing element is replaced. The reply says when the value differs from what xppbp expects: ' +
       'TempDB/InMemory/Staging tables Local + NoAccess, SaveDataPerCompany=No Shared + Read, other tables ' +
-      'Company + Read. Action menu item on a class NoAccess, Display on a class All, Display on a form Read.',
+      'Company + Read. Action menu item on a class NoAccess, Display on a class any right Allow. No hint for a menu item on a form or report: xppbp decides from its data sources (all Local, i.e. TempDB, gives Local + NoAccess, otherwise Read).',
   },
 };
 

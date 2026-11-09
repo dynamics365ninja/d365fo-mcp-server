@@ -38,8 +38,9 @@ those are called out explicitly below.
   order, replacing an existing element. SubscriberAccessLevel takes `NoAccess`, `Read`,
   `All`, `None` or an explicit `Read=Allow,Create=Deny` list (`All` is new). The reply
   names the value xppbp expects when the one written differs: SubscriberAccessLevel on
-  both, OperationalDomain on tables only (for menu items xppbp requires one but names no
-  value). The after-write check reads SubscriberAccessLevel's child elements, so a correct
+  tables and on menu items that open a class, OperationalDomain on tables only (for menu
+  items xppbp requires one but names no value). A menu item on a form or report gets no
+  hint: xppbp decides from its data sources (all TempDB gives Local and No Access). The after-write check reads SubscriberAccessLevel's child elements, so a correct
   write is no longer reported as "NOT in the file".
 - **`add-relation` takes `relationOnDelete` and sets OnDelete on a relation that already
   exists, on a table or a table extension.** BPCheckMissingDeleteActions on an existing
