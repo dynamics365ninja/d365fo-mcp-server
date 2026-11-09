@@ -27,7 +27,7 @@ import {
 import { lookupSymbolsNocase } from '../../utils/symbolLookup.js';
 import { PackageResolver } from '../../utils/packageResolver.js';
 import { crossModelWriteRefusal, standDownNotice } from '../../utils/crossModelWriteGuard.js';
-import { resolveAnchorModel } from './writeAnchorGuard.js';
+import { resolveAnchorModel, resolveModelDependency } from './writeAnchorGuard.js';
 import { xppMethodSourceForXml } from '../../utils/xppFormat.js';
 import { bridgeValidateAfterWrite, canBridgeCreate, bridgeCreateObject, bridgeCreateSmartTable, isBridgeFailure, describeBridgeFailure, rejectedBridgeInput } from '../../bridge/index.js';
 import type { BridgeFailure } from '../../bridge/index.js';
@@ -956,13 +956,15 @@ export async function handleCreateD365File(
     // Resolved, not read synchronously: where the model comes only from the
     // background .rnrproj scan, the sync getter can still be null here — and a
     // null anchor makes the guard stand down.
+    const anchorModel = await resolveAnchorModel(getConfigManager());
     const crossModelCheck = {
       objectName: args.objectName,
       objectType: args.objectType,
       owningModel: actualModelName,
-      activeModel: await resolveAnchorModel(getConfigManager()),
+      activeModel: anchorModel,
       toolSwitchedModel: getConfigManager().getToolProjectSwitch()?.forcedModel ?? null,
       action: 'create' as const,
+      dependency: await resolveModelDependency(actualModelName, anchorModel),
     };
     const crossModelCreateRefusal = crossModelWriteRefusal(crossModelCheck);
     if (crossModelCreateRefusal) {

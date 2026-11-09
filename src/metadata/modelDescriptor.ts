@@ -51,6 +51,61 @@ export function parseModuleReferences(descriptorXml: string): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Every `<d2p1:string>` entry of a descriptor's `<InternalsVisibleTo>` — the models
+ * allowed to see this model's internal members, which is how a model names its
+ * test model. Scoped to the element for the same reason as parseModuleReferences.
+ */
+export function parseInternalsVisibleTo(descriptorXml: string): string[] {
+  const element = /<InternalsVisibleTo\b[^>]*?(?:\/>|>([\s\S]*?)<\/InternalsVisibleTo>)/.exec(descriptorXml);
+  if (!element?.[1]) return [];
+  return Array.from(element[1].matchAll(/<d2p1:string>\s*([^<\s]+)\s*<\/d2p1:string>/g))
+    .map(m => m[1].trim())
+    .filter(Boolean);
+}
+
+/** How one model stands to another, as their descriptors declare it. */
+export interface ModelDependency {
+  /** `model` lists the base model's package in its `<ModuleReferences>`: it is built ON the base. */
+  buildsOnBase: boolean;
+  /** The base model lists `model` in `<InternalsVisibleTo>`: `model` is its test model. */
+  testModelOfBase: boolean;
+}
+
+/**
+ * Read from the descriptors under the first root that holds `model`'s; null when no
+ * root does, so a caller never acts on a guess.
+ *
+ * A dependent model sees the base model, never the other way round, so the base
+ * cannot extend an object of a model built on it — the cross-model guard needs this
+ * to stop advising exactly that.
+ */
+export function modelDependency(
+  packagesRoots: Array<string | null | undefined>,
+  model: string,
+  baseModel: string,
+): ModelDependency | null {
+  const eqi = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  for (const root of packagesRoots) {
+    if (!root) continue;
+    const own = findDescriptor(root, model);
+    if (!own) continue;
+    try {
+      const refs = parseModuleReferences(readFileSync(own.file, 'utf-8'));
+      const base = findDescriptor(root, baseModel);
+      const basePkg = base?.pkg ?? baseModel;
+      const internals = base ? parseInternalsVisibleTo(readFileSync(base.file, 'utf-8')) : [];
+      return {
+        buildsOnBase: refs.some(r => eqi(r, basePkg) || eqi(r, baseModel)),
+        testModelOfBase: internals.some(m => eqi(m, model)),
+      };
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 /** The PackagesLocalDirectory root contained in a package or workspace path. */
 export function packagesRootFromPath(candidate: string | undefined | null): string | null {
   if (!candidate) return null;

@@ -28,6 +28,21 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Fixed
+- **The cross-model guard no longer advises an extension that cannot compile.** A write
+  into the workspace's test model (or any model built on the workspace model) was refused
+  with "Extend it from <workspace model> instead: create class-extension …". The test
+  model references the workspace model, never the reverse, so the workspace model cannot
+  see the class, and that extension would not compile. Agents followed the advice, failed,
+  and fell back to creating tests in the main model and moving them by hand. The guard now
+  reads both descriptors when it refuses: for a model whose `<ModuleReferences>` lists the
+  workspace model, it says an extension is impossible and why, names the model as the
+  workspace's test model when the workspace model lists it in `<InternalsVisibleTo>`, and
+  drops the "half-finished pieces are evidence of a mistake" line, which does not hold
+  there. It still refuses: the only route remains the user's
+  `D365FO_CROSS_MODEL_WRITE_MODELS`. For a shared model the workspace builds on, the
+  original case, nothing changes, and with no descriptor found the wording is as before.
+
 ## [1.23.0] — 2026-11-05
 
 ### Added
