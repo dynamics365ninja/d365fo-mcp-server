@@ -44,6 +44,36 @@ those are called out explicitly below.
   share it; tokens are kept in memory only. Tenants that block Microsoft's sample
   Dataverse client can set `environment.dataverseClientId`, and guests
   `environment.dataverseTenant`. `setup` asks for the URL on UDE.
+- **`build_d365fo_project(deploy: true)` deploys the built model to its UDE environment,
+  so `run_systest_class` tests the new code.** Tests on UDE run against the code deployed
+  to the cloud runtime, and until now only Visual Studio could deploy it. After a
+  successful build the tool now deploys the package that holds the model, and only that
+  package, through the same Power Platform Tools library Visual Studio uses. It signs in
+  with the server's own Dataverse token, so there is no second sign-in. By default it
+  deploys a Dev package without a database sync (about 3 minutes). With `dbSync` as well,
+  it deploys a Release package with a full sync in the environment (about 20 minutes),
+  which a table, view, data entity, enum or EDT change needs; together with `deploy`,
+  `dbSync` runs in the environment instead of a local SyncEngine. Success is read from
+  the environment's status lines, and a failed deployment makes the result an error
+  while the build verdict stands. A deploy that cannot happen (not a UDE, no
+  `environment.dataverseUrl`, a failed sign-in, or `restartAos` given as well) is refused
+  before anything is compiled. Needs Power Platform Tools for Visual Studio (a UDE
+  prerequisite) and Windows PowerShell 5.1. The library is undocumented: when an update
+  changes it, the tool says which members are missing and uploads nothing. The system
+  prompt and `copilot-instructions.md` now tell agents to deploy before running changed
+  tests on UDE, and to announce a full sync. The `run_systest_class` replies about
+  undeployed code point to `deploy: true`. On UDE, `doctor` reports whether Power
+  Platform Tools is installed, so a missing prerequisite shows up before the first
+  deployment fails. To keep the tool list's size, the descriptions of `wait` and
+  `waitTimeoutMs` are shorter; what they mean is unchanged.
+
+### Changed
+- **`build_d365fo_project` and `run_systest_class` are no longer marked as closed-world
+  tools.** Both reach the UDE environment's cloud runtime (a deployment, tests in the
+  cloud), so their annotations drop `openWorldHint: false` and fall back to MCP's
+  default, open-world. Clients that ask for confirmation or show a warning before
+  open-world tools may now do so for these two. Every other tool keeps
+  `openWorldHint: false`.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
@@ -51,6 +81,29 @@ those are called out explicitly below.
   and `lodash.*` helpers) it adds 16 packages to the lockfile and changes none.
 
 ### Fixed
+- **`build_d365fo_project` could report a build that started before your latest edits as
+  this call's result.** A call that found a build of the same model running attached to
+  it, without checking whether sources had changed since it started, and returned its
+  "✅ Build succeeded" for code it may never have compiled. A finished build was already
+  checked this way. Now such a call waits for the running build and the post-build steps
+  run for it in this server process, lets the calls waiting on it collect it, and then
+  builds the current sources, saying so in the result. When the check cannot finish in
+  time (a large model while the compiler is reading it), the call attaches as before and
+  says the result may not cover edits made after that build started.
+- **A call that attached to a running build lost the post-build steps it asked for.**
+  Only the call that collects the result runs `bpCheck` and `dbSync`, with its own
+  options, so `dbSync: true` from a second call that attached to someone's plain build
+  synced nothing; its result only noted that post-build steps ran once, for the other
+  call. That call now runs the steps it asked for that the collecting call did not
+  (`deploy` included). It never repeats one that already ran, and when several waiting
+  calls need the same step, it runs once and they share its result. When the build was
+  collected in another server process, the steps that cannot be confirmed are named, and
+  a missing `dbSync` or `deploy` makes the result an error.
+- **`build_d365fo_project` went silent while it ran `bpCheck` or `dbSync`.** After the
+  compile the tool sent no progress notifications, so a long best-practice check or sync
+  could outlast a client's request timeout (about a minute in VS Code), and the client gave
+  up on a call that was still working. Now a heartbeat runs during those steps, and the
+  progress value keeps increasing across all phases of the call, as MCP requires.
 - **`run_systest_class` on UDE said it could not find SysTestConsole, as if a path were
   wrong.** No path can make it work: SysTestConsole only runs tests against a local AOS,
   and on UDE the AOS is hosted in the cloud, so even where it is found it stops with

@@ -157,7 +157,8 @@ export function buildProgressMessage(toolName: string, args: Record<string, any>
     case 'update_symbol_index':
       return `🔄 Updating symbol index${a.filePath ? ` for ${a.filePath}` : ''}`;
     case 'build_d365fo_project':
-      return `🔨 Building D365FO project${a.projectPath ? ` ${a.projectPath}` : ''}`;
+      return `🔨 Building D365FO project${a.projectPath ? ` ${a.projectPath}` : ''}` +
+        (a.deploy === true || a.deploy === 'true' ? ' and deploying it to the UDE environment' : '');
     case 'trigger_db_sync':
       return `🗄️ Triggering database sync${a.tableName ? ` for ${a.tableName}` : ''}`;
     case 'run_bp_check':
