@@ -12,6 +12,7 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { XppServerContext } from '../../src/types/context';
 import { bpAccessPropertyOf, isBpAccessObjectType, setBpAccessProperty } from '../../src/tools/xml/bpAccessPropertyModify';
 import { parseSubscriberAccessLevel } from '../../src/utils/subscriberAccessLevel';
+import { setRelationOnDelete } from '../../src/tools/xml/tableBpDefaults';
 
 const TABLE = (props = '') =>
   '<?xml version="1.0" encoding="utf-8"?>\n' +
@@ -151,9 +152,10 @@ describe('menu items', () => {
 
 // ── Through the modify tool ─────────────────────────────────────────────────
 
-const { files, mockBridgeSetProperty } = vi.hoisted(() => ({
+const { files, mockBridgeSetProperty, mockBridgeAddRelation } = vi.hoisted(() => ({
   files: new Map<string, string>(),
   mockBridgeSetProperty: vi.fn(async () => ({ success: true, message: 'set by bridge' })),
+  mockBridgeAddRelation: vi.fn(async () => ({ success: true, message: 'added by bridge', propertiesWritten: true })),
 }));
 
 vi.mock('../../src/bridge/bridgeAdapter', async orig => {
@@ -161,6 +163,7 @@ vi.mock('../../src/bridge/bridgeAdapter', async orig => {
   return {
     ...actual,
     bridgeSetProperty: mockBridgeSetProperty,
+    bridgeAddRelation: mockBridgeAddRelation,
     bridgeValidateAfterWrite: vi.fn(async () => null),
   };
 });
@@ -301,5 +304,110 @@ describe('d365fo_file modify-property', () => {
     expect((r as any).isError).toBe(true);
     expect(textOf(r)).toMatch(/Company, Shared or Local/);
     expect(files.get(filePath)).toBe(before);
+  });
+});
+
+// ── OnDelete on an existing relation ────────────────────────────────────────
+
+/** A table extension whose relation is a foreign key with a two-line opening tag, as shipped. */
+const EXTENSION = (onDelete = '') =>
+  [
+    '<?xml version="1.0" encoding="utf-8"?>',
+    '<AxTableExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance">',
+    '\t<Name>CustTable.ContosoExt</Name>',
+    '\t<FieldGroupExtensions />',
+    '\t<FieldGroups />',
+    '\t<Fields />',
+    '\t<RelationExtensions />',
+    '\t<RelationModifications />',
+    '\t<Relations>',
+    '\t\t<AxTableRelation xmlns=""',
+    '\t\t\ti:type="AxTableRelationForeignKey">',
+    '\t\t\t<Name>ContosoDefaultItem</Name>',
+    '\t\t\t<Cardinality>ZeroMore</Cardinality>',
+    ...(onDelete ? [`\t\t\t<OnDelete>${onDelete}</OnDelete>`] : []),
+    '\t\t\t<RelatedTable>InventTable</RelatedTable>',
+    '\t\t\t<RelatedTableCardinality>ZeroOne</RelatedTableCardinality>',
+    '\t\t\t<RelationshipType>Association</RelationshipType>',
+    '\t\t\t<Constraints>',
+    '\t\t\t\t<AxTableRelationConstraint xmlns=""',
+    '\t\t\t\t\ti:type="AxTableRelationConstraintField">',
+    '\t\t\t\t\t<Name>ContosoDefaultItem</Name>',
+    '\t\t\t\t\t<Field>ContosoDefaultItem</Field>',
+    '\t\t\t\t\t<RelatedField>ItemId</RelatedField>',
+    '\t\t\t\t</AxTableRelationConstraint>',
+    '\t\t\t</Constraints>',
+    '\t\t</AxTableRelation>',
+    '\t</Relations>',
+    '</AxTableExtension>',
+  ].join('\n');
+
+describe('setRelationOnDelete', () => {
+  it('puts OnDelete between Cardinality and RelatedTable on a table extension relation', () => {
+    const r = setRelationOnDelete(EXTENSION(), 'contosodefaultitem', 'restricted');
+    expect(r).toMatchObject({ ok: true, changed: true, value: 'Restricted' });
+    expect((r as any).xml).toBe(EXTENSION('Restricted'));
+  });
+
+  it('replaces an existing value, and reports no change for the same one', () => {
+    const r = setRelationOnDelete(EXTENSION('Restricted'), 'ContosoDefaultItem', 'Cascade');
+    expect(r).toMatchObject({ ok: true, changed: true, previous: 'Restricted' });
+    expect((r as any).xml).toBe(EXTENSION('Cascade'));
+    expect(setRelationOnDelete((r as any).xml, 'ContosoDefaultItem', 'Cascade')).toMatchObject({ ok: true, changed: false });
+  });
+
+  it('works on a table and keeps CRLF', () => {
+    const table = TABLE()
+      .replace(
+        '\t<Relations />\n',
+        '\t<Relations>\n\t\t<AxTableRelation>\n\t\t\t<Name>Claim</Name>\n\t\t\t<RelatedTable>ContosoClaim</RelatedTable>\n\t\t</AxTableRelation>\n\t</Relations>\n',
+      )
+      .replace(/\n/g, '\r\n');
+    const r = setRelationOnDelete(table, 'Claim', 'CascadeRestricted');
+    expect((r as any).xml).toContain('<Name>Claim</Name>\r\n\t\t\t<OnDelete>CascadeRestricted</OnDelete>\r\n\t\t\t<RelatedTable>');
+    expect((r as any).xml).not.toMatch(/[^\r]\n/);
+  });
+
+  it('is undefined for a relation the file does not have, and refuses an invalid value', () => {
+    expect(setRelationOnDelete(EXTENSION(), 'Missing', 'Restricted')).toBeUndefined();
+    expect(setRelationOnDelete(EXTENSION(), 'ContosoDefaultItem', 'Delete')).toMatchObject({ ok: false });
+  });
+});
+
+describe('d365fo_file add-relation relationOnDelete', () => {
+  beforeEach(() => { files.clear(); mockBridgeAddRelation.mockClear(); });
+  const extPath = `${PKG}\\AxTableExtension\\CustTable.ContosoExt.xml`;
+
+  it('sets OnDelete on an existing table extension relation without adding one', async () => {
+    files.set(extPath, EXTENSION());
+    const r = await modifyD365FileTool(
+      req({ objectType: 'table-extension', objectName: 'CustTable.ContosoExt', operation: 'add-relation', relationName: 'ContosoDefaultItem', relationOnDelete: 'Restricted', filePath: extPath }),
+      buildContext(),
+    );
+    expect((r as any).isError, textOf(r)).toBeFalsy();
+    expect(mockBridgeAddRelation).not.toHaveBeenCalled();
+    const xml = files.get(extPath)!;
+    expect(xml.match(/<AxTableRelation\b/g)).toHaveLength(1);
+    expect(xml).toMatch(/<Cardinality>ZeroMore<\/Cardinality>\r?\n\t\t\t<OnDelete>Restricted<\/OnDelete>\r?\n\t\t\t<RelatedTable>InventTable/);
+  });
+
+  it('fails without writing on an invalid value', async () => {
+    files.set(extPath, EXTENSION());
+    const r = await modifyD365FileTool(
+      req({ objectType: 'table-extension', objectName: 'CustTable.ContosoExt', operation: 'add-relation', relationName: 'ContosoDefaultItem', relationOnDelete: 'Sometimes', filePath: extPath }),
+      buildContext(),
+    );
+    expect((r as any).isError).toBe(true);
+    expect(files.get(extPath)).toBe(EXTENSION());
+  });
+
+  it('adds a missing relation through the bridge as before', async () => {
+    const filePath = `${PKG}\\AxTable\\ContosoClaimLine.xml`;
+    files.set(filePath, TABLE());
+    await modifyD365FileTool(
+      req({ objectType: 'table', objectName: 'ContosoClaimLine', operation: 'add-relation', relationName: 'InventTable', relatedTable: 'InventTable', relationOnDelete: 'Restricted', filePath }),
+      buildContext(),
+    );
+    expect(mockBridgeAddRelation).toHaveBeenCalledTimes(1);
   });
 });

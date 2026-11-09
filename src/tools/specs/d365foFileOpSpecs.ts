@@ -255,6 +255,11 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
     description:
       'Association | Composition | Aggregation | Link | Specialization | NotSpecified (default: Association).',
   },
+  relationOnDelete: {
+    type: 'string',
+    description:
+      'None | Restricted | Cascade | CascadeRestricted. On a relation that already exists it sets only OnDelete.',
+  },
   // field groups
   fieldGroupName: { type: 'string', description: 'Field group name.' },
   fieldGroupFields: {
@@ -677,7 +682,13 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   'remove-table-mapping': { required: ['mapName'], optional: [] },
   'add-relation': {
     required: ['relationName', 'relatedTable'],
-    optional: ['relationConstraints', 'relationCardinality', 'relatedTableCardinality', 'relationshipType'],
+    optional: ['relationConstraints', 'relationCardinality', 'relatedTableCardinality', 'relationshipType', 'relationOnDelete'],
+    note:
+      'relationOnDelete (None | Restricted | Cascade | CascadeRestricted) writes <OnDelete> on the relation, ' +
+      'the fix for BPCheckMissingDeleteActions. When the table or table-extension ALREADY has a relation ' +
+      'named relationName, only its OnDelete is set (relatedTable not needed, nothing else changes), in the ' +
+      'element order shipped metadata uses (after Cardinality, before RelatedTable). An existing value is ' +
+      'replaced.',
   },
   'remove-relation': { required: ['relationName'], optional: [] },
   'add-delete-action': {

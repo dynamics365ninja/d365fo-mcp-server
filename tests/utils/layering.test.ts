@@ -158,7 +158,9 @@ describe('layer direction', () => {
     // SubscriberAccessLevel on tables and menu items (4,798 -> 4,802 lines). The
     // writer went to directXmlWriters.ts and tools/xml/bpAccessPropertyModify.ts, so
     // what landed here is the three-line arm ahead of the bridge and one line of the
-    // propertyPath description.
+    // propertyPath description. add-relation's relationOnDelete (-> 4,807 lines) went
+    // the same way: its writer is in directXmlWriters.ts and tools/xml/tableBpDefaults.ts,
+    // and what landed here is the argument, two lines ahead of the bridge and two after it.
     const src = readFileSync('src/tools/write/modifyD365File.ts', 'utf8');
     expect(src.split('\n').length).toBeLessThan(4810);
   });

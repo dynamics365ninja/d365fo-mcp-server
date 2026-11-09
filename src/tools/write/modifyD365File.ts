@@ -91,7 +91,7 @@ import { nextEnumValue } from '../../utils/axEnumProperties.js';
 // The direct-XML writers moved to their own module; this file dispatches to them.
 import {
   directXmlReplaceCode,
-  directXmlModifyProperty, directXmlSetBpAccessProperty,
+  directXmlModifyProperty, directXmlSetBpAccessProperty, directXmlSetRelationOnDelete,
   directXmlAddMenuItemToMenu,
   directXmlAddMenuItemToMenuExtension,
   directXmlAddSubmenu,
@@ -764,6 +764,7 @@ export const ModifyD365FileArgsSchema = z.object({
   relationCardinality: z.string().optional().describe('Cardinality on local side: ZeroMore | ZeroOne | ExactlyOne (default: ZeroMore).'),
   relatedTableCardinality: z.string().optional().describe('Cardinality on related side: ZeroMore | ZeroOne | ExactlyOne (default: ExactlyOne).'),
   relationshipType: z.string().optional().describe('Relationship type: Association | Composition | Aggregation | Link | Specialization (default: Association).'),
+  relationOnDelete: z.string().optional().describe('OnDelete for add-relation: None | Restricted | Cascade | CascadeRestricted. On a relation that already exists (table or table-extension) it sets only OnDelete.'),
 
   // For add-delete-action / remove-delete-action (table)
   deleteActionTable: z.string().optional().describe(
@@ -2510,6 +2511,8 @@ async function runModify(
         break;
       }
       case 'add-relation': {
+        const onDel = (args as any).relationOnDelete && (args as any).relationName ? await directXmlSetRelationOnDelete(actualFilePath, objectName, (args as any).relationName, (args as any).relationOnDelete) : null;
+        if (onDel) { if (!onDel.success) return { content: [{ type: 'text', text: onDel.message }], isError: true }; bridgeResult = viaXmlFallback(onDel); break; }
         if ((args as any).relationName && (args as any).relatedTable) {
           // relationConstraints is documented as [{ fieldName, relatedFieldName }], but the
           // bridge/C# WriteRelationConstraint deserializes the JSON keys { field, relatedField }.
@@ -2561,6 +2564,8 @@ async function runModify(
               };
             }
           }
+          const newOnDel = bridgeResult?.success && (args as any).relationOnDelete ? await directXmlSetRelationOnDelete(actualFilePath, objectName, (args as any).relationName, (args as any).relationOnDelete) : null;
+          if (newOnDel && bridgeResult) bridgeResult = { ...bridgeResult, success: newOnDel.success, message: `${bridgeResult.message}\n${newOnDel.message}` };
         }
         break;
       }

@@ -31,6 +31,7 @@ import { upsertAxTableProperty, upsertAxTableSubscriberAccessLevel, AX_TABLE_NON
 import { describeSubscriberAccessLevel, subscriberAccessLevelValue } from '../../utils/subscriberAccessLevel.js';
 import { upsertAxFormDesignProperty } from '../../utils/axFormDesignProperties.js';
 import { bpAccessPropertyOf, isBpAccessObjectType, setBpAccessProperty } from '../xml/bpAccessPropertyModify.js';
+import { setRelationOnDelete } from '../xml/tableBpDefaults.js';
 import { upsertFormControlProperty } from '../../utils/formControlPropertyXml.js';
 import { resolveControlPropertyTarget } from '../../utils/formExtensionControlModifications.js';
 import { buildAxDataEntityViewFieldXml } from '../xml/dataEntityViewExtensionXml.js';
@@ -140,6 +141,34 @@ export const directXmlReplaceCode = serializedOnFile(async (
 });
 
 /**
+ * add-relation with relationOnDelete on a relation the table or table extension
+ * ALREADY has: sets <OnDelete> in place (tools/xml/tableBpDefaults.ts) instead of
+ * adding a second relation. Null when there is no relation of that name, so the
+ * dispatcher adds it. A failure result means nothing was written.
+ */
+export const directXmlSetRelationOnDelete = serializedOnFile(async (
+  filePath: string,
+  objectName: string,
+  relationName: string,
+  onDelete: string,
+): Promise<{ success: boolean; message: string } | null> => {
+  const before = (await fs.readFile(filePath, 'utf-8')).replace(/^﻿/, '');
+  const outcome = setRelationOnDelete(before, relationName, onDelete);
+  if (!outcome) return null;
+  if (!outcome.ok) {
+    return { success: false, message: `❌ Could not set OnDelete on relation '${relationName}' of ${objectName}: ${outcome.error} Nothing was written.` };
+  }
+  if (outcome.changed) await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
+  return {
+    success: true,
+    message: outcome.changed
+      ? `✅ Relation '${relationName}' on ${objectName}: OnDelete=${outcome.value}` +
+        `${outcome.previous ? ` (was ${outcome.previous})` : ''}, written via direct XML in canonical element order. File: ${filePath}`
+      : `ℹ️ Relation '${relationName}' on ${objectName} already has OnDelete=${outcome.value}, nothing written. File: ${filePath}`,
+  };
+});
+
+/**
  * modify-property OperationalDomain / SubscriberAccessLevel on a table or menu
  * item, written on the XML and never by the bridge (no menu item case there,
  * child elements on SubscriberAccessLevel). See tools/xml/bpAccessPropertyModify.ts.
@@ -168,8 +197,7 @@ export const directXmlSetBpAccessProperty = serializedOnFile(async (
       `${outcome.changed ? '✅' : 'ℹ️'} ${outcome.written} on ${objectName} via direct XML ` +
       `(${outcome.changed ? 'in canonical element order' : 'already in that state, nothing written'}). ` +
       `File: ${filePath}` +
-      (outcome.bpNote ? `
-⚠️ ${outcome.bpNote}` : ''),
+      (outcome.bpNote ? `\n⚠️ ${outcome.bpNote}` : ''),
   };
 });
 

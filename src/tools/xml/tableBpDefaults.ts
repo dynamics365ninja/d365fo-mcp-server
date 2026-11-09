@@ -457,3 +457,40 @@ export function relationOnDeleteFromSpecs(relations: unknown): Record<string, st
   }
   return out;
 }
+
+export type RelationOnDeleteResult =
+  | { ok: true; xml: string; changed: boolean; value: string; previous?: string }
+  | { ok: false; error: string };
+
+/**
+ * Set `<OnDelete>` on an existing relation of an AxTable or AxTableExtension, in
+ * the element order shipped metadata uses (after Cardinality … NavigationProperty…,
+ * before RelatedTable), replacing a value already there. The fix for
+ * BPCheckMissingDeleteActions on a relation that already exists, which no other
+ * operation could write. Undefined when the document has no relation of that
+ * name (the caller then adds it).
+ */
+export function setRelationOnDelete(xml: string, relationName: string, onDelete: string): RelationOnDeleteResult | undefined {
+  const value = ON_DELETE_VALUES.find(v => v.toLowerCase() === String(onDelete).trim().toLowerCase());
+  if (!value) {
+    return { ok: false, error: `Invalid OnDelete ${JSON.stringify(onDelete)}. Use ${ON_DELETE_VALUES.join(', ')}.` };
+  }
+  if (!/<AxTable(?:Extension)?[\s>]/.test(xml)) return undefined;
+  const crlf = /\r\n/.test(xml);
+  const x = crlf ? xml.replace(/\r\n/g, '\n') : xml;
+  const u = detectIndentUnit(x);
+  const u3 = u.repeat(3);
+  const { section: s, relations } = readRelations(x, u);
+  const rel = relations.find(r => r.name.toLowerCase() === relationName.trim().toLowerCase());
+  if (!s || !rel) return undefined;
+  const previous = child(rel.block.text, u3, 'OnDelete');
+  if (previous === value) return { ok: true, xml, changed: false, value, previous };
+  const text =
+    previous === undefined
+      ? upsertRelationChild(rel.block.text, u3, 'OnDelete', value)
+      : rel.block.text.replace(new RegExp(`^(${esc(u3)}<OnDelete>)[^<]*(</OnDelete>)`, 'm'), `$1${value}$2`);
+  if (text === rel.block.text) return { ok: false, error: `Could not place OnDelete in relation '${rel.name}'.` };
+  const at = s.start + rel.block.start;
+  const out = x.slice(0, at) + text + x.slice(at + rel.block.text.length);
+  return { ok: true, xml: crlf ? out.replace(/\n/g, '\r\n') : out, changed: true, value, previous };
+}

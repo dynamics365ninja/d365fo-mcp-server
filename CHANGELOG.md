@@ -38,6 +38,12 @@ those are called out explicitly below.
   order, replacing an existing element. SubscriberAccessLevel takes `NoAccess`, `Read`,
   `All`, `None` or an explicit `Read=Allow,Create=Deny` list (`All` is new). The reply
   names the value xppbp expects when the one written differs.
+- **`add-relation` takes `relationOnDelete` and sets OnDelete on a relation that already
+  exists, on a table or a table extension.** BPCheckMissingDeleteActions on an existing
+  relation had no fix: add-relation had no OnDelete parameter and add-delete-action is
+  table-only. `relationOnDelete` (None, Restricted, Cascade, CascadeRestricted) is written
+  after Cardinality and before RelatedTable, as in shipped metadata. When the relation
+  exists only its OnDelete changes. A new relation gets it after the add.
 
 ### Fixed
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
