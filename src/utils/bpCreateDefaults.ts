@@ -121,8 +121,25 @@ export type MenuItemKind = 'Action' | 'Display' | 'Output';
  * What xppbp expects on a menu item. `objectType` is the menu item's ObjectType
  * element; an absent one is a Display item's default, Form.
  */
-export function expectedMenuItemBpDefaults(kind: MenuItemKind, objectType?: string): BpDefaults {
+export function expectedMenuItemBpDefaults(
+  kind: MenuItemKind,
+  objectType?: string,
+  target: { allDataSourcesLocal?: boolean } = {},
+): BpDefaults {
   const ot = (objectType ?? '').trim() || (kind === 'Display' ? 'Form' : 'Class');
+  // A Display item on a form whose data sources are all Local (TempDB) tables:
+  // "The Expected value for OperationalDomain property is Local, because the
+  // OperationalDomain property on all data sources is Local." and SubscriberAccessLevel
+  // No Access (BPCheckMenuItemOperationalDomainPropertyUnexpected /
+  // BPCheckMenuItemSubscriberAccessLevelPropertyUnexpected). The caller resolves the
+  // form's data sources; without that this rule cannot apply.
+  if (kind === 'Display' && /^form$/i.test(ot) && target.allDataSourcesLocal) {
+    return {
+      operationalDomain: 'Local',
+      subscriberAccessLevel: { ...NO_ACCESS },
+      reason: 'the OperationalDomain property on all data sources of the form is Local',
+    };
+  }
   if (kind === 'Action') {
     return {
       operationalDomain: 'Local',

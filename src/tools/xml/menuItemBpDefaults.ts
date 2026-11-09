@@ -41,6 +41,8 @@ export interface MenuItemBpResult {
   unhonoured: string[];
   /** The rule behind the defaults, when a default was written. */
   reason?: string;
+  /** xppbp names the OperationalDomain too (a form whose data sources are all Local). */
+  domainExpected?: boolean;
 }
 
 function escapeRegExp(s: string): string {
@@ -103,7 +105,7 @@ function readAccessLevel(block: string): SubscriberAccessLevel {
 export function applyMenuItemBpDefaults(
   xml: string,
   properties?: Record<string, unknown>,
-  options: { withDefaults?: boolean } = {},
+  options: { withDefaults?: boolean; allDataSourcesLocal?: boolean } = {},
 ): MenuItemBpResult {
   // modify-property sets only what it was asked for: no default fills the other property.
   const withDefaults = options.withDefaults !== false;
@@ -115,7 +117,9 @@ export function applyMenuItemBpDefaults(
   const eol = /\r\n/.test(xml) ? '\r\n' : '\n';
   const indent = topIndent(xml);
   const objectType = /^[ \t]*<ObjectType>\s*([^<]*?)\s*<\/ObjectType>/m.exec(xml)?.[1];
-  const defaults: BpDefaults = expectedMenuItemBpDefaults(kind, objectType);
+  const defaults: BpDefaults = expectedMenuItemBpDefaults(kind, objectType, {
+    allDataSourcesLocal: options.allDataSourcesLocal,
+  });
   // Children of a property element leave the root's default namespace, as in every shipped file.
   const childNs = /<AxMenuItem\w+\b[^>]*\sxmlns="[^"]+"/.test(xml) ? ' xmlns=""' : '';
   let usedDefault = false;
@@ -168,7 +172,10 @@ export function applyMenuItemBpDefaults(
     }
   }
 
-  if (usedDefault && result.applied.length > 0) result.reason = defaults.reason;
+  if (usedDefault && result.applied.length > 0) {
+    result.reason = defaults.reason;
+    if (options.allDataSourcesLocal && defaults.operationalDomain === 'Local' && kind === 'Display') result.domainExpected = true;
+  }
   return result;
 }
 
@@ -184,7 +191,8 @@ export function renderMenuItemBpNote(r: MenuItemBpResult): string {
       ? ' (' +
         [
           sal ? `xppbp expects this SubscriberAccessLevel because ${r.reason}` : '',
-          od ? 'xppbp requires an OperationalDomain but names no value' : '',
+          od && r.domainExpected ? `xppbp expects this OperationalDomain because ${r.reason}` : '',
+          od && !r.domainExpected ? 'xppbp requires an OperationalDomain but names no value' : '',
         ].filter(Boolean).join('. ') +
         ').'
       : '.';

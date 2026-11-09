@@ -1041,7 +1041,8 @@ export const D365FO_FILE_CREATE_PROPERTY_SPECS: Record<string, string> = {
   'security-duty': 'label, privileges[]',
   'security-role': 'label, duties[], privileges[]',
   'menu-item-display': 'label, object, objectType, operationalDomain? (default Shared), subscriberAccessLevel? ' +
-    '(default Read=Allow on a form, every permission allowed with objectType Class)',
+    '(default Read=Allow on a form, every permission allowed with objectType Class). A form whose data sources ' +
+    'are all Local (TempDB) tables gets Local and "No Access" instead, as xppbp expects',
   'menu-item-action': 'label, object, objectType, operationalDomain? (default Local), subscriberAccessLevel? ' +
     '(default "No Access", which xppbp requires on an Action item with objectType Class)',
   'menu-item-output': 'label, object, objectType, operationalDomain? (default Shared), subscriberAccessLevel? ' +

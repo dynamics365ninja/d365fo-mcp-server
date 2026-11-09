@@ -72,6 +72,8 @@ those are called out explicitly below.
   InMemory and Staging, otherwise Company (or Shared with SaveDataPerCompany=No) and
   Read. On a menu item Local and No Access for an Action item, Shared and Read for
   Display on a form and for Output, Shared and every permission for Display on a class.
+  A Display item on a form whose data sources are all Local (TempDB) tables gets Local and
+  No Access, read from the form and its tables in the index.
   `properties.operationalDomain` and `properties.subscriberAccessLevel` (now also
   `"No Access"`) override them. The reply lists what was written and why.
 - **A new table no longer fails the field-level best-practice rules.** After every table
