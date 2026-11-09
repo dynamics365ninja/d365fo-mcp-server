@@ -28,6 +28,17 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Added
+- **`d365fo_file(action="modify", operation="modify-property")` sets OperationalDomain and
+  SubscriberAccessLevel on existing tables and menu items.** Menu items had no writer for
+  either (the bridge's setter has no case for them), and SubscriberAccessLevel holds child
+  elements no scalar writer can express, so the BP warnings on existing objects could not
+  be fixed with the tool. Both are now written on the XML for `table`,
+  `menu-item-action`, `menu-item-display` and `menu-item-output`, in canonical element
+  order, replacing an existing element. SubscriberAccessLevel takes `NoAccess`, `Read`,
+  `All`, `None` or an explicit `Read=Allow,Create=Deny` list (`All` is new). The reply
+  names the value xppbp expects when the one written differs.
+
 ### Fixed
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know

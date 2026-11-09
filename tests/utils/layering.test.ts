@@ -153,8 +153,14 @@ describe('layer direction', () => {
     // to directXmlWriters.ts and tools/xml/menuXml.ts, so what landed here is two
     // argument lines, the import, the add-submenu arm and the branch that sends an
     // item for a submenu of a menu to the XML writer (the C# op has no parent).
+    //
+    // Raised 4,800 -> 4,810 for modify-property OperationalDomain /
+    // SubscriberAccessLevel on tables and menu items (4,798 -> 4,802 lines). The
+    // writer went to directXmlWriters.ts and tools/xml/bpAccessPropertyModify.ts, so
+    // what landed here is the three-line arm ahead of the bridge and one line of the
+    // propertyPath description.
     const src = readFileSync('src/tools/write/modifyD365File.ts', 'utf8');
-    expect(src.split('\n').length).toBeLessThan(4800);
+    expect(src.split('\n').length).toBeLessThan(4810);
   });
 
   it('the dispatcher routes rather than implementing', () => {

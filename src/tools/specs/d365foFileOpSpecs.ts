@@ -950,7 +950,15 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       'path — ConfigurationKey, PrimaryCompanyContext (e.g. "DataAreaId"), CountryRegionCodes, ' +
       'SingularLabel, IsObsolete, AllowArchival, AutoCreateDataverse, EnableSetBasedSqlOperations and ' +
       'ValidTimeStateEnabled. Modules, OperationalDomain and SubscriberAccessLevel are refused. ' +
-      'Yes/No properties take true/false/Yes/No.',
+      'Yes/No properties take true/false/Yes/No. ' +
+      'table, menu-item-action, menu-item-display, menu-item-output: OperationalDomain (Company | Shared | ' +
+      'Local) and SubscriberAccessLevel ("NoAccess" = all six permissions Deny, "Read" = Read Allow, ' +
+      '"All" = all six Allow, "None" removes it, or an explicit "Read=Allow,Create=Deny") are written on ' +
+      'the XML, never by the bridge: in canonical element order (tables after Label, menu items ' +
+      'alphabetically after Name), children in serializer order, xmlns="" on menu item children. An ' +
+      'existing element is replaced. The reply says when the value differs from what xppbp expects: ' +
+      'TempDB/InMemory/Staging tables Local + NoAccess, SaveDataPerCompany=No Shared + Read, other tables ' +
+      'Company + Read. Action menu item on a class NoAccess, Display on a class All, Display on a form Read.',
   },
 };
 

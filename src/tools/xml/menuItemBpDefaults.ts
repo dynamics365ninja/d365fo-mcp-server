@@ -103,7 +103,10 @@ function readAccessLevel(block: string): SubscriberAccessLevel {
 export function applyMenuItemBpDefaults(
   xml: string,
   properties?: Record<string, unknown>,
+  options: { withDefaults?: boolean } = {},
 ): MenuItemBpResult {
+  // modify-property sets only what it was asked for: no default fills the other property.
+  const withDefaults = options.withDefaults !== false;
   const result: MenuItemBpResult = { xml, applied: [], unhonoured: [] };
   const root = /<(AxMenuItem(?:Action|Display|Output))[\s>]/.exec(xml);
   const kind = root ? menuItemKindOf(root[1]) : undefined;
@@ -128,7 +131,7 @@ export function applyMenuItemBpDefaults(
     );
   }
   const odExisting = findTopLevel(result.xml, indent, 'OperationalDomain');
-  if (!odWanted && !odExisting) { odWanted = defaults.operationalDomain; usedDefault = true; }
+  if (withDefaults && !odWanted && !odExisting) { odWanted = defaults.operationalDomain; usedDefault = true; }
   if (odWanted) {
     const line = `${indent}<OperationalDomain>${odWanted}</OperationalDomain>${eol}`;
     const current = odExisting ? /<OperationalDomain>\s*([^<]*?)\s*</.exec(odExisting[0])?.[1] : undefined;
@@ -150,7 +153,7 @@ export function applyMenuItemBpDefaults(
     else result.unhonoured.push(`subscriberAccessLevel — ${parsed.error}`);
   }
   const salExisting = findTopLevel(result.xml, indent, 'SubscriberAccessLevel');
-  if (!salWanted && !salExisting) { salWanted = defaults.subscriberAccessLevel; usedDefault = true; }
+  if (withDefaults && !salWanted && !salExisting) { salWanted = defaults.subscriberAccessLevel; usedDefault = true; }
   if (salWanted) {
     const current = salExisting ? readAccessLevel(salExisting[0]) : {};
     if (!salExisting || !sameSubscriberAccessLevel(current, salWanted)) {

@@ -30,6 +30,7 @@ import { buildSuppressionXml } from '../../knowledge/bpMonikers/index.js';
 import { upsertAxTableProperty, upsertAxTableSubscriberAccessLevel, AX_TABLE_NON_EXISTENT_PROPERTIES } from '../../utils/axTablePropertyOrder.js';
 import { describeSubscriberAccessLevel, subscriberAccessLevelValue } from '../../utils/subscriberAccessLevel.js';
 import { upsertAxFormDesignProperty } from '../../utils/axFormDesignProperties.js';
+import { bpAccessPropertyOf, isBpAccessObjectType, setBpAccessProperty } from '../xml/bpAccessPropertyModify.js';
 import { upsertFormControlProperty } from '../../utils/formControlPropertyXml.js';
 import { resolveControlPropertyTarget } from '../../utils/formExtensionControlModifications.js';
 import { buildAxDataEntityViewFieldXml } from '../xml/dataEntityViewExtensionXml.js';
@@ -136,6 +137,40 @@ export const directXmlReplaceCode = serializedOnFile(async (
     console.error(`[modify_d365fo_file] directXmlReplaceCode failed: ${err}`);
     return null;
   }
+});
+
+/**
+ * modify-property OperationalDomain / SubscriberAccessLevel on a table or menu
+ * item, written on the XML and never by the bridge (no menu item case there,
+ * child elements on SubscriberAccessLevel). See tools/xml/bpAccessPropertyModify.ts.
+ * Null when the request is not one of these, so the dispatcher carries on; a
+ * failure result means nothing was written.
+ */
+export const directXmlSetBpAccessProperty = serializedOnFile(async (
+  filePath: string,
+  objectType: string,
+  objectName: string,
+  propertyPath: string,
+  propertyValue: unknown,
+): Promise<{ success: boolean; message: string } | null> => {
+  const property = bpAccessPropertyOf(propertyPath);
+  if (!property || !isBpAccessObjectType(objectType)) return null;
+  const before = (await fs.readFile(filePath, 'utf-8')).replace(/^﻿/, '');
+  const outcome = setBpAccessProperty(before, property, propertyValue);
+  if (!outcome) return null;
+  if (!outcome.ok) {
+    return { success: false, message: `❌ Could not set ${property} on ${objectName}: ${outcome.error} Nothing was written.` };
+  }
+  if (outcome.changed) await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
+  return {
+    success: true,
+    message:
+      `${outcome.changed ? '✅' : 'ℹ️'} ${outcome.written} on ${objectName} via direct XML ` +
+      `(${outcome.changed ? 'in canonical element order' : 'already in that state, nothing written'}). ` +
+      `File: ${filePath}` +
+      (outcome.bpNote ? `
+⚠️ ${outcome.bpNote}` : ''),
+  };
 });
 
 /**

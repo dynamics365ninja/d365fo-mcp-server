@@ -91,7 +91,7 @@ import { nextEnumValue } from '../../utils/axEnumProperties.js';
 // The direct-XML writers moved to their own module; this file dispatches to them.
 import {
   directXmlReplaceCode,
-  directXmlModifyProperty,
+  directXmlModifyProperty, directXmlSetBpAccessProperty,
   directXmlAddMenuItemToMenu,
   directXmlAddMenuItemToMenuExtension,
   directXmlAddSubmenu,
@@ -946,7 +946,8 @@ export const ModifyD365FileArgsSchema = z.object({
   propertyPath: z.string().optional().describe(
     'Property name to set. ' +
     'For tables (AxTable): TableGroup, TitleField1, TitleField2, TableType (TempDB/RegularTable/InMemory), ' +
-    'CacheLookup, ClusteredIndex, PrimaryIndex, SaveDataPerCompany, Label, HelpText, Extends, SystemTable. ' +
+    'CacheLookup, ClusteredIndex, PrimaryIndex, SaveDataPerCompany, Label, HelpText, Extends, SystemTable, ' +
+    'OperationalDomain, SubscriberAccessLevel (also on menu items; values in the modify-property op-spec). ' +
     'For table-extensions (AxTableExtension): properties are stored inside <PropertyModifications> as ' +
     '<AxPropertyModification> entries. Supported: Label, HelpText, TableGroup, CacheLookup, TitleField1, TitleField2, ' +
     'ClusteredIndex, PrimaryIndex, SaveDataPerCompany, TableType, SystemTable, ' +
@@ -2664,6 +2665,9 @@ async function runModify(
       }
       case 'modify-property': {
         if (args.propertyPath && args.propertyValue !== undefined) {
+          // OperationalDomain / SubscriberAccessLevel on a table or menu item: XML only, never the bridge.
+          const bpWrite = await directXmlSetBpAccessProperty(actualFilePath, objectType, objectName, args.propertyPath, args.propertyValue);
+          if (bpWrite) { if (!bpWrite.success) return { content: [{ type: 'text', text: bpWrite.message }], isError: true }; bridgeResult = viaXmlFallback(bpWrite); break; }
           const own = await directXmlModifyControlProperty(actualFilePath, objectType, objectName, args.propertyPath, String(args.propertyValue), (args as { controlName?: string }).controlName);
           if (own) { bridgeResult = viaXmlFallback(own); break; } // a control this file defines (own form, or one an extension adds)
           // ── Form extension targeting a BASE-FORM control ─────────────────────
