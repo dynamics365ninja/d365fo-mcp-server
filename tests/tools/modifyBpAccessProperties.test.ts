@@ -13,6 +13,8 @@ import type { XppServerContext } from '../../src/types/context';
 import { bpAccessPropertyOf, isBpAccessObjectType, setBpAccessProperty } from '../../src/tools/xml/bpAccessPropertyModify';
 import { parseSubscriberAccessLevel } from '../../src/utils/subscriberAccessLevel';
 import { setRelationOnDelete } from '../../src/tools/xml/tableBpDefaults';
+import { claimedMarkerFor } from '../../src/tools/write/preserveMetadataElements';
+import { applyMenuItemBpDefaults, renderMenuItemBpNote } from '../../src/tools/xml/menuItemBpDefaults';
 
 const TABLE = (props = '') =>
   '<?xml version="1.0" encoding="utf-8"?>\n' +
@@ -263,6 +265,7 @@ describe('d365fo_file modify-property', () => {
         buildContext(),
       );
       expect((r as any).isError, textOf(r)).toBeFalsy();
+      expect(textOf(r)).not.toContain('Verification');
     }
     expect(mockBridgeSetProperty).not.toHaveBeenCalled();
     expect(files.get(filePath)).toMatch(
@@ -284,6 +287,8 @@ describe('d365fo_file modify-property', () => {
           buildContext(),
         );
         expect((r as any).isError, textOf(r)).toBeFalsy();
+        expect(textOf(r)).not.toContain('Verification');
+        expect(textOf(r)).not.toContain('expects OperationalDomain');
       }
       const xml = files.get(filePath)!;
       expect(mockBridgeSetProperty).not.toHaveBeenCalled();
@@ -409,5 +414,52 @@ describe('d365fo_file add-relation relationOnDelete', () => {
       buildContext(),
     );
     expect(mockBridgeAddRelation).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── Post-write claim check and menu item notes ──────────────────────────────
+
+describe('the claim check for SubscriberAccessLevel', () => {
+  const marker = (v: string) => claimedMarkerFor('modify-property', { propertyPath: 'SubscriberAccessLevel', propertyValue: v });
+
+  it('matches the child elements, with or without xmlns=""', () => {
+    expect(marker('NoAccess')!.pattern.test(MENU('AxMenuItemAction', 'Class', NO_ACCESS_MENU))).toBe(true);
+    expect(marker('NoAccess')!.pattern.test(NO_ACCESS_MENU.replace(/ xmlns=""/g, ''))).toBe(true);
+    expect(marker('Read')!.pattern.test('<SubscriberAccessLevel>\n\t<Read>Allow</Read>\n</SubscriberAccessLevel>')).toBe(true);
+    expect(marker('NoAccess')!.label).toBe('SubscriberAccessLevel=Correct=Deny,Create=Deny,Delete=Deny,Invoke=Deny,Read=Deny,Update=Deny');
+  });
+
+  it('still fails a level that is not in the file', () => {
+    expect(marker('Read')!.pattern.test(NO_ACCESS_MENU)).toBe(false);
+    expect(marker('All')!.pattern.test('<SubscriberAccessLevel>\n\t<Read>Allow</Read>\n</SubscriberAccessLevel>')).toBe(false);
+    // A permission after the element closes does not count.
+    expect(marker('Read')!.pattern.test('<SubscriberAccessLevel>\n</SubscriberAccessLevel>\n<Read>Allow</Read>')).toBe(false);
+  });
+
+  it('makes no claim for None or an invalid value', () => {
+    expect(marker('None')).toBeNull();
+    expect(marker('Read=Maybe')).toBeNull();
+  });
+});
+
+describe('menu item notes', () => {
+  it('never claims an expected OperationalDomain on a menu item', () => {
+    for (const [root, ot] of [['AxMenuItemAction', 'Class'], ['AxMenuItemDisplay', 'Form']] as const) {
+      for (const d of ['Company', 'Shared', 'Local']) {
+        expect(ok(setBpAccessProperty(MENU(root, ot), 'OperationalDomain', d)).bpNote).toBeUndefined();
+      }
+    }
+  });
+
+  it('accepts any allowed permission on a Display item that opens a class', () => {
+    expect(ok(setBpAccessProperty(MENU('AxMenuItemDisplay', 'Class'), 'SubscriberAccessLevel', 'Read')).bpNote).toBeUndefined();
+    expect(ok(setBpAccessProperty(MENU('AxMenuItemDisplay', 'Class'), 'SubscriberAccessLevel', 'NoAccess')).bpNote).toMatch(/expects/);
+  });
+
+  it('the create note says xppbp names no OperationalDomain', () => {
+    const note = renderMenuItemBpNote(applyMenuItemBpDefaults(MENU('AxMenuItemAction', 'Class')));
+    expect(note).toContain('xppbp expects this SubscriberAccessLevel because the menu item type is Action');
+    expect(note).toContain('xppbp requires an OperationalDomain but names no value');
+    expect(note).not.toMatch(/expects these/);
   });
 });

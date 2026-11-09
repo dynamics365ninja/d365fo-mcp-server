@@ -176,10 +176,19 @@ export function applyMenuItemBpDefaults(
 export function renderMenuItemBpNote(r: MenuItemBpResult): string {
   const parts: string[] = [];
   if (r.applied.length > 0) {
-    parts.push(
-      `\n📋 BP defaults: ${r.applied.join(', ')}` +
-      (r.reason ? ` (xppbp expects these because ${r.reason}).` : '.'),
-    );
+    // xppbp names an expected SubscriberAccessLevel, but for OperationalDomain it
+    // only requires one (BPCheckMenuItemOperationalDomainPropertyNotSpecified).
+    const sal = r.applied.some(a => a.startsWith('SubscriberAccessLevel='));
+    const od = r.applied.some(a => a.startsWith('OperationalDomain='));
+    const why = r.reason
+      ? ' (' +
+        [
+          sal ? `xppbp expects this SubscriberAccessLevel because ${r.reason}` : '',
+          od ? 'xppbp requires an OperationalDomain but names no value' : '',
+        ].filter(Boolean).join('. ') +
+        ').'
+      : '.';
+    parts.push(`\n📋 BP defaults: ${r.applied.join(', ')}${why}`);
   }
   if (r.unhonoured.length > 0) parts.push(`\n⚠️ ${r.unhonoured.join('\n⚠️ ')}`);
   return parts.join('');

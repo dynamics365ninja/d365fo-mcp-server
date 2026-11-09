@@ -37,7 +37,10 @@ those are called out explicitly below.
   `menu-item-action`, `menu-item-display` and `menu-item-output`, in canonical element
   order, replacing an existing element. SubscriberAccessLevel takes `NoAccess`, `Read`,
   `All`, `None` or an explicit `Read=Allow,Create=Deny` list (`All` is new). The reply
-  names the value xppbp expects when the one written differs.
+  names the value xppbp expects when the one written differs: SubscriberAccessLevel on
+  both, OperationalDomain on tables only (for menu items xppbp requires one but names no
+  value). The after-write check reads SubscriberAccessLevel's child elements, so a correct
+  write is no longer reported as "NOT in the file".
 - **`add-relation` takes `relationOnDelete` and sets OnDelete on a relation that already
   exists, on a table or a table extension.** BPCheckMissingDeleteActions on an existing
   relation had no fix: add-relation had no OnDelete parameter and add-delete-action is

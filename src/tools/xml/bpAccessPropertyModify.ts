@@ -59,19 +59,27 @@ function readOperationalDomain(xml: string): string | undefined {
   return /^[ \t]*<OperationalDomain>\s*([^<]*?)\s*<\/OperationalDomain>/m.exec(xml)?.[1];
 }
 
-/** A hint when the value written is not the one xppbp expects for this object. */
+/**
+ * A hint when the value written is not the one xppbp expects for this object.
+ * Menu items get none for OperationalDomain: xppbp only requires one there
+ * (BPCheckMenuItemOperationalDomainPropertyNotSpecified) and names no value. A
+ * Display item on a class passes with any permission allowed.
+ */
 function bpNoteFor(
   property: BpAccessProperty,
   xml: string,
   expected: BpDefaults,
   level?: SubscriberAccessLevel,
+  menu?: { displayOnClass: boolean },
 ): string | undefined {
   if (property === 'OperationalDomain') {
+    if (menu) return undefined;
     const now = readOperationalDomain(xml);
     if (now === expected.operationalDomain) return undefined;
     return `xppbp expects OperationalDomain=${expected.operationalDomain} here (${expected.reason}).`;
   }
   if (level && sameSubscriberAccessLevel(level, expected.subscriberAccessLevel)) return undefined;
+  if (menu?.displayOnClass && level && Object.values(level).includes('Allow')) return undefined;
   return (
     `xppbp expects SubscriberAccessLevel ${describeSubscriberAccessLevel(expected.subscriberAccessLevel)} ` +
     `here (${expected.reason}).`
@@ -95,6 +103,7 @@ export function setBpAccessProperty(
 
   const objectType = kind ? /^[ \t]*<ObjectType>\s*([^<]*?)\s*<\/ObjectType>/m.exec(xml)?.[1] : undefined;
   const expected = kind ? expectedMenuItemBpDefaults(kind, objectType) : expectedTableBpDefaults(tableBpInputsFromXml(xml));
+  const menu = kind ? { displayOnClass: kind === 'Display' && /^class$/i.test(objectType ?? '') } : undefined;
 
   if (property === 'OperationalDomain') {
     const domain = parseOperationalDomain(rawValue);
@@ -117,7 +126,7 @@ export function setBpAccessProperty(
       xml: next,
       changed: next !== xml,
       written: `OperationalDomain=${domain}`,
-      bpNote: bpNoteFor(property, next, expected),
+      bpNote: bpNoteFor(property, next, expected, undefined, menu),
     };
   }
 
@@ -138,6 +147,6 @@ export function setBpAccessProperty(
     xml: next,
     changed: next !== xml,
     written: `SubscriberAccessLevel=${describeSubscriberAccessLevel(parsed.level)}`,
-    bpNote: bpNoteFor(property, next, expected, level),
+    bpNote: bpNoteFor(property, next, expected, level, menu),
   };
 }
