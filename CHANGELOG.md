@@ -135,62 +135,6 @@ those are called out explicitly below.
   `openWorldHint: false`.
 
 ### Fixed
-- **Form pattern validation now follows the platform's own pattern definitions.**
-  `object_patterns(domain="form", action="validate")` and the `FORM_PATTERN_ENFORCE`
-  gate on `d365fo_file` create checked forms against a catalog curated from the
-  Microsoft Learn pages, and where it disagreed with the compiler it blocked forms
-  that compile and passed forms that do not: it knew `TaskSingle` (the platform
-  pattern is `Task`), wanted `FillText` 1.0 with a String (the platform has only
-  "UX7 1.0", which takes a StaticText or a String), thought `ToolbarList` 1.1 was
-  newest (1.2 is), took a Group for the TaskParentChild child part (it is a Tab
-  after a splitter group) and never checked the property values the compiler
-  requires (a CustomFilters group needs ViewEditMode Edit, a FillText child
-  HeightMode SizeToAvailable). The validator now reads every FormPatterns and
-  SubPatterns definition embedded in `Microsoft.Dynamics.AX.Metadata.Patterns.dll`,
-  generated into `src/knowledge/formPatterns/platform.generated.ts` together with
-  the metamodel default of every property they name, and interprets them the way
-  the platform's `PatternAnalyzer` does: exact name and version, parts with their
-  counts and order, OneOf alternatives, allowed sub-patterns per part, extension
-  controls identified by their extension name, and property values checked at
-  their default when the XML omits them. New rule **FP011** (error) reports a
-  required property value that is not met. FP009 (curated property hints) is
-  retired. Measured on the shipped forms: the platform's `PatternAnalyzer` accepts
-  all 26,810 patterned nodes of the 9,502 shipped forms, and the validator raises
-  zero errors on them.
-- **Generators no longer emit pattern names and versions the compiler rejects.**
-  The curated catalog now uses the platform names (`Task`, `LookupGridOnly` for the
-  basic lookup, `SectionTiles`, `SectionRelatedLinks` and the other workspace
-  sections it had as `Workspace_Tiles` and similar) and the platform's version
-  lists, and drops `SidePanel` and `Workspace_SummaryNumbers_UnboundFields`, which
-  are not patterns. The Dialog template sets ColumnsMode Fill on its
-  FieldsFieldGroups pages and writes their Caption where the deserializer reads it,
-  the Workspace template adds the required related-links section, the DetailsMaster
-  template always emits the required header title control, and the pattern
-  expander writes control elements in canonical order and the Design Style the
-  platform requires.
-- **The pattern expander builds from the platform definition, so every long-tail
-  pattern gets a deterministic scaffold.** `generate_smart_form` expands patterns
-  without a hand-written template through `expandPatternToXml`, which walked the
-  curated catalog structure and built forms the platform rejects for 22 patterns
-  (the Dialog, DropDialog, Lookup, FormPart, SimpleDetails and workspace variants,
-  `Wizard`, `AdvancedSelection`), so those fell back to a template or clone. It now
-  reads the platform definition of the declared pattern version: one control per
-  required part in definition order (a OneOf only when none of its alternatives is
-  optional), every Equals property rule the metamodel default does not already
-  meet, a caption for a Caption or Text that must not be empty, a grid's
-  DefaultAction pointed at the sibling default-action button, and for a
-  sub-pattern part the first named sub-pattern (FieldsFieldGroups when listed),
-  declared and expanded in turn. A `$Button` part whose rule sets Command becomes a
-  CommandButton, a QuickFilter targets the emitted grid. All catalog patterns the
-  platform defines now expand validator-clean, and the expander test's gap list is
-  empty. The datasource, grid-field and caption behaviour is unchanged.
-  `npm run oracle:form-expansions` (Windows) runs every expansion through the
-  platform's own PatternAnalyzer, with a negative control that must fail: all 27
-  are accepted. It found what the validator cannot see, now fixed: a plain
-  extension control's WidthMode written after its FormControlExtension (the
-  deserializer drops it), duplicate column names when a pattern has two grids, a
-  QuickFilter aimed at the first grid of the form instead of its own, and an empty
-  `<Controls />` on buttons and fields, which shipped forms never write.
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know
   neither property on a menu item, and a Staging or TempDB table kept Visual Studio's
@@ -336,6 +280,62 @@ those are called out explicitly below.
   the old one. An empty value now removes a Design property instead of writing an empty
   element, and the post-write check finds a value whose element carries `xmlns=""` and
   makes no value check for a removal (both were reported as "NOT in the file").
+- **Form pattern validation now follows the platform's own pattern definitions.**
+  `object_patterns(domain="form", action="validate")` and the `FORM_PATTERN_ENFORCE`
+  gate on `d365fo_file` create checked forms against a catalog curated from the
+  Microsoft Learn pages, and where it disagreed with the compiler it blocked forms
+  that compile and passed forms that do not: it knew `TaskSingle` (the platform
+  pattern is `Task`), wanted `FillText` 1.0 with a String (the platform has only
+  "UX7 1.0", which takes a StaticText or a String), thought `ToolbarList` 1.1 was
+  newest (1.2 is), took a Group for the TaskParentChild child part (it is a Tab
+  after a splitter group) and never checked the property values the compiler
+  requires (a CustomFilters group needs ViewEditMode Edit, a FillText child
+  HeightMode SizeToAvailable). The validator now reads every FormPatterns and
+  SubPatterns definition embedded in `Microsoft.Dynamics.AX.Metadata.Patterns.dll`,
+  generated into `src/knowledge/formPatterns/platform.generated.ts` together with
+  the metamodel default of every property they name, and interprets them the way
+  the platform's `PatternAnalyzer` does: exact name and version, parts with their
+  counts and order, OneOf alternatives, allowed sub-patterns per part, extension
+  controls identified by their extension name, and property values checked at
+  their default when the XML omits them. New rule **FP011** (error) reports a
+  required property value that is not met. FP009 (curated property hints) is
+  retired. Measured on the shipped forms: the platform's `PatternAnalyzer` accepts
+  all 26,810 patterned nodes of the 9,502 shipped forms, and the validator raises
+  zero errors on them.
+- **Generators no longer emit pattern names and versions the compiler rejects.**
+  The curated catalog now uses the platform names (`Task`, `LookupGridOnly` for the
+  basic lookup, `SectionTiles`, `SectionRelatedLinks` and the other workspace
+  sections it had as `Workspace_Tiles` and similar) and the platform's version
+  lists, and drops `SidePanel` and `Workspace_SummaryNumbers_UnboundFields`, which
+  are not patterns. The Dialog template sets ColumnsMode Fill on its
+  FieldsFieldGroups pages and writes their Caption where the deserializer reads it,
+  the Workspace template adds the required related-links section, the DetailsMaster
+  template always emits the required header title control, and the pattern
+  expander writes control elements in canonical order and the Design Style the
+  platform requires.
+- **The pattern expander builds from the platform definition, so every long-tail
+  pattern gets a deterministic scaffold.** `generate_smart_form` expands patterns
+  without a hand-written template through `expandPatternToXml`, which walked the
+  curated catalog structure and built forms the platform rejects for 22 patterns
+  (the Dialog, DropDialog, Lookup, FormPart, SimpleDetails and workspace variants,
+  `Wizard`, `AdvancedSelection`), so those fell back to a template or clone. It now
+  reads the platform definition of the declared pattern version: one control per
+  required part in definition order (a OneOf only when none of its alternatives is
+  optional), every Equals property rule the metamodel default does not already
+  meet, a caption for a Caption or Text that must not be empty, a grid's
+  DefaultAction pointed at the sibling default-action button, and for a
+  sub-pattern part the first named sub-pattern (FieldsFieldGroups when listed),
+  declared and expanded in turn. A `$Button` part whose rule sets Command becomes a
+  CommandButton, a QuickFilter targets the emitted grid. All catalog patterns the
+  platform defines now expand validator-clean, and the expander test's gap list is
+  empty. The datasource, grid-field and caption behaviour is unchanged.
+  `npm run oracle:form-expansions` (Windows) runs every expansion through the
+  platform's own PatternAnalyzer, with a negative control that must fail: all 27
+  are accepted. It found what the validator cannot see, now fixed: a plain
+  extension control's WidthMode written after its FormControlExtension (the
+  deserializer drops it), duplicate column names when a pattern has two grids, a
+  QuickFilter aimed at the first grid of the form instead of its own, and an empty
+  `<Controls />` on buttons and fields, which shipped forms never write.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
