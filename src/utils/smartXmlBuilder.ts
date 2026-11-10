@@ -10,7 +10,8 @@ import { ensureXppDocComment } from './xppDocGen.js';
 import { decodeXmlEntitiesFromXppSource } from './xmlEscape.js';
 import { type FieldControlMap, controlForField } from './fieldControlTypes.js';
 import { renderAxTableProperties } from './axTablePropertyOrder.js';
-import { DEFAULT_SUBSCRIBER_ACCESS_LEVEL } from './subscriberAccessLevel.js';
+import { tableSubscriberAccessLevel } from './subscriberAccessLevel.js';
+import { expectedTableBpDefaults } from './bpCreateDefaults.js';
 import { axTableFieldElement, baseTypeFromEdtName, normalizeFieldBaseType } from './axFieldTypes.js';
 
 export interface TableFieldSpec {
@@ -183,8 +184,15 @@ export class SmartXmlBuilder {
     // VM-captured golden eval/goldens/L1-table-basic).
     xml += renderAxTableProperties({
       Label: label ? this.escapeXml(label) : undefined,
-      // What Visual Studio writes on a new table; none on TempDB/InMemory.
-      SubscriberAccessLevel: isTempTable ? undefined : { ...DEFAULT_SUBSCRIBER_ACCESS_LEVEL },
+      // What xppbp expects (bpCreateDefaults.ts): Local + No Access on
+      // TempDB/InMemory/Staging, otherwise Company (SaveDataPerCompany is Yes
+      // below) + Read.
+      OperationalDomain: expectedTableBpDefaults({
+        tableType: normalizedTableType,
+        tableGroup: effectiveTableGroup,
+        saveDataPerCompany: isTempTable ? 'No' : 'Yes',
+      }).operationalDomain,
+      SubscriberAccessLevel: tableSubscriberAccessLevel(undefined, normalizedTableType, effectiveTableGroup),
       TableGroup: effectiveTableGroup,
       TitleField1: titleCandidates[0]?.name,
       TitleField2: titleCandidates[1]?.name,
@@ -197,20 +205,12 @@ export class SmartXmlBuilder {
       TableType: normalizedTableType || undefined,
     });
 
-    // BP rule: relations require matching DeleteActions to avoid a BP warning.
-    if (relations && relations.length > 0) {
-      xml += `\t<DeleteActions>\n`;
-      for (const rel of relations) {
-        xml += `\t\t<AxTableDeleteAction>\n`;
-        xml += `\t\t\t<Name>${rel.targetTable}</Name>\n`;
-        xml += `\t\t\t<Table>${rel.targetTable}</Table>\n`;
-        xml += `\t\t\t<DeleteAction>Restricted</DeleteAction>\n`;
-        xml += `\t\t</AxTableDeleteAction>\n`;
-      }
-      xml += `\t</DeleteActions>\n`;
-    } else {
-      xml += `\t<DeleteActions />\n`;
-    }
+    // No delete actions. This used to write a Restricted delete action per
+    // relation target ON THIS TABLE, pointing at the parent: that blocks deleting
+    // this table's own rows while the parent row exists, and xppbp reports it
+    // ("DeleteAction X has no explicit relation set"). The relation's
+    // OnDelete=Restricted (buildTableRelation) protects the parent instead.
+    xml += `\t<DeleteActions />\n`;
 
     // 5 standard FieldGroups required by the D365FO project system, in AOT order:
     // AutoReport, AutoLookup, AutoIdentification, AutoSummary, AutoBrowse.
@@ -455,6 +455,8 @@ export class SmartXmlBuilder {
     let xml = `\t\t<AxTableRelation>\n`;
     xml += `\t\t\t<Name>${name}</Name>\n`;
     xml += `\t\t\t<Cardinality>ZeroMore</Cardinality>\n`;
+    // BPCheckMissingDeleteActions: delete behaviour lives on the relation.
+    xml += `\t\t\t<OnDelete>Restricted</OnDelete>\n`;
     xml += `\t\t\t<RelatedTable>${targetTable}</RelatedTable>\n`;
     xml += `\t\t\t<RelatedTableCardinality>ExactlyOne</RelatedTableCardinality>\n`;
     xml += `\t\t\t<RelationshipType>Association</RelationshipType>\n`;
