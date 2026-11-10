@@ -18,6 +18,7 @@ import { handleSuggestEdt } from '../../src/tools/smart/suggestEdt';
 import { analyzeCodePatternsTool } from '../../src/tools/knowledge/analyzePatterns';
 import { suggestMethodImplementationTool } from '../../src/tools/smart/suggestImplementation';
 import { analyzeClassCompletenessTool } from '../../src/tools/analysis/analyzeCompleteness';
+import { XppSymbolIndex } from '../../src/metadata/symbolIndex';
 import { getApiUsagePatternsTool } from '../../src/tools/knowledge/apiUsagePatterns';
 import { handleGetTablePatterns } from '../../src/tools/knowledge/getTablePatterns';
 import { handleGetFormPatterns } from '../../src/tools/knowledge/getFormPatterns';
@@ -1382,6 +1383,108 @@ describe('analyze_class_completeness', () => {
   it('returns error when className is missing', async () => {
     const result = await analyzeClassCompletenessTool(req('analyze_class_completeness', {}), ctx);
     expect(result.isError).toBe(true);
+  });
+
+  it('says nothing was compared when the class has no known pattern', async () => {
+    (ctx.symbolIndex.getSymbolByName as any).mockReturnValue(
+      makeSymbol({ name: 'ContosoRentalJournal', type: 'class' }),
+    );
+    (ctx.symbolIndex.getClassMethods as any).mockReturnValue([
+      makeSymbol({ name: 'post', type: 'method', parentName: 'ContosoRentalJournal', signature: 'void post()' }),
+    ]);
+
+    const result = await analyzeClassCompletenessTool(
+      req('analyze_class_completeness', { className: 'ContosoRentalJournal' }),
+      ctx,
+    );
+    const text = result.content[0].text;
+    expect(result.isError).toBeFalsy();
+    expect(text).toContain('No method suggestions: this class has no known pattern');
+    expect(text).not.toContain('appears complete');
+    expect(text).not.toContain('Suggested Missing Methods');
+    expect(text).toContain('`void post()`');
+  });
+
+  it('keeps the "appears complete" wording for a known pattern with nothing missing', async () => {
+    (ctx.symbolIndex.getSymbolByName as any).mockReturnValue(
+      makeSymbol({ name: 'ContosoRentalHelper', type: 'class' }),
+    );
+    const result = await analyzeClassCompletenessTool(
+      req('analyze_class_completeness', { className: 'ContosoRentalHelper' }),
+      ctx,
+    );
+    expect(result.content[0].text).toContain('No commonly missing methods detected');
+    expect(result.content[0].text).not.toContain('no known pattern');
+  });
+
+  describe('suggestMissingMethods on a real index', () => {
+    let index: XppSymbolIndex;
+    let prepared: string[];
+    let restore: () => void;
+
+    beforeEach(() => {
+      index = new XppSymbolIndex(':memory:', ':memory:');
+      const add = (name: string, type: string, parentName?: string, patternType?: string) =>
+        index.addSymbol({ name, type, parentName, patternType, filePath: '/x.xml', model: 'ContosoExt' } as any);
+
+      // Known pattern by name suffix.
+      add('ContosoRentalHelper', 'class');
+      add('run', 'method', 'ContosoRentalHelper');
+      for (const peer of ['ContosoBillingHelper', 'ContosoStockHelper']) {
+        add(peer, 'class');
+        add('run', 'method', peer);
+        add('validate', 'method', peer);
+      }
+      // Known pattern by indexed pattern type.
+      add('ContosoRentalPosting', 'class', undefined, 'Service');
+      add('ContosoBillingService', 'class');
+      add('process', 'method', 'ContosoBillingService');
+      // No pattern, and a class whose name merely ends in "Unknown".
+      add('ContosoRentalJournal', 'class');
+      add('post', 'method', 'ContosoRentalJournal');
+      add('ContosoRentalStateUnknown', 'class');
+      add('describeState', 'method', 'ContosoRentalStateUnknown');
+
+      // Record the SQL prepared from here on.
+      prepared = [];
+      const db = (index as any).db;
+      const real = db.prepare.bind(db);
+      const spy = vi.spyOn(db, 'prepare').mockImplementation(((sql: string) => {
+        prepared.push(sql);
+        return real(sql);
+      }) as any);
+      restore = () => spy.mockRestore();
+    });
+
+    afterEach(() => { restore(); index.close(); });
+
+    const similarClassQueries = () => prepared.filter(sql => /parent_name LIKE/.test(sql));
+
+    it('suggests methods from classes with the same name suffix', () => {
+      const suggestions = index.suggestMissingMethods('ContosoRentalHelper');
+      expect(suggestions.map(s => s.methodName)).toEqual(['validate']);
+      expect(suggestions[0]).toMatchObject({ frequency: 2, totalClasses: 2, percentage: 100 });
+      expect(similarClassQueries()).toHaveLength(1);
+    });
+
+    it('suggests methods for a class whose pattern comes from the index', () => {
+      expect(index.suggestMissingMethods('ContosoRentalPosting').map(s => s.methodName))
+        .toEqual(['process']);
+    });
+
+    it('returns nothing, and issues no similar-class query, for an unknown pattern', () => {
+      expect(index.suggestMissingMethods('ContosoRentalJournal')).toEqual([]);
+      expect(similarClassQueries()).toEqual([]);
+    });
+
+    it('no longer suggests methods from a class that is only named "…Unknown"', () => {
+      const names = index.suggestMissingMethods('ContosoRentalJournal').map(s => s.methodName);
+      expect(names).not.toContain('describeState');
+    });
+
+    it('returns nothing for a class that is not in the index', () => {
+      expect(index.suggestMissingMethods('ContosoNoSuchClass')).toEqual([]);
+    });
   });
 });
 

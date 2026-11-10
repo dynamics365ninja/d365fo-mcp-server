@@ -182,6 +182,16 @@ those are called out explicitly below.
   `openWorldHint: false`.
 
 ### Fixed
+- **`analyze_code(mode="completeness")` no longer suggests methods from unrelated classes,
+  and no longer scans every method in the index, for a class with no known pattern.**
+  When a class had no pattern type in the index and its name did not end in Helper,
+  Service or Controller, the pattern stayed `Unknown` and the tool looked for classes
+  whose name ends in "Unknown". That read about a million method rows on a
+  production-size index, and what it found were classes that only happen to be named
+  that way, so their methods were offered as "missing". Such a class now gets no
+  suggestions and no query runs. The report says that the class has no known pattern
+  and nothing was compared, where it used to say the class "appears complete". Classes
+  with a known pattern get the same suggestions as before.
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know
   neither property on a menu item, and a Staging or TempDB table kept Visual Studio's
