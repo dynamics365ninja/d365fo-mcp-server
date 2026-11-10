@@ -59,7 +59,7 @@ describe('modifyFieldOp computedFieldMethod', () => {
     expect(xml).toContain('<ComputedFieldMethod>exportedDateTimeDefinition</ComputedFieldMethod>');
     expect(xml).toContain('<ExtendedDataType>CreatedDateTime</ExtendedDataType>');
     expect(xml).not.toContain('<DataField>CreatedDateTime</DataField>');
-    expect(xml).toMatch(/<Name>exportedDateTimeDefinition<\/Name>\s*<Source><!\[CDATA\[[^]*SysComputedColumn::returnField\([^]*fieldStr\(ShopExportLineTable, CreatedDateTime\)/);
+    expect(xml).toMatch(/<Name>exportedDateTimeDefinition<\/Name>\s*<Source><!\[CDATA\[[\s\S]*SysComputedColumn::returnField\([\s\S]*fieldStr\(ShopExportLineTable, CreatedDateTime\)/);
   });
 
   it('uses sourceCode when given', async () => {

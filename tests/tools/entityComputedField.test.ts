@@ -130,8 +130,8 @@ describe('convertEntityFieldToComputed', () => {
       '\t\t\t<ExtendedDataType>CreatedDateTime</ExtendedDataType>\n\t\t</AxDataEntityViewField>',
     );
     // Only that field changed.
-    expect(xml.replace(/<AxDataEntityViewField[^]*?<\/AxDataEntityViewField>/g, ''))
-      .toBe(ENTITY.replace(/<AxDataEntityViewField[^]*?<\/AxDataEntityViewField>/g, ''));
+    expect(xml.replace(/<AxDataEntityViewField[\s\S]*?<\/AxDataEntityViewField>/g, ''))
+      .toBe(ENTITY.replace(/<AxDataEntityViewField[\s\S]*?<\/AxDataEntityViewField>/g, ''));
     expect(xml.match(/AxDataEntityViewMappedField/g)).toHaveLength(2);
   });
 
