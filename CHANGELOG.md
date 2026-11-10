@@ -28,6 +28,13 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Fixed
+- **`labels(action="create")` writes only the languages the label file has.** Every
+  folder under the model's shared `LabelResources` was treated as a language of the
+  target file, so a sibling label file's `ja` added a `.ja.label.txt` and a
+  descriptor to a file that never had Japanese. Supplied translations and an explicit
+  `languages` scope still add a language.
+
 ## [1.23.0] — 2026-11-05
 
 ### Added
