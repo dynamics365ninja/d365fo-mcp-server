@@ -693,7 +693,8 @@ export const directXmlAddSubmenu = serializedOnFile(async (
  * a form-extension's <FormControl>, together with its <Type> value. Verified against
  * shipped standard form extensions (e.g. InventItemSampling.AdvancedQualityManagement).
  * NOTE: an integer control is `AxFormIntegerControl` (Type=Integer) — NOT
- * `AxFormIntControl`. Unknown types fall back to String, which is always valid.
+ * `AxFormIntControl`. A type the CALLER named that is not here is refused; one
+ * resolved from the field's EDT falls back to String, which is always valid.
  */
 const CONTROL_TYPE_TO_FORM_CONTROL: Record<string, { iType: string; typeValue: string }> = {
   string:      { iType: 'AxFormStringControl',   typeValue: 'String' },
@@ -718,6 +719,8 @@ const CONTROL_TYPE_TO_FORM_CONTROL: Record<string, { iType: string; typeValue: s
   commandbutton:      { iType: 'AxFormCommandButtonControl',      typeValue: 'CommandButton' },
   menufunctionbutton: { iType: 'AxFormMenuFunctionButtonControl', typeValue: 'MenuFunctionButton' },
   group:       { iType: 'AxFormGroupControl',    typeValue: 'Group' },
+  // Bound by <ReferenceField>, not <DataField>: see innerControlLines.
+  referencegroup: { iType: 'AxFormReferenceGroupControl', typeValue: 'ReferenceGroup' },
 };
 const DEFAULT_FORM_CONTROL = { iType: 'AxFormStringControl', typeValue: 'String' };
 
@@ -777,7 +780,18 @@ export const directXmlAddControl = serializedOnFile(async (
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
 
-    const { iType, typeValue } = CONTROL_TYPE_TO_FORM_CONTROL[(controlType || 'String').toLowerCase()] ?? DEFAULT_FORM_CONTROL;
+    const mapped = CONTROL_TYPE_TO_FORM_CONTROL[(controlType || 'String').toLowerCase()];
+    // A ReferenceGroup used to come out as a String control under a ✅: an unknown type
+    // the caller asked for is refused, not swapped.
+    if (!mapped && asked?.controlType) {
+      const known = [...new Set(Object.values(CONTROL_TYPE_TO_FORM_CONTROL).map(c => c.typeValue))].join(', ');
+      return {
+        success: false,
+        message: `controlType "${asked.controlType}" cannot be written into a form extension — nothing was written. ` +
+          `Supported: ${known}.`,
+      };
+    }
+    const { iType, typeValue } = mapped ?? DEFAULT_FORM_CONTROL;
 
     const outcome = insertFormExtensionControl(content, {
       controlName, parentControl, iType, typeValue,
