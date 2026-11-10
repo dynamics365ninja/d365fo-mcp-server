@@ -66,6 +66,23 @@ those are called out explicitly below.
   Platform Tools is installed, so a missing prerequisite shows up before the first
   deployment fails. To keep the tool list's size, the descriptions of `wait` and
   `waitTimeoutMs` are shorter; what they mean is unchanged.
+- **Binary-only ISV models are indexed (signatures only).** A model shipped as compiled
+  output (`bin\*.netmodule`, no `AxClass`/`AxForm` XML) used to yield nothing: `search`,
+  `get_object_info`, `labels`, `security_info` and `validate_code(mode="references")` knew
+  none of its classes, so every call into the ISV came back `unknown-type` and agents
+  invented members. The new `BinaryModelExtractor` (net48, Windows) reads such models through
+  `CreateRuntimeProvider` and `npm run extract-binary-models` imports them: classes, tables,
+  EDTs and enums as signatures (X++ types, defaults, modifiers, attributes), forms, queries,
+  views, data entities, maps, menu items, security and extensions through the stock
+  `extract-metadata` parsers, label texts from the `Resources` satellite assemblies, and the
+  compiler's chain-of-command record, so `extension_info(mode="coc")` lists wraps of binary
+  extension classes. No method body or source is stored; entries say "binary ISV, signatures
+  only". The import refuses a model whose references mostly do not resolve against the
+  platform it was read with (`--force` overrides). `build-database` also indexes label texts
+  found under `<METADATA_PATH>/<Model>/AxLabelFile`. `BinaryModelExtractor --models` takes
+  names and masks by module or display name (`Contoso*,!ContosoDemo*`); `--no-aot` skips the
+  object XML and labels when only signatures are needed; `--kernel` also dumps the platform
+  kernel (`Common`, `xRecord`, `Object`, ...) as the model `Kernel`. See docs/BINARY_ISV_MODELS.md.
 
 ### Changed
 - **`build_d365fo_project` and `run_systest_class` are no longer marked as closed-world
@@ -151,6 +168,8 @@ those are called out explicitly below.
   leaves next to a file (`….xml.backup-…`) are not read. The scan is the one that finds a
   standard base menu (`findAotFilesInAllPackages`), now shared and taking the
   package/model folder list once per process, and matching file names in any casing.
+- **`get_object_info` for a form no longer prints an empty code block per method** when the
+  index holds method names but no source (a compiled form).
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no

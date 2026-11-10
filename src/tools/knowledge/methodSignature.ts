@@ -82,7 +82,7 @@ export async function getMethodSignatureTool(request: CallToolRequest, context: 
     // and `type`/`parent_name` narrow the range to one object's members before
     // the case-insensitive comparison runs.
     const methodStmt = rdb.prepare(`
-      SELECT name, signature, parent_name, file_path
+      SELECT name, signature, parent_name, file_path, description
       FROM symbols
       WHERE type = 'method'
         AND parent_name = ?
@@ -139,6 +139,12 @@ export async function getMethodSignatureTool(request: CallToolRequest, context: 
       output += `**Model:** ${classRow.model}\n`;
       output += `_Source: SQLite index (signature only — bridge and XML unavailable)_\n\n`;
       output += `\`\`\`xpp\n${sigText}\n\`\`\`\n`;
+      if (String((methodRow as any).file_path ?? '').startsWith('binary-isv://')) {
+        // Compiled ISV model: the facts below are all the provider has; there is no source to fetch.
+        output = output.replace('(signature only — bridge and XML unavailable)', '(binary ISV, signatures only)');
+        output += `\n> 🔒 ${(methodRow as any).description ?? 'binary ISV, signatures only'}\n`;
+        return { content: [{ type: 'text', text: output }] };
+      }
       // "Bridge and XML unavailable" reads as a degraded read, but it is also what a
       // DELETED class looks like — the signature row survives the file. Say which,
       // instead of leaving the agent to prove it with a directory walk.
