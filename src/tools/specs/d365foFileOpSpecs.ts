@@ -622,7 +622,8 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
     optional: ['methodModifiers', 'methodReturnType', 'methodParameters'],
     note:
       'Adds OR updates in place when the method name exists (position preserved). methodName is derived ' +
-      'from the source signature when omitted. sourceCode may carry several methods at once.',
+      'from the source signature when omitted. sourceCode may carry several methods at once. ' +
+      'Forms: methodName="DataSource.method", "DataSource.Field.method" or "Control.method" adds that override.',
   },
   'remove-method': { required: ['methodName'], optional: [] },
   'replace-code': {

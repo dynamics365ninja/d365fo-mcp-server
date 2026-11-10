@@ -29,6 +29,17 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`add-method` with `methodName="Control.method"` adds an override on a form control.**
+  On `objectType="form"` a dotted name worked for data sources (`DS.method`,
+  `DS.Field.method`) and for a control override that already existed, but a new one such
+  as `OkButton.clicked` became a form method literally named "OkButton.clicked", which
+  does not compile. A new control override is now written by this server into the
+  control's holder under `<SourceCode><DataControls>`, typed like the design control,
+  where the designer keeps it and where `replace-code` already looks for it. The source
+  gets the same doc comment and indentation pass as every other `add-method`. Data source
+  names and overrides that already exist go to the bridge as before. A first segment that
+  is neither a data source nor a control of the form is refused with the close control
+  names, and nothing is written (#1161).
 - **`d365fo_file(action="modify", operation="modify-property")` sets OperationalDomain and
   SubscriberAccessLevel on existing tables and menu items.** Menu items had no writer for
   either (the bridge's setter has no case for them), and SubscriberAccessLevel holds child

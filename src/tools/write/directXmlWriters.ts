@@ -37,6 +37,7 @@ import { upsertAxFormDesignProperty } from '../../utils/axFormDesignProperties.j
 import { bpAccessPropertyOf, isBpAccessObjectType, setBpAccessProperty } from '../xml/bpAccessPropertyModify.js';
 import { setRelationOnDelete } from '../xml/tableBpDefaults.js';
 import { upsertFormControlProperty } from '../../utils/formControlPropertyXml.js';
+import { addFormControlMethod, renderSourceMethod } from '../../utils/formControlMethodXml.js';
 import { resolveControlPropertyTarget } from '../../utils/formExtensionControlModifications.js';
 import { buildAxDataEntityViewFieldXml } from '../xml/dataEntityViewExtensionXml.js';
 import {
@@ -3003,9 +3004,8 @@ export function upsertSourceCodeMethod(
   const loc = locateSourceCodeMethods(content);
   if (!loc) return { ok: false, message: 'the object has no <SourceCode> block to add a method to' };
 
-  const element =
-    `<Method>\n\t\t\t\t<Name>${methodName}</Name>\n\t\t\t\t<Source><![CDATA[\n` +
-    `${source.replace(/\s+$/, '')}\n\n]]></Source>\n\t\t\t</Method>`;
+  // One <Method> shape for the object's own methods and for form control overrides.
+  const element = renderSourceMethod(methodName, source, '\t\t\t').trimStart();
 
   const existing = loc.methodSpans.find(s => s.name.toLowerCase() === methodName.toLowerCase());
   if (existing) {
@@ -3088,6 +3088,78 @@ export const directXmlAddMethod = serializedOnFile(async (
     console.error(`[modify_d365fo_file] directXmlAddMethod failed: ${err}`);
     return null;
   }
+});
+
+/**
+ * add-method "Control.method" on a FORM, for a control override that does not exist
+ * yet. The bridge's AddMethod has no arm for it: a first segment that is not a data
+ * source falls through to the form-class path and becomes a form method literally
+ * named "OkButton.clicked" (#1161). The override is written into the control's
+ * holder under <SourceCode><DataControls> instead (formControlMethodXml.ts) and read
+ * back with the locator replace-code uses.
+ *
+ * Returns null when the request is not a new control override, so the caller carries
+ * on to the bridge: a data source ("DS.method", "DS.Field.method"), an override that
+ * already exists (the bridge updates it in place), or a file that is not a form. A
+ * first segment that is neither a data source nor a control is refused.
+ */
+export const directXmlAddFormControlMethod = serializedOnFile(async (
+  filePath: string,
+  objectName: string,
+  methodName: string,
+  source: string,
+): Promise<{ success: boolean; message: string } | null> => {
+  let content: string;
+  try {
+    content = (await fs.readFile(filePath, 'utf-8')).replace(/^﻿/, '').replace(/\r\n/g, '\n');
+  } catch {
+    return null;
+  }
+  const outcome = addFormControlMethod(content, methodName, source.replace(/\r\n/g, '\n'));
+  switch (outcome.kind) {
+    case 'not-a-form':
+    case 'data-source':
+    case 'exists':
+      return null;
+    case 'no-such-owner':
+      return {
+        success: false,
+        message:
+          `❌ add-method '${methodName}': form ${objectName} has no data source and no control named ` +
+          `'${outcome.owner}' — nothing was written. ` +
+          (outcome.close.length > 0
+            ? `Close control names: ${outcome.close.join(', ')}. `
+            : outcome.controlCount > 0
+              ? `Read the form with get_object_info to see its ${outcome.controlCount} control names. `
+              : `The form defines no controls. `) +
+          `A dotted methodName is "DataSource.method", "DataSource.Field.method" or "Control.method"; ` +
+          `a method of the form itself has no dot in its name.`,
+      };
+    case 'refused':
+      return {
+        success: false,
+        message: `❌ add-method '${methodName}' on form ${objectName}: ${outcome.reason} Nothing was written.`,
+      };
+  }
+
+  await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
+
+  const qualified = `${outcome.controlName}.${outcome.methodName}`;
+  const after = (await fs.readFile(filePath, 'utf-8')).replace(/^﻿/, '').replace(/\r\n/g, '\n');
+  if ((methodSourceSpans(after, qualified) ?? []).length === 0) {
+    return {
+      success: false,
+      message: `❌ add-method: wrote ${filePath} but the override '${qualified}' is not in it afterwards — ` +
+        `the write did not take effect. Re-read the file and retry; do not assume the change landed.`,
+    };
+  }
+  return {
+    success: true,
+    message:
+      `✅ Override '${outcome.methodName}' added to control '${outcome.controlName}' ` +
+      `(${outcome.firstOverride ? 'its first override' : 'next to its existing overrides'}) and verified on disk ` +
+      `in ${filePath}. Change it later with replace-code or add-method, methodName="${qualified}".`,
+  };
 });
 
 /** remove-method fallback, same trigger as directXmlAddMethod. */
