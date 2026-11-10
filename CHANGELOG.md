@@ -182,6 +182,22 @@ those are called out explicitly below.
   `openWorldHint: false`.
 
 ### Fixed
+- **`modify-property` sets a menu item or menu property the file does not have yet.** The
+  bridge has a case for only a few menu item properties and none for a menu, and the XML
+  fallback could only replace an element that was already in the file. So
+  `d365fo_file(action="modify", operation="modify-property")` with `Parameters`,
+  `EnumParameter`, `EnumTypeParameter`, `ImageLocation`, `NeedsRecord` and others failed
+  with "Unknown AxMenuItem property" on every `menu-item-display`, `menu-item-action` and
+  `menu-item-output` that did not carry the element, and `SetCompany`, `FeatureClass` or
+  `ConfigurationKey` failed the same way on a `menu`. After the bridge declines, the
+  property is now written on the XML: an existing top-level element is replaced, a
+  missing one is inserted where the serialiser puts it (alphabetically after `Name`, and
+  ahead of `Elements` on a menu). The name is matched in any case and written in its
+  real casing. An empty value removes the element, because the default is expressed by
+  absence. A name that is not a property of the object is refused with the list of known
+  ones, and nothing is written. The lists and the order were checked against the
+  Microsoft standard menu items and menus. `ObjectType` and `OpenMode` stay with the bridge, which
+  checks their values. Menu item and menu extensions are not covered (#1161).
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know
   neither property on a menu item, and a Staging or TempDB table kept Visual Studio's
