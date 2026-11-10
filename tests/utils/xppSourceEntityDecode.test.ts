@@ -60,4 +60,26 @@ describe('decodeXmlEntitiesFromXppSource', () => {
     const src = 'str t()\n{\n    return "Q&amp;A";\n}';
     expect(decode(src)).toBe(src);
   });
+
+  it('keeps markup in a string literal when the payload has no angle bracket at all', () => {
+    // A one-line replace-code oldCode / newCode, or a method without a doc comment.
+    const line = 'return "&lt;b&gt;" + _s + "&lt;/b&gt;";';
+    expect(decode(line)).toBe(line);
+    const verbatim = 'return @"&lt;b&gt;";';
+    expect(decode(verbatim)).toBe(verbatim);
+  });
+
+  it('decodes an encoded fragment whose only entities are outside string literals', () => {
+    expect(decode('if (a &amp;&amp; b)')).toBe('if (a && b)');
+    expect(decode('if (a &lt; b) { info("x"); }')).toBe('if (a < b) { info("x"); }');
+  });
+
+  it('keeps &amp; in a doc comment with no tags on the payload', () => {
+    const doc = '/// Returns the P&amp;L amount.';
+    expect(decode(doc)).toBe(doc);
+  });
+
+  it('is not fooled by an apostrophe in an encoded comment line', () => {
+    expect(decode("/// it's &lt;b&gt;bold&lt;/b&gt; isn't it")).toBe("/// it's <b>bold</b> isn't it");
+  });
 });
