@@ -59,6 +59,26 @@ those are called out explicitly below.
   extends RefRecId. The type takes the field's label and the field drops its copy
   (BPErrorFieldLabelIsCopyOf…). The reply lists every type created. `autoCorrect=false`
   writes the fields as passed. Nothing is created when the symbol index cannot be read.
+- **`run_systest_class` runs tests on UDE, in the environment's cloud runtime.** A UDE
+  machine has no local AOS, so SysTestConsole cannot run there; the tool now sends the
+  tests where Visual Studio sends them, through the Dataverse environment the UDE belongs
+  to. It reads the test methods from the class (and from base classes in the same model),
+  uploads a test request naming the built module assembly, starts the run, waits for it
+  and reports per method from the `.trx` it gets back, which it also saves. Tests run
+  against the code DEPLOYED to the environment, and the reply says so. `testMethod` now
+  runs that one method alone (`Class::method` is accepted too); `[SysTestInactiveTest]`
+  methods are reported as skipped, and a requested method that gets no result counts as
+  failed. Set the new `environment.dataverseUrl` (`D365FO_DATAVERSE_URL`) to the Dataverse
+  URL (not the Finance and Operations one; `pac org list` shows it). The first run in a
+  server process opens a sign-in page in the browser, and calls running at the same time
+  share it; tokens are kept in memory only. Tenants that block Microsoft's sample
+  Dataverse client can set `environment.dataverseClientId`, and guests
+  `environment.dataverseTenant`. `setup` asks for the URL on UDE.
+
+### Dependencies
+- **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
+  native add-ons; with `@azure/msal-common` and `jsonwebtoken` (and their `jws`, `semver`
+  and `lodash.*` helpers) it adds 16 packages to the lockfile and changes none.
 
 ### Fixed
 - **On UDE, a tool call made right after the server starts no longer misses the custom
@@ -120,6 +140,13 @@ those are called out explicitly below.
   it cannot be the owner, and the lock is taken over. A restarted server that got the
   crashed one's id no longer waits on itself either. While the start time cannot be read,
   the lock is kept as before.
+- **`run_systest_class` on UDE said it could not find SysTestConsole, as if a path were
+  wrong.** No path can make it work: SysTestConsole only runs tests against a local AOS,
+  and on UDE the AOS is hosted in the cloud, so even where it is found it stops with
+  "Failed to obtain app setting ... Common.HostingEnvironment" before any test runs. On
+  UDE the tool no longer looks for it and runs the tests in the cloud runtime instead
+  (see *Added*). A classic VM detected as UDE can set `environment.type` to
+  `traditional`; the UDE setup replies say so.
 
 ## [1.23.0] — 2026-11-05
 
