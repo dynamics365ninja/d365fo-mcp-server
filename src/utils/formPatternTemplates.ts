@@ -95,6 +95,8 @@ export const CAPTION_LABELS = {
   lineDetails: '@SYS23823',
   setup: '@SYS2186',
   summary: '@SYS15560',
+  // The related-links section caption shipped workspaces use most.
+  relatedLinks: '@SYS72248',
 } as const;
 
 /**
@@ -551,7 +553,19 @@ ${tabFieldControls}\t\t\t\t\t\t\t\t</Controls>
         `\t\t\t\t\t\t\t\t\t\t<ShowLabel>No</ShowLabel>\n` +
         `\t\t\t\t\t\t\t\t\t\t<Style>TitleField</Style>\n` +
         `\t\t\t\t\t\t\t\t\t</AxFormControl>\n`
-      : '';
+      // The platform's DetailsMaster 1.4 requires the HeaderTitle String even when
+      // no title field is known yet: emit it unbound rather than drop it, or the
+      // form does not compile. Bind its DataField once the table has a TitleField1.
+      : `\t\t\t\t\t\t\t\t\t<AxFormControl xmlns=""\n` +
+        `\t\t\t\t\t\t\t\t\t\t\ti:type="AxFormStringControl">\n` +
+        `\t\t\t\t\t\t\t\t\t\t<Name>TitleField</Name>\n` +
+        `\t\t\t\t\t\t\t\t\t\t<Skip>Yes</Skip>\n` +
+        `\t\t\t\t\t\t\t\t\t\t<Type>String</Type>\n` +
+        `\t\t\t\t\t\t\t\t\t\t<WidthMode>SizeToAvailable</WidthMode>\n` +
+        `\t\t\t\t\t\t\t\t\t\t<FormControlExtension\n\t\t\t\t\t\t\t\t\t\t\ti:nil="true" />\n` +
+        `\t\t\t\t\t\t\t\t\t\t<ShowLabel>No</ShowLabel>\n` +
+        `\t\t\t\t\t\t\t\t\t\t<Style>TitleField</Style>\n` +
+        `\t\t\t\t\t\t\t\t\t</AxFormControl>\n`;
 
     return `<?xml version="1.0" encoding="utf-8"?>
 <AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
@@ -1387,9 +1401,13 @@ ${gridPanelColumns}\t\t\t\t\t\t\t\t</Controls>
       `\t\t\t\t\t<Pattern>FieldsFieldGroups</Pattern>\n` +
       `\t\t\t\t\t<PatternVersion>1.1</PatternVersion>\n` +
       `\t\t\t\t\t<Type>TabPage</Type>\n` +
-      `\t\t\t\t\t<Caption>${s.caption}</Caption>\n` +
       `\t\t\t\t\t<FormControlExtension\n\t\t\t\t\t\ti:nil="true" />\n` +
       `\t\t\t\t\t<Controls />\n` +
+      // FieldsFieldGroups requires ColumnsMode Fill (a TabPage defaults to Fixed).
+      // Caption is a TabPage property and must follow <Controls>, or the
+      // deserializer drops it.
+      `\t\t\t\t\t<ColumnsMode>Fill</ColumnsMode>\n` +
+      `\t\t\t\t\t<Caption>${s.caption}</Caption>\n` +
       `\t\t\t\t</AxFormControl>\n`
     ).join('');
 
@@ -2092,7 +2110,19 @@ ${captionXml}\t\t<Pattern xmlns="">WorkspaceOperational</Pattern>
 \t\t\t\t\t\t<Caption>${CAPTION_LABELS.summary}</Caption>
 \t\t\t\t\t\t<FastTabExpanded>Yes</FastTabExpanded>
 \t\t\t\t\t</AxFormControl>
-${listSections}\t\t\t\t</Controls>
+${listSections}\t\t\t\t\t<AxFormControl xmlns=""
+\t\t\t\t\t\t\ti:type="AxFormTabPageControl">
+\t\t\t\t\t\t<Name>RelatedLinksSection</Name>
+\t\t\t\t\t\t<Type>TabPage</Type>
+\t\t\t\t\t\t<FormControlExtension
+\t\t\t\t\t\t\ti:nil="true" />
+\t\t\t\t\t\t<Controls>
+\t\t\t\t\t\t\t<!-- Add link MenuFunctionButtons (Style Link) or LinksGroup groups here -->
+\t\t\t\t\t\t</Controls>
+\t\t\t\t\t\t<Caption>${CAPTION_LABELS.relatedLinks}</Caption>
+\t\t\t\t\t\t<FastTabExpanded>Yes</FastTabExpanded>
+\t\t\t\t\t</AxFormControl>
+\t\t\t\t</Controls>
 \t\t\t\t<AlignChild>No</AlignChild>
 \t\t\t\t<ShowTabs>Yes</ShowTabs>
 \t\t\t\t<Style>FastTabs</Style>

@@ -10,7 +10,7 @@ export const tableOfContents: FormPatternSpec = {
   id: 'TableOfContents',
   xmlName: 'TableOfContents',
   displayName: 'Table of Contents',
-  versions: ['1.1', '1.0'],
+  versions: ['1.1', 'UX7 1.0'],
   purpose:
     'Displays setup/parameters information or loosely related information sets as a vertical ' +
     'table-of-contents navigation with one content region per entry.',

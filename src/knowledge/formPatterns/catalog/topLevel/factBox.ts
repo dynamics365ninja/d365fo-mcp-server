@@ -13,7 +13,7 @@ export const factBoxGrid: FormPatternSpec = {
   // beside a parent form" case. The card variant must be named explicitly.
   xmlAliases: ['FactBox', 'FactBoxGrid', 'FormPartFactBoxGrid'],
   displayName: 'Form Part FactBox Grid',
-  versions: ['1.1', '1.0'],
+  versions: ['1.1', 'UX7 1.0'],
   purpose: 'FactBox showing a child collection of related records as a small grid.',
   whenToUse: [
     'Related child records (e.g. contacts of a customer) shown beside a parent form',
@@ -38,7 +38,7 @@ export const factBoxCard: FormPatternSpec = {
   xmlName: 'FormPartFactboxCard',
   xmlAliases: ['FactBoxCard', 'FormPartFactBoxCard'],
   displayName: 'Form Part FactBox Card',
-  versions: ['1.1', '1.0'],
+  versions: ['UX7 1.0'],
   purpose: 'FactBox showing a set of related fields for a single record (card style).',
   whenToUse: ['A handful of related fields (e.g. customer statistics) beside a parent form'],
   referenceForms: ['CustStatisticsStatistics'],

@@ -118,6 +118,13 @@ those are called out explicitly below.
   and Style, written in the shipped element order (a property the type never carries is
   refused). Moved controls keep their XML byte for byte, only re-indented. The design's
   own Pattern and PatternVersion are set with `modify-property`.
+- **Form pattern oracles.** `npm run catalog:form-patterns` regenerates the platform
+  definitions and property defaults from a local D365FO install.
+  `npm run oracle:form-patterns -- verdicts` runs the platform's `PatternAnalyzer`
+  (Windows, read only) over `tests/fixtures/formPatterns` and records its verdicts,
+  which `tests/validation/platformPatternMatcher.test.ts` holds the validator to in
+  CI. `npm run oracle:form-sweep` validates every shipped form and fails on any
+  error.
 
 ### Changed
 - **`build_d365fo_project` and `run_systest_class` are no longer marked as closed-world
@@ -273,6 +280,42 @@ those are called out explicitly below.
   the old one. An empty value now removes a Design property instead of writing an empty
   element, and the post-write check finds a value whose element carries `xmlns=""` and
   makes no value check for a removal (both were reported as "NOT in the file").
+- **Form pattern validation now follows the platform's own pattern definitions.**
+  `object_patterns(domain="form", action="validate")` and the `FORM_PATTERN_ENFORCE`
+  gate on `d365fo_file` create checked forms against a catalog curated from the
+  Microsoft Learn pages, and where it disagreed with the compiler it blocked forms
+  that compile and passed forms that do not: it knew `TaskSingle` (the platform
+  pattern is `Task`), wanted `FillText` 1.0 with a String (the platform has only
+  "UX7 1.0", which takes a StaticText or a String), thought `ToolbarList` 1.1 was
+  newest (1.2 is), took a Group for the TaskParentChild child part (it is a Tab
+  after a splitter group) and never checked the property values the compiler
+  requires (a CustomFilters group needs ViewEditMode Edit, a FillText child
+  HeightMode SizeToAvailable). The validator now reads every FormPatterns and
+  SubPatterns definition embedded in `Microsoft.Dynamics.AX.Metadata.Patterns.dll`,
+  generated into `src/knowledge/formPatterns/platform.generated.ts` together with
+  the metamodel default of every property they name, and interprets them the way
+  the platform's `PatternAnalyzer` does: exact name and version, parts with their
+  counts and order, OneOf alternatives, allowed sub-patterns per part, extension
+  controls identified by their extension name, and property values checked at
+  their default when the XML omits them. New rule **FP011** (error) reports a
+  required property value that is not met. FP009 (curated property hints) is
+  retired. Measured on the shipped forms: the platform's `PatternAnalyzer` accepts
+  all 26,810 patterned nodes of the 9,502 shipped forms, and the validator raises
+  zero errors on them.
+- **Generators no longer emit pattern names and versions the compiler rejects.**
+  The curated catalog now uses the platform names (`Task`, `LookupGridOnly` for the
+  basic lookup, `SectionTiles`, `SectionRelatedLinks` and the other workspace
+  sections it had as `Workspace_Tiles` and similar) and the platform's version
+  lists, and drops `SidePanel` and `Workspace_SummaryNumbers_UnboundFields`, which
+  are not patterns. The Dialog template sets ColumnsMode Fill on its
+  FieldsFieldGroups pages and writes their Caption where the deserializer reads it,
+  the Workspace template adds the required related-links section, the DetailsMaster
+  template always emits the required header title control, and the pattern
+  expander writes control elements in canonical order and the Design Style the
+  platform requires. The expander still builds platform-rejected forms for 22
+  long-tail patterns. `generate_smart_form` self-tests every expansion and falls
+  back to a template or clone for those, and the expander test lists them with
+  `it.fails`.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no

@@ -43,7 +43,7 @@ export const detailsTransaction: FormPatternSpec = {
   id: 'DetailsTransaction',
   xmlName: 'DetailsTransaction',
   displayName: 'Details Transaction',
-  versions: ['1.4', '1.1', '1.0'],
+  versions: ['1.4', '1.3', '1.2', 'UX7 1.1', 'UX7 1.0'],
   purpose:
     'Displays the details of a complex transaction entity and its lines — an order header plus ' +
     'order lines (e.g. sales orders, purchase orders).',

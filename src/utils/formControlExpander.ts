@@ -24,6 +24,8 @@
  */
 
 import type { FormPatternSpec, NodeSpec } from '../knowledge/formPatterns/index.js';
+import { platformPattern } from '../knowledge/formPatterns/platform.js';
+import { FORM_CONTROL_ELEMENT_ORDER } from '../validation/formControlElementOrder.generated.js';
 import { FormPatternTemplates } from './formPatternTemplates.js';
 import type { FieldControlMap } from './fieldControlTypes.js';
 
@@ -62,10 +64,10 @@ export function isRequired(spec: NodeSpec): boolean {
  *   - any *required* node (at any depth) names no concrete control type (a `*`
  *     wildcard slot — e.g. HubPart's required "Chart"), which the expander cannot
  *     materialise and which would trip FP003.
- *   - sibling slots share a control type (e.g. two `Group`s distinguished only
- *     by Style). Skipping an optional one shifts the validator's type-based
- *     greedy matcher onto the wrong slot, so the result is unreliable.
- * Callers should fall back to a hand-written template / clone for these.
+ * Sibling parts sharing a control type (TaskParentChild's ParentTab and
+ * ChildTab) are fine: the validator aligns controls to the platform's parts in
+ * order, not by type alone. generate_smart_form still self-tests every result
+ * and falls back to a template / clone when it is not error-free.
  */
 export function canExpandPattern(spec: FormPatternSpec): boolean {
   if (spec.versions.length === 0) return false;
@@ -75,28 +77,7 @@ export function canExpandPattern(spec: FormPatternSpec): boolean {
       .filter(isRequired)
       .every((n) => isConcrete(n) && requiredNodesConcrete(n.children ?? []));
 
-  // No two sibling specs may share a concrete control type — the validator
-  // matches children by type, so duplicates become ambiguous once optionals are
-  // dropped. Check every level we emit / the validator descends into.
-  const levelUnambiguous = (nodes: NodeSpec[]): boolean => {
-    const seen = new Set<string>();
-    for (const n of nodes.filter(isConcrete)) {
-      const t = n.controlTypes[0];
-      if (seen.has(t)) return false;
-      seen.add(t);
-    }
-    return nodes.filter(isRequired).every((n) => levelUnambiguous(n.children ?? []));
-  };
-
-  return requiredNodesConcrete(spec.root) && levelUnambiguous(spec.root);
-}
-
-/** Serialize a property map into indented <Prop>value</Prop> lines. */
-function emitProperties(props: Record<string, string> | undefined, indent: string): string {
-  if (!props) return '';
-  return Object.entries(props)
-    .map(([k, v]) => `${indent}<${k}>${v}</${k}>`)
-    .join('\n');
+  return requiredNodesConcrete(spec.root);
 }
 
 /**
@@ -124,12 +105,13 @@ function emitNode(
   const indent = '\t'.repeat(depth);
   const controlType = spec.controlTypes[0];
   const name = spec.nameHint || spec.id;
-  const lines: string[] = [];
+  const iType = iTypeFor(controlType);
+  // Element name → its line(s); written out in canonical order at the end.
+  const elements = new Map<string, string>();
 
-  lines.push(`${indent}<AxFormControl xmlns="" i:type="${iTypeFor(controlType)}">`);
-  lines.push(`${indent}\t<Name>${name}</Name>`);
-  lines.push(`${indent}\t<Type>${controlType}</Type>`);
-  lines.push(`${indent}\t<FormControlExtension i:nil="true" />`);
+  elements.set('Name', `${indent}\t<Name>${name}</Name>`);
+  elements.set('Type', `${indent}\t<Type>${controlType}</Type>`);
+  elements.set('FormControlExtension', `${indent}\t<FormControlExtension i:nil="true" />`);
 
   // Required child containers (recursive), plus field columns for a Grid.
   const childSpecs = (spec.children ?? []).filter(isRequired).filter(isConcrete);
@@ -149,22 +131,29 @@ function emitNode(
   }
 
   const inner = [childXml, gridColumns].filter(Boolean).join('\n');
-  if (inner) {
-    lines.push(`${indent}\t<Controls>`);
-    lines.push(inner);
-    lines.push(`${indent}\t</Controls>`);
-  } else {
-    lines.push(`${indent}\t<Controls />`);
-  }
+  elements.set('Controls', inner
+    ? `${indent}\t<Controls>\n${inner}\n${indent}\t</Controls>`
+    : `${indent}\t<Controls />`);
 
-  const props = emitProperties(spec.properties, `${indent}\t`);
-  if (props) lines.push(props);
+  for (const [k, v] of Object.entries(spec.properties ?? {})) {
+    elements.set(k, `${indent}\t<${k}>${v}</${k}>`);
+  }
 
   // Grid needs a DataSource binding to be useful (and FP-correct).
   if (controlType === 'Grid' && opt.dsName) {
-    lines.push(`${indent}\t<DataSource>${opt.dsName}</DataSource>`);
+    elements.set('DataSource', `${indent}\t<DataSource>${opt.dsName}</DataSource>`);
   }
 
+  // AOT XML is order-sensitive: the deserializer silently drops an element
+  // written out of sequence (WidthMode after Style on a Tab, say). Write every
+  // element in the order shipped forms use; one the table does not rank goes last.
+  const order = FORM_CONTROL_ELEMENT_ORDER[iType] ?? [];
+  const rank = (k: string): number => {
+    const i = order.indexOf(k);
+    return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  const lines = [`${indent}<AxFormControl xmlns="" i:type="${iType}">`];
+  for (const k of [...elements.keys()].sort((a, b) => rank(a) - rank(b))) lines.push(elements.get(k)!);
   lines.push(`${indent}</AxFormControl>`);
   return lines.join('\n');
 }
@@ -196,7 +185,11 @@ function emitDataSources(opt: ExpandFormOptions): string {
  */
 export function expandPatternToXml(spec: FormPatternSpec, opt: ExpandFormOptions): string {
   const version = spec.versions[0] ?? '1.0';
-  const style = spec.designProperties?.Style ?? spec.xmlName;
+  // The Design Style the platform definition requires wins over the curated hint.
+  // Never the pattern name: "SimpleDetails-ToolbarFields" is not a Style value.
+  const platformStyle = platformPattern(spec.xmlName, version)?.root.props
+    ?.find((r) => r.name === 'Style' && !r.op)?.value;
+  const style = platformStyle ?? spec.designProperties?.Style ?? 'Auto';
   const caption = opt.caption ? `\t\t<Caption xmlns="">${opt.caption}</Caption>\n` : '';
   const titleDs = opt.dsName ? `\t\t<TitleDataSource xmlns="">${opt.dsName}</TitleDataSource>\n` : '';
   const designDs = opt.dsName ? `\t\t<DataSource xmlns="">${opt.dsName}</DataSource>\n` : '';

@@ -10,7 +10,7 @@ export const simpleDetailsToolbarFields: FormPatternSpec = {
   xmlName: 'SimpleDetails-ToolbarFields',
   xmlAliases: ['SimpleDetails', 'SimpleDetailsToolbarFields', 'SimpleDetailsWToolbar'],
   displayName: 'Simple Details w/ Toolbar and Fields',
-  versions: ['1.3', '1.1', '1.0'],
+  versions: ['1.3', '1.2', '1.1', 'UX7 1.0'],
   purpose: 'Shows fields for a single base record with an optional toolbar — the default Simple Details variant.',
   whenToUse: [
     'Form focused on ONE record (no grid/list navigation)',
@@ -53,7 +53,7 @@ export const simpleDetailsFastTabs: FormPatternSpec = {
   xmlName: 'SimpleDetails-FastTabsContainer',
   variantOf: 'SimpleDetails',
   displayName: 'Simple Details w/ FastTabs',
-  versions: ['1.4', '1.1', '1.0'],
+  versions: ['1.4', '1.3', '1.2', 'UX7 1.1', 'UX7 1.0'],
   purpose: 'Shows fields for a single record organized into FastTabs — the most common multi-tab Simple Details variant.',
   whenToUse: [
     'Form focused on ONE record with fields grouped into FastTabs (5-15+ fields)',
@@ -88,7 +88,7 @@ export const simpleDetailsStandardTabs: FormPatternSpec = {
   xmlName: 'SimpleDetails-StandardTabsContainer',
   variantOf: 'SimpleDetails',
   displayName: 'Simple Details w/ Standard Tabs',
-  versions: ['1.5', '1.1', '1.0'],
+  versions: ['1.5', '1.4', '1.3', '1.2', 'UX7 1.1', 'UX7 1.0'],
   purpose: 'Shows fields for a single record organized into standard (non-collapsible) tab pages.',
   whenToUse: [
     'Form focused on ONE record where fields are best shown in standard tabs',
@@ -121,7 +121,7 @@ export const simpleDetailsPanorama: FormPatternSpec = {
   xmlName: 'SimpleDetails-Panorama',
   variantOf: 'SimpleDetails',
   displayName: 'Simple Details w/ Panorama',
-  versions: ['1.1', '1.0'],
+  versions: ['1.1', 'UX7 1.0'],
   purpose: 'Simple Details variant with a panorama-style horizontal scroll layout inside the details body.',
   whenToUse: ['Single-record form with a panorama layout (rare — workspace-style UX for a detail form)'],
   whenNotToUse: ['Standard detail forms — prefer FastTabs or Toolbar/Fields variants'],
