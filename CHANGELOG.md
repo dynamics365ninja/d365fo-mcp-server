@@ -140,6 +140,17 @@ those are called out explicitly below.
   with the query. `model IN (custom models)` stays the leading predicate, so the
   `idx_symbols_model` seek is unchanged. Result captions say "custom models" instead of
   "custom extensions".
+- **Menu checks on a write-only companion: the other extensions of the base menu.** The
+  parent check of `add-menu-item-to-menu` and `add-submenu` on a `menu-extension`, and the
+  element-name checks of both (a submenu name already in use is refused, a repeated item
+  is named `<item>N`), read the other extensions of the base menu from the index only. A
+  write-only companion has no index, so a parent another extension adds was refused
+  there, and a name one of them uses was written and failed the next build ("The name '…'
+  is not unique"). Without index rows they are now read from the package folders
+  (`<root>/<Package>/<Model>/AxMenuExtension/<BaseMenu>.*.xml`); backup copies a modify
+  leaves next to a file (`….xml.backup-…`) are not read. The scan is the one that finds a
+  standard base menu (`findAotFilesInAllPackages`), now shared and taking the
+  package/model folder list once per process, and matching file names in any casing.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
