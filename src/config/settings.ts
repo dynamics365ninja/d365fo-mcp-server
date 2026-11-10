@@ -199,7 +199,8 @@ export const SETTINGS: Setting[] = [
     label: 'Custom model names',
     description:
       'Your own (non-Microsoft) models, comma-separated. They are indexed with priority and treated as writable. ' +
-      'Find them in VS → Dynamics 365 → Model Management → View models. UDE detects these automatically.',
+      'Find them in VS → Dynamics 365 → Model Management → View models. UDE detects these automatically. ' +
+      'Re-read from the config file (or `.env`) while the server runs, so an edit applies without a restart.',
     placeholder: 'ContosoRobotics,ContosoBank',
   },
   {
