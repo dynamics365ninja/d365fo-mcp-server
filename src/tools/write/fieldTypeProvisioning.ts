@@ -172,6 +172,13 @@ export async function provisionFieldTypes(
   let db: Db | undefined;
   try { db = context.symbolIndex?.getReadDb?.() as Db | undefined; } catch { db = undefined; }
   if (!db) return result;
+  // An index without a single EDT (not built yet, or a write-only companion) is no index for
+  // this purpose: every standard EDT would look missing and get a duplicate in the model.
+  try {
+    if (!db.prepare(`SELECT 1 FROM symbols WHERE type = 'edt' LIMIT 1`).get()) return result;
+  } catch {
+    return result;
+  }
 
   const model = typeof base.modelName === 'string' ? base.modelName : undefined;
   const createdNow = new Map<string, string>(); // requested name (lower) → written name

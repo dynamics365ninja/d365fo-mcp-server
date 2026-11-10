@@ -42,9 +42,11 @@ import { generateObjectTool } from '../../src/tools/generateObject';
 import { labelTextFor, primitiveOf } from '../../src/tools/write/fieldTypeProvisioning';
 
 /** A db whose edt_metadata knows the base type of the "known" EDTs. */
+let indexHasEdts = true;
 const db = {
   prepare: () => ({
-    get: (name: string) => {
+    get: (name?: string) => {
+      if (name === undefined) return indexHasEdts ? { 1: 1 } : undefined; // the "any EDT at all" probe
       const k = known.get(name);
       return k?.type === 'edt' ? { extends: k.base ?? null, enum_type: null, string_size: k.base === 'String' ? 20 : null } : undefined;
     },
@@ -75,6 +77,7 @@ function createsWithPrefix(existing: string[] = []) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  indexHasEdts = true;
   known.clear();
   known.set('ItemId', { type: 'edt', base: 'String' });
   known.set('TransDate', { type: 'edt', base: 'Date' });
@@ -179,6 +182,20 @@ describe('d365fo_file create table', () => {
     await d365foFileTool(call({ action: 'create', objectType: 'table', objectName: 'ContosoClaim', autoCorrect: false, properties: { fields } }), ctx);
     await d365foFileTool(call({ action: 'create', objectType: 'table', objectName: 'ContosoClaim', properties: { fields } }), {} as any);
     expect(createCalls().map(c => c.objectType)).toEqual(['table', 'table']);
+  });
+});
+
+describe('an index that holds no EDT at all', () => {
+  it('creates nothing, since a standard EDT would look missing', async () => {
+    indexHasEdts = false;
+    createsWithPrefix();
+    mockModify.mockResolvedValue({ content: [{ type: 'text', text: 'field added' }] });
+    await d365foFileTool(
+      call({ action: 'modify', objectType: 'table', objectName: 'ContosoTable', operation: 'add-field', fieldName: 'ItemRef', fieldType: 'ItemIdNotIndexed' }),
+      ctx,
+    );
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(((mockModify.mock.calls[0][0] as CallToolRequest).params.arguments as any).fieldType).toBe('ItemIdNotIndexed');
   });
 });
 
