@@ -85,4 +85,24 @@ describe('run_bp_check — pipeline parity', () => {
     expect(text).not.toContain('Reproduced pipeline rules');
     expect(text.match(/BPCheckTableOperationalDomainPropertyNotSpecified/g)).toHaveLength(2); // raw line + findings section
   });
+
+  it('a finding in the model\'s suppression list stops being reported, and only that one', async () => {
+    xppbpSays('X++ Best Practice Check\nErrors: 0\nWarnings: 0\n');
+    const dir = path.join(store, 'Con', 'Con', 'AxIgnoreDiagnosticList');
+    mkdirSync(dir, { recursive: true });
+    const entry = (type: string, moniker: string) =>
+      `<Diagnostic><DiagnosticType>${type}</DiagnosticType><Severity>Warning</Severity>` +
+      `<Path>dynamics://Table/ConTicket</Path><Moniker>${moniker}</Moniker><Justification>x</Justification></Diagnostic>`;
+    writeFileSync(path.join(dir, 'Con_BPSuppressions.xml'),
+      `<?xml version="1.0" encoding="utf-8"?>\n<IgnoreDiagnostics xmlns:i="http://www.w3.org/2001/XMLSchema-instance">\n<Name>Con_BPSuppressions</Name>\n<Items>` +
+      entry('BestPractices', 'BPCheckTableOperationalDomainPropertyNotSpecified') +
+      entry('Compile', 'BPCheckTableSubscriberAccessLevelPropertyNotSpecified') +
+      `</Items>\n</IgnoreDiagnostics>`);
+    const result: any = await runBpCheckTool({}, {});
+    const text = result.content[0].text;
+    expect(text).not.toContain('BPCheckTableOperationalDomainPropertyNotSpecified');
+    // Another moniker, and a suppression of another diagnostic type, change nothing.
+    expect(text).toContain('BPCheckTableOperationalDomainPropertyUnexpected');
+    expect(text).toContain('BPCheckTableSubscriberAccessLevelPropertyNotSpecified');
+  });
 });

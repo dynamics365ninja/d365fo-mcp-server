@@ -398,6 +398,27 @@ export function diskFormAllLocal(modelDir: string): FormAllLocalResolver {
   };
 }
 
+/** The model's best-practice suppressions (AxIgnoreDiagnosticList/*.xml), as `moniker|path` in lower case. */
+export async function readBpSuppressions(modelDir: string): Promise<Set<string>> {
+  const keys = new Set<string>();
+  const dir = path.join(modelDir, 'AxIgnoreDiagnosticList');
+  let names: string[] = [];
+  try { names = await fs.readdir(dir); } catch { return keys; }
+  for (const n of names) {
+    if (!/\.xml$/i.test(n)) continue;
+    let xml = '';
+    try { xml = await fs.readFile(path.join(dir, n), 'utf-8'); } catch { continue; }
+    for (const m of xml.matchAll(/<Diagnostic>([\s\S]*?)<\/Diagnostic>/g)) {
+      const child = (tag: string) => new RegExp(`<${tag}>\\s*([^<]*?)\\s*</${tag}>`).exec(m[1])?.[1];
+      if (child('DiagnosticType') !== 'BestPractices') continue;
+      const moniker = child('Moniker');
+      const target = child('Path');
+      if (moniker && target) keys.add(`${moniker}|${target}`.toLowerCase());
+    }
+  }
+  return keys;
+}
+
 export const REPRODUCED_HEADER =
   'Reproduced pipeline rules (not reported by this xppbp): the Azure DevOps build restores newer BP packages that check ' +
   'OperationalDomain and SubscriberAccessLevel, and this xppbp has no such rule. These findings reproduce them with the ' +
@@ -442,7 +463,11 @@ export async function pipelineParitySections(o: ParityOptions): Promise<{ append
         const folder = t ? propertyRuleFolderFor(t.elementType) : undefined;
         if (t && !folder) continue;
         const inputs = await readPropertyRuleInputs(modelDir, t && folder ? { folder, name: t.name } : undefined);
-        const findings = await checkPipelinePropertyRules(inputs, resolver);
+        // The pipeline's xppbp honours the model's suppression lists, so the reproduction does too:
+        // run_bp_check prints a `path:` to suppress by, and a suppressed finding has to stop coming back.
+        const suppressed = await readBpSuppressions(modelDir);
+        const findings = (await checkPipelinePropertyRules(inputs, resolver))
+          .filter(f => !suppressed.has(`${f.moniker}|${f.path}`.toLowerCase()));
         if (findings.length > 0) appended[i] = `\n\n${REPRODUCED_HEADER}\n${formatReproducedFindings(findings)}`;
       }
     }

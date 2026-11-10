@@ -69,8 +69,9 @@ those are called out explicitly below.
   are added only when xppbp reported none of them and its rule assemblies (`bin\BPExtensions`)
   do not name them, so a platform that ships the real rules keeps its own answer. A whole-model
   run checks every table and menu item of the model, a targeted run only a requested table or
-  menu item. Checked against an ISV model's pipeline log: 646 of 646 warnings, same object,
-  rule and message, none extra.
+  menu item. A finding in the model's suppression list is left out, as the pipeline leaves it
+  out. Checked against an ISV model's pipeline log: 646 of 646 warnings, same object, rule and
+  message, none extra.
 - **Label false positives are marked.** A `BPErrorUnknownLabel` for a label that exists in the
   model's label files, and a `BPUnusedStrFmtArgument` in the same method on a placeholder that
   label has, get a "Likely label false positives" note. xppbp reports them when it cannot read
