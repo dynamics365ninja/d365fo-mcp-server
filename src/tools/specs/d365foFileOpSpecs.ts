@@ -119,6 +119,10 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
     type: 'boolean',
     description: 'modify-field: true writes <IgnoreEDTRelation>Yes</IgnoreEDTRelation> (EDT with a relation).',
   },
+  computedFieldMethod: {
+    type: 'string',
+    description: 'modify-field on a data-entity: static method name; the mapped field becomes a computed field using it.',
+  },
   dataField: {
     type: 'string',
     description:
@@ -642,9 +646,13 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   },
   'modify-field': {
     required: ['fieldName'],
-    optional: ['fieldType', 'fieldMandatory', 'fieldLabel', 'fieldHelpText', 'fieldEnumType', 'fieldStringSize', 'fieldAllowEdit', 'fieldIgnoreEdtRelation'],
-    mutationOneOf: ['fieldType', 'fieldMandatory', 'fieldLabel', 'fieldHelpText', 'fieldEnumType', 'fieldStringSize', 'fieldAllowEdit', 'fieldIgnoreEdtRelation'],
+    optional: ['fieldType', 'fieldMandatory', 'fieldLabel', 'fieldHelpText', 'fieldEnumType', 'fieldStringSize', 'fieldAllowEdit', 'fieldIgnoreEdtRelation', 'computedFieldMethod', 'sourceCode'],
+    mutationOneOf: ['fieldType', 'fieldMandatory', 'fieldLabel', 'fieldHelpText', 'fieldEnumType', 'fieldStringSize', 'fieldAllowEdit', 'fieldIgnoreEdtRelation', 'computedFieldMethod'],
     note:
+      'DATA-ENTITY: computedFieldMethod turns the entity\'s own mapped field into a computed (unmapped) ' +
+      'field of the source field\'s type and EDT (fieldType overrides the EDT), in one write with its ' +
+      'static method: sourceCode when given, else an existing method of that name, else a generated ' +
+      'SysComputedColumn::returnField over the field it was mapped to. A key field is refused. ' +
       'fieldType (an EDT name) works on an ENUM field too — it re-types the field to that EDT; fieldLabel ' +
       'takes a label id or raw text. fieldAllowEdit=false writes <AllowEdit>No</AllowEdit> (staging key ' +
       'fields, BPErrorTablePrimaryKeyEditable); fieldIgnoreEdtRelation=true writes ' +

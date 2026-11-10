@@ -4,13 +4,20 @@
  * (tests/utils/layering.test.ts); the writers are in directXmlWriters.ts.
  */
 
+import * as fs from 'fs/promises';
 import {
   directXmlAddDataEntityDataSource, directXmlAddDataEntityField, directXmlSetTableFieldProperties,
-  viaXmlFallback,
+  directXmlMakeEntityFieldComputed, viaXmlFallback,
 } from './directXmlWriters.js';
 import { renderOpSpec } from '../specs/d365foFileOpSpecs.js';
 import { z } from 'zod';
 import { bridgeModifyField } from '../../bridge/index.js';
+import { findBaseObjectXml } from '../../utils/baseObjectXml.js';
+import { xppMethodSourceForXml } from '../../utils/xppFormat.js';
+import { ensureXppDocComment } from '../../utils/xppDocGen.js';
+import {
+  entityMappedFieldBinding, tableFieldComputedType, returnFieldMethodSource,
+} from '../xml/entityComputedField.js';
 
 type Args = Record<string, any>;
 export type OpResult = { success: boolean; message: string; viaXmlFallback?: boolean } | null;
@@ -90,7 +97,9 @@ export async function modifyFieldOp(
   objectName: string,
   filePath: string,
   args: Args,
+  symbolIndex?: unknown,
 ): Promise<OpResult> {
+  if (args.computedFieldMethod) return entityFieldToComputed(objectName, filePath, args, symbolIndex);
   // Map the field-* params onto the bare prop keys the bridge expects.
   const fieldProps: Record<string, string> = {};
   if (args.fieldLabel) fieldProps.label = args.fieldLabel;
@@ -113,11 +122,58 @@ export async function modifyFieldOp(
   return result;
 }
 
+/**
+ * modify-field computedFieldMethod on a data-entity: the entity's own mapped field becomes a
+ * computed (unmapped) field of the source field's type, and its static method is written in
+ * the same edit — sourceCode when given, else an existing method of that name, else a
+ * SysComputedColumn::returnField over the field it was mapped to.
+ */
+async function entityFieldToComputed(objectName: string, filePath: string, args: Args, symbolIndex: unknown): Promise<OpResult> {
+  const fail = (why: string): OpResult => ({ success: false, message: `❌ modify-field computedFieldMethod: ${why} — nothing was written.` });
+  const method = String(args.computedFieldMethod).trim();
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(method)) return fail(`'${method}' is not a method name`);
+  let xml: string;
+  try { xml = (await fs.readFile(filePath, 'utf-8')).replace(/\r\n/g, '\n'); } catch { return null; }
+  if (!/<AxDataEntityView[\s>]/.test(xml)) return fail('computedFieldMethod applies to a data-entity field only');
+  const binding = entityMappedFieldBinding(xml, String(args.fieldName));
+  if ('error' in binding) return fail(binding.error);
+  // A system field is typed without its table: no lookup, which without an index walks every package.
+  let type = tableFieldComputedType(null, binding.dataField);
+  if (!type && binding.table) {
+    type = tableFieldComputedType(await findBaseObjectXml('table', binding.table, symbolIndex).catch(() => null), binding.dataField);
+  }
+  if (!type) {
+    return fail(
+      `could not read the type of ${binding.table ?? `datasource ${binding.dataSource}`}.${binding.dataField} ` +
+      `(${binding.table ? 'table XML not found or field not in it' : 'the datasource names no table'})`,
+    );
+  }
+  if (args.fieldType) type.edt = String(args.fieldType);
+  const methodExists = new RegExp(`<Method>\\s*<Name>${method}</Name>`, 'i').test(xml);
+  let source: string | null = null;
+  if (args.sourceCode) source = String(args.sourceCode);
+  else if (!methodExists) {
+    if (!binding.table) return fail(`datasource '${binding.dataSource}' names no table; pass the method as sourceCode`);
+    source = returnFieldMethodSource(objectName, method, String(args.fieldName), binding as Required<typeof binding>);
+  }
+  const r = await directXmlMakeEntityFieldComputed(filePath, {
+    fieldName: String(args.fieldName), methodName: method, type,
+    source: source === null ? null : xppMethodSourceForXml(ensureXppDocComment(source)),
+  });
+  const ignored = ['fieldLabel', 'fieldHelpText', 'fieldMandatory', 'fieldEnumType', 'fieldStringSize', 'fieldAllowEdit', 'fieldIgnoreEdtRelation']
+    .filter(k => args[k] !== undefined);
+  if (r?.success && ignored.length) {
+    r.message += `\n⚠️ Not applied together with computedFieldMethod: ${ignored.join(', ')}. Run modify-field again for them.`;
+  }
+  return r ? viaXmlFallback(r) : null;
+}
+
 /** Zod members for the parameters these operations add (spread into the modify schema). */
 export const ENTITY_AND_FIELD_ZOD_PARAMS = {
   fieldAllowEdit: z.boolean().optional().describe('modify-field: false writes <AllowEdit>No</AllowEdit> (staging key fields; clears BPErrorTablePrimaryKeyEditable).'),
   fieldIgnoreEdtRelation: z.boolean().optional().describe('modify-field: true writes <IgnoreEDTRelation>Yes</IgnoreEDTRelation> (EDT with a relation; clears BPErrorEDTNotMigrated).'),
   joinField: z.string().optional().describe('add-data-source on a data-entity: field of the JOIN (parent) datasource the relation starts from. Required with relatedField.'),
   relatedField: z.string().optional().describe("add-data-source on a data-entity: field of the NEW datasource's table it joins to. Required with joinField."),
+  computedFieldMethod: z.string().optional().describe('modify-field on a data-entity: turn the mapped field into a computed field whose ComputedFieldMethod is this static method (sourceCode, an existing method, or a generated SysComputedColumn::returnField).'),
   dataSourceReadOnly: z.boolean().optional().describe('add-data-source on a data-entity: write IsReadOnly=Yes on the new datasource.'),
 };
