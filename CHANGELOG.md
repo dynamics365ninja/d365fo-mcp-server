@@ -166,6 +166,13 @@ those are called out explicitly below.
   CommandButton, a QuickFilter targets the emitted grid. All catalog patterns the
   platform defines now expand validator-clean, and the expander test's gap list is
   empty. The datasource, grid-field and caption behaviour is unchanged.
+  `npm run oracle:form-expansions` (Windows) runs every expansion through the
+  platform's own PatternAnalyzer, with a negative control that must fail: all 27
+  are accepted. It found what the validator cannot see, now fixed: a plain
+  extension control's WidthMode written after its FormControlExtension (the
+  deserializer drops it), duplicate column names when a pattern has two grids, a
+  QuickFilter aimed at the first grid of the form instead of its own, and an empty
+  `<Controls />` on buttons and fields, which shipped forms never write.
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know
   neither property on a menu item, and a Staging or TempDB table kept Visual Studio's
