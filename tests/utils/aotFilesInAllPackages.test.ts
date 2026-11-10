@@ -69,6 +69,24 @@ describe('findAotFilesInAllPackages', () => {
     expect(await findAotFilesInAllPackages('AxMenuExtension', prefix)).toHaveLength(2);
   });
 
+  it('follows a package or a model folder that is a junction or symbolic link', async () => {
+    // A Dirent describes the link itself, so isDirectory() is false for one. A linked package
+    // is the usual way a source-controlled model gets into PackagesLocalDirectory.
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'aot-all-'));
+    const viaPackage = path.join(dir, 'repo', 'ContosoLinked', 'ContosoLinked', 'AxMenu', 'ContosoLinked.xml');
+    const viaModel = path.join(dir, 'repo', 'ContosoModel', 'AxMenu', 'ContosoModel.xml');
+    for (const f of [viaPackage, viaModel]) {
+      await fs.mkdir(path.dirname(f), { recursive: true });
+      await fs.writeFile(f, '<x/>', 'utf-8');
+    }
+    await fs.mkdir(path.join(dir, 'pld', 'ContosoPkg'), { recursive: true });
+    await fs.symlink(path.join(dir, 'repo', 'ContosoLinked'), path.join(dir, 'pld', 'ContosoLinked'), 'junction');
+    await fs.symlink(path.join(dir, 'repo', 'ContosoModel'), path.join(dir, 'pld', 'ContosoPkg', 'ContosoModel'), 'junction');
+    roots.pld = path.join(dir, 'pld');
+    const found = (await findAotFilesInAllPackages('AxMenu', () => true)).map(f => path.basename(f)).sort();
+    expect(found).toEqual(['ContosoLinked.xml', 'ContosoModel.xml']);
+  });
+
   it('returns nothing for roots that do not exist', async () => {
     roots.pld = '/nonexistent-root';
     expect(await findAotFilesInAllPackages('AxMenu', () => true)).toEqual([]);

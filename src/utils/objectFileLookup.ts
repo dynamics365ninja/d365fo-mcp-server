@@ -380,10 +380,13 @@ async function modelDirs(root: string): Promise<string[]> {
       let packages: import('fs').Dirent[];
       try { packages = await fs.readdir(root, { withFileTypes: true }); } catch { return dirs; }
       for (const pkg of packages) {
-        if (!pkg.isDirectory()) continue;
+        // isSymbolicLink too: a Dirent describes the link itself, so a package linked into
+        // the packages folder (a junction, how a source-controlled model gets there) has
+        // isDirectory() false. A link to a file fails the readdir below and is skipped.
+        if (!pkg.isDirectory() && !pkg.isSymbolicLink()) continue;
         try {
           for (const m of await fs.readdir(path.join(root, pkg.name), { withFileTypes: true })) {
-            if (m.isDirectory()) dirs.push(path.join(root, pkg.name, m.name));
+            if (m.isDirectory() || m.isSymbolicLink()) dirs.push(path.join(root, pkg.name, m.name));
           }
         } catch { /* unreadable package folder */ }
       }
