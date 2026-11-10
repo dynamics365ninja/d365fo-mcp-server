@@ -182,6 +182,19 @@ those are called out explicitly below.
   `openWorldHint: false`.
 
 ### Fixed
+- **Scanning the workspace no longer blocks the server for a second or more on a large
+  repo.** For every `.xml` file the scan resolved the real path of the file and of the
+  workspace root again, synchronously, and then read the file times one file at a time.
+  On a workspace of about 2,400 files that was over a second with the server unable to
+  answer anything else, and it repeated often because the scan result is kept for 15
+  seconds and every write drops it. `get_workspace_info`, the context snapshot and every
+  read that includes the workspace paid it. The root is now resolved once per scan, file
+  times are read 16 at a time, and a real path is resolved only for an entry that is a
+  link or sits below a linked directory. The same change makes the link check effective:
+  a file link inside the workspace whose target is outside the workspace root was meant
+  to be skipped but was listed, because the check also accepted the path as written. It
+  is now skipped with a warning. Links that stay inside the root, and a workspace root
+  that is itself a link or junction, work as before. Nothing to configure.
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know
   neither property on a menu item, and a Staging or TempDB table kept Visual Studio's
