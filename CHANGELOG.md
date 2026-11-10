@@ -100,6 +100,14 @@ those are called out explicitly below.
   and refuses a name listed twice. A modify of a missing role or duty extension whose
   standard base is in the index now offers the one `create` call that does it, and the
   refusal to modify a standard role or duty names the extension types.
+- **`modify-field` turns a data entity's mapped field into a computed field.**
+  `computedFieldMethod` rewrites the entity's own mapped field as
+  `AxDataEntityViewUnmappedField<Type>` (type, EDT and enum read from the source
+  table field; system fields such as `CreatedDateTime` known without it) and writes
+  its static method in the same edit: `sourceCode` when given, an existing method of
+  that name, or a generated `SysComputedColumn::returnField` over the field it was
+  mapped to. A key field is refused. This used to take a rewrite of the whole entity
+  with `create` + `overwrite`.
 
 ### Changed
 - **`build_d365fo_project` and `run_systest_class` are no longer marked as closed-world
