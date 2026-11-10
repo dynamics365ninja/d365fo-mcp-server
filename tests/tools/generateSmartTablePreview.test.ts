@@ -66,6 +66,32 @@ describe('scaffold table preview=true (#21)', () => {
     expect(text).toContain('<Name>NoteId</Name>');
   });
 
+  it('does not tie a key field to itself when its EDT points back at the table', async () => {
+    const db = {
+      getReadDb: () => ({
+        prepare: (sql: string) => ({
+          all: () => [],
+          // The final table name: the model name is applied as the object prefix.
+          get: () => (sql.includes('edt_metadata') ? { reference_table: 'MyModelConDemoKey' } : undefined),
+          run: () => {},
+        }),
+      }),
+    } as any;
+    const result = await handleGenerateSmartTable(
+      {
+        name: 'ConDemoKey',
+        modelName: 'MyModel',
+        preview: true,
+        fields: [{ name: 'ConDemoKeyId', edt: 'ConDemoKeyId' }, { name: 'ParentKey', edt: 'ConDemoKeyId' }],
+      },
+      db,
+    );
+
+    const text = result?.content[0].text as string;
+    expect(text).not.toContain('<Field>ConDemoKeyId</Field>');
+    expect(text).toContain('<Field>ParentKey</Field>');
+  });
+
   it('still refuses a real (non-preview) scaffold with no write location', async () => {
     await expect(
       handleGenerateSmartTable(

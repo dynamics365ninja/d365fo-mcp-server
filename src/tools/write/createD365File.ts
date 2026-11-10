@@ -56,6 +56,11 @@ import {
   reconcileTableCreateProperties,
   renderTableCreateHonestyReport,
 } from '../xml/createTablePropertyHonesty.js';
+import { relationOnDeleteFromSpecs, type TableBpDefaultsOptions } from '../xml/tableBpDefaults.js';
+import { fieldEdtNames, resolveEdtRelations } from '../xml/edtRelationResolver.js';
+import { applyMenuItemBpDefaults, renderMenuItemBpNote } from '../xml/menuItemBpDefaults.js';
+import { menuItemKindOf } from '../../utils/bpCreateDefaults.js';
+import type { XppServerContext } from '../../types/context.js';
 
 
 /**
@@ -654,14 +659,16 @@ function bridgeSubscriberAccessLevel(key: string, value: unknown): unknown {
 async function reconcileCreatedTableProperties(
   filePath: string | undefined,
   properties: unknown,
+  db?: unknown,
 ): Promise<string> {
   if (!filePath) return '';
   try {
     const onDisk = await fs.readFile(filePath, 'utf-8');
-    // No properties still reconciles: a regular table gets Visual Studio's
-    // SubscriberAccessLevel, which no bridge create writes.
+    // No properties still reconciles: every table gets the OperationalDomain and
+    // SubscriberAccessLevel xppbp expects, which no bridge create writes.
     const props = properties && typeof properties === 'object' ? (properties as Record<string, unknown>) : undefined;
-    const reconciled = reconcileTableCreateProperties(onDisk, props);
+    // The bridge wrote this file, so its parent-pointing delete actions are its own (tableBpDefaults.ts).
+    const reconciled = reconcileTableCreateProperties(onDisk, props, await tableBpOptions(onDisk, props, db, true));
     // AllowEdit / IgnoreEDTRelation have no key in the bridge's create payload: applied to the XML on top of the reconcile.
     const fieldSpecs = props?.fields;
     const fieldPatches = Array.isArray(fieldSpecs)
@@ -684,6 +691,61 @@ async function reconcileCreatedTableProperties(
     console.error(`[create_d365fo_file] table property reconcile skipped: ${e}`);
     return '';
   }
+}
+
+/**
+ * The structural BP-default options for a table create (tableBpDefaults.ts):
+ * the EDT relations of its fields, resolved from the index, and the caller's
+ * relations[].onDelete. `writerXml` says the document came from one of this
+ * server's writers rather than from the caller's xmlContent.
+ */
+async function tableBpOptions(
+  xml: string,
+  props: Record<string, unknown> | undefined,
+  db: unknown,
+  writerXml: boolean,
+): Promise<TableBpDefaultsOptions> {
+  return {
+    edtRelations: await resolveEdtRelations(fieldEdtNames(xml), db),
+    relationOnDelete: relationOnDeleteFromSpecs(props?.relations),
+    dropWriterDeleteActions: writerXml,
+  };
+}
+
+/** The symbol index's read handle, or undefined when there is none. */
+function readDbOf(context: Pick<XppServerContext, 'symbolIndex'> | Partial<Pick<XppServerContext, 'symbolIndex'>> | undefined): unknown {
+  try {
+    return context?.symbolIndex?.getReadDb?.();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * OperationalDomain and SubscriberAccessLevel on a menu item the bridge wrote
+ * (menuItemBpDefaults.ts). The bridge's SetAxMenuItemProperty() knows neither.
+ * Best-effort, like the table reconcile: a failure never fails the create.
+ */
+async function reconcileCreatedMenuItem(filePath: string | undefined, properties: unknown): Promise<string> {
+  if (!filePath) return '';
+  try {
+    const onDisk = await fs.readFile(filePath, 'utf-8');
+    const props = properties && typeof properties === 'object' ? (properties as Record<string, unknown>) : undefined;
+    const r = applyMenuItemBpDefaults(onDisk, props);
+    if (r.xml !== onDisk) await writeFileAtomic(filePath, normalizeD365Xml(r.xml));
+    return renderMenuItemBpNote(r);
+  } catch (e) {
+    console.error(`[create_d365fo_file] menu item BP defaults skipped: ${e}`);
+    return '';
+  }
+}
+
+/** Keys the bridge cannot set on this object type and this tool writes itself after the create. */
+function writtenAfterBridgeCreate(objectType: string, key: string): boolean {
+  const k = key.toLowerCase();
+  if (objectType === 'table') return k === 'operationaldomain';
+  if (menuItemKindOf(objectType)) return k === 'operationaldomain' || k === 'subscriberaccesslevel';
+  return false;
 }
 
 /**
@@ -1415,6 +1477,8 @@ export async function handleCreateD365File(
         const scalarProperties: Record<string, string> | undefined = args.properties
           ? Object.fromEntries(
               Object.entries(args.properties as Record<string, unknown>)
+                // Written after the create instead, so the bridge does not report them as unapplied.
+                .filter(([k]) => !writtenAfterBridgeCreate(args.objectType, k))
                 .map(([k, v]): [string, unknown] => [k, bridgeSubscriberAccessLevel(k, v)])
                 .filter(([, v]) => v != null && (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'))
                 .map(([k, v]) => [k, String(v)]),
@@ -1668,6 +1732,7 @@ export async function handleCreateD365File(
               const honestyReport = await reconcileCreatedTableProperties(
                 smartResult.filePath,
                 args.properties,
+                readDbOf(context),
               ) + await stampIndexValidTimeState(smartResult.filePath, args.properties);
 
               // Schedule (do not await) the provider rebuild that makes the new object
@@ -1799,9 +1864,11 @@ export async function handleCreateD365File(
           // #35: C# CreateTable() runs the same SetAxTableProperty() switch as the
           // smart path and ignores its return value just as thoroughly.
           const honestyReport = args.objectType === 'table'
-            ? await reconcileCreatedTableProperties(bridgeResult.filePath, args.properties)
+            ? await reconcileCreatedTableProperties(bridgeResult.filePath, args.properties, readDbOf(context))
               + await stampIndexValidTimeState(bridgeResult.filePath, args.properties)
-            : '';
+            : menuItemKindOf(args.objectType)
+              ? await reconcileCreatedMenuItem(bridgeResult.filePath, args.properties)
+              : '';
 
           // Refresh only after the reconcile — see the smart-table path for what
           // scheduling it first cost.
@@ -2029,9 +2096,20 @@ export async function handleCreateD365File(
     // used to come back as an identical ✅.
     let tableHonestyReport = '';
     if (args.objectType === 'table') {
-      const reconciled = reconcileTableCreateProperties(xmlContent, args.properties);
+      const props = args.properties as Record<string, unknown> | undefined;
+      const reconciled = reconcileTableCreateProperties(
+        xmlContent,
+        props,
+        // Caller xmlContent keeps its own delete actions: only the template's are ours.
+        await tableBpOptions(xmlContent, props, readDbOf(context), !args.xmlContent),
+      );
       xmlContent = reconciled.xml;
       tableHonestyReport = renderTableCreateHonestyReport(reconciled);
+    } else if (menuItemKindOf(args.objectType)) {
+      // Same report slot: the BP defaults a menu item got (menuItemBpDefaults.ts).
+      const r = applyMenuItemBpDefaults(xmlContent, args.properties as Record<string, unknown> | undefined);
+      xmlContent = r.xml;
+      tableHonestyReport = renderMenuItemBpNote(r);
     }
 
     // Why this writer ran at all. Only set when a bridge create threw — an
