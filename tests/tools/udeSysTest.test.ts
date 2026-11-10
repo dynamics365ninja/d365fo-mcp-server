@@ -307,6 +307,22 @@ describe('runTestRequestInCloud', () => {
     expect(calls.filter(c => c.method === 'POST')).toHaveLength(2);
   });
 
+  it('backs off on a transient status that names no Retry-After', async () => {
+    const { client } = fakeDataverse([{ statecode: 3, statuscode: 30 }], [DONE]);
+    const real = client.fetch!;
+    let polls = 0;
+    client.fetch = (async (url: string, init: RequestInit) => {
+      if (url.includes('asyncoperations(') && polls++ < 2) return new Response(null, { status: 503 });
+      return real(url, init);
+    }) as typeof fetch;
+
+    const started = Date.now();
+    await runTestRequestInCloud(client, 'x.tsx', '<TestSuite/>', { pollMs: 1, retryDelayMs: 60 });
+
+    // 60 ms, then 120 ms. A missing header must not read as "Retry-After: 0".
+    expect(Date.now() - started).toBeGreaterThanOrEqual(150);
+  });
+
   it('does not retry a refused POST', async () => {
     let posts = 0;
     const client: DataverseClient = {

@@ -252,7 +252,10 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 /** The wait a 429/503 asks for (Retry-After, in seconds), capped; undefined when it names none. */
 function retryAfterMs(response: Response): number | undefined {
-  const seconds = Number(response.headers.get('Retry-After'));
+  // Number(null) is 0: without this check a response with no header would retry at once.
+  const header = response.headers.get('Retry-After');
+  if (header === null || header.trim() === '') return undefined;
+  const seconds = Number(header);
   return Number.isFinite(seconds) && seconds >= 0 ? Math.min(seconds * 1000, 60_000) : undefined;
 }
 
