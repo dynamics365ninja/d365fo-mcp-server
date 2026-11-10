@@ -61,10 +61,23 @@ those are called out explicitly below.
   the Workspace template adds the required related-links section, the DetailsMaster
   template always emits the required header title control, and the pattern
   expander writes control elements in canonical order and the Design Style the
-  platform requires. The expander still builds platform-rejected forms for 22
-  long-tail patterns. `generate_smart_form` self-tests every expansion and falls
-  back to a template or clone for those, and the expander test lists them with
-  `it.fails`.
+  platform requires.
+- **The pattern expander builds from the platform definition, so every long-tail
+  pattern gets a deterministic scaffold.** `generate_smart_form` expands patterns
+  without a hand-written template through `expandPatternToXml`, which walked the
+  curated catalog structure and built forms the platform rejects for 22 patterns
+  (the Dialog, DropDialog, Lookup, FormPart, SimpleDetails and workspace variants,
+  `Wizard`, `AdvancedSelection`), so those fell back to a template or clone. It now
+  reads the platform definition of the declared pattern version: one control per
+  required part in definition order (a OneOf only when none of its alternatives is
+  optional), every Equals property rule the metamodel default does not already
+  meet, a caption for a Caption or Text that must not be empty, a grid's
+  DefaultAction pointed at the sibling default-action button, and for a
+  sub-pattern part the first named sub-pattern (FieldsFieldGroups when listed),
+  declared and expanded in turn. A `$Button` part whose rule sets Command becomes a
+  CommandButton, a QuickFilter targets the emitted grid. All catalog patterns the
+  platform defines now expand validator-clean, and the expander test's gap list is
+  empty. The datasource, grid-field and caption behaviour is unchanged.
 
 ### Added
 - **Form pattern oracles.** `npm run catalog:form-patterns` regenerates the platform

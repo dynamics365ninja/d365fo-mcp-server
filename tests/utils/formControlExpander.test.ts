@@ -29,21 +29,13 @@ describe('expandPatternToXml — structural validity', () => {
     expect(expandable.length).toBeGreaterThan(3);
   });
 
-  // Patterns whose expansion the platform still rejects. The validator now checks
-  // the platform's own definitions (parts, counts, required property values), and
-  // the expander builds from the curated structure, which does not carry all of
-  // them yet. generate_smart_form self-tests every expansion and falls back to a
-  // template or clone for these, so no broken form is written. `it.fails` keeps
-  // the list honest: an entry whose expansion becomes clean fails until removed.
-  const PLATFORM_GAPS = new Set([
-    'AdvancedSelection', 'DetailsMasterTabs', 'DialogDoubleTabs', 'DialogFastTabs',
-    'DialogReadOnly', 'DialogTabs', 'DropDialog', 'DropDialogReadOnly',
-    'FormPartFactboxGrid', 'FormPartSectionList', 'FormPartSectionListDouble',
-    'LookupGridOnly', 'LookupPreview', 'LookupTab',
-    'SimpleDetails-FastTabsContainer', 'SimpleDetails-Panorama',
-    'SimpleDetails-StandardTabsContainer', 'SimpleDetails-ToolbarFields',
-    'SimpleListDetails-Tree', 'TabbedWorkspace', 'Wizard', 'WorkspaceOperational',
-  ]);
+  // Patterns whose expansion the platform still rejects, each with the reason.
+  // The expander builds from the same platform definitions the validator checks,
+  // so this is empty. generate_smart_form self-tests every expansion and falls
+  // back to a template or clone for an entry, so no broken form is written.
+  // `it.fails` keeps the list honest: an entry whose expansion becomes clean
+  // fails until removed.
+  const PLATFORM_GAPS = new Set<string>([]);
 
   for (const spec of expandable) {
     const test = PLATFORM_GAPS.has(spec.xmlName) ? it.fails : it;
@@ -78,6 +70,24 @@ describe('expandPatternToXml — emitted shape', () => {
     const xml = expandPatternToXml(gridSpec, baseOpts);
     expect(xml).toContain('<DataSource>MyTable</DataSource>');
     expect(xml).toContain('Grid_Name');
+  });
+
+  it('declares the first named sub-pattern on a sub-pattern part and expands it', async () => {
+    const spec = FORM_PATTERN_CATALOG.patterns.find((p) => p.xmlName === 'DetailsMasterTabs')!;
+    const xml = expandPatternToXml(spec, baseOpts);
+    expect(xml).toContain('<Pattern>CustomAndQuickFilters</Pattern>');
+    expect(xml).toContain('<Name>QuickFilterControl</Name>');
+    // The grid's DefaultAction names the sibling button the definition provides.
+    expect(xml).toContain('<DefaultAction>MainGridDefaultAction</DefaultAction>');
+    const report = await validateFormPatternXml(xml);
+    expect(report.violations.filter((v) => v.rule === 'FP006')).toEqual([]);
+  });
+
+  it('expands every catalog pattern the platform defines', () => {
+    const notExpandable = FORM_PATTERN_CATALOG.patterns
+      .filter((p) => p.versions.length > 0 && !canExpandPattern(p))
+      .map((p) => p.xmlName);
+    expect(notExpandable).toEqual([]);
   });
 
   it('emits a valid empty DataSources block when no datasource is given', () => {
