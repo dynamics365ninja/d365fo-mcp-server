@@ -2346,7 +2346,7 @@ async function runModify(
         break;
       }
       case 'modify-field': {
-        if (args.fieldName) bridgeResult = await modifyFieldOp(context.bridge, objectName, actualFilePath, args as any);
+        if (args.fieldName) bridgeResult = await modifyFieldOp(context.bridge, objectName, actualFilePath, args as any, symbolIndex);
         break;
       }
       case 'rename-field': {
