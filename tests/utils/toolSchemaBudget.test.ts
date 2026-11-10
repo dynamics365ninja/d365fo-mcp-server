@@ -215,6 +215,11 @@ const CHARS_PER_TOKEN = 4;
 // until done — call ONCE", `waitTimeoutMs` said its part in fewer words — and by
 // leaving out `openWorldHint: false` on the two tools that do reach the cloud
 // (true is the spec default). Measured payload after: 45_083. The ceiling holds.
+//
+// d365fo_file's operation enum gained add-duty, remove-duty, add-privilege and
+// remove-privilege (+60). Paid for in `properties`, whose description listed example
+// properties the op-spec it points to returns, and said "creation" under a [create]
+// tag (-68). Measured payload after: 45_070, with `deploy` above. The ceiling holds.
 const TOTAL_BUDGET = 45_100;
 // axdb_sql is published only once SQL is configured, so TOTAL_BUDGET above —
 // the payload every default install sends — does not carry it. A configured
