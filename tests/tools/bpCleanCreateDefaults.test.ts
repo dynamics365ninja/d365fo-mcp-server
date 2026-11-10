@@ -373,6 +373,19 @@ describe('applyTableBpDefaults: EDT relations', () => {
     expect(r.notes).toContain('table relations for EDT relations: CustAccount → CustTable.AccountNum');
   });
 
+  it('does not tie a key field to itself when its EDT points back at this table', () => {
+    const own = { ContosoRentLineId: { table: 'contosorentline', relatedField: 'RentLineId' } };
+    const xml = structuredTable({
+      fields:
+        field('RentLineId', '\t\t\t<ExtendedDataType>ContosoRentLineId</ExtendedDataType>\n') +
+        field('ParentLineId', '\t\t\t<ExtendedDataType>ContosoRentLineId</ExtendedDataType>\n'),
+    });
+    const r = applyTableBpDefaults(xml, { edtRelations: own });
+    expect(r.xml).not.toContain('<Field>RentLineId</Field>');
+    // Another field of the table with that EDT is a real hierarchy: it keeps its relation.
+    expect(r.xml).toContain('<Field>ParentLineId</Field>');
+  });
+
   it('adds it on a TempDB table too', () => {
     const xml = structuredTable({ props: '\t<TableType>TempDB</TableType>\n', fields: field('ItemId', '\t\t\t<ExtendedDataType>ItemId</ExtendedDataType>\n') });
     expect(applyTableBpDefaults(xml, { edtRelations }).xml).toContain('<RelatedTable>InventTable</RelatedTable>');

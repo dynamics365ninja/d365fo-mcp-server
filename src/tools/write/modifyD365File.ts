@@ -82,7 +82,7 @@ import {
 import {
   crossModelWriteRefusal, standDownNotice, baseObjectOf, type ExistingExtension,
 } from '../../utils/crossModelWriteGuard.js';
-import { resolveAnchorModel } from './writeAnchorGuard.js';
+import { resolveAnchorModel, resolveModelDependency } from './writeAnchorGuard.js';
 import { resolveOrCreateLabelRef, type AutoLabelTarget } from './createLabel.js';
 import { isRawLabelText } from '../../utils/labelReference.js';
 import { readFileEol, withEol } from '../../utils/eolUtils.js';
@@ -1789,6 +1789,7 @@ async function runModify(
       activeModel,
       toolSwitchedModel: getConfigManager().getToolProjectSwitch()?.forcedModel ?? null,
       action: 'modify' as const,
+      dependency: await resolveModelDependency(owningModel, activeModel, filePath),
       existingExtensions: findExtensionsInModel(
         symbolIndex,
         baseObjectOf(objectName, objectType),

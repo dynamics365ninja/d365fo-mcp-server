@@ -74,22 +74,55 @@ those are called out explicitly below.
   share it; tokens are kept in memory only. Tenants that block Microsoft's sample
   Dataverse client can set `environment.dataverseClientId`, and guests
   `environment.dataverseTenant`. `setup` asks for the URL on UDE.
+- **`build_d365fo_project(deploy: true)` deploys the built model to its UDE environment,
+  so `run_systest_class` tests the new code.** Tests on UDE run against the code deployed
+  to the cloud runtime, and until now only Visual Studio could deploy it. After a
+  successful build the tool now deploys the package that holds the model, and only that
+  package, through the same Power Platform Tools library Visual Studio uses. It signs in
+  with the server's own Dataverse token, so there is no second sign-in. By default it
+  deploys a Dev package without a database sync (about 3 minutes). With `dbSync` as well,
+  it deploys a Release package with a full sync in the environment (about 20 minutes),
+  which a table, view, data entity, enum or EDT change needs; together with `deploy`,
+  `dbSync` runs in the environment instead of a local SyncEngine. Success is read from
+  the environment's status lines, and a failed deployment makes the result an error
+  while the build verdict stands. A deploy that cannot happen (not a UDE, no
+  `environment.dataverseUrl`, a failed sign-in, or `restartAos` given as well) is refused
+  before anything is compiled. Needs Power Platform Tools for Visual Studio (a UDE
+  prerequisite) and Windows PowerShell 5.1. The library is undocumented: when an update
+  changes it, the tool says which members are missing and uploads nothing. The system
+  prompt and `copilot-instructions.md` now tell agents to deploy before running changed
+  tests on UDE, and to announce a full sync. The `run_systest_class` replies about
+  undeployed code point to `deploy: true`. On UDE, `doctor` reports whether Power
+  Platform Tools is installed, so a missing prerequisite shows up before the first
+  deployment fails. To keep the tool list's size, the descriptions of `wait` and
+  `waitTimeoutMs` are shorter; what they mean is unchanged.
+- **Binary-only ISV models are indexed (signatures only).** A model shipped as compiled
+  output (`bin\*.netmodule`, no `AxClass`/`AxForm` XML) used to yield nothing: `search`,
+  `get_object_info`, `labels`, `security_info` and `validate_code(mode="references")` knew
+  none of its classes, so every call into the ISV came back `unknown-type` and agents
+  invented members. The new `BinaryModelExtractor` (net48, Windows) reads such models through
+  `CreateRuntimeProvider` and `npm run extract-binary-models` imports them: classes, tables,
+  EDTs and enums as signatures (X++ types, defaults, modifiers, attributes), forms, queries,
+  views, data entities, maps, menu items, security and extensions through the stock
+  `extract-metadata` parsers, label texts from the `Resources` satellite assemblies, and the
+  compiler's chain-of-command record, so `extension_info(mode="coc")` lists wraps of binary
+  extension classes. No method body or source is stored; entries say "binary ISV, signatures
+  only". The import refuses a model whose references mostly do not resolve against the
+  platform it was read with (`--force` overrides). `build-database` also indexes label texts
+  found under `<METADATA_PATH>/<Model>/AxLabelFile`. `BinaryModelExtractor --models` takes
+  names and masks by module or display name (`Contoso*,!ContosoDemo*`); `--no-aot` skips the
+  object XML and labels when only signatures are needed; `--kernel` also dumps the platform
+  kernel (`Common`, `xRecord`, `Object`, ...) as the model `Kernel`. See docs/BINARY_ISV_MODELS.md.
 
-### Dependencies
-- **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
-  native add-ons; with `@azure/msal-common` and `jsonwebtoken` (and their `jws`, `semver`
-  and `lodash.*` helpers) it adds 16 packages to the lockfile and changes none.
+### Changed
+- **`build_d365fo_project` and `run_systest_class` are no longer marked as closed-world
+  tools.** Both reach the UDE environment's cloud runtime (a deployment, tests in the
+  cloud), so their annotations drop `openWorldHint: false` and fall back to MCP's
+  default, open-world. Clients that ask for confirmation or show a warning before
+  open-world tools may now do so for these two. Every other tool keeps
+  `openWorldHint: false`.
 
 ### Fixed
-- **On UDE, a tool call made right after the server starts no longer misses the custom
-  metadata folder.** The server marked the XPP config as loaded before reading it had
-  finished, so a call arriving during that read (in practice the first few seconds after
-  `initialize`, while the bridge was being set up) saw no config: the custom packages path
-  was empty, so e.g. `run_systest_class` reported "class not found" for a class in the
-  custom model, and the environment counted as traditional instead of UDE. If the tool call
-  won the race, the bridge itself was set up without the custom metadata folder for the
-  whole session. Every caller now waits for the same read; an XPP config that cannot be
-  read is logged and treated as missing.
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know
   neither property on a menu item, and a Staging or TempDB table kept Visual Studio's
@@ -110,8 +143,9 @@ those are called out explicitly below.
   Mandatory=Yes (BPErrorTablePrimaryKeyEditable / …NotMandatory, staging tables
   included), puts a field that is in no field group into AutoReport and fills an empty
   AutoReport (BPErrorTableFieldNotInFieldGroup, BPErrorTableMissingGroupAutoReport),
-  adds the table relation a field's EDT describes, TempDB tables included
-  (BPErrorEDTNotMigrated, BPUpgradeMetadataEDTRelation), and gives every relation
+  adds the table relation a field's EDT describes, TempDB tables included, except on the
+  key field the EDT itself points at (BPErrorEDTNotMigrated,
+  BPUpgradeMetadataEDTRelation), and gives every relation
   OnDelete (default Restricted, or `relations[].onDelete`) plus Cardinality,
   RelatedTableCardinality and RelationshipType when missing (BPCheckMissingDeleteActions,
   BPErrorTableRelationshipPropertiesCompleteness). An explicit AllowEdit=Yes or
@@ -129,6 +163,15 @@ those are called out explicitly below.
   builder no longer writes it, the create removes the bridge's, and the relation's
   OnDelete=Restricted protects the parent instead. A delete action that names its
   relation, or comes from your own `xmlContent`, is kept.
+- **On UDE, a tool call made right after the server starts no longer misses the custom
+  metadata folder.** The server marked the XPP config as loaded before reading it had
+  finished, so a call arriving during that read (in practice the first few seconds after
+  `initialize`, while the bridge was being set up) saw no config: the custom packages path
+  was empty, so e.g. `run_systest_class` reported "class not found" for a class in the
+  custom model, and the environment counted as traditional instead of UDE. If the tool call
+  won the race, the bridge itself was set up without the custom metadata folder for the
+  whole session. Every caller now waits for the same read; an XPP config that cannot be
+  read is logged and treated as missing.
 - **A build, DB sync, BP check or test run no longer waits 15 minutes and fails on a lock
   whose owner died, when Windows has given that owner's process id to another process.**
   An operation lock records its owner's process id, and a lock whose owner is running is
@@ -147,6 +190,74 @@ those are called out explicitly below.
   UDE the tool no longer looks for it and runs the tests in the cloud runtime instead
   (see *Added*). A classic VM detected as UDE can set `environment.type` to
   `traditional`; the UDE setup replies say so.
+- **`build_d365fo_project` could report a build that started before your latest edits as
+  this call's result.** A call that found a build of the same model running attached to
+  it, without checking whether sources had changed since it started, and returned its
+  "✅ Build succeeded" for code it may never have compiled. A finished build was already
+  checked this way. Now such a call waits for the running build and the post-build steps
+  run for it in this server process, lets the calls waiting on it collect it, and then
+  builds the current sources, saying so in the result. When the check cannot finish in
+  time (a large model while the compiler is reading it), the call attaches as before and
+  says the result may not cover edits made after that build started.
+- **A call that attached to a running build lost the post-build steps it asked for.**
+  Only the call that collects the result runs `bpCheck` and `dbSync`, with its own
+  options, so `dbSync: true` from a second call that attached to someone's plain build
+  synced nothing; its result only noted that post-build steps ran once, for the other
+  call. That call now runs the steps it asked for that the collecting call did not
+  (`deploy` included). It never repeats one that already ran, and when several waiting
+  calls need the same step, it runs once and they share its result. When the build was
+  collected in another server process, the steps that cannot be confirmed are named, and
+  a missing `dbSync` or `deploy` makes the result an error.
+- **`build_d365fo_project` went silent while it ran `bpCheck` or `dbSync`.** After the
+  compile the tool sent no progress notifications, so a long best-practice check or sync
+  could outlast a client's request timeout (about a minute in VS Code), and the client gave
+  up on a call that was still working. Now a heartbeat runs during those steps, and the
+  progress value keeps increasing across all phases of the call, as MCP requires.
+- **`search(scope="extensions")` returns every custom object, and `prefix` is the object
+  prefix (#1212).** The scope is described as "custom/ISV models only", but it returned only
+  extension-shaped rows (`*_Extension`, `Base.SuffixExtension` and their members). New custom
+  classes, tables and helpers never appeared, and `type:"class"` could not bring them back.
+  `prefix`, described as an object prefix (`ISV_`), was matched against the model name, so a
+  model whose name does not start with its object prefix returned nothing at all. Now the
+  scope returns every symbol in a custom model, and `type:"class-extension"` (or another
+  `*-extension` type) narrows it to extensions. `prefix` matches the object name or, for a
+  member, the object it belongs to, and anywhere in an extension-shaped name. A model name
+  that starts with `prefix` still matches, so existing calls keep working. Results put an
+  exact name first, then extension-shaped rows (the old result set), then names that start
+  with the query. `model IN (custom models)` stays the leading predicate, so the
+  `idx_symbols_model` seek is unchanged. Result captions say "custom models" instead of
+  "custom extensions".
+- **Menu checks on a write-only companion: the other extensions of the base menu.** The
+  parent check of `add-menu-item-to-menu` and `add-submenu` on a `menu-extension`, and the
+  element-name checks of both (a submenu name already in use is refused, a repeated item
+  is named `<item>N`), read the other extensions of the base menu from the index only. A
+  write-only companion has no index, so a parent another extension adds was refused
+  there, and a name one of them uses was written and failed the next build ("The name '…'
+  is not unique"). Without index rows they are now read from the package folders
+  (`<root>/<Package>/<Model>/AxMenuExtension/<BaseMenu>.*.xml`); backup copies a modify
+  leaves next to a file (`….xml.backup-…`) are not read. The scan is the one that finds a
+  standard base menu (`findAotFilesInAllPackages`), now shared and taking the
+  package/model folder list once per process, and matching file names in any casing.
+- **`get_object_info` for a form no longer prints an empty code block per method** when the
+  index holds method names but no source (a compiled form).
+- **The cross-model guard no longer advises an extension that cannot compile.** A write
+  into the workspace's test model (or any model built on the workspace model) was refused
+  with "Extend it from <workspace model> instead: create class-extension …". The test
+  model references the workspace model, never the reverse, so the workspace model cannot
+  see the class, and that extension would not compile. Agents followed the advice, failed,
+  and fell back to creating tests in the main model and moving them by hand. The guard now
+  reads both descriptors when it refuses: for a model whose `<ModuleReferences>` lists the
+  workspace model, it says an extension is impossible and why, names the model as the
+  workspace's test model when the workspace model lists it in `<InternalsVisibleTo>`, and
+  drops the "half-finished pieces are evidence of a mistake" line, which does not hold
+  there. It still refuses: the only route remains the user's
+  `D365FO_CROSS_MODEL_WRITE_MODELS`. For a shared model the workspace builds on, the
+  original case, nothing changes, and with no descriptor found the wording is as before.
+
+### Dependencies
+- **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
+  native add-ons; with `@azure/msal-common` and `jsonwebtoken` (and their `jws`, `semver`
+  and `lodash.*` helpers) it adds 16 packages to the lockfile and changes none.
 
 ## [1.23.0] — 2026-11-05
 

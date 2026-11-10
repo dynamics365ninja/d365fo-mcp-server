@@ -71,6 +71,17 @@ describe('getDataverseAccessToken', () => {
     expect(constructed).toEqual([{ auth: { clientId: 'client-1', authority: 'https://login.microsoftonline.com/organizations' } }]);
   });
 
+  it('redeems the refresh token on forceRefresh, for a token handed to a process that cannot renew it', async () => {
+    interactiveMock.mockResolvedValue({ accessToken: 'first', account: ACCOUNT });
+    silentMock.mockResolvedValue({ accessToken: 'fresh' });
+
+    await getDataverseAccessToken(SETTINGS, vi.fn());
+    expect(await getDataverseAccessToken(SETTINGS, vi.fn(), { forceRefresh: true })).toBe('fresh');
+    expect(silentMock).toHaveBeenCalledWith({
+      account: ACCOUNT, scopes: ['https://contoso-dev.crm.dynamics.com/.default'], forceRefresh: true,
+    });
+  });
+
   it('signs in again when silent renewal fails', async () => {
     interactiveMock.mockResolvedValueOnce({ accessToken: 'first', account: ACCOUNT })
       .mockResolvedValueOnce({ accessToken: 'again', account: ACCOUNT });
