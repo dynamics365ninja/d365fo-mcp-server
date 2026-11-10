@@ -107,10 +107,15 @@ export function _resetDataverseAuth(): void {
 /**
  * An access token for the Dataverse Web API at `settings.url`: silently when this process
  * signed in before, otherwise by opening the sign-in page in the browser and waiting for it.
+ *
+ * `forceRefresh` redeems the refresh token for a new access token instead of returning a cached
+ * one, which may have only minutes left. For a caller that hands the token to a process that
+ * cannot renew it (the UDE deployment), so the token lasts its full lifetime from now.
  */
 export async function getDataverseAccessToken(
   settings: DataverseAuthSettings,
   openBrowser: BrowserOpener = openInBrowser,
+  options: { forceRefresh?: boolean } = {},
 ): Promise<string> {
   const key = `${settings.tenant.toLowerCase()}|${settings.clientId.toLowerCase()}`;
   let entry = clients.get(key);
@@ -129,7 +134,11 @@ export async function getDataverseAccessToken(
 
   if (entry.account) {
     try {
-      const silent = await entry.app.acquireTokenSilent({ account: entry.account, scopes });
+      const silent = await entry.app.acquireTokenSilent({
+        account: entry.account,
+        scopes,
+        ...(options.forceRefresh ? { forceRefresh: true } : {}),
+      });
       if (silent?.accessToken) return silent.accessToken;
     } catch {
       /* expired refresh token, or a scope for a different environment: sign in again */

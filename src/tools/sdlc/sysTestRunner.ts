@@ -337,7 +337,7 @@ async function runSysTestOnUde(
   const assemblyPath = await findRuntimeAssembly(runtimeDir, packageName);
   if (!assemblyPath) {
     return notRun(`Dynamics.AX.${packageName}.dll was not found under ${runtimeDir}. Build the model ` +
-      `(build_d365fo_project) and deploy it to the environment, then run the tests again. No test ran.`);
+      `and deploy it to the environment (build_d365fo_project with deploy: true), then run the tests again. No test ran.`);
   }
 
   const dataverse = readDataverseSettings();
@@ -380,7 +380,8 @@ async function runSysTestOnUde(
     }
     return notRun(`The tests could not be run in the cloud runtime of ${dataverse.url}: ${message}\n\n` +
       'No test result came back, and this says nothing about the test class itself. A run that cannot start often ' +
-      'means the model is not deployed to the environment, or the sign-in has no access to it.' +
+      'means the model is not deployed to the environment (build_d365fo_project with deploy: true deploys it), or ' +
+      'the sign-in has no access to it.' +
       `\n\n${fallback}`);
   }
 
@@ -405,7 +406,7 @@ async function runSysTestOnUde(
       type: 'text',
       text: `${status}\n\nClass: ${className}${focus ? `::${toRun[0].name}` : ''}\nModel: ${modelName}` +
         `\nRan in the cloud runtime of ${dataverse.url}, against the code deployed there — a change that is not ` +
-        'deployed yet is not in this result.' +
+        'deployed yet is not in this result (build_d365fo_project with deploy: true deploys it).' +
         notes.map(n => `\n⚠️ ${n}`).join('') +
         renderOutcomeList(outcomes) +
         renderRedPhaseNote(className, outcomes) +

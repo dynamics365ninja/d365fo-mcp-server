@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { createProgressReporter, startProgressHeartbeat } from '../../src/utils/progressReporter';
+import { createProgressReporter, monotonicProgress, startProgressHeartbeat } from '../../src/utils/progressReporter';
 
 function fakeServer() {
   return { sendLoggingMessage: vi.fn().mockResolvedValue(undefined) };
@@ -107,5 +107,21 @@ describe('startProgressHeartbeat', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('monotonicProgress', () => {
+  it('never sends a value at or below the last one, whatever its callers pass', async () => {
+    const sent: number[] = [];
+    const report = monotonicProgress(async (_m, progress) => { sent.push(progress); });
+    // A build's wait (seconds since the build began), then a deployment counting from its own start.
+    for (const value of [10, 240, 10, 20, 250, 250, Number.NaN]) await report('x', value);
+    expect(sent).toEqual([10, 240, 241, 242, 250, 251, 252]);
+  });
+
+  it('passes the message and total through', async () => {
+    const inner = vi.fn().mockResolvedValue(undefined);
+    await monotonicProgress(inner)('🚀 Deploying', 5, 100);
+    expect(inner).toHaveBeenCalledWith('🚀 Deploying', 5, 100);
   });
 });
