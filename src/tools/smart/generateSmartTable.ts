@@ -26,6 +26,7 @@ import * as debouncedRefresh from '../../bridge/debouncedRefresh.js';
 import { recordCreatedArtifact } from '../../workspace/createdArtifactLedger.js';
 import { isKernelEdt, kernelEdtBaseType } from '../../knowledge/kernelEdts.js';
 import { resolveEdtRelations } from '../xml/edtRelationResolver.js';
+import { isOwnKeyEdtRelation } from '../xml/tableBpDefaults.js';
 
 interface GenerateSmartTableArgs {
   name: string;
@@ -657,6 +658,10 @@ export async function handleGenerateSmartTable(
   let finalName = objectPrefix ? applyObjectPrefix(name, objectPrefix, resolvedModel ?? undefined) : name;
   const objectSuffix = getObjectSuffix();
   finalName = applyObjectSuffix(finalName, objectSuffix);
+  // The relations above were built before the final name was known: drop one that ties a
+  // key field to itself because its EDT points back at this table (isOwnKeyEdtRelation).
+  relations = relations.filter(r => r.constraints.length === 0 ||
+    !r.constraints.every(c => isOwnKeyEdtRelation(finalName, c.field, { table: r.targetTable, relatedField: c.relatedField })));
   if (finalName !== name) {
     console.log(`[generateSmartTable] Applied naming: ${name} → ${finalName}`);
   }

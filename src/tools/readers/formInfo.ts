@@ -690,7 +690,8 @@ function formatFormOutput(
     output += `## 🔧 Form Methods\n\n`;
     for (const method of formInfo.methods) {
       output += `### ${method.name}\n\n`;
-      output += `\`\`\`xpp\n${method.signature}\n\`\`\`\n\n`;
+      // A compiled (binary ISV) form lists method names only; an empty code block would read as an empty method.
+      if (method.signature) output += `\`\`\`xpp\n${method.signature}\n\`\`\`\n\n`;
     }
   }
 

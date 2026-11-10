@@ -259,7 +259,10 @@ describe('tool inventory contract', () => {
       // read tool CLAIMS to be read-only; a write tool simply must not.
       expect([true, undefined], `'${toolName}' readOnlyHint must be true or absent`)
         .toContain(a.readOnlyHint);
-      expect(a.openWorldHint).toBe(false);
+      // Only the tools that reach a UDE environment's cloud runtime are open-world
+      // (the hint is then omitted, true being the spec default).
+      const openWorld = ['build_d365fo_project', 'run_systest_class'];
+      expect(a.openWorldHint, `'${toolName}' openWorldHint`).toBe(openWorld.includes(toolName) ? undefined : false);
     }
     // No orphan annotations for tools that no longer exist
     const published = new Set(mcpServerToolNames);

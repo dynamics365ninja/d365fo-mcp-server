@@ -307,6 +307,17 @@ function renderRelation(u: string, name: string, target: EdtRelationTarget, fiel
   );
 }
 
+/**
+ * Whether a relation would tie a field to itself: the EDT of a table's key usually points at
+ * that key (CustAccount on CustTable.AccountNum), and a relation from a key to itself says
+ * nothing, while OnDelete=Restricted on it can only get in the way of deleting the row. Of 962
+ * shipped fields in this position, 933 have no such relation. Another field of the same table with that EDT is a real hierarchy
+ * (a parent pointer) and is not this case.
+ */
+export function isOwnKeyEdtRelation(table: string, field: string, target: EdtRelationTarget): boolean {
+  return target.table.toLowerCase() === table.toLowerCase() && target.relatedField.toLowerCase() === field.toLowerCase();
+}
+
 function applyEdtRelations(
   xml: string,
   u: string,
@@ -320,11 +331,12 @@ function applyEdtRelations(
   const usedNames = new Set(relations.map(r => r.name.toLowerCase()));
   const added: string[] = [];
   let rendered = '';
+  const ownTable = topLevel(xml, u, 'Name') ?? '';
   for (const f of readFields(xml, u)) {
     if (!f.edt || /^yes$/i.test(f.ignoreEdtRelation ?? '')) continue;
     if (covered.has(f.name.toLowerCase())) continue;
     const target = lookup.get(f.edt.toLowerCase());
-    if (!target) continue;
+    if (!target || isOwnKeyEdtRelation(ownTable, f.name, target)) continue;
     const name = [target.table, f.name, `${target.table}_${f.name}`].find(n => !usedNames.has(n.toLowerCase()));
     if (!name) continue;
     usedNames.add(name.toLowerCase());

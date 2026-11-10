@@ -25,8 +25,15 @@ vi.mock('../../src/utils/baseObjectXml.js', () => ({
   findBaseObjectXml: vi.fn(async () => null),
   findBaseFormXml: vi.fn(async () => null),
 }));
+// The package-folder fallback reads real roots from the config; here it finds nothing
+// unless a test says otherwise.
+vi.mock('../../src/utils/objectFileLookup.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/utils/objectFileLookup.js')>()),
+  findAotFilesInAllPackages: vi.fn(async () => []),
+}));
 
 import { findBaseObjectXml } from '../../src/utils/baseObjectXml.js';
+import { findAotFilesInAllPackages } from '../../src/utils/objectFileLookup.js';
 import { addMenuExtensionItem, addMenuExtensionSubmenu, menuSubmenuNames, submenuLocations } from '../../src/tools/xml/menuExtensionXml';
 import { directXmlAddMenuItemToMenu, directXmlAddMenuItemToMenuExtension, directXmlAddSubmenu } from '../../src/tools/write/directXmlWriters';
 import { XmlTemplateGenerator } from '../../src/tools/xml/xmlTemplateGenerator';
@@ -318,6 +325,8 @@ describe('directXmlAddMenuItemToMenuExtension', () => {
     dir = undefined;
     vi.mocked(findBaseObjectXml).mockReset();
     vi.mocked(findBaseObjectXml).mockResolvedValue(null);
+    vi.mocked(findAotFilesInAllPackages).mockReset();
+    vi.mocked(findAotFilesInAllPackages).mockResolvedValue([]);
   });
 
   async function extFile(xml: string, name = 'ContosoMain.ContosoExtension'): Promise<string> {
@@ -540,6 +549,8 @@ describe('directXmlAddSubmenu', () => {
     dir = undefined;
     vi.mocked(findBaseObjectXml).mockReset();
     vi.mocked(findBaseObjectXml).mockResolvedValue(null);
+    vi.mocked(findAotFilesInAllPackages).mockReset();
+    vi.mocked(findAotFilesInAllPackages).mockResolvedValue([]);
   });
 
   async function file(xml: string, name: string): Promise<string> {
@@ -640,5 +651,101 @@ describe('directXmlAddSubmenu', () => {
     expect(bad?.message).toContain("Submenu 'Reportzz' is not in menu 'ContosoMain'");
     const written = await fs.readFile(f, 'utf-8');
     expect(written.indexOf('<Name>ContosoRentForm</Name>')).toBeLessThan(written.indexOf('<Name>ContosoSystemDate</Name>'));
+  });
+});
+
+describe('menu checks without an index (write-only companion)', () => {
+  let dir: string | undefined;
+  afterEach(async () => {
+    if (dir) await fs.rm(dir, { recursive: true, force: true });
+    dir = undefined;
+    vi.mocked(findAotFilesInAllPackages).mockReset();
+    vi.mocked(findAotFilesInAllPackages).mockResolvedValue([]);
+    vi.mocked(findBaseObjectXml).mockReset();
+    vi.mocked(findBaseObjectXml).mockResolvedValue(null);
+  });
+
+  /** A packages tree: Std/Std/AxMenu/ContosoMain.xml, Std/Std/AxMenuExtension/…, Mine/Mine/AxMenuExtension/<ext>. */
+  async function tree(): Promise<{ ext: string; files: string[] }> {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'menu-pld-'));
+    const put = async (rel: string, xml: string) => {
+      const f = path.join(dir!, rel);
+      await fs.mkdir(path.dirname(f), { recursive: true });
+      await fs.writeFile(f, xml.replace(/\n/g, '\r\n'), 'utf-8');
+      return f;
+    };
+    const files = [
+      await put('Std/Std/AxMenu/ContosoMain.xml', BASE_MENU),
+      await put('Std/Std/AxMenuExtension/ContosoMain.ContosoSubmenus.xml', SUBMENU_EXT),
+      // What a modify outside git leaves behind — must not count as an extension.
+      await put('Std/Std/AxMenuExtension/ContosoMain.ContosoSubmenus.xml.backup-2026-11-03T23-41-11-129',
+        SUBMENU_EXT.replace(/ContosoPlanningPolicies/g, 'ContosoFromBackup')),
+      await put('Mine/Mine/AxMenuExtension/ContosoMain.ContosoExtension.xml', EMPTY_EXT),
+    ];
+    // The real helper walks <root>/<Package>/<Model>/<folder>; this stands in for it.
+    vi.mocked(findAotFilesInAllPackages).mockImplementation(async (folder: string, match: (n: string) => boolean) =>
+      files.filter(f => f.includes(`${path.sep}${folder}${path.sep}`) && match(path.basename(f))));
+    // findBaseObjectXml reads an AxMenu from the package folders itself (the index has
+    // no menus); with no index it finds no extension.
+    vi.mocked(findBaseObjectXml).mockImplementation(async (type: string) => (type === 'menu' ? fs.readFile(files[0], 'utf-8') : null));
+    return { ext: files[3], files };
+  }
+
+  it('refuses an unknown parent, listing the submenus of the base menu', async () => {
+    const { ext } = await tree();
+    const r = await directXmlAddMenuItemToMenuExtension(ext, { menuItemToAdd: 'ContosoRentForm', parentMenuElement: 'Reportzz' }, {});
+    expect(r.success).toBe(false);
+    expect(r.message).toContain("Submenu 'Reportzz' is not in menu 'ContosoMain'");
+    expect(r.message).toContain('Workspaces, Setup, EInvoice, SATclassifications');
+  });
+
+  it('checks a known parent without the "NOT checked" warning', async () => {
+    const { ext } = await tree();
+    const r = await directXmlAddMenuItemToMenuExtension(ext, { menuItemToAdd: 'ContosoRentForm', parentMenuElement: 'einvoice' }, {});
+    expect(r.success).toBe(true);
+    expect(r.message).not.toContain('NOT checked');
+    expect(await fs.readFile(ext, 'utf-8')).toContain('<Parent>EInvoice</Parent>');
+  });
+
+  it('accepts a submenu another extension adds, found in the package folders; ignores backup copies', async () => {
+    const { ext } = await tree();
+    const ok = await directXmlAddMenuItemToMenuExtension(ext, { menuItemToAdd: 'ContosoRentForm', parentMenuElement: 'ContosoPlanningPolicies' }, {});
+    expect(ok.success).toBe(true);
+    const fromBackup = await directXmlAddMenuItemToMenuExtension(ext, { menuItemToAdd: 'ContosoRentForm', parentMenuElement: 'ContosoFromBackup' }, {});
+    expect(fromBackup.success).toBe(false);
+  });
+
+  it('refuses a submenu name the base menu has, as the build would', async () => {
+    const { ext } = await tree();
+    const before = await fs.readFile(ext, 'utf-8');
+    const r = await directXmlAddSubmenu(ext, { submenuName: 'EInvoice', parentMenuElement: 'Periodic' }, {});
+    expect(r.success).toBe(false);
+    expect(r.message).toContain("Submenu 'EInvoice' already exists in menu 'ContosoMain'");
+    expect(await fs.readFile(ext, 'utf-8')).toBe(before);
+  });
+
+  it('refuses a submenu name another extension adds, found in the package folders', async () => {
+    const { ext } = await tree();
+    const r = await directXmlAddSubmenu(ext, { submenuName: 'ContosoPlanningPolicies', parentMenuElement: 'Setup' }, {});
+    expect(r.success).toBe(false);
+    expect(r.message).toContain("Submenu 'ContosoPlanningPolicies' already exists in menu 'ContosoMain'");
+  });
+
+  it('takes element names another extension uses from the package folders: <item>N, and name-in-use', async () => {
+    const { ext } = await tree();
+    const item = await directXmlAddMenuItemToMenuExtension(ext, { menuItemToAdd: 'ContosoVendIntentLetter' }, {});
+    expect(item.message).toContain("so this element is named 'ContosoVendIntentLetter1'");
+    const sub = await directXmlAddSubmenu(ext, { submenuName: 'ContosoVendIntentLetter', parentMenuElement: 'Setup' }, {});
+    expect(sub.success).toBe(false);
+    expect(sub.message).toContain("'ContosoVendIntentLetter' is already the name of an element");
+  });
+
+  it('does not count the extension itself as another one', async () => {
+    const { ext } = await tree();
+    const first = await directXmlAddSubmenu(ext, { submenuName: 'ContosoRentals', parentMenuElement: 'Setup' }, {});
+    expect(first.success).toBe(true);
+    expect(first.message).not.toContain('NOT checked');
+    const again = await directXmlAddSubmenu(ext, { submenuName: 'ContosoRentals', parentMenuElement: 'Setup' }, {});
+    expect(again.skipped).toBe(true);
   });
 });
