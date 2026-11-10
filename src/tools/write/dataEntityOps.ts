@@ -137,8 +137,11 @@ async function entityFieldToComputed(objectName: string, filePath: string, args:
   if (!/<AxDataEntityView[\s>]/.test(xml)) return fail('computedFieldMethod applies to a data-entity field only');
   const binding = entityMappedFieldBinding(xml, String(args.fieldName));
   if ('error' in binding) return fail(binding.error);
-  const tableXml = binding.table ? await findBaseObjectXml('table', binding.table, symbolIndex).catch(() => null) : null;
-  const type = tableFieldComputedType(tableXml, binding.dataField);
+  // A system field is typed without its table: no lookup, which without an index walks every package.
+  let type = tableFieldComputedType(null, binding.dataField);
+  if (!type && binding.table) {
+    type = tableFieldComputedType(await findBaseObjectXml('table', binding.table, symbolIndex).catch(() => null), binding.dataField);
+  }
   if (!type) {
     return fail(
       `could not read the type of ${binding.table ?? `datasource ${binding.dataSource}`}.${binding.dataField} ` +

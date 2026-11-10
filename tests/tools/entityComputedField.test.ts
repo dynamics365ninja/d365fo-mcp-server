@@ -154,6 +154,62 @@ describe('convertEntityFieldToComputed', () => {
   });
 });
 
+describe('shapes measured on shipped entities', () => {
+  const field = (extra: string) => `<?xml version="1.0" encoding="utf-8"?>
+<AxDataEntityView xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>ShopEntity</Name>
+	<Fields>
+		<AxDataEntityViewField xmlns=""
+			i:type="AxDataEntityViewMappedField">
+			<Name>Account</Name>
+			<DataField>Account</DataField>
+			<DataSource>Line</DataSource>${extra}
+		</AxDataEntityViewField>
+	</Fields>
+	<ViewMetadata>
+		<DataSources>
+			<AxQuerySimpleRootDataSource>
+				<Name>Header</Name>
+				<Table>ShopHeader</Table>
+				<DerivedDataSources>
+					<AxQuerySimpleDerivedDataSource>
+						<Name>Line</Name>
+						<DynamicFields>Yes</DynamicFields>
+						<Table>ShopLine</Table>
+					</AxQuerySimpleDerivedDataSource>
+				</DerivedDataSources>
+			</AxQuerySimpleRootDataSource>
+		</DataSources>
+	</ViewMetadata>
+</AxDataEntityView>
+`;
+
+  it('reads the table of a derived datasource (1,858 shipped)', () => {
+    expect(entityMappedFieldBinding(field(''), 'Account')).toMatchObject({ dataSource: 'Line', table: 'ShopLine' });
+  });
+
+  it('drops the members only a mapped field has (none of 3,630 unmapped fields carries them)', () => {
+    const r = convertEntityFieldToComputed(
+      field('\n\t\t\t<DimensionLegalEntityContextField>LegalEntity</DimensionLegalEntityContextField>\n\t\t\t<DynamicDimensionEnumerationField>Enum</DynamicDimensionEnumerationField>'),
+      'Account', 'm', { baseType: 'String', edt: 'Name' },
+    ) as { xml: string };
+    expect(r.xml).not.toMatch(/DimensionLegalEntityContextField|DynamicDimensionEnumerationField|<DataSource>/);
+  });
+
+  it('carries StringSize over when the source field has no EDT (212 shipped computed strings)', () => {
+    const table = `<AxTableField xmlns="" i:type="AxTableFieldString"><Name>Code</Name><StringSize>30</StringSize></AxTableField>`;
+    const type = tableFieldComputedType(table, 'Code')!;
+    expect(type).toEqual({ baseType: 'String', stringSize: '30' });
+    const r = convertEntityFieldToComputed(field(''), 'Account', 'm', type) as { xml: string };
+    expect(r.xml).toMatch(/<ComputedFieldMethod>m<\/ComputedFieldMethod>\s*<StringSize>30<\/StringSize>/);
+  });
+
+  it('prefers an EDT to the size: fieldType overrides, the EDT carries the size', () => {
+    const r = convertEntityFieldToComputed(field(''), 'Account', 'm', { baseType: 'String', edt: 'Name', stringSize: '30' }) as { xml: string };
+    expect(r.xml).not.toContain('<StringSize>');
+  });
+});
+
 describe('returnFieldMethodSource', () => {
   it('builds the SysComputedColumn::returnField method', () => {
     const src = returnFieldMethodSource('ShopExportLineEntity', 'exportedDateTimeDefinition', 'ExportedDateTime',
