@@ -16,29 +16,34 @@ import { handleCreateD365File } from '../../src/tools/write/createD365File';
 import { lookupCreatedArtifact } from '../../src/workspace/createdArtifactLedger';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 
-const { files } = vi.hoisted(() => ({ files: new Map<string, string>() }));
+// Keys are Windows paths. Separators are folded so that a path the code joined
+// with POSIX separators (Linux CI) finds the same entry.
+const { files, key } = vi.hoisted(() => ({
+  files: new Map<string, string>(),
+  key: (p: string) => p.replaceAll('/', '\\'),
+}));
 
 vi.mock('fs/promises', () => ({
   readFile: vi.fn(async (p: string) => {
-    if (files.has(p)) return files.get(p)!;
+    if (files.has(key(p))) return files.get(key(p))!;
     throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
   }),
-  writeFile: vi.fn(async (p: string, content: string) => { files.set(p, content); }),
+  writeFile: vi.fn(async (p: string, content: string) => { files.set(key(p), content); }),
   copyFile: vi.fn(async () => {}),
   mkdir: vi.fn(async () => {}),
   access: vi.fn(async (p: string) => {
-    if (/^[A-Za-z]:[\\/]?$/.test(p) || p === '/' || files.has(p)) return;
+    if (/^[A-Za-z]:[\\/]?$/.test(p) || p === '/' || files.has(key(p))) return;
     throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
   }),
   stat: vi.fn(async () => ({ isFile: () => true, isDirectory: () => false, size: 1024 })),
   readdir: vi.fn(async () => []),
   rename: vi.fn(async (from: string, to: string) => {
-    const content = files.get(from);
+    const content = files.get(key(from));
     if (content === undefined) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
-    files.set(to, content);
-    files.delete(from);
+    files.set(key(to), content);
+    files.delete(key(from));
   }),
-  rm: vi.fn(async (p: string) => { files.delete(p); }),
+  rm: vi.fn(async (p: string) => { files.delete(key(p)); }),
 }));
 
 vi.mock('../../src/bridge/bridgeAdapter', async (orig) => {
@@ -97,7 +102,13 @@ const ENTITY = 'ContosoCustomerGroupEntity';
 const STAGING = `${ENTITY}Staging`;
 const ENTITY_PATH = `${ROOT}\\ContosoExt\\ContosoExt\\AxDataEntityView\\${ENTITY}.xml`;
 const STAGING_PATH = `${ROOT}\\ContosoExt\\ContosoExt\\AxTable\\${STAGING}.xml`;
-const CUSTGROUP_PATH = `${ROOT}\\ApplicationSuite\\Foundation\\AxTable\\CustGroup.xml`;
+/**
+ * The index row holds the path relative to the packages root, a shape the lookup
+ * joins onto the root on any platform. An absolute `K:\…` path is not absolute
+ * on Linux, so such a row missed there.
+ */
+const CUSTGROUP_REL = 'ApplicationSuite\\Foundation\\AxTable\\CustGroup.xml';
+const CUSTGROUP_PATH = `${ROOT}\\${CUSTGROUP_REL}`;
 
 const tableField = (type: string, name: string, body: string) =>
   `\t\t<AxTableField xmlns=""\n\t\t\ti:type="AxTableField${type}">\n\t\t\t<Name>${name}</Name>\n${body}\t\t</AxTableField>\n`;
@@ -194,7 +205,7 @@ const stagingFields = () =>
 
 /** The index knows CustGroup and where its file is, and the file is on disk. */
 function custGroupOnDisk() {
-  index.symbols.push({ name: 'CustGroup', type: 'table', model: 'Foundation', file_path: CUSTGROUP_PATH });
+  index.symbols.push({ name: 'CustGroup', type: 'table', model: 'Foundation', file_path: CUSTGROUP_REL });
   files.set(CUSTGROUP_PATH, CUSTGROUP_XML);
 }
 
@@ -275,7 +286,7 @@ describe('data entity create with dataManagementEnabled', () => {
 
   it('resolves types from the index when the table file cannot be read, and never guesses', async () => {
     index.symbols.push(
-      { name: 'CustGroup', type: 'table', model: 'Foundation', file_path: CUSTGROUP_PATH }, // not on disk
+      { name: 'CustGroup', type: 'table', model: 'Foundation', file_path: CUSTGROUP_REL }, // not on disk
       { name: 'CustGroupId', type: 'edt', model: 'Foundation', file_path: '' },
       { name: 'PaymTermId', type: 'edt', model: 'Foundation', file_path: '' },
       { name: 'NoYes', type: 'enum', model: 'Foundation', file_path: '' },
