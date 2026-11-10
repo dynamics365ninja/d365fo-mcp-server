@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Task 1.2 with a CustomFilters group (ViewEditMode Edit), ToolbarList pages and a FillText footer holding a StaticText. -->
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>FpTaskCustomFiltersFooter</Name>
+	<SourceCode>
+		<Methods xmlns="" />
+	</SourceCode>
+	<DataSources />
+	<Design>
+		<Pattern xmlns="">Task</Pattern>
+		<PatternVersion xmlns="">1.2</PatternVersion>
+		<Controls xmlns="">
+			<AxFormControl xmlns="" i:type="AxFormActionPaneControl">
+				<Name>ActionPane</Name>
+				<Type>ActionPane</Type>
+				<FormControlExtension i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns="" i:type="AxFormButtonGroupControl">
+						<Name>ButtonGroup</Name>
+						<Type>ButtonGroup</Type>
+						<FormControlExtension i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns="" i:type="AxFormButtonControl">
+								<Name>DoSomething</Name>
+								<Type>Button</Type>
+								<FormControlExtension i:nil="true" />
+								<Text>Do something</Text>
+							</AxFormControl>
+						</Controls>
+					</AxFormControl>
+				</Controls>
+			</AxFormControl>
+			<AxFormControl xmlns="" i:type="AxFormGroupControl">
+				<Name>FilterGroup</Name>
+				<Pattern>CustomFilters</Pattern>
+				<PatternVersion>1.1</PatternVersion>
+				<Type>Group</Type>
+				<WidthMode>SizeToAvailable</WidthMode>
+				<FormControlExtension i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns="" i:type="AxFormStringControl">
+						<Name>FilterGroupCustomer</Name>
+						<Type>String</Type>
+						<FormControlExtension i:nil="true" />
+						<Label>Customer</Label>
+					</AxFormControl>
+				</Controls>
+				<ArrangeMethod>HorizontalLeft</ArrangeMethod>
+				<FrameType>None</FrameType>
+				<Style>CustomFilter</Style>
+				<ViewEditMode>Edit</ViewEditMode>
+			</AxFormControl>
+			<AxFormControl xmlns="" i:type="AxFormTabControl">
+				<Name>Tab</Name>
+				<Type>Tab</Type>
+				<FormControlExtension i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns="" i:type="AxFormTabPageControl">
+						<Name>Overview</Name>
+						<Pattern>ToolbarList</Pattern>
+						<PatternVersion>1.2</PatternVersion>
+						<Type>TabPage</Type>
+						<FormControlExtension i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns="" i:type="AxFormGridControl">
+								<Name>OverviewGrid</Name>
+								<Type>Grid</Type>
+								<FormControlExtension i:nil="true" />
+							</AxFormControl>
+						</Controls>
+						<Caption>Overview</Caption>
+					</AxFormControl>
+					<AxFormControl xmlns="" i:type="AxFormTabPageControl">
+						<Name>Details</Name>
+						<Pattern>ToolbarList</Pattern>
+						<PatternVersion>1.2</PatternVersion>
+						<Type>TabPage</Type>
+						<FormControlExtension i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns="" i:type="AxFormGridControl">
+								<Name>DetailsGrid</Name>
+								<Type>Grid</Type>
+								<FormControlExtension i:nil="true" />
+							</AxFormControl>
+						</Controls>
+						<Caption>Details</Caption>
+					</AxFormControl>
+				</Controls>
+			</AxFormControl>
+			<AxFormControl xmlns="" i:type="AxFormGroupControl">
+				<Name>NoteGroup</Name>
+				<HeightMode>SizeToAvailable</HeightMode>
+				<Pattern>FillText</Pattern>
+				<PatternVersion>UX7 1.0</PatternVersion>
+				<Type>Group</Type>
+				<WidthMode>SizeToAvailable</WidthMode>
+				<FormControlExtension i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns="" i:type="AxFormStaticTextControl">
+						<Name>Note</Name>
+						<HeightMode>SizeToAvailable</HeightMode>
+						<Type>StaticText</Type>
+						<WidthMode>SizeToAvailable</WidthMode>
+						<FormControlExtension i:nil="true" />
+						<Text>Note text</Text>
+					</AxFormControl>
+				</Controls>
+				<FrameType>None</FrameType>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

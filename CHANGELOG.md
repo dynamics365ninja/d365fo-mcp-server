@@ -147,6 +147,31 @@ those are called out explicitly below.
   and refuses a name listed twice. A modify of a missing role or duty extension whose
   standard base is in the index now offers the one `create` call that does it, and the
   refusal to modify a standard role or duty names the extension types.
+- **`modify-field` turns a data entity's mapped field into a computed field.**
+  `computedFieldMethod` rewrites the entity's own mapped field as
+  `AxDataEntityViewUnmappedField<Type>` (type, EDT and enum read from the source
+  table field; system fields such as `CreatedDateTime` known without it) and writes
+  its static method in the same edit: `sourceCode` when given, an existing method of
+  that name, or a generated `SysComputedColumn::returnField` over the field it was
+  mapped to. A key field is refused. This used to take a rewrite of the whole entity
+  with `create` + `overwrite`.
+- **`move-control` and `wrap-controls` on a form.** Converting a form to a standard
+  pattern changes its nesting: fields go into a FieldsFieldGroups group, groups become
+  FastTab pages of a Tab, a grid moves under a TabPage. No operation changed a
+  control's parent, so the whole form was rewritten through `create` + `overwrite`.
+  `move-control` moves an existing control, with its subtree, under another parent at a
+  position. `wrap-controls` puts existing controls of one parent into a new Group, TabPage
+  or Tab with Pattern (PatternVersion defaults to the newest the catalogue knows), Caption
+  and Style, written in the shipped element order (a property the type never carries is
+  refused). Moved controls keep their XML byte for byte, only re-indented. The design's
+  own Pattern and PatternVersion are set with `modify-property`.
+- **Form pattern oracles.** `npm run catalog:form-patterns` regenerates the platform
+  definitions and property defaults from a local D365FO install.
+  `npm run oracle:form-patterns -- verdicts` runs the platform's `PatternAnalyzer`
+  (Windows, read only) over `tests/fixtures/formPatterns` and records its verdicts,
+  which `tests/validation/platformPatternMatcher.test.ts` holds the validator to in
+  CI. `npm run oracle:form-sweep` validates every shipped form and fails on any
+  error.
 
 ### Changed
 - **`build_d365fo_project` and `run_systest_class` are no longer marked as closed-world
@@ -287,6 +312,59 @@ those are called out explicitly below.
   there. It still refuses: the only route remains the user's
   `D365FO_CROSS_MODEL_WRITE_MODELS`. For a shared model the workspace builds on, the
   original case, nothing changes, and with no descriptor found the wording is as before.
+- **`labels(action="create")` writes only the languages the label file has.** Every
+  folder under the model's shared `LabelResources` was treated as a language of the
+  target file, so a sibling label file's `ja` added a `.ja.label.txt` and a
+  descriptor to a file that never had Japanese. Supplied translations and an explicit
+  `languages` scope still add a language.
+- **X++ source round-trips exactly through `add-method`, `replace-code` and `create`.**
+  Every XML entity in the source was decoded, so a doc comment's `P&amp;L` became a
+  bare `&` (malformed XML documentation, BPXmlDocMalformed) and markup in string
+  literals changed. The decode now runs only on a payload that arrived
+  entity-encoded as a whole (no literal angle bracket, and an entity outside any
+  string literal).
+- **`modify-property` on a form's Design replaces the property in a CRLF file.** The
+  "already there" match expected `\n`, so on a saved (CRLF) form a second `<Pattern>`,
+  `<PatternVersion>` or `<Style>` was added beside the old one, and the deserializer kept
+  the old one. An empty value now removes a Design property instead of writing an empty
+  element, and the post-write check finds a value whose element carries `xmlns=""` and
+  makes no value check for a removal (both were reported as "NOT in the file").
+- **Form pattern validation now follows the platform's own pattern definitions.**
+  `object_patterns(domain="form", action="validate")` and the `FORM_PATTERN_ENFORCE`
+  gate on `d365fo_file` create checked forms against a catalog curated from the
+  Microsoft Learn pages, and where it disagreed with the compiler it blocked forms
+  that compile and passed forms that do not: it knew `TaskSingle` (the platform
+  pattern is `Task`), wanted `FillText` 1.0 with a String (the platform has only
+  "UX7 1.0", which takes a StaticText or a String), thought `ToolbarList` 1.1 was
+  newest (1.2 is), took a Group for the TaskParentChild child part (it is a Tab
+  after a splitter group) and never checked the property values the compiler
+  requires (a CustomFilters group needs ViewEditMode Edit, a FillText child
+  HeightMode SizeToAvailable). The validator now reads every FormPatterns and
+  SubPatterns definition embedded in `Microsoft.Dynamics.AX.Metadata.Patterns.dll`,
+  generated into `src/knowledge/formPatterns/platform.generated.ts` together with
+  the metamodel default of every property they name, and interprets them the way
+  the platform's `PatternAnalyzer` does: exact name and version, parts with their
+  counts and order, OneOf alternatives, allowed sub-patterns per part, extension
+  controls identified by their extension name, and property values checked at
+  their default when the XML omits them. New rule **FP011** (error) reports a
+  required property value that is not met. FP009 (curated property hints) is
+  retired. Measured on the shipped forms: the platform's `PatternAnalyzer` accepts
+  all 26,810 patterned nodes of the 9,502 shipped forms, and the validator raises
+  zero errors on them.
+- **Generators no longer emit pattern names and versions the compiler rejects.**
+  The curated catalog now uses the platform names (`Task`, `LookupGridOnly` for the
+  basic lookup, `SectionTiles`, `SectionRelatedLinks` and the other workspace
+  sections it had as `Workspace_Tiles` and similar) and the platform's version
+  lists, and drops `SidePanel` and `Workspace_SummaryNumbers_UnboundFields`, which
+  are not patterns. The Dialog template sets ColumnsMode Fill on its
+  FieldsFieldGroups pages and writes their Caption where the deserializer reads it,
+  the Workspace template adds the required related-links section, the DetailsMaster
+  template always emits the required header title control, and the pattern
+  expander writes control elements in canonical order and the Design Style the
+  platform requires. The expander still builds platform-rejected forms for 22
+  long-tail patterns. `generate_smart_form` self-tests every expansion and falls
+  back to a template or clone for those, and the expander test lists them with
+  `it.fails`.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no

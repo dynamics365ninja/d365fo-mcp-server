@@ -9,7 +9,7 @@ export const wizard: FormPatternSpec = {
   id: 'Wizard',
   xmlName: 'Wizard',
   displayName: 'Wizard',
-  versions: ['1.2', '1.1', '1.0'],
+  versions: ['1.2', '1.1', 'UX7 1.0'],
   purpose:
     'Displays a sequence of tab pages gathering information in a predetermined order, ' +
     'navigated with Back/Next/Finish buttons (backed by a SysWizard class).',

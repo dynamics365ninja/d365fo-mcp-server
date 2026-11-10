@@ -12,7 +12,7 @@ export const objectPatternsTool = {
       '• form → form-pattern toolkit; pick an `action`:\n' +
       '   - analyze → pattern advisor + usage analysis. For a NEW form pass `recommend` (preferred): the Microsoft decision tree picks the pattern and names reference forms to clone. Or filter by formPattern / dataSource / similarTo.\n' +
       '   - spec → structure spec of a pattern/sub-pattern: hierarchy, ordering, allowed children, reference forms, lifecycle.\n' +
-      '   - validate → AxForm XML validator (hierarchy/order, sub-patterns, PatternVersion) → FP001-FP010. Call before d365fo_file action=create.\n' +
+      '   - validate → AxForm XML validator (hierarchy/order, sub-patterns, PatternVersion) → FP001-FP011. Call before d365fo_file action=create.\n' +
       '• report → SSRS implementation recipes: object roster, scaffold call, checks. Optional pattern=<id>.\n' +
       '• mobile-app → warehouse-app screen recipes, led by the choice between the two frameworks that build them (ProcessGuide vs WHSWorkExecuteDisplay): create a flow, add or replace one screen, step icon/title, GS1 scan input. Optional pattern=<id>.',
     inputSchema: {

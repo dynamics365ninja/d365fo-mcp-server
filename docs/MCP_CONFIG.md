@@ -77,7 +77,7 @@ Set in the `env` block. The legacy `"context": {...}` block is **deprecated** �
 | `DB_PATH` / `LABELS_DB_PATH` | repo `data/` | absolute paths to the SQLite databases — **required in stdio mode** |
 | `GROUNDING_ENFORCE` | off | fail-closed grounding gate for write tools — opt in |
 | `GROUNDING_SECRET` | — | shared secret → HMAC-signed portable grounding tokens; required for enforcement in hybrid / scaled-out deployments |
-| `FORM_PATTERN_ENFORCE` | on | block form writes on structural pattern violations (FP001–FP010) |
+| `FORM_PATTERN_ENFORCE` | on | block form writes on violations the compiler rejects (FP001–FP005, FP007, FP011) |
 | `DEBUG_LOGGING` | off | verbose JSON-RPC trace (`[VS→MCP]` / `[MCP→VS]`) on stderr |
 | `LOG_FILE` | — | tee all stderr (incl. trace) to a file, append mode, session banner per start |
 | `MCP_TOOL_TIMEOUT_MS` | 120000 | catch-all per-request timeout |

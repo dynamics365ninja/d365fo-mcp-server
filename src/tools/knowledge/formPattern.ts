@@ -4,7 +4,7 @@
  * Replaces the three form-pattern tools with one discriminated by `action`:
  *   • analyze  → pattern advisor + usage analysis (recommend / formPattern /
  *                dataSource / similarTo) — the old get_form_patterns
- *   • validate → structural validator of AxForm XML (FP001-FP010)
+ *   • validate → structural validator of AxForm XML (FP001-FP011)
  *   • spec     → full spec of a pattern / sub-pattern (structure, references)
  *
  * Typical lifecycle: analyze (pick a pattern) → spec (get the structure) →

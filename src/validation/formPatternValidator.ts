@@ -1,23 +1,35 @@
 /**
- * Form Pattern Validator — pure structural validator for AxForm XML against
- * the curated form pattern catalog (src/knowledge/formPatterns).
+ * Form Pattern Validator — pure structural validator for AxForm XML.
+ *
+ * Every pattern the platform defines is checked against the platform's own
+ * definition (src/knowledge/formPatterns/platform.generated.ts, interpreted by
+ * ./platformPatternMatcher.ts): the names, versions, parts, counts, order,
+ * allowed sub-patterns and required property values the X++ compiler enforces.
+ * The Design and every container that declares a sub-pattern are validated on
+ * their own, as the compiler does. The curated catalog
+ * (src/knowledge/formPatterns/catalog) only adds advice on top (datasource
+ * expectations, "did you mean" names) and owns the `Custom` sentinel, which
+ * declares that no Microsoft pattern applies.
  *
  * Rules:
  *   FP001 (error)   unknown <Pattern> on Design / unknown sub-pattern on a container
  *   FP002 (error)   unknown PatternVersion for a known pattern
- *         (warning) known-but-older version, or version newer than catalog (PU drift)
- *   FP003 (error)   required node missing (e.g. SimpleList without a Grid)
- *   FP004 (error)   child control type not allowed in a patterned container
- *   FP005 (error)   required children out of order (e.g. Grid before ActionPane)
- *   FP006 (warning) container that requires a sub-pattern has none ("unspecified")
- *   FP007 (error)   sub-pattern applied to an unsupported control type / parent pattern,
- *                   or not allowed at this slot of the parent pattern
+ *         (warning) older-than-current version, missing version, or a version
+ *                   newer than the generated definitions (platform drift)
+ *   FP003 (error)   required part missing (e.g. SimpleList without a Grid)
+ *   FP004 (error)   control not allowed where it is
+ *   FP005 (error)   control out of the order the pattern prescribes
+ *   FP006 (warning) container at a sub-pattern slot declares none ("unspecified")
+ *   FP007 (error)   sub-pattern not allowed at this part, or applied to a control
+ *                   type it does not apply to
  *   FP008 (warning) datasource expectation unmet (count / TitleDataSource)
- *   FP009 (warning) Design/control property differs from the pattern default
  *   FP010 (warning) no <Pattern> declared on Design at all
+ *   FP011 (error)   property value the pattern requires is not met (set in the
+ *                   XML, or the metamodel default when the XML omits it)
  *
- * Severity policy: only structural rules (FP001-FP005, FP007) are errors and
- * may block writes; the rest are recommendations.
+ * Severity policy: only what the compiler rejects (FP001-FP005, FP007, FP011)
+ * is an error and may block writes; the rest are recommendations. FP009 (curated
+ * property defaults) is retired: FP011 checks the platform's required values.
  */
 
 import { Parser } from '../utils/xml.js';
@@ -27,13 +39,20 @@ import {
   type FormDesignInfo,
 } from '../metadata/formPatternMiner.js';
 import {
+  resolvePattern,
   resolvePatternExact,
   resolveSubPattern,
-  knownPatternNames,
-  type FormPatternSpec,
-  type NodeSpec,
-  type ExtraChildrenPolicy,
 } from '../knowledge/formPatterns/index.js';
+import {
+  compareVersionStrings,
+  currentPlatformPattern,
+  isPlatformPatternName,
+  platformPattern,
+  platformPatternNames,
+  platformVersions,
+  type PlatformPatternDefinition,
+} from '../knowledge/formPatterns/platform.js';
+import { matchPlatformPattern, type PatternTarget, type PlatformIssueKind } from './platformPatternMatcher.js';
 
 // Types
 
@@ -67,11 +86,8 @@ const CONTAINER_TYPES = new Set(['Group', 'TabPage', 'Tab']);
 /**
  * Composite platform controls whose internal child structure is managed by the
  * platform, not by the form pattern. The financial DimensionEntryControl is the
- * classic case: it nests its own Groups (one per dimension segment), which a
- * pattern like FieldsFieldGroups would otherwise reject as "more than one level
- * of group nesting". Faithful clones of real shipped forms (SalesTable etc.)
- * legitimately contain these, so the validator treats them as opaque — accepted
- * wherever input controls are allowed, and never descended into.
+ * classic case: it nests its own Groups (one per dimension segment). The
+ * validator never descends into them.
  */
 const OPAQUE_CONTROL_TYPES = new Set([
   'DimensionEntryControl',
@@ -89,337 +105,138 @@ function nodePath(parentPath: string, node: FormControlNode): string {
   return `${parentPath}/${node.type}[${node.name}]`;
 }
 
-function typeMatches(node: FormControlNode, allowed: string[]): boolean {
-  return allowed.includes('*') || allowed.includes(node.type);
+/** `Custom` declares "no Microsoft pattern applies" — nothing to validate. */
+function isCustomPattern(name: string): boolean {
+  return name.trim().toLowerCase() === 'custom';
 }
 
-function compareVersions(a: string, b: string): number {
-  const pa = a.split('.').map((n) => parseInt(n, 10) || 0);
-  const pb = b.split('.').map((n) => parseInt(n, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (d !== 0) return d;
-  }
-  return 0;
-}
+// Platform-backed validation
 
-function checkVersion(
-  declared: string | undefined,
-  knownVersions: string[],
-  patternLabel: string,
+const ISSUE_RULE: Record<PlatformIssueKind, { rule: string; severity: 'error' | 'warning' }> = {
+  missing: { rule: 'FP003', severity: 'error' },
+  extra: { rule: 'FP004', severity: 'error' },
+  order: { rule: 'FP005', severity: 'error' },
+  subPattern: { rule: 'FP007', severity: 'error' },
+  target: { rule: 'FP007', severity: 'error' },
+  property: { rule: 'FP011', severity: 'error' },
+  unspecified: { rule: 'FP006', severity: 'warning' },
+};
+
+/**
+ * Resolve the platform definition a declared pattern/version validates against,
+ * emitting FP001/FP002 as the compiler sees it. Returns undefined when there is
+ * nothing to match structurally (unknown name, unknown version).
+ */
+function resolvePlatformDefinition(
+  name: string,
+  version: string | undefined,
+  kind: 'form' | 'sub',
   path: string,
   violations: FormPatternViolation[],
-): void {
-  // A pattern the catalog records NO versions for has no version to check against,
-  // and every branch below misreads that as "version zero":
-  //
-  //   - the undeclared branch advised `Add <PatternVersion>undefined</PatternVersion>`
-  //     (observed live, eval case L2-form-control-removal-lifecycle, 2026-08-23);
-  //   - the unknown-version branch printed an empty `known: ` list;
-  //   - worst, a DECLARED version reached compareVersions(declared, undefined),
-  //     which throws TypeError on `b.split` and takes the whole validator down.
-  //
-  // The only entries with an empty list are the `Custom` sentinels
-  // (catalog/subPatterns/fields.ts, catalog/topLevel/simpleDetails.ts), which exist
-  // precisely to say "no Microsoft-defined pattern applies here" and suppress FP001.
-  // Demanding a PatternVersion for one contradicts that, so FP002 does not apply.
-  if (knownVersions.length === 0) return;
+): PlatformPatternDefinition | undefined {
+  const label = `${kind === 'form' ? 'pattern' : 'sub-pattern'} ${name}`;
+  if (!isPlatformPatternName(name)) {
+    const curated = kind === 'form' ? resolvePattern(name) : resolveSubPattern(name);
+    const suggestion = curated && isPlatformPatternName(curated.xmlName) && curated.xmlName.toLowerCase() !== name.trim().toLowerCase()
+      ? ` Did you mean "${curated.xmlName}"?`
+      : '';
+    violations.push({
+      rule: 'FP001',
+      severity: 'error',
+      path,
+      excerpt: `Unknown ${kind === 'form' ? 'form pattern' : 'sub-pattern'} "${name}" — the platform defines no pattern by this name`,
+      fix: `Use a platform ${kind === 'form' ? 'form pattern' : 'sub-pattern'} name (or Custom).${suggestion}`,
+    });
+    return undefined;
+  }
 
-  if (!declared) {
+  const all = platformVersions(name);
+  const current = currentPlatformPattern(name)!;
+  if (!version) {
     violations.push({
       rule: 'FP002',
       severity: 'warning',
       path,
-      excerpt: `${patternLabel}: no PatternVersion declared`,
-      fix: `Add <PatternVersion>${knownVersions[0]}</PatternVersion>.`,
+      excerpt: `${label}: no PatternVersion declared`,
+      fix: `Add <PatternVersion>${current.version}</PatternVersion>.`,
     });
-    return;
+    return current;
   }
-  if (knownVersions.includes(declared)) {
-    if (declared !== knownVersions[0]) {
+
+  const def = platformPattern(name, version);
+  if (def) {
+    if (def.version !== current.version) {
       violations.push({
         rule: 'FP002',
         severity: 'warning',
         path,
-        excerpt: `${patternLabel}: version ${declared} is older than current ${knownVersions[0]}`,
-        fix: `Consider upgrading to PatternVersion ${knownVersions[0]}.`,
+        excerpt: `${label}: version ${version} is older than current ${current.version}`,
+        fix: `Consider upgrading to PatternVersion ${current.version} (and its structure).`,
       });
     }
-    return;
+    return def;
   }
-  const newest = knownVersions[0];
-  if (compareVersions(declared, newest) > 0) {
-    // Likely platform-update drift — the catalog lags behind, don't block
+
+  // A version past the newest one in the same scheme ("1.3" after "1.2", "UX7 1.1"
+  // after "UX7 1.0") is a platform newer than the generated definitions. A
+  // version in a scheme the pattern never used (FillText "1.0") is just unknown.
+  const scheme = (v: string) => /^UX7\s/i.test(v);
+  const sameScheme = all.filter((d) => scheme(d.version) === scheme(version));
+  const newest = sameScheme.sort((a, b) => compareVersionStrings(b.version, a.version))[0];
+  if (newest && compareVersionStrings(version, newest.version) > 0) {
+    // A platform update newer than the generated definitions — don't block.
     violations.push({
       rule: 'FP002',
       severity: 'warning',
       path,
-      excerpt: `${patternLabel}: version ${declared} is newer than the catalog's ${newest}`,
-      fix: 'Probably a newer platform pattern version — update the catalog (versions list) after verifying.',
+      excerpt: `${label}: version ${version} is newer than the platform definitions this server knows (${newest.version})`,
+      fix: 'Probably a newer platform — regenerate with scripts/capture-form-pattern-definitions.ts.',
     });
-  } else {
-    violations.push({
-      rule: 'FP002',
-      severity: 'error',
-      path,
-      excerpt: `${patternLabel}: unknown version "${declared}" (known: ${knownVersions.join(', ')})`,
-      fix: `Use a known PatternVersion, typically ${newest}.`,
-    });
+    return undefined;
   }
+  violations.push({
+    rule: 'FP002',
+    severity: 'error',
+    path,
+    excerpt: `${label}: unknown version "${version}" (platform versions: ${all.map((d) => d.version).join(', ')})`,
+    fix: `Use PatternVersion ${current.version}.`,
+  });
+  return undefined;
 }
 
-// Child matching
-
-interface MatchedPair {
-  spec: NodeSpec;
-  node: FormControlNode;
-  actualIndex: number;
-}
-
-/**
- * Match a container's actual children against the spec'd children.
- * Emits FP003 (missing), FP004 (extra not allowed), FP005 (order) and returns
- * matched pairs for recursion.
- */
-function matchChildren(
-  actual: FormControlNode[],
-  specs: NodeSpec[],
-  extra: ExtraChildrenPolicy,
-  ordered: boolean,
-  parentPath: string,
-  patternLabel: string,
-  violations: FormPatternViolation[],
-): MatchedPair[] {
-  const consumed = new Array(actual.length).fill(false);
-  const matched: MatchedPair[] = [];
-  /** first actual index matched by each spec, in spec order (for FP005) */
-  const orderProbe: Array<{ specId: string; firstIndex: number }> = [];
-
-  for (const spec of specs) {
-    const indices: number[] = [];
-    for (let i = 0; i < actual.length; i++) {
-      if (consumed[i]) continue;
-      if (!typeMatches(actual[i], spec.controlTypes)) continue;
-      indices.push(i);
-      if (spec.occurrence === 'required' || spec.occurrence === 'optional') break;
-    }
-
-    if (indices.length === 0) {
-      if (spec.occurrence === 'required' || spec.occurrence === 'oneOrMore') {
-        const basefix = `Add a ${spec.controlTypes[0]} control${spec.nameHint ? ` (conventionally named ${spec.nameHint})` : ''} under ${parentPath}.`;
-        const qfSnippet = spec.controlTypes[0] === 'QuickFilterControl'
-          ? '\nQuickFilterControl requires a specific XML structure (NO i:type attribute, NOT <ExtensionName>):\n' +
-            '<AxFormControl>\n' +
-            '  <Name>QuickFilterControl</Name>\n' +
-            '  <FormControlExtension>\n' +
-            '    <Name>QuickFilterControl</Name>\n' +
-            '    <ExtensionComponents />\n' +
-            '    <ExtensionProperties>\n' +
-            '      <AxFormControlExtensionProperty><Name>targetControlName</Name><Type>String</Type><Value>Grid</Value></AxFormControlExtensionProperty>\n' +
-            '      <AxFormControlExtensionProperty><Name>defaultColumnName</Name><Type>String</Type><Value>ColumnName</Value></AxFormControlExtensionProperty>\n' +
-            '    </ExtensionProperties>\n' +
-            '  </FormControlExtension>\n' +
-            '</AxFormControl>'
-          : '';
-        violations.push({
-          rule: 'FP003',
-          severity: 'error',
-          path: parentPath,
-          excerpt: `${patternLabel}: required ${spec.controlTypes.join('/')} ("${spec.id}") is missing`,
-          fix: basefix + qfSnippet,
-        });
-      }
-      continue;
-    }
-
-    for (const i of indices) {
-      consumed[i] = true;
-      matched.push({ spec, node: actual[i], actualIndex: i });
-    }
-    orderProbe.push({ specId: spec.id, firstIndex: Math.min(...indices) });
-  }
-
-  if (ordered) {
-    for (let i = 1; i < orderProbe.length; i++) {
-      if (orderProbe[i].firstIndex < orderProbe[i - 1].firstIndex) {
-        violations.push({
-          rule: 'FP005',
-          severity: 'error',
-          path: parentPath,
-          excerpt: `${patternLabel}: "${orderProbe[i].specId}" appears before "${orderProbe[i - 1].specId}" — pattern requires the opposite order`,
-          fix: `Reorder the controls under ${parentPath}: ${specs.map((s) => s.id).join(' → ')}.`,
-        });
-      }
-    }
-  }
-
-  for (let i = 0; i < actual.length; i++) {
-    if (consumed[i]) continue;
-    const child = actual[i];
-    const allowedExtra =
-      extra === 'any'
-      || isOpaqueControl(child)
-      || (Array.isArray(extra) && (extra.includes('*') || extra.includes(child.type)));
-    if (!allowedExtra) {
-      violations.push({
-        rule: 'FP004',
-        severity: 'error',
-        path: nodePath(parentPath, child),
-        excerpt: `${patternLabel}: control type "${child.type}" is not allowed here`,
-        fix:
-          extra === 'none'
-            ? `Remove or relocate "${child.name}" — only [${specs.map((s) => s.controlTypes.join('/')).join(', ')}] are allowed under ${parentPath}.`
-            : `Move "${child.name}" elsewhere — allowed extra types here: ${(extra as string[]).join(', ')}.`,
-      });
-    }
-  }
-
-  return matched;
-}
-
-/** Recursively apply a matched spec node to its actual control. */
-function applySpecToNode(
-  pair: MatchedPair,
-  parentPath: string,
-  patternLabel: string,
-  topPatternId: string | undefined,
+function runPlatformMatch(
+  target: PatternTarget,
+  def: PlatformPatternDefinition,
+  path: string,
   violations: FormPatternViolation[],
 ): void {
-  const { spec, node } = pair;
-  const path = nodePath(parentPath, node);
-
-  // FP009 — property defaults set by the pattern
-  if (spec.properties) {
-    for (const [prop, expected] of Object.entries(spec.properties)) {
-      const actualValue = node.properties[prop];
-      if (actualValue !== undefined && actualValue !== expected) {
-        violations.push({
-          rule: 'FP009',
-          severity: 'warning',
-          path,
-          excerpt: `${patternLabel}: ${prop}="${actualValue}" differs from pattern default "${expected}"`,
-          fix: `Set ${prop} to "${expected}" unless the deviation is intentional.`,
-        });
-      }
-    }
-  }
-
-  // FP006 / FP007 — sub-pattern expectations on this slot
-  if (node.pattern) {
-    if (spec.allowedSubPatterns && spec.allowedSubPatterns.length > 0) {
-      const declared = resolveSubPattern(node.pattern);
-      const allowed = spec.allowedSubPatterns.some(
-        (name) => name.toLowerCase() === node.pattern!.toLowerCase()
-          || declared?.id.toLowerCase() === name.toLowerCase(),
-      );
-      if (!allowed) {
-        violations.push({
-          rule: 'FP007',
-          severity: 'error',
-          path,
-          excerpt: `${patternLabel}: sub-pattern "${node.pattern}" is not allowed on "${spec.id}" (allowed: ${spec.allowedSubPatterns.join(', ')})`,
-          fix: `Apply one of: ${spec.allowedSubPatterns.join(', ')}.`,
-        });
-      }
-    }
-  } else if (spec.requiresSubPattern) {
-    violations.push({
-      rule: 'FP006',
-      severity: 'warning',
-      path,
-      excerpt: `${patternLabel}: container "${node.name}" has no sub-pattern (unspecified)`,
-      fix:
-        spec.allowedSubPatterns && spec.allowedSubPatterns.length > 0
-          ? `Apply a sub-pattern: ${spec.allowedSubPatterns.join(', ')}.`
-          : 'Apply an appropriate container sub-pattern (e.g. FieldsFieldGroups, ToolbarAndList).',
-    });
-  }
-
-  // Recurse into spec'd children. Also runs when the spec has no explicit
-  // children but restricts extras (e.g. one-level group nesting in
-  // FieldsFieldGroups) — the extraChildren policy must still be enforced.
-  const hasChildSpecs = (spec.children?.length ?? 0) > 0;
-  const restrictsExtras = spec.extraChildren !== undefined && spec.extraChildren !== 'any';
-  if (hasChildSpecs || restrictsExtras) {
-    const matched = matchChildren(
-      node.children,
-      spec.children ?? [],
-      spec.extraChildren ?? 'any',
-      spec.childrenOrdered ?? true,
-      path,
-      patternLabel,
-      violations,
-    );
-    for (const childPair of matched) {
-      applySpecToNode(childPair, path, patternLabel, topPatternId, violations);
-    }
+  for (const issue of matchPlatformPattern(target, def, path)) {
+    const { rule, severity } = ISSUE_RULE[issue.kind];
+    violations.push({ rule, severity, path: issue.path, excerpt: issue.message, fix: issue.fix });
   }
 }
 
-/**
- * Walk the whole tree validating every declared sub-pattern, independent of
- * whether the top-level spec covers that container.
- */
+/** Validate every container below `nodes` that declares a sub-pattern. */
 function validateSubPatternsDeep(
   nodes: FormControlNode[],
   parentPath: string,
-  topPatternId: string | undefined,
   violations: FormPatternViolation[],
 ): void {
   for (const node of nodes) {
-    // Opaque composite controls (DimensionEntryControl …) own their interior —
-    // do not validate or descend into their managed child structure.
     if (isOpaqueControl(node)) continue;
-
     const path = nodePath(parentPath, node);
-
-    if (node.pattern) {
-      const sp = resolveSubPattern(node.pattern);
-      if (!sp) {
-        violations.push({
-          rule: 'FP001',
-          severity: 'error',
+    if (node.pattern && !isCustomPattern(node.pattern)) {
+      const def = resolvePlatformDefinition(node.pattern, node.patternVersion, 'sub', path, violations);
+      if (def) {
+        runPlatformMatch(
+          { name: node.name, type: node.type, extension: node.extension, pattern: node.pattern, properties: node.properties, children: node.children },
+          def,
           path,
-          excerpt: `Unknown sub-pattern "${node.pattern}" on ${node.type} "${node.name}"`,
-          fix: 'Use a known container sub-pattern (e.g. FieldsFieldGroups, CustomAndQuickFilters, ToolbarAndList) or fix the spelling.',
-        });
-      } else {
-        if (!sp.appliesToControlTypes.includes(node.type) && !sp.appliesToControlTypes.includes('*')) {
-          violations.push({
-            rule: 'FP007',
-            severity: 'error',
-            path,
-            excerpt: `Sub-pattern "${sp.xmlName}" cannot be applied to control type "${node.type}" (applies to: ${sp.appliesToControlTypes.join(', ')})`,
-            fix: `Move the sub-pattern to a ${sp.appliesToControlTypes[0]} container or choose a different sub-pattern.`,
-          });
-        }
-        if (sp.parentPatterns && topPatternId && !sp.parentPatterns.includes(topPatternId)) {
-          violations.push({
-            rule: 'FP007',
-            severity: 'error',
-            path,
-            excerpt: `Sub-pattern "${sp.xmlName}" is only valid inside ${sp.parentPatterns.join('/')} forms (this form: ${topPatternId})`,
-            fix: 'Choose a sub-pattern supported by this form pattern.',
-          });
-        }
-        checkVersion(node.patternVersion, sp.versions, `sub-pattern ${sp.xmlName}`, path, violations);
-
-        const matched = matchChildren(
-          node.children,
-          sp.root,
-          sp.extraRootChildren ?? 'any',
-          true,
-          path,
-          `sub-pattern ${sp.xmlName}`,
           violations,
         );
-        for (const pair of matched) {
-          applySpecToNode(pair, path, `sub-pattern ${sp.xmlName}`, topPatternId, violations);
-        }
       }
     }
-
-    validateSubPatternsDeep(node.children, path, topPatternId, violations);
+    validateSubPatternsDeep(node.children, path, violations);
   }
 }
 
@@ -454,51 +271,31 @@ export function validateFormTree(facts: FormFacts): FormPatternReport {
     coverage: { containersTotal: coverage.total, containersPatterned: coverage.patterned },
   };
 
-  let spec: FormPatternSpec | undefined;
-
   if (!design.pattern) {
     violations.push({
       rule: 'FP010',
       severity: 'warning',
       path: 'Design',
       excerpt: 'Form declares no <Pattern> on Design',
-      fix: `Apply a form pattern (known: ${knownPatternNames().join(', ')}).`,
+      fix: `Apply a form pattern (platform patterns: ${platformPatternNames('form').join(', ')}).`,
     });
-  } else {
-    spec = resolvePatternExact(design.pattern);
-    if (!spec) {
-      violations.push({
-        rule: 'FP001',
-        severity: 'error',
-        path: 'Design',
-        excerpt: `Unknown form pattern "${design.pattern}"`,
-        fix: `Use one of the known patterns: ${knownPatternNames().join(', ')}.`,
-      });
-    }
-  }
-
-  if (spec) {
-    const label = `pattern ${spec.xmlName}`;
-    checkVersion(design.patternVersion, spec.versions, label, 'Design', violations);
-
-    // FP009 — Design-level property defaults
-    if (spec.designProperties) {
-      for (const [prop, expected] of Object.entries(spec.designProperties)) {
-        const actualValue = prop === 'Style' ? design.style : design.properties[prop];
-        if (actualValue !== undefined && actualValue !== expected) {
-          violations.push({
-            rule: 'FP009',
-            severity: 'warning',
-            path: 'Design',
-            excerpt: `${label}: ${prop}="${actualValue}" differs from pattern default "${expected}"`,
-            fix: `Set Design.${prop} to "${expected}".`,
-          });
-        }
-      }
+  } else if (!isCustomPattern(design.pattern)) {
+    const def = resolvePlatformDefinition(design.pattern, design.patternVersion, 'form', 'Design', violations);
+    if (def) {
+      const properties = { ...design.properties };
+      if (design.style && properties.Style === undefined) properties.Style = design.style;
+      runPlatformMatch(
+        { name: 'Design', type: 'FormDesign', pattern: design.pattern, properties, children: design.controls },
+        def,
+        'Design',
+        violations,
+      );
     }
 
-    // FP008 — datasource expectations
-    if (spec.requiresDataSource === 'one' && dataSourceCount < 1) {
+    // FP008 — curated datasource advice
+    const spec = resolvePatternExact(design.pattern);
+    const label = `pattern ${design.pattern}`;
+    if (spec?.requiresDataSource === 'one' && dataSourceCount < 1) {
       violations.push({
         rule: 'FP008',
         severity: 'warning',
@@ -507,7 +304,7 @@ export function validateFormTree(facts: FormFacts): FormPatternReport {
         fix: 'Add a primary AxFormDataSource bound to the entity table.',
       });
     }
-    if (spec.requiresDataSource === 'headerLines' && dataSourceCount < 2) {
+    if (spec?.requiresDataSource === 'headerLines' && dataSourceCount < 2) {
       violations.push({
         rule: 'FP008',
         severity: 'warning',
@@ -516,29 +313,13 @@ export function validateFormTree(facts: FormFacts): FormPatternReport {
         fix: 'Add both a header datasource and a lines datasource (linked via JoinSource).',
       });
     }
-
-    // Structural matching of Design children
-    const matched = matchChildren(
-      design.controls,
-      spec.root,
-      spec.extraRootChildren ?? 'none',
-      true,
-      'Design',
-      label,
-      violations,
-    );
-    for (const pair of matched) {
-      applySpecToNode(pair, 'Design', label, spec.id, violations);
-    }
   }
 
-  // Deep sub-pattern validation across the entire tree
-  validateSubPatternsDeep(design.controls, 'Design', spec?.id, violations);
-
+  validateSubPatternsDeep(design.controls, 'Design', violations);
   return report;
 }
 
-/** Parse AxForm XML and validate it against the catalog. */
+/** Parse AxForm XML and validate it against the platform pattern definitions. */
 export async function validateFormPatternXml(xml: string): Promise<FormPatternReport> {
   const parser = new Parser({ explicitArray: false, mergeAttrs: true, trim: true });
   let parsed: any;
