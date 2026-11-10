@@ -1559,6 +1559,9 @@ const BRIDGE_MODIFY_OPS = new Set([
   // No C# op adds a submenu: served by a direct-XML writer on a menu (already in
   // BRIDGE_MODIFY_TYPES) and, through XML_ONLY_MODIFY_PAIRS, on a menu extension.
   'add-submenu',
+  // No C# op changes a control's parent: an AxForm's control tree is restructured by a
+  // direct-XML writer (formRestructure.ts; form is already in BRIDGE_MODIFY_TYPES).
+  'move-control', 'wrap-controls',
   // No C# op exists for query ranges on entities — served entirely by a
   // direct-XML writer (data-entity is already in BRIDGE_MODIFY_TYPES).
   'add-query-range', 'remove-query-range',

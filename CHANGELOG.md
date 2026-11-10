@@ -28,6 +28,18 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Added
+- **`move-control` and `wrap-controls` on a form.** Converting a form to a standard
+  pattern changes its nesting: fields go into a FieldsFieldGroups group, groups become
+  FastTab pages of a Tab, a grid moves under a TabPage. No operation changed a
+  control's parent, so the whole form was rewritten through `create` + `overwrite`.
+  `move-control` moves an existing control, with its subtree, under another parent at a
+  position. `wrap-controls` puts existing controls of one parent into a new Group, TabPage
+  or Tab with Pattern (PatternVersion defaults to the newest the catalogue knows), Caption
+  and Style, written in the shipped element order (a property the type never carries is
+  refused). Moved controls keep their XML byte for byte, only re-indented. The design's
+  own Pattern and PatternVersion are set with `modify-property`.
+
 ## [1.23.0] — 2026-11-05
 
 ### Added
