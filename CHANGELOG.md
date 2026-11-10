@@ -29,6 +29,16 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`index.storeObjectSource` turns off the copy of every object's XML in the index.** Since
+  1.23.0 the extraction writes each object's original XML into its JSON as `raw`, and the
+  build stores it gzipped in `object_source`, so a server without the AOT files (a shared or
+  Azure deployment) can still read objects. A server with the metadata folders on disk reads
+  the files and never uses the copy, which costs about 2 GB of extracted JSON and 0.4 GB of
+  database per full standard + custom index. Set `index.storeObjectSource` to `false`
+  (`STORE_OBJECT_SOURCE=false`) to skip both: the extraction leaves `raw` out (enums keep
+  theirs, it is their whole record), and neither the build nor `update_symbol_index` writes
+  `object_source` rows. The default, `true`, keeps today's behaviour. It takes effect at the
+  next index build; run a full rebuild (`extractMode` `all`) to remove copies already stored.
 - **`d365fo_file(action="modify", operation="modify-property")` sets OperationalDomain and
   SubscriberAccessLevel on existing tables and menu items.** Menu items had no writer for
   either (the bridge's setter has no case for them), and SubscriberAccessLevel holds child
