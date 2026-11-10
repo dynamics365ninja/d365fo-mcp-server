@@ -9,9 +9,10 @@
  *  - `destructiveHint` → tools that overwrite/rewrite existing content get an
  *                        explicit confirmation
  *  - `idempotentHint`  → repeated identical calls are safe (build, sync, index)
- *  - `openWorldHint`   → false everywhere: this server only touches the local
- *                        D365FO metadata store and symbol index, never the
- *                        open internet
+ *  - `openWorldHint`   → false except build_d365fo_project and run_systest_class,
+ *                        which on UDE reach the environment's cloud runtime
+ *                        (deploy, tests); everything else only touches the local
+ *                        D365FO metadata store and symbol index
  *
  * Per MCP spec these are HINTS for display/UX, not security boundaries.
  * Every tool in src/server/toolSchemas/index.ts MUST have an entry here —
@@ -58,7 +59,7 @@ function read(title: string): ToolAnnotations {
 /** Write tool — creates or modifies files / DB state. */
 function write(
   title: string,
-  opts: { destructive?: boolean; idempotent?: boolean } = {},
+  opts: { destructive?: boolean; idempotent?: boolean; openWorld?: boolean } = {},
 ): ToolAnnotations {
   return {
     title,
@@ -66,7 +67,8 @@ function write(
     // destructiveHint always sent, with its REAL value — see the note above.
     destructiveHint: opts.destructive ?? false,
     ...(opts.idempotent ? { idempotentHint: true } : {}),
-    openWorldHint: false,
+    // openWorldHint omitted when true, the spec default.
+    ...(opts.openWorld ? {} : { openWorldHint: false }),
   };
 }
 
@@ -103,7 +105,8 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
 
   // SDLC operations
   update_symbol_index:              write('Update symbol index', { idempotent: true }),
-  build_d365fo_project:             write('Build D365FO project', { idempotent: true }),
-  run_systest_class:                write('Run SysTest unit tests'),
+  // Both reach the UDE environment's cloud runtime: build with deploy:true, tests on UDE.
+  build_d365fo_project:             write('Build D365FO project', { idempotent: true, openWorld: true }),
+  run_systest_class:                write('Run SysTest unit tests', { openWorld: true }),
   trace_d365fo:                     write('ETW performance trace', { destructive: true }),
 };

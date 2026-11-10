@@ -102,7 +102,10 @@ class ConfigManager {
   private projectScanRunning = false;
   private xppConfigProvider: XppConfigProvider | null = null;
   private xppConfig: XppEnvironmentConfig | null = null;
-  private xppConfigLoaded: boolean = false;
+  // The one load of the XPP config. Every caller awaits this promise, so a call
+  // that arrives while the load is still running waits for it instead of reading
+  // xppConfig while it is still null.
+  private xppConfigLoad: Promise<void> | null = null;
   // Set while a TOOL call (get_workspace_info projectName/projectPath) has moved the
   // active project off the model this workspace itself resolved to. `anchorModel` is
   // that original model and it survives further switches — see getWriteAnchorModel().
@@ -1756,13 +1759,21 @@ class ConfigManager {
     return this.xppConfig?.xrefDbName || null;
   }
 
-  private async ensureXppConfig(): Promise<void> {
-    if (this.xppConfigLoaded) return;
-    this.xppConfigLoaded = true;
+  private ensureXppConfig(): Promise<void> {
+    return (this.xppConfigLoad ??= this.loadXppConfig());
+  }
 
+  private async loadXppConfig(): Promise<void> {
     this.xppConfigProvider = new XppConfigProvider();
     const configName = process.env.XPP_CONFIG_NAME || undefined;
-    this.xppConfig = await this.xppConfigProvider.getActiveConfig(configName);
+    try {
+      this.xppConfig = await this.xppConfigProvider.getActiveConfig(configName);
+    } catch (err) {
+      // Every later caller awaits this same promise, so a rejection must not
+      // escape it: treat an unreadable config like a missing one.
+      console.error(`[ConfigManager] Could not read the XPP config: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
 
     if (this.xppConfig) {
       console.error(`[ConfigManager] XPP config loaded: ${this.xppConfig.configName} v${this.xppConfig.version}`);

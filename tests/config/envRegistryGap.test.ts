@@ -30,7 +30,7 @@ const srcRoot = join(repoRoot, 'src');
  */
 const NOT_CONFIGURATION = new Set([
   // OS-provided
-  'HOME', 'LOCALAPPDATA', 'USERNAME', 'USERPROFILE', 'XDG_CONFIG_HOME',
+  'HOME', 'LOCALAPPDATA', 'ProgramFiles', 'USERNAME', 'USERPROFILE', 'XDG_CONFIG_HOME',
   // terminal / CI detection
   'CI', 'ConEmuTask', 'FORCE_COLOR', 'FORCE_UNICODE', 'GITHUB_ACTIONS', 'TERM',
   'TERM_PROGRAM', 'TF_BUILD', 'WSLENV', 'WT_SESSION',

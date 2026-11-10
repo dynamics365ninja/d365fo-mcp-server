@@ -529,6 +529,20 @@ export function checkSqlSwitch(
 }
 
 /**
+ * On UDE, `build_d365fo_project(deploy)` deploys through Power Platform Tools for Visual
+ * Studio's library. It is a UDE prerequisite, so its absence only costs the deploy option.
+ */
+export function checkPowerPlatformTools(dirs: readonly string[]): CheckResult {
+  return dirs.length > 0
+    ? { severity: 'ok', message: `UDE: Power Platform Tools for Visual Studio found (deploy available): ${dirs[0]}` }
+    : {
+      severity: 'warn',
+      message: 'UDE: Power Platform Tools for Visual Studio not found — build_d365fo_project cannot deploy to the environment',
+      fix: 'install Power Platform Tools from the Visual Studio Marketplace (a UDE prerequisite)',
+    };
+}
+
+/**
  * The symbol index is SQLite, served by node:sqlite — core since Node 22, and
  * the reason this package has no native dependency and installs without
  * lifecycle scripts. Two things can still be absent on an unusual runtime: the
@@ -786,6 +800,8 @@ export async function doctorCommand(): Promise<void> {
     const configs = listXppConfigs();
     if (dir && fs.existsSync(dir)) {
       emit({ severity: 'ok', message: `UDE: ${configs.length} XPP config(s) in ${dir}` });
+      const { findPowerPlatformToolsDirs } = await import('../../tools/sdlc/udeDeploy.js');
+      emit(checkPowerPlatformTools(await findPowerPlatformToolsDirs()));
     } else {
       emit({ severity: 'info', message: 'No UDE XPPConfig directory — traditional VM or UDE tools not installed' });
       // Only UDE's XPP config names the cross-reference database; a traditional

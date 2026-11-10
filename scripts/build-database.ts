@@ -48,6 +48,16 @@ const SKIP_FTS = process.env.SKIP_FTS === 'true';
 // Resume interrupted build: skip already-indexed models (progress tracked in _build_progress table)
 const RESUME = process.env.RESUME === 'true';
 
+/** True when `<root>/<Model>/AxLabelFile` exists for any model (the layout extract-binary-models writes). */
+function hasModelLabelFiles(root: string): boolean {
+  try {
+    return fsSync.readdirSync(root, { withFileTypes: true })
+      .some(e => (e.isDirectory() || e.isSymbolicLink()) && fsSync.existsSync(path.join(root, e.name, 'AxLabelFile')));
+  } catch {
+    return false;
+  }
+}
+
 async function buildDatabase() {
   const W = 56;
   console.log('');
@@ -291,6 +301,12 @@ async function buildDatabase() {
     // Fallback: traditional single path
     if (labelRootPaths.length === 0) {
       labelRootPaths.push(PACKAGES_PATH);
+    }
+
+    // Binary ISV models (extract-binary-models) keep their label texts beside their metadata JSON.
+    const binaryLabelRoot = path.resolve(INPUT_PATH);
+    if (!labelRootPaths.some(p => path.resolve(p) === binaryLabelRoot) && hasModelLabelFiles(binaryLabelRoot)) {
+      labelRootPaths.push(binaryLabelRoot);
     }
 
     console.log('');
