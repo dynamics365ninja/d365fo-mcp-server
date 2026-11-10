@@ -51,6 +51,17 @@ import { convertEntityFieldToComputed, type ComputedFieldType } from '../xml/ent
 import {
   addModuleReference, removeModuleReference, parseModuleReferences, invalidateModelVisibility,
 } from '../../metadata/modelDescriptor.js';
+import { clearSharedPackageMaps } from '../../utils/packageResolver.js';
+
+/**
+ * Drop what was memoised from a model descriptor that has just been rewritten:
+ * the model's visibility set, and the shared model-to-package map, which is
+ * built from the descriptors and would otherwise keep what they said before.
+ */
+function invalidateDescriptorCaches(descriptorPath: string): void {
+  invalidateModelVisibility(path.basename(descriptorPath, '.xml'));
+  clearSharedPackageMaps();
+}
 
 /**
  * Serializes a direct-XML editor on the file it edits.
@@ -2840,7 +2851,7 @@ export const directXmlAddModuleReference = serializedOnFile(async (
     }
 
     await writeFileAtomic(filePath, withBomOf(rawContent, normalizeD365Xml(outcome.xml)));
-    invalidateModelVisibility(path.basename(filePath, '.xml'));
+    invalidateDescriptorCaches(filePath);
     console.error(`[modify_d365fo_file] ✅ directXmlAddModuleReference: added '${moduleName}' to ${filePath}`);
     return {
       success: true,
@@ -2899,7 +2910,7 @@ export const directXmlRemoveModuleReference = serializedOnFile(async (
     }
 
     await writeFileAtomic(filePath, withBomOf(rawContent, normalizeD365Xml(outcome.xml)));
-    invalidateModelVisibility(path.basename(filePath, '.xml'));
+    invalidateDescriptorCaches(filePath);
     console.error(`[modify_d365fo_file] ✅ directXmlRemoveModuleReference: removed '${outcome.removed}' from ${filePath}`);
     const left = parseModuleReferences(outcome.xml);
     return {

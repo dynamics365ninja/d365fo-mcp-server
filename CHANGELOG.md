@@ -182,6 +182,21 @@ those are called out explicitly below.
   `openWorldHint: false`.
 
 ### Fixed
+- **Writes and lookups for a model whose package has another name no longer take half a
+  minute each.** When the package folder is not named after the model (a package holding
+  several models, a model in a package of another name, or a mistyped model name), the
+  server reads every package to build a model-to-package map. That map was thrown away
+  after each use, so every create, modify, label write and project check built it again.
+  The build also opened every subfolder of every package, although the comment called
+  that the fallback for a package without descriptors. On a machine with 178 packages
+  one build took over 30 seconds, under 2 of them for reading the descriptors. The map
+  is now built once per set of package roots and shared, and subfolders are opened only
+  in a package whose descriptors name no model. A model the map does not know triggers
+  one rebuild when the map is older than 5 seconds, so a model created in Visual Studio
+  is found without a restart and a mistyped name cannot cause a rebuild on every call.
+  Changing a model descriptor through the server drops the map. One behaviour change: a
+  folder with AOT content that no descriptor of its package declares is no longer
+  treated as a model when that package has descriptors. Nothing to configure.
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know
   neither property on a menu item, and a Staging or TempDB table kept Visual Studio's
