@@ -87,6 +87,19 @@ describe('parseSysTestResult', () => {
     expect(parseSysTestResult('5 tests run, 5 passed, 0 failed').passed).toBe(true);
     expect(parseSysTestResult('5 tests run, 4 passed, 1 failed').passed).toBe(false);
   });
+
+  it('the tool\'s own "no test ran" diagnoses → did NOT run', () => {
+    const startup = "❌ The test runner could not start: System.ValueTuple 4.0.3.0.\n\nNo test ran, and nothing is wrong with the test class.";
+    const cloud = '❌ The tests could not be run in the cloud runtime of https://contoso-dev.crm.dynamics.com: HTTP 403\n\nNo test result came back.';
+    expect(parseSysTestResult(startup)).toEqual({ ran: false, passed: null, failures: [] });
+    expect(parseSysTestResult(cloud)).toEqual({ ran: false, passed: null, failures: [] });
+  });
+
+  it('a real failing run whose assertion says "no test ran" still ran', () => {
+    const run = '❌ Tests FAILED\n\nClass: ContosoTest\n\n0/1 passed, 1 failed.\n\n' +
+      '❌ ContosoTest.testGuard — Assertion failed! Expected the batch to report: No test ran';
+    expect(parseSysTestResult(run)).toMatchObject({ ran: true, passed: false });
+  });
 });
 
 describe('systest feeds the scorecard', () => {

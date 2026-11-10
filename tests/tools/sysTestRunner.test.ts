@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // --- hoisted mocks -----------------------------------------------------------
-const { accessMock, readdirMock, execFileMock, readFileMock, cfgEnsureLoaded, cfgGetModelName, cfgGetPackagePath, cfgGetDevEnvironmentType } = vi.hoisted(() => {
+const {
+  accessMock, readdirMock, execFileMock, readFileMock, cfgEnsureLoaded, cfgGetModelName, cfgGetPackagePath,
+  cfgGetDevEnvironmentType, cfgGetActiveXppConfig, cfgGetAutoDetectedModelName, findClassFileMock,
+  dataverseSettingsMock, dataverseTokenMock, findRuntimeAssemblyMock, runInCloudMock, saveTrxMock,
+} = vi.hoisted(() => {
   const accessMock = vi.fn();
   // Bin listing for the versioned SysTestConsole lookup; empty unless a test lists files.
   const readdirMock = vi.fn().mockResolvedValue([]);
@@ -15,7 +19,20 @@ const { accessMock, readdirMock, execFileMock, readFileMock, cfgEnsureLoaded, cf
   const cfgGetPackagePath = vi.fn().mockReturnValue('K:\\AOSService\\PackagesLocalDirectory');
   // Unset (undefined after vi.resetAllMocks) reads as a classic VM; the UDE block sets it.
   const cfgGetDevEnvironmentType = vi.fn();
-  return { accessMock, readdirMock, execFileMock, readFileMock, cfgEnsureLoaded, cfgGetModelName, cfgGetPackagePath, cfgGetDevEnvironmentType };
+  const cfgGetActiveXppConfig = vi.fn();
+  const cfgGetAutoDetectedModelName = vi.fn();
+  // The UDE path: where the class file is, the Dataverse sign-in and the cloud run.
+  const findClassFileMock = vi.fn();
+  const dataverseSettingsMock = vi.fn();
+  const dataverseTokenMock = vi.fn();
+  const findRuntimeAssemblyMock = vi.fn();
+  const runInCloudMock = vi.fn();
+  const saveTrxMock = vi.fn();
+  return {
+    accessMock, readdirMock, execFileMock, readFileMock, cfgEnsureLoaded, cfgGetModelName, cfgGetPackagePath,
+    cfgGetDevEnvironmentType, cfgGetActiveXppConfig, cfgGetAutoDetectedModelName, findClassFileMock,
+    dataverseSettingsMock, dataverseTokenMock, findRuntimeAssemblyMock, runInCloudMock, saveTrxMock,
+  };
 });
 
 vi.mock('child_process', () => ({ execFile: execFileMock }));
@@ -29,14 +46,28 @@ vi.mock('../../src/utils/configManager.js', () => ({
     getModelName: cfgGetModelName,
     getPackagePath: cfgGetPackagePath,
     getDevEnvironmentType: cfgGetDevEnvironmentType,
+    getActiveXppConfig: cfgGetActiveXppConfig,
+    getAutoDetectedModelName: cfgGetAutoDetectedModelName,
   }),
+}));
+vi.mock('../../src/utils/objectFileLookup.js', () => ({ findD365FileOnDisk: findClassFileMock }));
+vi.mock('../../src/utils/dataverseAuth.js', () => ({
+  DEFAULT_DATAVERSE_CLIENT_ID: 'default-client',
+  readDataverseSettings: dataverseSettingsMock,
+  getDataverseAccessToken: dataverseTokenMock,
+}));
+vi.mock('../../src/tools/sdlc/udeSysTest.js', async importOriginal => ({
+  ...(await importOriginal<typeof import('../../src/tools/sdlc/udeSysTest.js')>()),
+  findRuntimeAssembly: findRuntimeAssemblyMock,
+  runTestRequestInCloud: runInCloudMock,
+  saveTrx: saveTrxMock,
 }));
 vi.mock('../../src/utils/operationLocks.js', () => ({
   withOperationLock: (_key: string, fn: () => any) => fn(),
 }));
 
 import path from 'path';
-import { sysTestRunnerTool, compareSysTestDataAccess, findSysTestConsole, findSysTestConsoles } from '../../src/tools/sdlc/sysTestRunner';
+import { sysTestRunnerTool, compareSysTestDataAccess, findSysTestConsole, findSysTestConsoles, _clearRedPhaseMemory } from '../../src/tools/sdlc/sysTestRunner';
 import { capToolResponse } from '../../src/tools/responseCaps';
 import { parseSysTestResult } from '../../src/eval/oracle/systest';
 
@@ -167,61 +198,276 @@ describe('run_systest_class — binary resolution', () => {
 
 /**
  * A UDE box has no local AOS, so SysTestConsole cannot run there from any Bin: it dies with
- * "Failed to obtain app setting from for: Common.HostingEnvironment". Before the guard, the tool
- * looked under the custom packages path (no Bin on UDE) and answered "not found", which sent the
- * reader to fix a path that could never help.
+ * "Failed to obtain app setting from for: Common.HostingEnvironment". The tests go to the cloud
+ * runtime instead, through the environment's Dataverse, as Visual Studio sends them.
  */
 describe('run_systest_class — on a UDE environment', () => {
   const UDE_CUSTOM = 'C:\\Contoso\\Metadata';
-  const UDE_FRAMEWORK = 'C:\\Users\\Contoso\\AppData\\Local\\Microsoft\\Dynamics365\\10.0.2000.1\\PackagesLocalDirectory';
+  const RUNTIME = 'C:\\Users\\Contoso\\AppData\\Local\\Microsoft\\Dynamics365\\RuntimeSymLinks\\CONTOSODEV';
+  const CLASS_FILE = path.join(UDE_CUSTOM, 'ContosoExtTests', 'ContosoExtTests', 'AxClass', 'ContosoInvoiceTest.xml');
+  const ASSEMBLY = path.join(RUNTIME, 'ZZZZ__Metadata', 'ContosoExtTests', 'bin', 'Dynamics.AX.ContosoExtTests.dll');
+  const DATAVERSE = { url: 'https://contoso-dev.crm.dynamics.com', clientId: 'client', tenant: 'organizations' };
+
+  const method = (name: string, attrs = '') =>
+    `\t\t\t<Method>\n\t\t\t\t<Name>${name}</Name>\n\t\t\t\t<Source><![CDATA[\n${attrs}    public void ${name}()\n    {\n    }\n]]></Source>\n\t\t\t</Method>`;
+  const CLASS_XML = [
+    '<AxClass>',
+    '\t<SourceCode>',
+    '\t\t<Declaration><![CDATA[\npublic class ContosoInvoiceTest extends SysTestCase\n{\n}\n]]></Declaration>',
+    '\t\t<Methods>',
+    method('testPosting'),
+    method('testTotals'),
+    method('testRetired', '    [SysTestMethod, SysTestInactiveTest]\n'),
+    method('setUp'),
+    '\t\t</Methods>',
+    '\t</SourceCode>',
+    '</AxClass>',
+  ].join('\n');
+  const trx = (results: { name: string; outcome: string; message?: string }[]) =>
+    '<TestRun><Results>' + results.map(r =>
+      `<UnitTestResult testName="${r.name}" outcome="${r.outcome}">` +
+      (r.message ? `<Output><ErrorInfo><Message>${r.message}</Message></ErrorInfo></Output>` : '') +
+      '</UnitTestResult>').join('') + '</Results></TestRun>';
 
   beforeEach(() => {
     vi.resetAllMocks();
+    _clearRedPhaseMemory();
     readdirMock.mockResolvedValue(['SysTestConsole.17.0.exe']);
     cfgEnsureLoaded.mockResolvedValue(undefined);
     cfgGetModelName.mockReturnValue('ContosoExtTests');
     cfgGetPackagePath.mockReturnValue(UDE_CUSTOM);
     cfgGetDevEnvironmentType.mockResolvedValue('ude');
-    // A runner that WOULD be found: the guard must not depend on the lookup failing.
-    allowPaths([path.join(UDE_CUSTOM, 'Bin', 'SysTestConsole.17.0.exe'), path.join(UDE_FRAMEWORK, 'Bin', 'SysTestConsole.17.0.exe')]);
+    cfgGetActiveXppConfig.mockResolvedValue({ runtimePackagesDirectory: RUNTIME });
+    // A SysTestConsole that WOULD be found: UDE must never start it.
+    allowPaths([path.join(UDE_CUSTOM, 'Bin', 'SysTestConsole.17.0.exe')]);
+    findClassFileMock.mockImplementation(async (_type: string, name: string) => name === 'ContosoInvoiceTest' ? CLASS_FILE : null);
+    readFileMock.mockImplementation(async (file: string) => {
+      if (file === CLASS_FILE) return CLASS_XML;
+      throw Object.assign(new Error(`ENOENT: ${file}`), { code: 'ENOENT' });
+    });
+    findRuntimeAssemblyMock.mockResolvedValue(ASSEMBLY);
+    dataverseSettingsMock.mockReturnValue(DATAVERSE);
+    saveTrxMock.mockResolvedValue('C:\\Temp\\systest-ContosoInvoiceTest.trx');
+    runInCloudMock.mockResolvedValue({
+      suiteId: 's',
+      trx: trx([
+        { name: 'ContosoInvoiceTest.testPosting', outcome: 'Passed' },
+        { name: 'ContosoInvoiceTest.testTotals', outcome: 'Failed', message: 'Assertion failed! (Expected: 10; Actual: 12)' },
+      ]),
+    });
   });
 
-  it('says tests cannot run here, without starting or even looking for a runner', async () => {
-    const result = await sysTestRunnerTool({ className: 'ContosoMyTest' }, {});
+  /** The request document the tool sent. */
+  const sentRequest = () => runInCloudMock.mock.calls[0][2] as string;
+
+  it('runs the test methods in the cloud runtime and reports each of them', async () => {
+    const result = await sysTestRunnerTool({ className: 'ContosoInvoiceTest' }, {});
+    const text = result.content[0].text;
+
+    expect(result.isError).toBeFalsy();
+    expect(text.startsWith('❌ Tests FAILED')).toBe(true);
+    expect(text).toContain('1/2 passed, 1 failed.');
+    expect(text).toContain('❌ ContosoInvoiceTest.testTotals — Assertion failed! (Expected: 10; Actual: 12)');
+    expect(text).toContain('✅ ContosoInvoiceTest.testPosting');
+    expect(text).toContain('Ran in the cloud runtime of https://contoso-dev.crm.dynamics.com');
+    expect(text).toContain('Result file: C:\\Temp\\systest-ContosoInvoiceTest.trx');
+    expect(execFileMock).not.toHaveBeenCalled();
+  });
+
+  it('sends the module assembly from the runtime folder and only the methods SysTest runs', async () => {
+    await sysTestRunnerTool({ className: 'ContosoInvoiceTest' }, {});
+
+    expect(findRuntimeAssemblyMock).toHaveBeenCalledWith(RUNTIME, 'ContosoExtTests');
+    const request = sentRequest();
+    expect(request).toContain(`<AssemblyPath>${ASSEMBLY}</AssemblyPath>`);
+    expect(request).toContain('<TestCaseName>ContosoInvoiceTest.testPosting</TestCaseName>');
+    expect(request).toContain('<TestCaseName>ContosoInvoiceTest.testTotals</TestCaseName>');
+    expect(request).not.toContain('setUp');
+    expect(request).not.toContain('testRetired');
+  });
+
+  it('says which inactive tests were skipped', async () => {
+    const text = (await sysTestRunnerTool({ className: 'ContosoInvoiceTest' }, {})).content[0].text;
+
+    expect(text).toContain('Skipped, marked [SysTestInactiveTest]: testRetired.');
+  });
+
+  it('runs only testMethod when one is given', async () => {
+    runInCloudMock.mockResolvedValue({ suiteId: 's', trx: trx([{ name: 'ContosoInvoiceTest.testPosting', outcome: 'Passed' }]) });
+
+    const result = await sysTestRunnerTool({ className: 'ContosoInvoiceTest', testMethod: 'TESTPOSTING' }, {});
+    const text = result.content[0].text;
+
+    expect(text.startsWith('✅ Tests passed')).toBe(true);
+    expect(text).toContain('Class: ContosoInvoiceTest::testPosting');
+    expect(sentRequest()).not.toContain('testTotals');
+    expect(text).not.toContain('no per-method filter');
+  });
+
+  it('lists the test methods when testMethod names none of them, without running anything', async () => {
+    const result = await sysTestRunnerTool({ className: 'ContosoInvoiceTest', testMethod: 'testPostng' }, {});
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('has no test method named "testPostng"');
+    expect(result.content[0].text).toContain('testPosting, testTotals, testRetired');
+    expect(runInCloudMock).not.toHaveBeenCalled();
+  });
+
+  it('adds the test methods of a base class in the same model', async () => {
+    const BASE_FILE = CLASS_FILE.replace('ContosoInvoiceTest', 'ContosoTestBase');
+    findClassFileMock.mockImplementation(async (_t: string, name: string) =>
+      name === 'ContosoInvoiceTest' ? CLASS_FILE : name === 'ContosoTestBase' ? BASE_FILE : null);
+    readFileMock.mockImplementation(async (file: string) => {
+      if (file === CLASS_FILE) return CLASS_XML.replace('extends SysTestCase', 'extends ContosoTestBase');
+      if (file === BASE_FILE) {
+        return CLASS_XML.replace('class ContosoInvoiceTest extends SysTestCase', 'abstract class ContosoTestBase extends SysTestCase')
+          .replace(/testPosting|testTotals|testRetired/g, n => `${n}Base`).replace('testPostingBase', 'testPosting');
+      }
+      throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    });
+
+    await sysTestRunnerTool({ className: 'ContosoInvoiceTest' }, {});
+
+    const request = sentRequest();
+    expect(request).toContain('ContosoInvoiceTest.testTotalsBase');
+    // Overridden in the class: listed once.
+    expect(request.match(/<TestCaseName>ContosoInvoiceTest\.testPosting</g)).toHaveLength(1);
+  });
+
+  it('says when a base class outside the model was not searched', async () => {
+    readFileMock.mockImplementation(async (file: string) => {
+      if (file === CLASS_FILE) return CLASS_XML.replace('extends SysTestCase', 'extends ContosoSharedTestBase');
+      throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    });
+
+    const text = (await sysTestRunnerTool({ className: 'ContosoInvoiceTest' }, {})).content[0].text;
+
+    expect(text).toContain('inherited from `ContosoSharedTestBase` were not looked for');
+  });
+
+  it('asks for the Dataverse URL when none is configured, before signing in', async () => {
+    dataverseSettingsMock.mockReturnValue(undefined);
+
+    const result = await sysTestRunnerTool({ className: 'ContosoInvoiceTest' }, {});
     const text = result.content[0].text;
 
     expect(result.isError).toBe(true);
-    expect(text).toContain('cannot run tests on a UDE');
-    expect(text).toMatch(/No test ran/);
-    expect(text).toContain('Common.HostingEnvironment');
-    expect(execFileMock).not.toHaveBeenCalled();
-    expect(readdirMock).not.toHaveBeenCalled();
-    // Not the old answer, which read like a path problem.
-    expect(text).not.toContain('Neither SysTestConsole.exe nor SysTestRunner.exe found');
-    expect(text).not.toContain('Tests FAILED');
+    expect(text).toContain('`environment.dataverseUrl` (D365FO_DATAVERSE_URL)');
+    expect(text).toContain('not the Finance and Operations URL');
+    expect(text).toContain('Visual Studio Test Explorer');
+    expect(runInCloudMock).not.toHaveBeenCalled();
+    expect(dataverseTokenMock).not.toHaveBeenCalled();
   });
 
-  it('points at Visual Studio Test Explorer for the class that was asked for', async () => {
-    const text = (await sysTestRunnerTool({ className: 'ContosoMyTest' }, {})).content[0].text;
+  it('asks for a build when the module assembly is not in the runtime folder', async () => {
+    findRuntimeAssemblyMock.mockResolvedValue(null);
 
-    expect(text).toContain('Run `ContosoMyTest` from Visual Studio Test Explorer');
-    expect(text).toContain('packagePath');
-  });
-
-  it('does not run even when packagePath names the framework directory', async () => {
-    const result = await sysTestRunnerTool({ className: 'ContosoMyTest', packagePath: UDE_FRAMEWORK }, {});
+    const result = await sysTestRunnerTool({ className: 'ContosoInvoiceTest' }, {});
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('cannot run tests on a UDE');
-    expect(execFileMock).not.toHaveBeenCalled();
+    expect(result.content[0].text).toContain('Dynamics.AX.ContosoExtTests.dll was not found');
+    expect(result.content[0].text).toContain('build_d365fo_project');
+    expect(runInCloudMock).not.toHaveBeenCalled();
   });
 
-  it('tells a misdetected classic VM how to say so', async () => {
-    const text = (await sysTestRunnerTool({ className: 'ContosoMyTest' }, {})).content[0].text;
+  it('reports a class that is not in the model', async () => {
+    const result = await sysTestRunnerTool({ className: 'ContosoMissingTest' }, {});
 
-    expect(text).toContain('`environment.type`');
-    expect(text).toContain('D365FO_DEV_ENVIRONMENT_TYPE');
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('`ContosoMissingTest` was not found in model `ContosoExtTests`');
+  });
+
+  it('reports a cloud run that failed as no result, not as failing tests', async () => {
+    runInCloudMock.mockRejectedValue(new Error('The cloud runtime could not run the tests (Failed): statusCode = FailedDependency'));
+
+    const result = await sysTestRunnerTool({ className: 'ContosoInvoiceTest' }, {});
+    const text = result.content[0].text;
+
+    expect(result.isError).toBe(true);
+    expect(text).toContain('FailedDependency');
+    expect(text).toContain('not deployed');
+    expect(text).not.toContain('Tests FAILED');
+    expect(parseSysTestResult(text).ran).toBe(false);
+  });
+
+  it('counts a requested method with no result as failed, so a run cut short is never green', async () => {
+    runInCloudMock.mockResolvedValue({ suiteId: 's', trx: trx([{ name: 'ContosoInvoiceTest.testPosting', outcome: 'Passed' }]) });
+
+    const result = await sysTestRunnerTool({ className: 'ContosoInvoiceTest' }, {});
+    const text = result.content[0].text;
+
+    expect(text.startsWith('❌ Tests FAILED')).toBe(true);
+    expect(text).toContain('1/2 passed, 1 failed.');
+    expect(text).toContain('❌ ContosoInvoiceTest.testTotals — No result came back for this test.');
+    expect(parseSysTestResult(text).passed).toBe(false);
+  });
+
+  it('reports results that name no test as no result at all', async () => {
+    runInCloudMock.mockResolvedValue({ suiteId: 's', trx: '<TestRun><Results/></TestRun>' });
+
+    const result = await sysTestRunnerTool({ className: 'ContosoInvoiceTest' }, {});
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('No test result came back for 2 requested method(s).');
+    expect(result.content[0].text).toContain('Result file: C:\\Temp\\systest-ContosoInvoiceTest.trx');
+    expect(parseSysTestResult(result.content[0].text).ran).toBe(false);
+  });
+
+  it('accepts testMethod written as Class::method or Class.method', async () => {
+    for (const testMethod of ['ContosoInvoiceTest::testPosting', 'ContosoInvoiceTest.testPosting']) {
+      runInCloudMock.mockClear();
+      const result = await sysTestRunnerTool({ className: 'ContosoInvoiceTest', testMethod }, {});
+
+      expect(result.isError).toBeFalsy();
+      expect(sentRequest()).toContain('<TestCaseName>ContosoInvoiceTest.testPosting</TestCaseName>');
+      expect(sentRequest()).not.toContain('testTotals');
+    }
+  });
+
+  it('refuses a class or method name that is not an X++ identifier, before touching any file', async () => {
+    for (const params of [{ className: '..\\..\\ContosoInvoiceTest' }, { className: 'ContosoInvoiceTest', testMethod: 'test/../x' }]) {
+      const result = await sysTestRunnerTool(params, {});
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('Invalid parameter');
+    }
+    expect(findClassFileMock).not.toHaveBeenCalled();
+  });
+
+  it('tells a classic VM detected as UDE how to say so, where the reply asks for UDE settings', async () => {
+    dataverseSettingsMock.mockReturnValue(undefined);
+
+    const text = (await sysTestRunnerTool({ className: 'ContosoInvoiceTest' }, {})).content[0].text;
+
+    expect(text).toContain('`environment.type` (D365FO_DEV_ENVIRONMENT_TYPE)');
     expect(text).toContain('"traditional"');
+  });
+
+  it('signs in before taking the run lock, and reports a failed sign-in as no test run', async () => {
+    dataverseTokenMock.mockRejectedValue(new Error('AADSTS65001: consent required'));
+
+    const result = await sysTestRunnerTool({ className: 'ContosoInvoiceTest' }, {});
+    const text = result.content[0].text;
+
+    expect(result.isError).toBe(true);
+    expect(text).toContain('Signing in to https://contoso-dev.crm.dynamics.com failed: AADSTS65001');
+    expect(text).toMatch(/No test ran/);
+    expect(runInCloudMock).not.toHaveBeenCalled();
+  });
+
+  it('says another run held the lock rather than blaming the deployment', async () => {
+    runInCloudMock.mockRejectedValue(new Error('Timeout waiting for filesystem lock: systest:ContosoExtTests:ContosoInvoiceTest'));
+
+    const text = (await sysTestRunnerTool({ className: 'ContosoInvoiceTest' }, {})).content[0].text;
+
+    expect(text).toContain('Another run of `ContosoInvoiceTest` was still in progress');
+    expect(text).not.toContain('not deployed');
+  });
+
+  it('is scored by the eval oracle as a run whose tests failed', async () => {
+    const parsed = parseSysTestResult((await sysTestRunnerTool({ className: 'ContosoInvoiceTest' }, {})).content[0].text);
+
+    expect(parsed.ran).toBe(true);
+    expect(parsed.passed).toBe(false);
   });
 
   it('still runs SysTestConsole when the environment is traditional', async () => {
