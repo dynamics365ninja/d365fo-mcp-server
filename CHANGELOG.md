@@ -61,6 +61,15 @@ those are called out explicitly below.
   writes the fields as passed. Nothing is created when the symbol index cannot be read.
 
 ### Fixed
+- **On UDE, a tool call made right after the server starts no longer misses the custom
+  metadata folder.** The server marked the XPP config as loaded before reading it had
+  finished, so a call arriving during that read (in practice the first few seconds after
+  `initialize`, while the bridge was being set up) saw no config: the custom packages path
+  was empty, so e.g. `run_systest_class` reported "class not found" for a class in the
+  custom model, and the environment counted as traditional instead of UDE. If the tool call
+  won the race, the bridge itself was set up without the custom metadata folder for the
+  whole session. Every caller now waits for the same read; an XPP config that cannot be
+  read is logged and treated as missing.
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know
   neither property on a menu item, and a Staging or TempDB table kept Visual Studio's
