@@ -59,7 +59,7 @@ function makeManager() {
 
   // Simulate: initial detection already ran and found ProjectA
   (mgr as any).autoDetectionAttempted = true;
-  (mgr as any).xppConfigLoaded = true;
+  (mgr as any).xppConfigLoad = Promise.resolve();
   (mgr as any).xppConfig = null;
   (mgr as any).autoDetectedProject = INFO_A;
   (mgr as any).runtimeContext = { workspacePath: WORKSPACE };
