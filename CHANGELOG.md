@@ -29,11 +29,11 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
-- **`diff-metadata --models` takes masks and exclusions.** `Contoso*`, `ContosoApp_*,Fabrikam*` and
+- **`diff-metadata --models` takes masks and exclusions** (#1225). `Contoso*`, `ContosoApp_*,Fabrikam*` and
   `*,!ContosoDemo*` select models by module name or display name; models selected on only one
   side are listed instead of silently dropped.
 - **`upgrade-impact --platform-upgrade` shows what a new Microsoft platform build does to
-  the models installed on top of it.** Give it the old and the new PackagesLocalDirectory
+  the models installed on top of it** (#1225). Give it the old and the new PackagesLocalDirectory
   and your models (ISV or customer); it cuts out only the Microsoft classes, tables, EDTs and
   enums your code names and what they inherit from, extracts them with `extract-metadata`
   and runs the usual check. `--models` and `--deps` take masks (`Contoso*`, `ContosoApp_*,Fabrikam*`,
@@ -46,7 +46,7 @@ those are called out explicitly below.
   change of the dependency, as a behaviour change for a Chain of Command wrapper of it, and
   only as "affected" for a plain call.
 - **`npm run upgrade-impact` shows what an update of a model does to your own code, without a
-  build.** Given the extracted metadata of two versions of the models you depend on and the
+  build** (#1225). Given the extracted metadata of two versions of the models you depend on and the
   source of your models, it reports per object of yours what will not compile (a called
   method removed, made private or given a new required parameter, a changed parameter or
   return type, a removed field or enum value, a Chain of Command wrapper or `[SubscribesTo]`
@@ -56,7 +56,7 @@ those are called out explicitly below.
   optional parameter), with the old and new signature and the fix. Dependencies present in
   only one version are listed, not reported as removed. Markdown report, `--json` for tools,
   exit code 1 when something will not compile. See docs/VERSION_COMPARE.md.
-- **`npm run diff-metadata` compares two versions of a model.** After an ISV or Microsoft
+- **`npm run diff-metadata` compares two versions of a model** (#1225). After an ISV or Microsoft
   update there was no way to see what moved in the API short of reading both models. The
   script takes two extracted-metadata directories (from `extract-metadata`, or from
   `extract-binary-models` for a binary ISV model) and lists added and removed classes,
