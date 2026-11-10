@@ -99,28 +99,26 @@ describe('moveFormControl', () => {
 
 describe('moveFormControl and Tabs', () => {
   const tabs = FORM.replace(
-    ctl(3, 'Grid', 'LinesGrid').join('
-'),
+    ctl(3, 'Grid', 'LinesGrid').join('\r\n'),
     [
-      '			<AxFormControl xmlns=""',
-      '				i:type="AxFormTabControl">',
-      '				<Name>Pages</Name>',
-      '				<Type>Tab</Type>',
-      '				<FormControlExtension',
-      '					i:nil="true" />',
-      '				<Controls>',
-      '					<AxFormControl xmlns=""',
-      '						i:type="AxFormTabPageControl">',
-      '						<Name>Page1</Name>',
-      '						<Type>TabPage</Type>',
-      '						<FormControlExtension',
-      '							i:nil="true" />',
-      '						<Controls />',
-      '					</AxFormControl>',
-      '				</Controls>',
-      '			</AxFormControl>',
-    ].join('
-'),
+      '\t\t\t<AxFormControl xmlns=""',
+      '\t\t\t\ti:type="AxFormTabControl">',
+      '\t\t\t\t<Name>Pages</Name>',
+      '\t\t\t\t<Type>Tab</Type>',
+      '\t\t\t\t<FormControlExtension',
+      '\t\t\t\t\ti:nil="true" />',
+      '\t\t\t\t<Controls>',
+      '\t\t\t\t\t<AxFormControl xmlns=""',
+      '\t\t\t\t\t\ti:type="AxFormTabPageControl">',
+      '\t\t\t\t\t\t<Name>Page1</Name>',
+      '\t\t\t\t\t\t<Type>TabPage</Type>',
+      '\t\t\t\t\t\t<FormControlExtension',
+      '\t\t\t\t\t\t\ti:nil="true" />',
+      '\t\t\t\t\t\t<Controls />',
+      '\t\t\t\t\t</AxFormControl>',
+      '\t\t\t\t</Controls>',
+      '\t\t\t</AxFormControl>',
+    ].join('\r\n'),
   );
 
   it('refuses a control that is not a TabPage under a Tab (all 14,500 shipped children of a Tab are pages)', () => {
@@ -133,7 +131,7 @@ describe('moveFormControl and Tabs', () => {
     expect(r.warnings.join(' ')).toMatch(/not a Tab/);
   });
 
-  it('moves a page between Tabs without a warning', () => {
+  it('keeps a page already in its Tab as a no-op without a warning', () => {
     const r = ok(moveFormControl(tabs, { controlName: 'Page1', parentControl: 'Pages', positionType: 'Begin' }));
     expect(r.changed).toBe(false);
     expect(r.warnings).toEqual([]);
