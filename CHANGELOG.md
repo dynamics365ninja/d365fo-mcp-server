@@ -29,6 +29,25 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`modify-property` with `dataSourceName` sets JoinSource, LinkType, AllowEdit and the
+  other properties of a form data source that already exists.** Join properties could be
+  given only while a data source was added with `add-data-source`, and the others not at
+  all, so an existing data source was edited in the form XML by hand. On `form` and
+  `form-extension`, pass `dataSourceName` with `propertyPath` = `JoinSource`, `LinkType`,
+  a Yes/No property (`AllowCreate`, `AllowDelete`, `AllowEdit`, `AllowCheck`,
+  `AutoNotify`, `AutoQuery`, `AutoSearch`, `CrossCompanyAutoQuery`, `DelayActive`,
+  `OnlyFetchActive`, `InsertAtEnd`, `InsertIfEmpty`), `Index`, `MaxAccessRight` or
+  `StartPosition`. An existing element is replaced where it stands, a missing one is
+  inserted in the platform's element order, and an empty value removes it. That order is
+  not alphabetical. It was measured on Microsoft standard forms (13,234 data sources, no
+  pair of elements in both orders), because the platform drops an element written out of
+  order. A JoinSource that is not a data source of the form is refused, and so is a
+  LinkType outside InnerJoin, OuterJoin, ExistJoin, NotExistJoin, Delayed, Active and
+  Passive. Yes/No properties take Yes or No. InsertIfEmpty=Yes removes the element, as
+  Yes is its default. On a form extension a JoinSource that is not in the extension is
+  written with a note, because it must be a data source of the base form. CounterField,
+  ValidTimeStateAutoQuery, ValidTimeStateUpdate, OptionalRecordMode and MaxRecordsToLoad
+  are too rare to place with certainty and are refused with the supported list (#1161).
 - **`d365fo_file(action="modify", operation="modify-property")` sets OperationalDomain and
   SubscriberAccessLevel on existing tables and menu items.** Menu items had no writer for
   either (the bridge's setter has no case for them), and SubscriberAccessLevel holds child

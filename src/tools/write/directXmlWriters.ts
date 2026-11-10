@@ -37,6 +37,9 @@ import { upsertAxFormDesignProperty } from '../../utils/axFormDesignProperties.j
 import { bpAccessPropertyOf, isBpAccessObjectType, setBpAccessProperty } from '../xml/bpAccessPropertyModify.js';
 import { setRelationOnDelete } from '../xml/tableBpDefaults.js';
 import { upsertFormControlProperty } from '../../utils/formControlPropertyXml.js';
+import {
+  FORM_DATA_SOURCE_AFTER_INSERT_IF_EMPTY as AFTER_INSERT_IF_EMPTY, upsertFormDataSourceProperty,
+} from '../../utils/formDataSourcePropertyXml.js';
 import { resolveControlPropertyTarget } from '../../utils/formExtensionControlModifications.js';
 import { buildAxDataEntityViewFieldXml } from '../xml/dataEntityViewExtensionXml.js';
 import {
@@ -1804,16 +1807,6 @@ export const directXmlAddViewField = serializedOnFile(async (
 });
 
 /**
- * Elements that FOLLOW <InsertIfEmpty> in an AxFormDataSource. Measured over the
- * 21,168 data sources of the shipped forms and form extensions (source XML): every
- * other child element only ever precedes it, and none appears on both sides.
- */
-const AFTER_INSERT_IF_EMPTY = [
-  'StartPosition', 'MaxAccessRight', 'ValidTimeStateUpdate', 'ValidTimeStateAutoQuery',
-  'OptionalRecordMode', 'DataSourceLinks', 'DerivedDataSources',
-];
-
-/**
  * Sets InsertIfEmpty on the form data source `dataSourceName` — after the bridge has
  * added it, since its AddDataSource takes no such property.
  *
@@ -1858,6 +1851,48 @@ export const directXmlSetFormDataSourceInsertIfEmpty = serializedOnFile(async (
     message: insertIfEmpty
       ? (changed ? 'InsertIfEmpty set back to its default (Yes).' : 'InsertIfEmpty left at its default (Yes).')
       : (changed ? 'InsertIfEmpty=No set on the data source.' : 'InsertIfEmpty is already No.'),
+  };
+});
+
+/**
+ * modify-property with dataSourceName on a FORM or FORM-EXTENSION: sets JoinSource,
+ * LinkType or InsertIfEmpty on a data source the file itself defines. The bridge
+ * takes them only while it adds a data source, so an existing one could not be
+ * re-joined without editing the XML by hand (#1161). Placement, validation and the
+ * list of supported properties live in formDataSourcePropertyXml.ts.
+ */
+export const directXmlModifyFormDataSourceProperty = serializedOnFile(async (
+  filePath: string,
+  objectType: string,
+  objectName: string,
+  dataSourceName: string,
+  propertyName: string,
+  propertyValue: string,
+): Promise<{ success: boolean; message: string; skipped?: boolean }> => {
+  if (objectType !== 'form' && objectType !== 'form-extension') {
+    return {
+      success: false,
+      message:
+        `modify-property with dataSourceName sets a property on a FORM data source and applies to ` +
+        `objectType="form" and "form-extension" only, not "${objectType}". Nothing was written.`,
+    };
+  }
+  const content = (await fs.readFile(filePath, 'utf-8')).replace(/^﻿/, '');
+  const outcome = upsertFormDataSourceProperty(content, dataSourceName, propertyName, propertyValue, {
+    // An extension's data source may join one of the base form, which this file does not hold.
+    joinSourceCheck: objectType === 'form-extension' ? 'skip-when-absent' : 'strict',
+  });
+  if (!outcome.ok) {
+    return {
+      success: false,
+      message: `Could not set '${propertyName}' on data source '${dataSourceName}' of ${objectName}: ${outcome.reason}`,
+    };
+  }
+  if (outcome.changed) await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
+  return {
+    success: true,
+    ...(outcome.changed ? {} : { skipped: true }),
+    message: `${outcome.changed ? '✅' : 'ℹ️'} ${outcome.detail}${outcome.changed ? '' : ' — nothing written'}. File: ${filePath}`,
   };
 });
 

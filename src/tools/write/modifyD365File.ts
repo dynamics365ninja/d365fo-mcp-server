@@ -117,7 +117,7 @@ import {
   directXmlAddDiagnosticSuppression,
   directXmlAddModuleReference,
   directXmlRemoveModuleReference,
-  directXmlEnsureRelationProperties, directXmlModifyControlProperty, directXmlAddViewField, directXmlSetFormDataSourceInsertIfEmpty,
+  directXmlEnsureRelationProperties, directXmlModifyControlProperty, directXmlAddViewField, directXmlSetFormDataSourceInsertIfEmpty, directXmlModifyFormDataSourceProperty,
 } from './directXmlWriters.js';
 import { addMethodWithXmlFallback, removeMethodWithXmlFallback } from './methodXmlFallback.js';
 import { addReportParameter, refreshReportDataset } from './reportDesignXml.js';
@@ -2685,6 +2685,9 @@ async function runModify(
           // OperationalDomain / SubscriberAccessLevel on a table or menu item: XML only, never the bridge.
           const bpWrite = await directXmlSetBpAccessProperty(actualFilePath, objectType, objectName, args.propertyPath, args.propertyValue);
           if (bpWrite) { if (!bpWrite.success) return { content: [{ type: 'text', text: bpWrite.message }], isError: true }; bridgeResult = viaXmlFallback(bpWrite); break; }
+          // dataSourceName: a property of a data source the form itself defines (JoinSource, LinkType, …).
+          const dsName = (args as { dataSourceName?: string }).dataSourceName;
+          if (dsName) { bridgeResult = viaXmlFallback(await directXmlModifyFormDataSourceProperty(actualFilePath, objectType, objectName, dsName, args.propertyPath, String(args.propertyValue))); break; }
           const own = await directXmlModifyControlProperty(actualFilePath, objectType, objectName, args.propertyPath, String(args.propertyValue), (args as { controlName?: string }).controlName);
           if (own) { bridgeResult = viaXmlFallback(own); break; } // a control this file defines (own form, or one an extension adds)
           // ── Form extension targeting a BASE-FORM control ─────────────────────
