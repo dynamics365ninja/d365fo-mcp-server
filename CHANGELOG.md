@@ -51,6 +51,26 @@ those are called out explicitly below.
   and `lodash.*` helpers) it adds 16 packages to the lockfile and changes none.
 
 ### Fixed
+- **On UDE, a tool call made right after the server starts no longer misses the custom
+  metadata folder.** The server marked the XPP config as loaded before reading it had
+  finished, so a call arriving during that read (in practice the first few seconds after
+  `initialize`, while the bridge was being set up) saw no config: the custom packages path
+  was empty, so e.g. `run_systest_class` reported "class not found" for a class in the
+  custom model, and the environment counted as traditional instead of UDE. If the tool call
+  won the race, the bridge itself was set up without the custom metadata folder for the
+  whole session. Every caller now waits for the same read; an XPP config that cannot be
+  read is logged and treated as missing.
+- **A build, DB sync, BP check or test run no longer waits 15 minutes and fails on a lock
+  whose owner died, when Windows has given that owner's process id to another process.**
+  An operation lock records its owner's process id, and a lock whose owner is running is
+  never taken over. When the owner died without releasing the lock (a crash, a killed
+  server) and the id went to a new process, the lock looked held, and every caller waited
+  the full `OPERATION_LOCK_TIMEOUT_MS` and failed with "Timeout waiting for filesystem
+  lock". A lock whose owner has not refreshed it for three heartbeats (3 minutes by
+  default) is now checked: if the process with that id started after the lock was taken,
+  it cannot be the owner, and the lock is taken over. A restarted server that got the
+  crashed one's id no longer waits on itself either. While the start time cannot be read,
+  the lock is kept as before.
 - **`run_systest_class` on UDE said it could not find SysTestConsole, as if a path were
   wrong.** No path can make it work: SysTestConsole only runs tests against a local AOS,
   and on UDE the AOS is hosted in the cloud, so even where it is found it stops with
