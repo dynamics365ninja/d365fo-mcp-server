@@ -180,6 +180,16 @@ those are called out explicitly below.
   default, open-world. Clients that ask for confirmation or show a warning before
   open-world tools may now do so for these two. Every other tool keeps
   `openWorldHint: false`.
+- **The symbol index is smaller and index builds write less: three indexes on `symbols`
+  that no query used are gone.** Measured on a 3.3 GB index with 1.2 million symbols they
+  took 284 MB, 8.6 % of the file. `idx_symbols_file_path` (223 MB) compared paths
+  case-sensitively, while every lookup by path is case-insensitive and uses
+  `idx_symbols_file_path_nocase`. `idx_parent_type` (49 MB) was a prefix of
+  `idx_parent_type_name`. `idx_symbols_pattern_type` (12 MB) served no filter. The one
+  case-sensitive path lookup, in `update_symbol_index`, is now case-insensitive like the
+  rest. Nothing to do: an existing database drops the three indexes on the next start, in
+  the background when it is large. The freed pages are reused by later writes, and the
+  file itself only shrinks after a rebuild or a `VACUUM`.
 
 ### Fixed
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
