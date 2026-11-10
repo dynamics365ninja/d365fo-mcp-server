@@ -233,6 +233,47 @@ export const SETTINGS: Setting[] = [
     label: 'Microsoft X++ root (UDE FrameworkDirectory)',
     description: 'Read-only Microsoft packages folder. Normally read from the XPP config.',
   },
+  {
+    path: 'environment.dataverseUrl',
+    env: 'D365FO_DATAVERSE_URL',
+    section: 'environment',
+    tier: 'basic',
+    type: 'string',
+    label: 'Dataverse environment URL (UDE)',
+    description:
+      'URL of the Dataverse environment your UDE belongs to, e.g. https://contoso-dev.crm.dynamics.com — not the ' +
+      'Finance and Operations URL. run_systest_class sends tests to the cloud runtime through it, signing in as you ' +
+      'in the browser. `pac org list` or the Power Platform admin center shows it.',
+    placeholder: 'https://contoso-dev.crm.dynamics.com',
+    validate: value => !value.trim() || /^https:\/\/[^/\s]+\/?$/i.test(value.trim())
+      ? undefined
+      : 'Enter the environment URL only, e.g. https://contoso-dev.crm.dynamics.com',
+  },
+  {
+    path: 'environment.dataverseClientId',
+    env: 'D365FO_DATAVERSE_CLIENT_ID',
+    section: 'environment',
+    tier: 'advanced',
+    type: 'string',
+    label: 'Client id for Dataverse sign-in (UDE)',
+    description:
+      'Public client (app registration) used to sign in to Dataverse. Defaults to Microsoft\'s sample Dataverse client, ' +
+      'the one Power Platform Tools signs in with; set your own when your tenant blocks it. It needs the ' +
+      'http://localhost redirect URI.',
+    default: '51f81489-12ee-4a9e-aaae-a2591f45987d',
+  },
+  {
+    path: 'environment.dataverseTenant',
+    env: 'D365FO_DATAVERSE_TENANT',
+    section: 'environment',
+    tier: 'advanced',
+    type: 'string',
+    label: 'Tenant for Dataverse sign-in (UDE)',
+    description:
+      'Microsoft Entra tenant id or domain to sign in to. The default, "organizations", signs in to your home tenant; ' +
+      'set the environment\'s tenant when you are a guest in it.',
+    default: 'organizations',
+  },
 
   // ── workspace ────────────────────────────────────────────────────────────
   {

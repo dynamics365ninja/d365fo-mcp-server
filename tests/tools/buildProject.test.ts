@@ -970,6 +970,9 @@ describe('build_d365fo_project', () => {
       throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
     });
     allowPaths([PROJECT_PATH, XPPC, PKG]);
+    // An unchanged, readable model tree: an unreadable one cannot be proven unchanged, and the
+    // call would then compile again rather than attach (buildAgainAfterRunningBuild).
+    readdirMock.mockResolvedValue([]);
     // PID 4242 is gone — only the 'finalizing' phase says the build is alive.
     const origKill = process.kill.bind(process);
     vi.spyOn(process, 'kill').mockImplementation((pid: any, sig: any) => {

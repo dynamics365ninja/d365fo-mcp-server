@@ -288,7 +288,9 @@ Use `search(scope="extensions")` to search only within your custom/ISV models:
 search(scope="extensions", query="Cust", prefix="ISV_")
 ```
 
-Results are restricted to non-Microsoft models and grouped by model name. The `prefix` parameter further narrows results to objects whose names start with the given ISV prefix.
+Results are restricted to non-Microsoft models and grouped by model name. They include plain custom objects (classes, tables, helpers) as well as extensions. Pass `type:"class-extension"` (or another `*-extension` type) to see extensions only. An exact name comes first, then extensions, then names that start with the query.
+
+The `prefix` parameter narrows results to objects whose names start with the given ISV prefix. A member (method, field) matches through the object it belongs to. Extension names carry the prefix in the middle (`CustTableISV_Extension`, `CustTable.ISVExtension`), so for those the prefix may appear anywhere in the name. A model whose name starts with the prefix still matches as a whole.
 
 You can also use the main `search` tool and filter by model:
 

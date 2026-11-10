@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { spawnSync } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { createHash } from 'crypto';
 import * as fs from 'fs/promises';
 import * as os from 'os';
@@ -53,7 +53,7 @@ function deadPid(): number {
   return child.pid;
 }
 
-async function plantLock(lockKey: string, owner: { pid: number } | null, ageMs: number): Promise<string> {
+async function plantLock(lockKey: string, owner: { pid: number; acquiredAt?: string } | null, ageMs: number): Promise<string> {
   const dir = lockDirFor(lockKey);
   await fs.mkdir(dir, { recursive: true });
   if (owner) await fs.writeFile(path.join(dir, 'owner.json'), JSON.stringify(owner), 'utf8');
@@ -198,5 +198,136 @@ describe('release', () => {
 
     expect(await exists(lockDir)).toBe(true);
     await fs.rm(lockDir, { recursive: true, force: true });
+  });
+});
+
+describe('an owner pid that another process got after the owner died', () => {
+  const HOUR = 60 * 60 * 1000;
+  // Heartbeat 1 s, so a lock untouched for 3 s counts as silent.
+  const env = { OPERATION_LOCK_HEARTBEAT_MS: '1000', OPERATION_LOCK_TIMEOUT_MS: '2000', OPERATION_LOCK_POLL_MS: '25' };
+
+  /** A process that is certainly running, started now — after any `acquiredAt` in the past. */
+  function liveChild() {
+    const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { stdio: 'ignore' });
+    if (typeof child.pid !== 'number') throw new Error('could not spawn a probe process');
+    return child;
+  }
+
+  it('reaps the lock: the process with that pid started after the lock was taken', async () => {
+    const { withOperationLock, isOperationLockHeld } = await loadModule(env);
+    const child = liveChild();
+    try {
+      const lockKey = key('deploy:reused-pid');
+      await plantLock(lockKey, { pid: child.pid!, acquiredAt: new Date(Date.now() - HOUR).toISOString() }, 10 * 60_000);
+      // The real probe: CIM on Windows, ps elsewhere.
+      expect(await isOperationLockHeld(lockKey)).toBe(false);
+      await expect(withOperationLock(lockKey, async () => 'ran')).resolves.toBe('ran');
+    } finally {
+      child.kill();
+    }
+  }, 30_000);
+
+  it('keeps the lock of a live owner that started before it took the lock', async () => {
+    const { isOperationLockHeld, withOperationLock } = await loadModule(env);
+    const child = liveChild();
+    try {
+      // Silent long enough to be checked, but the process is the one that took the lock.
+      await new Promise(r => setTimeout(r, 1500));
+      const lockKey = key('deploy:real-owner');
+      const lockDir = await plantLock(lockKey, { pid: child.pid!, acquiredAt: new Date().toISOString() }, 10 * 60_000);
+      expect(await isOperationLockHeld(lockKey)).toBe(true);
+      await expect(withOperationLock(lockKey, async () => 'should not run'))
+        .rejects.toThrow(/Timeout waiting for filesystem lock/);
+      expect(await exists(lockDir)).toBe(true);
+    } finally {
+      child.kill();
+    }
+  }, 30_000);
+
+  it('reaps a lock this process\'s pid held in an earlier process, judged by its own uptime', async () => {
+    // A restarted server that got the crashed one's pid would otherwise wait on itself.
+    const { isOperationLockHeld } = await loadModule(env);
+    const lockKey = key('build:own-pid-earlier-life');
+    await plantLock(lockKey, { pid: process.pid, acquiredAt: new Date(Date.now() - 24 * HOUR).toISOString() }, 10 * 60_000);
+    expect(await isOperationLockHeld(lockKey)).toBe(false);
+  });
+
+  it('does not check while the owner heartbeats, and keeps the lock when the start time cannot be read', async () => {
+    const mod = await loadModule(env);
+    const probe = vi.fn(async () => undefined);
+    mod._setProcessStartTimeProbe(probe);
+    try {
+      const acquiredAt = new Date(Date.now() - HOUR).toISOString();
+      const fresh = key('sync:heartbeating');
+      await plantLock(fresh, { pid: process.ppid, acquiredAt }, 500);
+      expect(await mod.isOperationLockHeld(fresh)).toBe(true);
+      expect(probe).not.toHaveBeenCalled();
+
+      const unknown = key('sync:start-unknown');
+      await plantLock(unknown, { pid: process.ppid, acquiredAt }, 10 * 60_000);
+      expect(await mod.isOperationLockHeld(unknown)).toBe(true);
+      // Asked once, then answered from the last check rather than starting a process per poll.
+      expect(await mod.isOperationLockHeld(unknown)).toBe(true);
+      expect(probe).toHaveBeenCalledTimes(1);
+    } finally {
+      mod._setProcessStartTimeProbe();
+    }
+  });
+
+  it('does not take over a lock another waiter took over while the check ran', async () => {
+    // Two waiters check the same dead owner; the first takes the lock over and holds it under its
+    // own record. The second's check then answers for a record that is gone, and must not count.
+    const mod = await loadModule(env);
+    const lockKey = key('build:taken-over-meanwhile');
+    const lockDir = await plantLock(lockKey, { pid: process.ppid, acquiredAt: new Date(Date.now() - HOUR).toISOString() }, 10 * 60_000);
+    const winner = { pid: process.ppid, acquiredAt: new Date().toISOString() };
+    let calls = 0;
+    mod._setProcessStartTimeProbe(async () => {
+      if (++calls > 1) return undefined;
+      await fs.writeFile(path.join(lockDir, 'owner.json'), JSON.stringify(winner), 'utf8');
+      return Date.now(); // "reused", for the record read before the check
+    });
+    try {
+      await expect(mod.withOperationLock(lockKey, async () => 'should not run'))
+        .rejects.toThrow(/Timeout waiting for filesystem lock/);
+      expect(JSON.parse(await fs.readFile(path.join(lockDir, 'owner.json'), 'utf8'))).toEqual(winner);
+    } finally {
+      mod._setProcessStartTimeProbe();
+    }
+  });
+
+  it('checks again, without waiting for the recheck interval, once the owner record changes', async () => {
+    const mod = await loadModule(env);
+    const probe = vi.fn(async () => undefined);
+    mod._setProcessStartTimeProbe(probe);
+    try {
+      const lockKey = key('sync:owner-changed');
+      const lockDir = await plantLock(lockKey, { pid: process.ppid, acquiredAt: new Date(Date.now() - HOUR).toISOString() }, 10 * 60_000);
+      await mod.isOperationLockHeld(lockKey);
+      await mod.isOperationLockHeld(lockKey);
+      expect(probe).toHaveBeenCalledTimes(1);
+      await fs.writeFile(path.join(lockDir, 'owner.json'),
+        JSON.stringify({ pid: process.ppid, acquiredAt: new Date(Date.now() - 2 * HOUR).toISOString() }), 'utf8');
+      const old = new Date(Date.now() - 10 * 60_000);
+      await fs.utimes(lockDir, old, old);
+      await mod.isOperationLockHeld(lockKey);
+      expect(probe).toHaveBeenCalledTimes(2);
+    } finally {
+      mod._setProcessStartTimeProbe();
+    }
+  });
+
+  it('keeps the lock of an owner record without acquiredAt (an older server) on the living-owner rule', async () => {
+    const mod = await loadModule(env);
+    const probe = vi.fn(async () => Date.now());
+    mod._setProcessStartTimeProbe(probe);
+    try {
+      const lockKey = key('bp:old-record');
+      await plantLock(lockKey, { pid: process.ppid }, 10 * 60_000);
+      expect(await mod.isOperationLockHeld(lockKey)).toBe(true);
+      expect(probe).not.toHaveBeenCalled();
+    } finally {
+      mod._setProcessStartTimeProbe();
+    }
   });
 });

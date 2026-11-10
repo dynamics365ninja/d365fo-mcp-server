@@ -37,7 +37,7 @@ function makeManager() {
   const ConfigManagerClass = Object.getPrototypeOf(getConfigManager()).constructor;
   const mgr = new ConfigManagerClass('/nonexistent/.mcp.json');
   (mgr as any).config = { servers: { context: {} } };
-  (mgr as any).xppConfigLoaded = true;
+  (mgr as any).xppConfigLoad = Promise.resolve();
   (mgr as any).xppConfig = null;
   return mgr as any;
 }
