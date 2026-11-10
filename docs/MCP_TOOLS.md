@@ -170,6 +170,8 @@ Two things shared by `create` and `modify`:
 
 **OData actions need a full build.** xppc writes a package's OData resources to `bin\Dynamics.AX.<Package>.ODataExtends.runtime`, one entry per data entity, and the AOS reads the actions from it at startup. An incremental compile rewrites the entry of every entity it recompiles *without its actions*; a full build — like Visual Studio's — writes them. So when an incremental build would recompile an entity, entity extension or class that declares a `SysODataActionAttribute` action, or an entity's entry already lacks one, `build_d365fo_project` runs a full build instead and says why (`full build, switched from incremental`). A successful build whose entries still lack a declared action reports `⚠️ Build succeeded; OData actions missing`, and after an incremental build `restartAos` is withheld until a full build has written them.
 
+**A changed table, EDT or enum needs a full build.** An incremental compile recompiles only the elements whose own source changed, so code that uses a changed table, EDT or enum is not checked and the build can report 0 errors where a full build fails. When a table, table extension, EDT, EDT extension, enum or enum extension of the target model changed since its last build, `build_d365fo_project` runs a full build instead and names what changed (`full build, switched from incremental`). A model that was never built is built as asked.
+
 > Local-only — require a Windows D365FO VM; excluded from the Azure `read-only` mode.
 
 | Tool | What it does | Example prompt |

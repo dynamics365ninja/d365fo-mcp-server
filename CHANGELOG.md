@@ -174,6 +174,21 @@ those are called out explicitly below.
   error.
 
 ### Changed
+- **An incremental `build_d365fo_project` build runs as a full build when a table, EDT or
+  enum of the model changed since its last build.** An incremental xppc build recompiles
+  only the elements whose own source changed, so after a table field moved to an EDT of
+  another base type it reported 0 errors and the next full build failed in the code that
+  uses the field. The build now checks the target model's tables, table extensions, EDTs,
+  EDT extensions, enums and enum extensions first. A table counts as changed when its
+  source is newer than its compiler-metadata copy or has none. The other types have no
+  such copy and count as changed when they are newer than the newest compiler-metadata
+  file of the package, which is the last time a build wrote metadata back. The result says
+  `full build, switched from incremental` and why, for example "2 tables, 1 EDT changed
+  since the last build: ..." with up to five names. As with the existing switch for OData
+  actions, `fullBuild: false` is the same as leaving it out and does not opt out. A model
+  that was never built, dependency models and builds with no such change stay as they
+  were. Passing `fullBuild: true` on every build as a workaround is no longer needed.
+  (#1161)
 - **`build_d365fo_project` and `run_systest_class` are no longer marked as closed-world
   tools.** Both reach the UDE environment's cloud runtime (a deployment, tests in the
   cloud), so their annotations drop `openWorldHint: false` and fall back to MCP's

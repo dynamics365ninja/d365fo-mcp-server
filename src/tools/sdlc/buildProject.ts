@@ -14,6 +14,7 @@ import { generateRuntimeMetadata } from '../xml/generateMetadata.js';
 import { compileModelLabels, type CompileLabelsResult } from '../write/compileLabels.js';
 import { pruneStaleCompilerMetadata } from './compilerMetadataPrune.js';
 import { describeMissingODataActions, scanODataActions, type MissingODataActions } from './odataActionGuard.js';
+import { describeSchemaChanges, scanSchemaChanges } from './schemaChangeGuard.js';
 import { recordBuild } from '../../utils/buildMarker.js';
 import { monotonicProgress, type ProgressReporter, startProgressHeartbeat } from '../../utils/progressReporter.js';
 import { restartAosRuntime, type RuntimeRestartResult } from './aosRuntime.js';
@@ -281,7 +282,8 @@ interface BuildJobState {
   // and dbSync asked for at the start were dropped without a word.
   postBuildRequest?: PostBuildRequest;
   // Why a build asked for as incremental ran as a full one: an incremental compile drops
-  // OData actions (see odataActionGuard.ts). Absent when fullBuild was requested.
+  // OData actions (see odataActionGuard.ts) and does not recompile the users of a changed
+  // table, EDT or enum (see schemaChangeGuard.ts). Absent when fullBuild was requested.
   autoFullBuild?: AutoFullBuildReason;
   // Declared OData actions that ODataExtends.runtime still lacks after this build.
   odataActionsMissing?: MissingODataActions[];
@@ -292,6 +294,8 @@ interface AutoFullBuildReason {
   recompiled: string[];
   /** Entities whose ODataExtends.runtime entry had already lost actions. */
   missing: MissingODataActions[];
+  /** `<AxType>/<Name>` of the tables, EDTs, enums and their extensions changed since the last build. */
+  schemaChanged?: string[];
 }
 
 const asksFor = (v: unknown): boolean => v === true || v === 'true';
@@ -1023,20 +1027,56 @@ async function pruneModelCompilerMetadata(
  * that fails leaves the build incremental, and the check after it still reports lost actions.
  */
 async function odataActionsNeedFullBuild(ctx: XppcBuildContext, modelName: string): Promise<AutoFullBuildReason | null> {
-  const started = Date.now();
   try {
     const r = await scanODataActions(ctx.compilerMetadataPath, ctx.customPackagesPath, modelName);
     if (r.errors.length > 0) {
       await buildLog('WARN', `OData action check of ${modelName} could not read ${r.errors.length} file(s): ${r.errors.slice(0, 5).join('; ')}`);
     }
     if (r.recompiled.length === 0 && r.missing.length === 0) return null;
-    const reason = { recompiled: r.recompiled, missing: r.missing };
-    await buildLog('INFO', `Incremental build of ${modelName} switched to a full build (${Date.now() - started}ms): ${describeAutoFullBuild(reason)}`);
-    return reason;
+    return { recompiled: r.recompiled, missing: r.missing };
   } catch (err: any) {
     await buildLog('WARN', `OData action check of ${modelName} failed (${err?.message ?? err}) — building incrementally`);
     return null;
   }
+}
+
+/**
+ * The tables, EDTs, enums and their extensions of the target model changed since its last build —
+ * see schemaChangeGuard.ts for why they make the build a full one. [] when none, when the model
+ * was never built, or when the scan fails: like the OData check, it never fails the build.
+ */
+async function schemaChangesNeedingFullBuild(ctx: XppcBuildContext, modelName: string): Promise<string[]> {
+  try {
+    const r = await scanSchemaChanges(ctx.compilerMetadataPath, ctx.customPackagesPath, modelName);
+    if (r.errors.length > 0) {
+      await buildLog('WARN', `Table, EDT and enum change check of ${modelName} could not read ${r.errors.length} file(s): ${r.errors.slice(0, 5).join('; ')}`);
+    }
+    return r.changed;
+  } catch (err: any) {
+    await buildLog('WARN', `Table, EDT and enum change check of ${modelName} failed (${err?.message ?? err}) — building incrementally`);
+    return [];
+  }
+}
+
+/**
+ * Every reason a requested incremental build of the target model has to run as a full one: its
+ * OData actions (odataActionsNeedFullBuild) and its changed tables, EDTs and enums
+ * (schemaChangesNeedingFullBuild). Null when incremental is safe.
+ */
+async function incrementalNeedsFullBuild(ctx: XppcBuildContext, modelName: string): Promise<AutoFullBuildReason | null> {
+  const started = Date.now();
+  const [odata, schemaChanged] = await Promise.all([
+    odataActionsNeedFullBuild(ctx, modelName),
+    schemaChangesNeedingFullBuild(ctx, modelName),
+  ]);
+  if (!odata && schemaChanged.length === 0) return null;
+  const reason: AutoFullBuildReason = {
+    recompiled: odata?.recompiled ?? [],
+    missing: odata?.missing ?? [],
+    ...(schemaChanged.length > 0 ? { schemaChanged } : {}),
+  };
+  await buildLog('INFO', `Incremental build of ${modelName} switched to a full build (${Date.now() - started}ms): ${describeAutoFullBuild(reason)}`);
+  return reason;
 }
 
 /** Declared actions ODataExtends.runtime lacks after a successful build; [] when none or unknown. */
@@ -1070,9 +1110,18 @@ function describeAutoFullBuild(reason: AutoFullBuildReason): string {
   if (reason.missing.length > 0) {
     parts.push(`actions already missing from ODataExtends.runtime: ${describeMissingODataActions(reason.missing)}`);
   }
-  return `ℹ️ Full build instead of incremental — ${parts.join('; ')}. ` +
-    'An incremental xppc build rewrites a recompiled entity\'s ODataExtends.runtime entry without its OData actions, ' +
-    'so they would disappear from OData at the next AOS restart.';
+  const odata = parts.length > 0;
+  const schemaChanged = reason.schemaChanged ?? [];
+  if (schemaChanged.length > 0) parts.push(describeSchemaChanges(schemaChanged));
+  return `ℹ️ Full build instead of incremental — ${parts.join('; ')}.` +
+    (odata
+      ? ' An incremental xppc build rewrites a recompiled entity\'s ODataExtends.runtime entry without its OData actions, ' +
+        'so they would disappear from OData at the next AOS restart.'
+      : '') +
+    (schemaChanged.length > 0
+      ? ' An incremental xppc build does not recompile the code that uses a changed table, EDT or enum, ' +
+        'so it can report 0 errors where a full build fails.'
+      : '');
 }
 
 /**
@@ -1155,7 +1204,7 @@ async function spawnXppcForState(ctx: XppcBuildContext, state: BuildJobState): P
   // Before the prune below, which deletes the metadata this compares against. Recorded on the
   // state itself — the caller's initState too — so everything that reads it reports a full build.
   if (!useFullBuild && modelName === targetModel) {
-    const reason = await odataActionsNeedFullBuild(ctx, modelName);
+    const reason = await incrementalNeedsFullBuild(ctx, modelName);
     if (reason) {
       useFullBuild = true;
       state.fullBuild = true;

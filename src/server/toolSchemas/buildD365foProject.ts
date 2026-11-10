@@ -37,7 +37,7 @@ export const buildD365foProjectTool = {
         },
         fullBuild: {
           type: 'boolean',
-          description: 'Full recompile of TARGET model (not deps). Fixes stale symbols; auto when an entity with OData actions changes.',
+          description: 'Full recompile of TARGET model (not deps). Fixes stale symbols; auto when a table, EDT, enum or OData entity changes.',
         },
         bpCheck: {
           type: 'boolean',
