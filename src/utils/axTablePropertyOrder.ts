@@ -32,6 +32,10 @@ const AX_TABLE_MANDATORY_PROPERTIES = [
   'DeveloperDocumentation',
   'FormRef',
   'Label',
+  // Company / Shared / Local. Shipped tables that carry it write it right after
+  // Label and before SubscriberAccessLevel (e.g. Batch, AifChangeTrackingTable).
+  // xppbp expects it on every table — see src/utils/bpCreateDefaults.ts.
+  'OperationalDomain',
   // An AccessGrant with child elements, not a scalar (subscriberAccessLevel.ts).
   // Written by VS after Label and before TableGroup — of 3,665 shipped tables
   // that carry one, none places it elsewhere in the block.

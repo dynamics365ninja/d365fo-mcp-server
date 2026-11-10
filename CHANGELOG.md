@@ -83,6 +83,23 @@ those are called out explicitly below.
   names and masks by module or display name (`Contoso*,!ContosoDemo*`); `--no-aot` skips the
   object XML and labels when only signatures are needed; `--kernel` also dumps the platform
   kernel (`Common`, `xRecord`, `Object`, ...) as the model `Kernel`. See docs/BINARY_ISV_MODELS.md.
+- **`d365fo_file(action="modify")` changes the duties and privileges of roles and duties.**
+  After `create` nothing could change these lists: the only way was
+  `create(overwrite=true)` with the complete list or hand-written XML, and
+  `security-role-extension` and `security-duty-extension` were not modifiable at all. The
+  new operations are `add-duty` / `remove-duty` (`dutyName`; on `security-role` and
+  `security-role-extension`) and `add-privilege` / `remove-privilege` (`privilegeName`; on
+  those and on `security-duty` and `security-duty-extension`). They take one name each, so
+  several go in `operations[]`. An add appends to the list, and a reference already there
+  is skipped and reported (names compare case-insensitively). A name the symbol index
+  knows only as the other kind is refused with the operation to use; an unknown name is
+  warned about and still written, and on an index with no such objects (a write-only
+  companion) the reply says it could not check. An add on an extension warns when the base
+  role or duty already holds the reference. A remove collapses an emptied list to
+  `<Duties />` / `<Privileges />`, answers a name that is not there with the list that is,
+  and refuses a name listed twice. A modify of a missing role or duty extension whose
+  standard base is in the index now offers the one `create` call that does it, and the
+  refusal to modify a standard role or duty names the extension types.
 - **`modify-field` turns a data entity's mapped field into a computed field.**
   `computedFieldMethod` rewrites the entity's own mapped field as
   `AxDataEntityViewUnmappedField<Type>` (type, EDT and enum read from the source
@@ -101,6 +118,44 @@ those are called out explicitly below.
   `openWorldHint: false`.
 
 ### Fixed
+- **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
+  expects.** Neither writer set OperationalDomain, the bridge's property setters know
+  neither property on a menu item, and a Staging or TempDB table kept Visual Studio's
+  Read=Allow. Every create therefore drew BPCheckTableOperationalDomain… /
+  BPCheckTableSubscriberAccessLevel… / BPCheckMenuItemOperationalDomain… /
+  BPCheckMenuItemSubscriberAccessLevel… warnings. `d365fo_file(action="create")`,
+  `generate_object(mode="scaffold")` for tables and the report scaffold now write the
+  values the checker names in its messages: on a table Local and No Access for TempDB,
+  InMemory and Staging, otherwise Company (or Shared with SaveDataPerCompany=No) and
+  Read. On a menu item Local and No Access for an Action item, Shared and Read for
+  Display on a form and for Output, Shared and every permission for Display on a class.
+  `properties.operationalDomain` and `properties.subscriberAccessLevel` (now also
+  `"No Access"`) override them. The reply lists what was written and why.
+- **A new table no longer fails the field-level best-practice rules.** After every table
+  create the server now makes PrimaryIndex and alternate-key fields AllowEdit=No and
+  Mandatory=Yes (BPErrorTablePrimaryKeyEditable / …NotMandatory, staging tables
+  included), puts a field that is in no field group into AutoReport and fills an empty
+  AutoReport (BPErrorTableFieldNotInFieldGroup, BPErrorTableMissingGroupAutoReport),
+  adds the table relation a field's EDT describes, TempDB tables included, except on the
+  key field the EDT itself points at (BPErrorEDTNotMigrated,
+  BPUpgradeMetadataEDTRelation), and gives every relation
+  OnDelete (default Restricted, or `relations[].onDelete`) plus Cardinality,
+  RelatedTableCardinality and RelationshipType when missing (BPCheckMissingDeleteActions,
+  BPErrorTableRelationshipPropertiesCompleteness). An explicit AllowEdit=Yes or
+  Mandatory=No and fields with `ignoreEdtRelation` are left alone.
+- **EDT relations point at the right field.** The scaffold took the related field from
+  the EDT name and the table from `edt_metadata.reference_table`, which holds only the
+  legacy ReferenceTable property. A CustAccount field got no relation at all, and an EDT
+  whose key field is named differently got a wrong one. The EDT's own `<Relations>` (or
+  `<TableReferences>`) is now read, so CustAccount relates to CustTable.AccountNum.
+- **The smart table writers no longer add a delete action that blocks deleting the new
+  table's own rows.** Both the bridge's CreateSmartTable and the XML builder wrote a
+  Restricted delete action on the new table for every relation target, pointing at the
+  parent table. That stopped a row from being deleted while its parent existed and drew
+  "DeleteAction X has no explicit relation set" (BPUpgradeMetadataDeleteAction). The
+  builder no longer writes it, the create removes the bridge's, and the relation's
+  OnDelete=Restricted protects the parent instead. A delete action that names its
+  relation, or comes from your own `xmlContent`, is kept.
 - **On UDE, a tool call made right after the server starts no longer misses the custom
   metadata folder.** The server marked the XPP config as loaded before reading it had
   finished, so a call arriving during that read (in practice the first few seconds after

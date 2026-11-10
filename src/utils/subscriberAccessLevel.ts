@@ -42,7 +42,8 @@ export type ParsedSubscriberAccessLevel =
 
 const USAGE =
   'Pass an object such as { "read": "Allow" } or { "read": "Allow", "create": "Deny" }, ' +
-  'the same as a string "Read=Allow,Create=Deny", or "None" for no access level. ' +
+  'the same as a string "Read=Allow,Create=Deny", "No Access" for every permission denied, ' +
+  'or "None" for no access level. ' +
   `Permissions: ${SUBSCRIBER_PERMISSIONS.join(', ')}; values: Allow, Deny, Unset.`;
 
 function permissionOf(key: string): SubscriberPermission | undefined {
@@ -70,6 +71,10 @@ export function parseSubscriberAccessLevel(raw: unknown): ParsedSubscriberAccess
   if (typeof raw === 'string') {
     const s = raw.trim();
     if (/^(none|unset)?$/i.test(s)) return { ok: true, level: {} };
+    // "No Access" is how the property sheet and xppbp name every permission denied.
+    if (/^no\s*access$/i.test(s)) {
+      return { ok: true, level: Object.fromEntries(SUBSCRIBER_PERMISSIONS.map(p => [p, 'Deny'])) as SubscriberAccessLevel };
+    }
     // A bare permission list ("Read" / "Read,Update") grants Allow, as the
     // property sheet's commonest setting does.
     entries = s
@@ -183,15 +188,24 @@ export function isTempAxTable(xml: string): boolean {
 
 /**
  * The access level a NEW table gets: the caller's, when one was passed and is
- * valid; otherwise Visual Studio's Read=Allow, or none for a TempDB/InMemory
- * table. Undefined for an invalid value, which the create reconcile reports.
+ * valid; otherwise what xppbp expects (src/utils/bpCreateDefaults.ts): No Access
+ * (every permission denied) on a TempDB/InMemory or Staging table, Read=Allow on
+ * any other. Undefined for an invalid value, which the create reconcile reports.
  */
-export function tableSubscriberAccessLevel(requested: unknown, tableType: unknown): SubscriberAccessLevel | undefined {
+export function tableSubscriberAccessLevel(
+  requested: unknown,
+  tableType: unknown,
+  tableGroup?: unknown,
+): SubscriberAccessLevel | undefined {
   if (requested !== undefined && requested !== null) {
     const parsed = parseSubscriberAccessLevel(requested);
     return parsed.ok ? parsed.level : undefined;
   }
-  return /^(TempDB|InMemory)$/i.test(String(tableType ?? '').trim()) ? {} : { ...DEFAULT_SUBSCRIBER_ACCESS_LEVEL };
+  const localOnly =
+    /^(TempDB|InMemory)$/i.test(String(tableType ?? '').trim()) || /^staging$/i.test(String(tableGroup ?? '').trim());
+  return localOnly
+    ? (Object.fromEntries(SUBSCRIBER_PERMISSIONS.map(p => [p, 'Deny'])) as SubscriberAccessLevel)
+    : { ...DEFAULT_SUBSCRIBER_ACCESS_LEVEL };
 }
 
 /**
