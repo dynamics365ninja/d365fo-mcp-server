@@ -180,6 +180,15 @@ those are called out explicitly below.
   default, open-world. Clients that ask for confirmation or show a warning before
   open-world tools may now do so for these two. Every other tool keeps
   `openWorldHint: false`.
+- **`validate_code(mode="references")` and the grounding gate in create and modify no
+  longer stall on a label whose id or label file is not in the index.** For every
+  `@File:Id` literal that did not resolve, the check asked for the full list of label
+  files, which groups the whole labels table by file and model and collects the
+  languages. On an index with about a million labels that took about 2 seconds per
+  literal, so a class with ten such labels waited about 20 seconds. The check now asks
+  only whether the file id exists: an index seek for the exact spelling, and for a
+  different letter case one read of the bare id list (a few milliseconds), done at most
+  once per validation. The errors and warnings reported are the same as before.
 
 ### Fixed
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
