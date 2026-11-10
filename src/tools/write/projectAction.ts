@@ -15,6 +15,7 @@ import { ProjectFileManager } from '../../workspace/projectFile.js';
 import { solutionsListingProject, solutionMateProjects } from '../../workspace/projectScaffold.js';
 import { axFolderForObjectType, hasAxFolder, resolveMembership } from '../../workspace/projectMembership.js';
 import { handleCreateProject, handleDeleteProject } from './createProject.js';
+import { withToolErrorCode, hoistToolErrorCode } from '../../utils/toolError.js';
 
 export const PROJECT_OPERATIONS = ['create', 'delete', 'add-object', 'remove-object'] as const;
 const MAX_OBJECTS = 20;
@@ -40,9 +41,9 @@ export async function handleProject(args: Record<string, unknown>) {
     case 'add-object':
     case 'remove-object': return handleMembership(op, args);
     default:
-      return text(
+      return text(withToolErrorCode('E_UNSUPPORTED_OPERATION',
         `❌ d365fo_file(action="project"): operation must be one of ${PROJECT_OPERATIONS.join(' | ')}` +
-        `${op ? ` (got "${op}")` : ''}, passed in params. Contract: get_knowledge(kind="op-spec", topic="project").`,
+        `${op ? ` (got "${op}")` : ''}, passed in params. Contract: get_knowledge(kind="op-spec", topic="project").`),
         true,
       );
   }
@@ -50,7 +51,7 @@ export async function handleProject(args: Record<string, unknown>) {
 
 async function handleMembership(op: 'add-object' | 'remove-object', args: Record<string, unknown>) {
   const label = `d365fo_file(action="project", operation="${op}")`;
-  const bad = (t: string) => text(`❌ ${label}: ${t}`, true);
+  const bad = (t: string) => text(hoistToolErrorCode(`❌ ${label}: ${t}`), true);
   const parsed = MembershipSchema.safeParse(args);
   if (!parsed.success) return bad(`invalid arguments — ${parsed.error.message}`);
   const a = parsed.data;
@@ -65,7 +66,7 @@ async function handleMembership(op: 'add-object' | 'remove-object', args: Record
   const projectPath = path.resolve(explicit || (await cfg.getProjectPath()) || '');
   if (!explicit && !(await cfg.getProjectPath())) {
     const candidates = cfg.getProjectsForModel(a.modelName?.trim() || cfg.getModelName());
-    return bad('no active project (it is kept in memory only, so a server restart clears it) — pass projectPath.' +
+    return bad(withToolErrorCode('E_NO_PROJECT', 'no active project (it is kept in memory only, so a server restart clears it) — pass projectPath.') +
       (candidates.length ? `\nProjects of the model:\n${candidates.slice(0, 15).map(c => `  - ${c}`).join('\n')}` : ''));
   }
   if (!projectPath.toLowerCase().endsWith('.rnrproj')) return bad('projectPath must be a .rnrproj file.');

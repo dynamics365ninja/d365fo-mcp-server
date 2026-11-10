@@ -12,6 +12,8 @@
  * has an entry here; tests/tools/d365foFileOpSpecs.test.ts guards op coverage.
  */
 
+import { withToolErrorCode } from '../../utils/toolError.js';
+
 /** Type + description for a single op parameter, keyed by parameter name. */
 export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description: string }> = {
   // methods
@@ -1358,7 +1360,7 @@ export function renderIgnoredParamsWarning(operation: string, ignored: readonly 
     return `  ⚠️ ${p.name}: IGNORED (${what})${hint}`;
   });
   return [
-    `⚠️ ${ignored.length} parameter(s) did not reach the written XML:`,
+    withToolErrorCode('E_IGNORED_PARAMS', `⚠️ ${ignored.length} parameter(s) did not reach the written XML:`),
     ...lines,
     `The value(s) above were NOT applied. Re-run with the correct parameter name(s).`,
   ].join('\n');

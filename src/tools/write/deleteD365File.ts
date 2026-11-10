@@ -63,6 +63,7 @@ import {
 } from '../../utils/ignoreDiagnosticListXml.js';
 import { writeFileAtomic } from '../../utils/atomicFileWrite.js';
 import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
+import { withToolErrorCode } from '../../utils/toolError.js';
 
 const DeleteD365FileArgsSchema = z.object({
   objectType: z.string().describe('AOT object type — the same enum action="create" takes.'),
@@ -180,11 +181,11 @@ export async function handleDeleteD365File(
       return fail(`❌ Refusing to delete a path that is not a file: ${filePath}`);
     }
   } catch {
-    return fail(
+    return fail(withToolErrorCode('E_OBJECT_NOT_FOUND',
       `❌ Nothing deleted — ${filePath} does not exist.\n` +
       `The path came from ${args.filePath ? 'the filePath argument' : 'AOT path resolution'}; ` +
       `re-check the object name and model.`,
-    );
+    ));
   }
 
   // ── 2. Path containment ─────────────────────────────────────────────────────
@@ -217,11 +218,11 @@ export async function handleDeleteD365File(
   // ── 3. Model ownership ──────────────────────────────────────────────────────
   const modelFromPath = extractModelFromFilePath(filePath);
   if (modelFromPath && isStandardModel(modelFromPath)) {
-    return fail(
+    return fail(withToolErrorCode('E_MODEL_NOT_WRITABLE',
       `⛔ Refusing to delete "${resolvedName}" — it belongs to the standard Microsoft model ` +
       `"${modelFromPath}".\n\nDeleting a base application object corrupts the installation. ` +
       `If the goal is to stop using it, remove YOUR extension of it instead.`,
-    );
+    ));
   }
 
   const owningModel = containment.modelSegment ?? modelFromPath ?? null;

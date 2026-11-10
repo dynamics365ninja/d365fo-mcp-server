@@ -167,3 +167,25 @@ describe('the SDLC resolution overrides are reachable', () => {
     }
   });
 });
+
+describe('the refusal codes are reachable', () => {
+  it('lists every registered code with its meaning under topic="error-codes"', async () => {
+    const { TOOL_ERROR_CODES } = await import('../../src/utils/toolError');
+    const spec = lookupOpSpec('error-codes');
+    for (const [code, meaning] of Object.entries(TOOL_ERROR_CODES)) {
+      expect(spec).toContain(`${code}: ${meaning}`);
+    }
+  });
+
+  it('answers the spellings an agent would try, and the index names the topic', () => {
+    const spec = lookupOpSpec('error-codes');
+    for (const topic of ['errors', 'refusals', 'refusal-codes', 'Error-Code']) {
+      expect(lookupOpSpec(topic)).toBe(spec);
+    }
+    expect(renderOpSpecIndex()).toContain('topic="error-codes"');
+  });
+
+  it('does not answer an unrelated topic with the code list', () => {
+    expect(lookupOpSpec('add-widget')).not.toContain('E_AMBIGUOUS_OLDCODE:');
+  });
+});

@@ -29,6 +29,7 @@
  */
 
 import type { D365ProjectInfo } from '../utils/workspaceDetector.js';
+import { withToolErrorCode } from '../utils/toolError.js';
 
 /** How a needle was matched, for the switch note the tool prints. */
 export type ProjectMatchKind = 'project-path' | 'project-file' | 'model';
@@ -136,7 +137,7 @@ export function renderSelectionFailure(
   }
 
   const what = selection.matchedOn === 'model' ? 'model' : 'partial project name';
-  return (
+  return withToolErrorCode('E_AMBIGUOUS_PROJECT',
     `❌ "${selection.needle}" is a ${what}, not one project — ${selection.candidates.length} projects match it.\n` +
     `Nothing was switched. Name the project you want, or pass its projectPath:\n\n` +
     renderProjectCandidates(selection.candidates) +

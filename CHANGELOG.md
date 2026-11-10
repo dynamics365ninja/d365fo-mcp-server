@@ -29,6 +29,21 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **A refused write now opens with a stable code, such as `❌ [E_AMBIGUOUS_OLDCODE] …`, so
+  an agent can tell refusals apart without parsing the sentence.** The reasons a write is
+  refused call for different next steps, and until now the only way to tell them apart was
+  the wording, which changes between releases. Ten conditions now carry a code in a fixed
+  form, `[E_…]` at the start of the first line right after the emoji: `E_AMBIGUOUS_OLDCODE`,
+  `E_OLDCODE_NOT_FOUND`, `E_NO_PROJECT`, `E_AMBIGUOUS_PROJECT`, `E_MODEL_NOT_WRITABLE`
+  (standard model, or a model other than the one the workspace writes to),
+  `E_UNSUPPORTED_PROPERTY`, `E_UNSUPPORTED_OPERATION`, `E_IGNORED_PARAMS`,
+  `E_OBJECT_NOT_FOUND` and `E_AMBIGUOUS_MATCH`. A warning on a successful write (ignored
+  parameters, a create that could not pick a project) opens its own line with the code.
+  The rest of each message is unchanged. `get_knowledge(kind="op-spec",
+  topic="error-codes")` lists the codes with what to do for each. A refusal without a code
+  is not one of these conditions. Nothing to do, unless your own prompts or tests match
+  the very start of these messages: the code now sits between the emoji and the text
+  (#1161).
 - **`d365fo_file(action="modify", operation="modify-property")` sets OperationalDomain and
   SubscriberAccessLevel on existing tables and menu items.** Menu items had no writer for
   either (the bridge's setter has no case for them), and SubscriberAccessLevel holds child

@@ -11,6 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { extractToolErrorCodes } from '../../src/utils/toolError';
 import {
   crossModelWriteRefusal,
   baseObjectOf,
@@ -62,6 +63,19 @@ describe('crossModelWriteRefusal', () => {
     expect(msg).toContain(CORE_MODEL);
     expect(msg).toContain(ACTIVE_MODEL);
     expect(msg).toContain(CORE_TABLE);
+  });
+
+  it('opens the refusal with the stable code, right after the emoji', () => {
+    const msg = crossModelWriteRefusal({
+      objectName: CORE_TABLE,
+      objectType: 'table',
+      owningModel: CORE_MODEL,
+      owningPackage: CORE_MODEL,
+      activeModel: ACTIVE_MODEL,
+    });
+
+    expect(msg!.startsWith('⛔ [E_MODEL_NOT_WRITABLE] Refusing to modify ')).toBe(true);
+    expect(extractToolErrorCodes(msg!)).toEqual(['E_MODEL_NOT_WRITABLE']);
   });
 
   it('steers to a NEW table extension in the active model, named per that model', () => {

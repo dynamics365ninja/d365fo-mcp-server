@@ -58,6 +58,7 @@
 import { resolveObjectPrefix, applyObjectPrefix, isAsGivenNamingMode, isNoPrefixMode } from './modelClassifier.js';
 import { reloadWritePolicy } from './loadEnv.js';
 import { resolveFormattedExtensionName } from './objectNaming.js';
+import { withToolErrorCode } from './toolError.js';
 import type { ModelDependency } from '../metadata/modelDescriptor.js';
 
 /** An extension of the target object that already exists in the active model. */
@@ -298,8 +299,9 @@ export function crossModelWriteRefusal(check: CrossModelWriteCheck): string | nu
   const extType = EXTENSION_TYPE_OF[baseType];
 
   const lines = [
-    `⛔ Refusing to ${verb} "${objectName}" in model "${owningModel}" — this workspace ` +
-    `targets model "${activeModel}".`,
+    withToolErrorCode('E_MODEL_NOT_WRITABLE',
+      `⛔ Refusing to ${verb} "${objectName}" in model "${owningModel}" — this workspace ` +
+      `targets model "${activeModel}".`),
     '',
   ];
 

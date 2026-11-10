@@ -78,6 +78,7 @@ import { isPublishedDefault } from '../specs/opSpecs.js';
 import { lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import { isValidModuleReferenceName } from '../../metadata/modelDescriptor.js';
 import { decodeXmlEntitiesFromXppSource } from '../../utils/xmlEscape.js';
+import { withToolErrorCode, hoistToolErrorCode, withBridgeRefusalCode } from '../../utils/toolError.js';
 import {
   findD365FileOnDisk, expectedD365FilePath, findModelDescriptorPath, moduleExistenceNote,
 } from '../../utils/objectFileLookup.js';
@@ -410,11 +411,11 @@ export function preflightReplaceCode(
   if (hits.length > 1) {
     return {
       kind: 'refuse',
-      message:
+      message: withToolErrorCode('E_AMBIGUOUS_OLDCODE',
         `⛔ replace-code refused — oldCode matches ${hits.length} times (lines ${hits.join(', ')}).\n` +
         `The bridge replaces EVERY occurrence, so this would edit all ${hits.length} of them. ` +
         `Extend oldCode with surrounding lines until it identifies exactly one site` +
-        (methodName ? ` inside ${methodName}.` : `, or scope the call with methodName="<method>".`),
+        (methodName ? ` inside ${methodName}.` : `, or scope the call with methodName="<method>".`)),
     };
   }
 
@@ -491,7 +492,7 @@ function unresolvedObjectError(
   actualFilePath?: string,
   bridgeReported?: string,
 ): string {
-  return (
+  return withToolErrorCode('E_OBJECT_NOT_FOUND',
     `Bridge operation '${operation}' could not resolve ${objectType} '${objectName}'.\n` +
     (bridgeReported ? `Bridge reported: ${bridgeReported}\n` : '') +
     `Most likely cause: the C# metadata bridge could not find '${objectName}' in its metadata model.\n` +
@@ -1492,10 +1493,10 @@ async function runModify(
         return {
           content: [{
             type: 'text',
-            text:
+            text: withToolErrorCode('E_AMBIGUOUS_MATCH',
               `⚠️ **Ambiguous parentControl** — "${args.parentControl}" matches multiple controls in the base form.\n\n` +
               `**Candidates** (${resolution.multiple.length}):\n${candidateList}\n\n` +
-              `Re-call \`add-control\` with the exact \`parentControl\` name from the list above.`,
+              `Re-call \`add-control\` with the exact \`parentControl\` name from the list above.`),
           }],
           isError: true,
         };
@@ -1710,7 +1711,7 @@ async function runModify(
     }
 
     if (!filePath) {
-      throw new Error(
+      throw new Error(withToolErrorCode('E_OBJECT_NOT_FOUND',
         `File not found for ${objectType} "${objectName}".\n\n` +
         `Retry options (do NOT use PowerShell — this tool can handle it):\n` +
         `  1. Pass modelName="<YourModel>" — triggers filesystem lookup by path.\n` +
@@ -1719,7 +1720,7 @@ async function runModify(
         `  4. If the object was just created, re-run d365fo_file(action="create") first and use the returned path as filePath.\n\n` +
         `If the file exists but bridge operations still fail to resolve the object, the C# bridge's metadata roots ` +
         `(fixed at startup) likely don't include this model — set context.customPackagesPath / D365FO_CUSTOM_PACKAGES_PATH and restart the server.`
-      );
+      ));
     }
 
     // 1a. Path containment guard — every write target must live under a configured
@@ -1746,7 +1747,7 @@ async function runModify(
       // Only block if the resolved model differs from the user's explicitly configured model.
       // If user explicitly set modelName=ApplicationSuite, they know what they're doing.
       if (!modelName || modelName !== resolvedModelFromPath) {
-        throw new Error(
+        throw new Error(withToolErrorCode('E_MODEL_NOT_WRITABLE',
           `⛔ Refusing to modify "${objectName}" — the resolved file belongs to standard Microsoft model "${resolvedModelFromPath}".\n\n` +
           `Your configured model is "${configuredModel || '(not set)'}".\n` +
           `Modifying standard objects is not permitted — it can corrupt the base application.\n\n` +
@@ -1755,7 +1756,7 @@ async function runModify(
           `  • Class: d365fo_file(action="create", objectType="class-extension", objectName="${objectName}_Extension")\n` +
           `  • Form:  d365fo_file(action="create", objectType="form-extension", objectName="${objectName}.${configuredModel || 'YourModel'}Extension")\n` +
           `  • Role / duty: objectType="security-role-extension" / "security-duty-extension", same objectName form`
-        );
+        ));
       }
     }
 
@@ -1768,13 +1769,13 @@ async function runModify(
     if (objectType === 'model-descriptor') {
       const descriptorModel = containment.modelSegment ?? objectName;
       if (isStandardModel(descriptorModel) && (!modelName || modelName !== descriptorModel)) {
-        throw new Error(
+        throw new Error(withToolErrorCode('E_MODEL_NOT_WRITABLE',
           `⛔ Refusing to modify the descriptor of standard Microsoft model "${descriptorModel}".\n\n` +
           `Module references are declared by the model that NEEDS them. To use a type from ` +
           `"${descriptorModel}", add "${descriptorModel}" to YOUR model's <ModuleReferences> instead:\n` +
           `  d365fo_file(action="modify", objectType="model-descriptor", modelName="<YourModel>", ` +
           `operation="add-module-reference", params: { moduleReference: "${descriptorModel}" })`,
-        );
+        ));
       }
     }
 
@@ -1881,7 +1882,7 @@ async function runModify(
       );
     }
     if (!canBridgeModify(objectType, operation)) {
-      throw new Error(`Operation '${operation}' on object type '${objectType}' is not supported by the bridge.`);
+      throw new Error(withToolErrorCode('E_UNSUPPORTED_OPERATION', `Operation '${operation}' on object type '${objectType}' is not supported by the bridge.`));
     }
 
     // The field name as the caller spelled it, before the prefix below rewrites it:
@@ -3232,7 +3233,7 @@ async function runModify(
         break;
       }
       default:
-        throw new Error(`Unsupported operation: ${operation}`);
+        throw new Error(withToolErrorCode('E_UNSUPPORTED_OPERATION', `Unsupported operation: ${operation}`));
     }
 
     if (!bridgeResult) {
@@ -3333,7 +3334,9 @@ async function runModify(
           `  • Do not rewrite the whole object from hand-authored XML — it loses metadata the ` +
           `provider writes for you. Fix the parentControl instead.`;
       }
+      opErrorMsg = withBridgeRefusalCode(opErrorMsg, bridgeResult!.message); // the bridge cannot stamp its own
       if (operation === 'replace-code' && /oldCode not found/i.test(bridgeResult!.message ?? '')) {
+        opErrorMsg = withToolErrorCode('E_OLDCODE_NOT_FOUND', opErrorMsg);
         opErrorMsg +=
           `\n\n💡 Tip: The oldCode must match the exact source currently on disk.\n` +
           `  • Fetch the current source first: get_object_info(objectType="${objectType}", name="${objectName}")\n` +
@@ -3689,7 +3692,7 @@ async function runModify(
       content: [
         {
           type: 'text',
-          text: `❌ Error modifying D365FO file: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          text: hoistToolErrorCode(`❌ Error modifying D365FO file: ${error instanceof Error ? error.message : 'Unknown error'}`),
         },
       ],
       isError: true,

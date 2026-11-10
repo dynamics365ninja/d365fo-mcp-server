@@ -680,6 +680,11 @@ describe('parameter-accounting helpers', () => {
     expect(renderIgnoredParamsWarning('teleport-object', [])).toBe('');
   });
 
+  it('opens the warning with the stable code', () => {
+    const warning = renderIgnoredParamsWarning('add-index', findIgnoredParams('add-index', ['indexName', 'allowDuplicates']));
+    expect(warning.split('\n')[0]).toMatch(/^⚠️ \[E_IGNORED_PARAMS\] 1 parameter\(s\) did not reach the written XML:$/);
+  });
+
   it('flags a mutation op called with no mutation param', () => {
     expect(findMissingMutationParams('modify-field', ['fieldName'])).toContain('fieldMandatory');
     expect(findMissingMutationParams('modify-field', ['fieldName', 'fieldLabel'])).toEqual([]);

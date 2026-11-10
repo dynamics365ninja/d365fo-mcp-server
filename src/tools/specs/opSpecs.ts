@@ -24,6 +24,7 @@ import {
 } from './generateObjectOpSpecs.js';
 import { LABELS_OVERRIDE_PARAMS, renderLabelsOpSpec } from './labelsOpSpecs.js';
 import { d365foFileTool } from '../../server/toolSchemas/d365foFile.js';
+import { renderToolErrorCodeList } from '../../utils/toolError.js';
 
 /**
  * Every objectType the schema offers, taken from the published enum so the
@@ -79,6 +80,13 @@ const TOPIC_REDIRECTS: Record<string, string> = {
   'model-prefix': 'naming',
   'extension-prefix': 'naming',
   suffix: 'naming',
+  // The codes a refused write opens with. Asked for by what the message shows
+  // (`[E_…]`), so the spellings an agent would try all land here.
+  'error-codes': 'error-codes',
+  'error-code': 'error-codes',
+  errors: 'error-codes',
+  refusals: 'error-codes',
+  'refusal-codes': 'error-codes',
 };
 
 const REDIRECT_ANSWERS: Record<string, string> = {
@@ -194,6 +202,15 @@ const REDIRECT_ANSWERS: Record<string, string> = {
     '    use the PascalCase infix without one (MyTable.ConSkExtension,',
     '    MyTableConSk_Extension).',
   ].join('\n'),
+  'error-codes': [
+    'Refusal codes. A refused write opens with [E_…] right after the emoji, for example',
+    '"❌ [E_AMBIGUOUS_OLDCODE] …". A warning on a successful write opens its own line with one.',
+    'Branch on the code, not on the wording: the wording changes between releases, the code does not.',
+    '',
+    renderToolErrorCodeList(),
+    '',
+    'A refusal without a code is not one of these conditions. Read its text.',
+  ].join('\n'),
 };
 
 function normalize(topic: string): string {
@@ -276,6 +293,7 @@ export function renderOpSpecIndex(unknownTopic?: string): string {
     '',
     'd365fo_file(action="delete") — the contract for removing an object (topic="delete").',
     'd365fo_file(action="project") — VS project ops: create, delete, add-object, remove-object (topic="project").',
+    'Refusal codes — what the [E_…] at the start of a refused write means (topic="error-codes").',
     '',
     'd365fo_file resolution overrides (any action, nested in `params`):',
     ...Object.entries(D365FO_FILE_OVERRIDE_PARAMS).map(([k, v]) => `  ${k}: ${v}`),

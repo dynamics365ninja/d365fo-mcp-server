@@ -62,6 +62,7 @@ import { applyMenuItemBpDefaults, renderMenuItemBpNote } from '../xml/menuItemBp
 import { menuItemFormAllLocal } from '../xml/formDataSourceDomain.js';
 import { menuItemKindOf } from '../../utils/bpCreateDefaults.js';
 import type { XppServerContext } from '../../types/context.js';
+import { withToolErrorCode, hoistToolErrorCode } from '../../utils/toolError.js';
 
 
 /**
@@ -110,11 +111,11 @@ function buildNoProjectPathWarningFull(): string {
   // dozens of lines in what should be a short, actionable warning.
   const candidates = getConfigManager().getWorkspaceProjectCandidates();
   if (candidates.length > 1) {
-    return `\n⚠️ addToProject=true but no projectPath could be resolved: ${candidates.length} .rnrproj ` +
+    return withToolErrorCode('E_AMBIGUOUS_PROJECT', `\n⚠️ addToProject=true but no projectPath could be resolved: ${candidates.length} .rnrproj ` +
       `files were found in this workspace and none matched unambiguously.\n` +
       `The file was created on disk but was NOT added to any Visual Studio project.\n\n` +
       `Pass projectPath explicitly to target the right one:\n` +
-      candidates.map(c => `   - ${c.modelName}: ${c.projectPath ?? '(no .rnrproj)'}`).join('\n') + '\n';
+      candidates.map(c => `   - ${c.modelName}: ${c.projectPath ?? '(no .rnrproj)'}`).join('\n') + '\n');
   }
   // Same refusal, other route: the SOLUTIONS-PATH scan resolved the model and
   // stopped short of choosing between the projects that build it. Those were
@@ -123,18 +124,18 @@ function buildNoProjectPathWarningFull(): string {
   const ambiguous = getConfigManager().getAmbiguousProjectPaths();
   if (ambiguous.length > 1) {
     const model = getConfigManager().getModelName() ?? 'this model';
-    return `\n⚠️ addToProject=true but no projectPath could be resolved: ${ambiguous.length} projects ` +
+    return withToolErrorCode('E_AMBIGUOUS_PROJECT', `\n⚠️ addToProject=true but no projectPath could be resolved: ${ambiguous.length} projects ` +
       `build model "${model}" and none was auto-selected.\n` +
       `The file was created on disk but was NOT added to any Visual Studio project.\n\n` +
       `Pass projectPath explicitly to target the right one:\n` +
       ambiguous.slice(0, 10).map(pp => `   - ${pp}`).join('\n') +
-      (ambiguous.length > 10 ? `\n   … and ${ambiguous.length - 10} more` : '') + '\n';
+      (ambiguous.length > 10 ? `\n   … and ${ambiguous.length - 10} more` : '') + '\n');
   }
   // The .mcp.json shape was five lines of JSON in a warning the caller usually
   // resolves by just passing projectPath; naming the key is enough.
-  return `\n⚠️ addToProject=true but no projectPath could be resolved.\n` +
+  return withToolErrorCode('E_NO_PROJECT', `\n⚠️ addToProject=true but no projectPath could be resolved.\n` +
     `The file was created on disk but was NOT added to any Visual Studio project.\n` +
-    `Pass projectPath explicitly, or set servers.context.projectPath in .mcp.json.\n`;
+    `Pass projectPath explicitly, or set servers.context.projectPath in .mcp.json.\n`);
 }
 
 /**
@@ -934,7 +935,7 @@ export async function handleCreateD365File(
         const reason = isPlaceholder
           ? `"${actualModelName}" is a placeholder value, not a real D365FO model`
           : `"${actualModelName}" is a Microsoft standard model — custom code must NEVER be created there`;
-        const errorMsg =
+        const errorMsgText =
           `❌ ERROR: ${reason}\n\n` +
           `Root cause: No projectPath or solutionPath was found (not in tool args, not in .mcp.json config).\n` +
           `Without projectPath, the tool uses the modelName parameter AS-IS, which is wrong.\n\n` +
@@ -949,6 +950,8 @@ export async function handleCreateD365File(
           `    }\n` +
           `  }\n\n` +
           `Or pass projectPath explicitly in the tool call arguments.`;
+        // A placeholder name is a different mistake and keeps its text without a code.
+        const errorMsg = isMicrosoftModel ? withToolErrorCode('E_MODEL_NOT_WRITABLE', errorMsgText) : errorMsgText;
 
         console.error(`[create_d365fo_file] ${errorMsg}`);
 
@@ -2440,7 +2443,7 @@ export async function handleCreateD365File(
       content: [
         {
           type: 'text',
-          text: `❌ Error creating D365FO file:\n\n${error instanceof Error ? error.message : 'Unknown error'}`,
+          text: hoistToolErrorCode(`❌ Error creating D365FO file:\n\n${error instanceof Error ? error.message : 'Unknown error'}`),
         },
       ],
       isError: true,

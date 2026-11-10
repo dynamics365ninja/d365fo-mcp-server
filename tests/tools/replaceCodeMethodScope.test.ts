@@ -16,6 +16,7 @@ import path from 'path';
 import { preflightReplaceCode } from '../../src/tools/write/modifyD365File';
 import { directXmlReplaceCode } from '../../src/tools/write/directXmlWriters';
 import { methodSourceSpans } from '../../src/utils/methodSourceSpans';
+import { extractToolErrorCode } from '../../src/utils/toolError';
 
 const CLASS_XML = `<?xml version="1.0" encoding="utf-8"?>
 <AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
@@ -143,6 +144,15 @@ describe('replace-code preflight honours methodName', () => {
     expect(verdict?.message).toContain('methodName=');
   });
 
+  it('opens the refusal with the stable code, and gives a no-op none', () => {
+    const verdict = preflightReplaceCode(CLASS_XML, 'ttsbegin;', 'ttsbegin;\n        this.lock();');
+    expect(verdict?.message.startsWith('⛔ [E_AMBIGUOUS_OLDCODE] replace-code refused')).toBe(true);
+
+    const noop = preflightReplaceCode(POST_LOCKED, 'this.save();', 'this.lock();', 'post');
+    expect(noop?.kind).toBe('noop');
+    expect(extractToolErrorCode(noop!.message)).toBeUndefined();
+  });
+
   it('refuses a repeat inside the named method without suggesting methodName again', () => {
     const verdict = preflightReplaceCode(FORM_XML, 'element.refresh();', 'element.reread();', 'clicked');
     expect(verdict?.kind).toBe('refuse');
@@ -230,5 +240,6 @@ describe('directXmlReplaceCode honours methodName', () => {
     const result = await directXmlReplaceCode(file, 'ttsbegin;', 'ttsbegin; // x', 'test');
     expect(result?.success).toBe(false);
     expect(result?.message).toContain('appears 2 times');
+    expect(result?.message.startsWith('❌ [E_AMBIGUOUS_OLDCODE] directXmlReplaceCode:')).toBe(true);
   });
 });

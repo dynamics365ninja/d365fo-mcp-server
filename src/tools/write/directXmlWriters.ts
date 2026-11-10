@@ -47,6 +47,7 @@ import { escapeXml } from '../../utils/xmlEscape.js';
 import { methodSourceSpans, occurrencesInSpans } from '../../utils/methodSourceSpans.js';
 import { upsertTableFieldProperty } from '../xml/tableFieldPropertyEdit.js';
 import type { RestructureResult } from '../xml/formRestructure.js';
+import { withToolErrorCode } from '../../utils/toolError.js';
 import { convertEntityFieldToComputed, type ComputedFieldType } from '../xml/entityComputedField.js';
 import {
   addModuleReference, removeModuleReference, parseModuleReferences, invalidateModelVisibility,
@@ -106,7 +107,7 @@ export const directXmlReplaceCode = serializedOnFile(async (
       const scope = spans ? `${methodName} in ${filePath}` : filePath;
       return {
         success: false,
-        message: `❌ directXmlReplaceCode: oldCode appears ${hits.length} times in ${scope} — replacement is ambiguous. Provide a more specific oldCode snippet.`,
+        message: withToolErrorCode('E_AMBIGUOUS_OLDCODE', `❌ directXmlReplaceCode: oldCode appears ${hits.length} times in ${scope} — replacement is ambiguous. Provide a more specific oldCode snippet.`),
       };
     }
 
@@ -321,7 +322,7 @@ export const directXmlModifyProperty = serializedOnFile(async (
       if (nonExistent && /<AxTable[\s>]/.test(content)) {
         return {
           success: false,
-          message: `❌ '${tagName}' is not an AxTable property — nothing was written. ${nonExistent}`,
+          message: withToolErrorCode('E_UNSUPPORTED_PROPERTY', `❌ '${tagName}' is not an AxTable property — nothing was written. ${nonExistent}`),
         };
       }
       const inserted = upsertAxTableProperty(content, tagName, escapedValue);
@@ -340,7 +341,7 @@ export const directXmlModifyProperty = serializedOnFile(async (
     if (totalMatches > 1) {
       return {
         success: false,
-        message: `❌ directXmlModifyProperty: <${tagName}> appears ${totalMatches} times in ${filePath} — ambiguous, refusing to guess which one.`,
+        message: withToolErrorCode('E_AMBIGUOUS_MATCH', `❌ directXmlModifyProperty: <${tagName}> appears ${totalMatches} times in ${filePath} — ambiguous, refusing to guess which one.`),
       };
     }
 
@@ -1310,9 +1311,9 @@ function queryRangeTargetError(
   if (target.reason === 'ambiguous') {
     return {
       success: false,
-      message:
+      message: withToolErrorCode('E_AMBIGUOUS_MATCH',
         `❌ ${op}: '${dataSourceName}' names more than one data source in the ViewMetadata of '${filePath}' — ` +
-        `refusing to guess which one to write. Rename one of them, or edit this entity in Visual Studio.`,
+        `refusing to guess which one to write. Rename one of them, or edit this entity in Visual Studio.`),
     };
   }
   if (target.reason === 'no-ranges') {
@@ -2245,12 +2246,12 @@ export const directXmlRemoveEntryPoint = serializedOnFile(async (
       case 'ambiguous':
         return {
           success: false,
-          message:
+          message: withToolErrorCode('E_AMBIGUOUS_MATCH',
             `'${asked}' matches ${outcome.matches.length} entry points — refusing to guess which to ` +
             `remove, since removing the wrong one revokes access to a different object and still builds ` +
             `clean.\nMatches: ` +
             outcome.matches.map(e => `${e.name} (${e.objectName}, ${e.objectType})`).join('; ') +
-            `.\nNarrow it with entryPointName, or entryPointObjectName + entryPointObjectType.`,
+            `.\nNarrow it with entryPointName, or entryPointObjectName + entryPointObjectType.`),
         };
     }
 
@@ -2379,10 +2380,10 @@ export const directXmlRemoveSecurityReference = serializedOnFile(async (
       case 'ambiguous':
         return {
           success: false,
-          message:
+          message: withToolErrorCode('E_AMBIGUOUS_MATCH',
             `'${name}' is listed ${outcome.matches.length} times in <${container}> — refusing to guess, since ` +
             `removing one copy leaves the access in place. Nothing was removed. Fix the duplicate by hand ` +
-            `first: ${outcome.matches.join(', ')}.`,
+            `first: ${outcome.matches.join(', ')}.`),
         };
     }
 
@@ -2441,11 +2442,11 @@ export const directXmlRemoveDiagnosticSuppression = serializedOnFile(async (
       case 'ambiguous':
         return {
           success: false,
-          message:
+          message: withToolErrorCode('E_AMBIGUOUS_MATCH',
             `'${criteria.path}' matches ${outcome.matches.length} suppressions — refusing to guess which ` +
             `to remove, since removing the wrong one leaves a live BP finding silenced.\nMatches: ` +
             outcome.matches.map(e => `${e.path} (${e.moniker})`).join('; ') +
-            `.\nNarrow it with diagnosticMoniker.`,
+            `.\nNarrow it with diagnosticMoniker.`),
         };
     }
 

@@ -6,6 +6,7 @@ import { getConfigManager } from '../../utils/configManager.js';
 import { isStandardModel } from '../../utils/modelClassifier.js';
 import { extractModelNameFromProject } from '../../utils/workspaceDetector.js';
 import { assertProjectPathAllowed } from '../../utils/pathContainment.js';
+import { withToolErrorCode, hoistToolErrorCode } from '../../utils/toolError.js';
 import {
   scaffoldProject, removeProject, validateProjectName, ScaffoldError, inferProjectsRoot, looksLikeProjectsRoot,
   type SolutionMode,
@@ -23,7 +24,7 @@ const ArgsSchema = z.object({
 }).passthrough();
 
 function fail(text: string) {
-  return { content: [{ type: 'text', text: `❌ d365fo_file(action="project", operation="create"): ${text}` }], isError: true };
+  return { content: [{ type: 'text', text: hoistToolErrorCode(`❌ d365fo_file(action="project", operation="create"): ${text}`) }], isError: true };
 }
 
 export async function handleCreateProject(args: Record<string, unknown>) {
@@ -45,8 +46,9 @@ export async function handleCreateProject(args: Record<string, unknown>) {
   // The configured model is the user's own; refuse only other models that look standard.
   const isConfiguredModel = cfg.getModelName()?.toLowerCase() === modelName.toLowerCase();
   if (isStandardModel(modelName) && !isConfiguredModel && !cfg.getProjectsForModel(modelName).length) {
-    return fail(`"${modelName}" looks like a standard Microsoft model — refusing to create a project for it ` +
-      `(if it is your custom model, list it in CUSTOM_MODELS).`);
+    return fail(withToolErrorCode('E_MODEL_NOT_WRITABLE',
+      `"${modelName}" looks like a standard Microsoft model — refusing to create a project for it ` +
+      `(if it is your custom model, list it in CUSTOM_MODELS).`));
   }
 
   const siblings = cfg.getProjectsForModel(modelName);
