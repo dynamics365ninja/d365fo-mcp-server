@@ -24,6 +24,9 @@ import { findBaseObjectXml } from '../../utils/baseObjectXml.js';
 import { findAotFilesInAllPackages } from '../../utils/objectFileLookup.js';
 import { checkNewControlPosition, findFormControl, formDefinesControl, placeFormControl, type PlaceFormControlSpec } from '../../utils/formControlPlacement.js';
 import { addSecurityEntryPoint, removeSecurityEntryPoint } from '../xml/securityPrivilegeXml.js';
+import {
+  addSecurityReference, removeSecurityReference, SECURITY_REFERENCE_SHAPES, type SecurityReferenceKind,
+} from '../xml/securityDutyRoleXml.js';
 import { type AddSubmenuResult, addMenuExtensionItem, addMenuExtensionSubmenu, menuElementNames, menuSubmenuNames } from '../xml/menuExtensionXml.js';
 import { addMenuItem, addMenuSubmenu } from '../xml/menuXml.js';
 import { removeDiagnosticSuppression, addDiagnosticSuppression, emptySuppressionListXml } from '../../utils/ignoreDiagnosticListXml.js';
@@ -2198,6 +2201,135 @@ export const directXmlRemoveEntryPoint = serializedOnFile(async (
   } catch (err) {
     console.error(`[modify_d365fo_file] directXmlRemoveEntryPoint failed: ${err}`);
     return null;
+  }
+});
+
+/** Why a file that is not a role, duty or extension cannot take this reference. */
+function noSecurityReferenceList(
+  filePath: string,
+  kind: SecurityReferenceKind,
+  root: string | undefined,
+  operation: string,
+): string {
+  const { container, objectTypes } = SECURITY_REFERENCE_SHAPES[kind];
+  return (
+    `${filePath} is ${root ? `an ${root}` : 'not an AOT object'}, which has no <${container}> list — ` +
+    `nothing was written. ${operation} applies to objectType=${objectTypes.map(t => `"${t}"`).join(' | ')}.`
+  );
+}
+
+/**
+ * add-duty / add-privilege on a role, duty or extension, written straight to the XML.
+ *
+ * XML-only for the reason add-entry-point is: security objects have no bridge write
+ * path. The insert lives in securityDutyRoleXml.ts, next to the builders that write
+ * the same element. `note` is what the checks against the index found, reported
+ * ahead of the result the way add-module-reference reports an unknown module.
+ */
+export const directXmlAddSecurityReference = serializedOnFile(async (
+  filePath: string,
+  kind: SecurityReferenceKind,
+  name: string,
+  note: string,
+): Promise<{ success: boolean; message: string; skipped?: boolean }> => {
+  const operation = `add-${kind}`;
+  const { container } = SECURITY_REFERENCE_SHAPES[kind];
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+
+    const outcome = addSecurityReference(content, kind, name);
+    switch (outcome.kind) {
+      case 'unsupported':
+        return { success: false, message: noSecurityReferenceList(filePath, kind, outcome.root, operation) };
+      case 'invalid-name':
+        return {
+          success: false,
+          message:
+            `${JSON.stringify(name)} is not an AOT object name (letters, digits and '_') — nothing was ` +
+            `written. ${operation} takes ONE name; send several as operations[] entries.`,
+        };
+      case 'no-collection':
+        return {
+          success: false,
+          message:
+            `${filePath} has no <${container}> element to add to — nothing was written. ` +
+            `An object written by this tool or by Visual Studio always has one; a hand-edited file may not.`,
+        };
+      case 'already-present':
+        return {
+          success: true,
+          skipped: true,
+          message: `ℹ️ '${outcome.existing}' is already in <${container}> — nothing written (idempotent). File: ${filePath}`,
+        };
+    }
+
+    await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
+    console.error(`[modify_d365fo_file] ✅ directXmlAddSecurityReference: added '${outcome.added}' to ${filePath}`);
+    return { success: true, message: `${note}✅ '${outcome.added}' added to <${container}>. File: ${filePath}` };
+  } catch (err) {
+    // Real error, not null — see directXmlAddModuleReference.
+    console.error(`[modify_d365fo_file] directXmlAddSecurityReference failed: ${err}`);
+    return {
+      success: false,
+      message: `❌ Could not add '${name}' to ${filePath}: ${err instanceof Error ? err.message : err}`,
+    };
+  }
+});
+
+/**
+ * remove-duty / remove-privilege on a role, duty or extension, written straight to
+ * the XML. The inverse of directXmlAddSecurityReference, XML-only for the same reason.
+ *
+ * An extension only lists what it adds, so a reference the BASE object carries comes
+ * back as not-found here. The reply says so, because the name can look right.
+ */
+export const directXmlRemoveSecurityReference = serializedOnFile(async (
+  filePath: string,
+  kind: SecurityReferenceKind,
+  name: string,
+): Promise<{ success: boolean; message: string }> => {
+  const operation = `remove-${kind}`;
+  const { container } = SECURITY_REFERENCE_SHAPES[kind];
+  try {
+    const rawContent = await fs.readFile(filePath, 'utf-8');
+    const content = rawContent.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+
+    const outcome = removeSecurityReference(content, kind, name);
+    switch (outcome.kind) {
+      case 'unsupported':
+        return { success: false, message: noSecurityReferenceList(filePath, kind, outcome.root, operation) };
+      case 'not-found':
+        return {
+          success: false,
+          message:
+            `'${name}' is not in <${container}> in ${filePath} — nothing was removed.\n` +
+            (outcome.present.length > 0
+              ? `<${container}> lists: ${outcome.present.join(', ')}.`
+              : `<${container}> is empty.`) +
+            (outcome.root.endsWith('Extension')
+              ? ` An extension lists only what it adds: a reference of the base object cannot be removed here.`
+              : ''),
+        };
+      case 'ambiguous':
+        return {
+          success: false,
+          message:
+            `'${name}' is listed ${outcome.matches.length} times in <${container}> — refusing to guess, since ` +
+            `removing one copy leaves the access in place. Nothing was removed. Fix the duplicate by hand ` +
+            `first: ${outcome.matches.join(', ')}.`,
+        };
+    }
+
+    await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
+    console.error(`[modify_d365fo_file] ✅ directXmlRemoveSecurityReference: removed '${outcome.removed}' from ${filePath}`);
+    return { success: true, message: `✅ '${outcome.removed}' removed from <${container}>. File: ${filePath}` };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlRemoveSecurityReference failed: ${err}`);
+    return {
+      success: false,
+      message: `❌ Could not remove '${name}' from ${filePath}: ${err instanceof Error ? err.message : err}`,
+    };
   }
 });
 
