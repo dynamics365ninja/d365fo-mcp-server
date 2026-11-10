@@ -1208,9 +1208,9 @@ describe('generate_smart_form', () => {
   });
 
   it('expands a template-less pattern deterministically from the catalog', async () => {
-    // "Task" (TaskSingle) has a catalog spec but no hand-written builder
+    // "Task" has a catalog spec but no hand-written builder
     // template. It used to silently degrade to SimpleList; now the deterministic
-    // expander emits the correct TaskSingle structure (single source of truth
+    // expander emits the platform's Task structure (single source of truth
     // with the validator) instead of the wrong pattern.
     const result = await handleGenerateSmartForm(
       {
@@ -1223,7 +1223,8 @@ describe('generate_smart_form', () => {
     );
     const text = result?.content[0].text as string;
     // Correct pattern emitted (not degraded to SimpleList) …
-    expect(text).toContain('<Pattern xmlns="">TaskSingle</Pattern>');
+    // The platform name is "Task" (alias "Task Single"); "TaskSingle" does not compile.
+    expect(text).toContain('<Pattern xmlns="">Task</Pattern>');
     expect(text).not.toContain('<Pattern xmlns="">SimpleList</Pattern>');
     // … and the deterministic-catalog note is shown, not the degrade warning.
     expect(text).toContain('Generated deterministically from the form-pattern catalog');

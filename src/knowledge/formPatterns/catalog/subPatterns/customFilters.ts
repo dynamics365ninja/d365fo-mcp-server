@@ -10,7 +10,7 @@ export const customAndQuickFilters: SubPatternSpec = {
   id: 'CustomAndQuickFilters',
   xmlName: 'CustomAndQuickFilters',
   displayName: 'Custom and Quick Filters',
-  versions: ['1.1', '1.0'],
+  versions: ['1.1', 'UX7 1.0'],
   appliesToControlTypes: ['Group'],
   purpose:
     'Filter group above a grid containing a QuickFilter plus optional modeled custom filter fields. ' +
@@ -32,7 +32,7 @@ export const customFilters: SubPatternSpec = {
   id: 'CustomFilters',
   xmlName: 'CustomFilters',
   displayName: 'Custom Filters',
-  versions: ['1.1', '1.0'],
+  versions: ['1.1', 'UX7 1.0'],
   appliesToControlTypes: ['Group'],
   purpose:
     'Filter group with modeled custom filter fields only — no QuickFilter required.',

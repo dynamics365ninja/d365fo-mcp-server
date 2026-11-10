@@ -87,7 +87,7 @@ Generated code must *prove* itself before touching disk. All gates are fail-clos
 | Provenance | `prepare` (mode=change/create) issues a grounding token (30 min TTL, object-bound). In-memory by default; with `GROUNDING_SECRET` set on both instances the token is HMAC-signed and portable, so the hybrid write-only companion (and scaled-out App Service) can validate it — without the secret, write-only mode bypasses enforcement | write called without a valid token | `GROUNDING_ENFORCE` + `GROUNDING_SECRET` |
 | References | `validate_code(mode="references")` — every type, field, method (incl. arity), enum, label checked against the index | any identifier unresolved | `GROUNDING_ENFORCE` |
 | Best practices | `validate_code(mode="syntax")` — **56 rules**: 52 static (ATTR001–003, BP001–006, COC001–006, CS001, DOC001, EXT001, FN001/002, KW001, MAC001, OP001, RPT001/002/101–103, SEL001–011, SET001, TST001–003, TTS001–003, XML001/006–010) + 4 data-driven (XML002–005) mined from standard models (`property_stats`). FN001/FN002/KW001/ATTR001/SEL010 read the captured compiler tables (`src/knowledge/compilerFacts.ts`) rather than a hand-kept list; the `reserved-words` knowledge topic is generated from the same table | error-severity violations | — (advisory in output) |
-| Form patterns | `object_patterns (domain=form, action=validate)` — rules FP000–FP010 against the curated pattern catalog | structural violations (FP001–FP005, FP007) | `FORM_PATTERN_ENFORCE` |
+| Form patterns | `object_patterns (domain=form, action=validate)` — rules FP000–FP011 against the platform pattern definitions (generated from the Patterns DLL) | what the compiler rejects (FP001–FP005, FP007, FP011) | `FORM_PATTERN_ENFORCE` |
 
 Supporting reliability mechanisms:
 
@@ -105,7 +105,7 @@ Supporting reliability mechanisms:
 flowchart LR
     CAT["Curated catalog\n36 patterns + 30 sub-patterns\nsrc/knowledge/formPatterns"] --> ADV[object_patterns\ndomain=form, action=analyze]
     CAT --> SPEC[object_patterns\ndomain=form, action=spec]
-    CAT --> VAL[object_patterns domain=form, action=validate\nFP000–FP010]
+    CAT --> VAL[object_patterns domain=form, action=validate\nFP000–FP011]
     MINE[("form_patterns table\nmined from real forms\nduring build-database")] --> ADV
     MINE -->|cross-check report| CAT
     ADV --> GEN["generate_object objectType=form\nclone reference form\n+ re-bind datasources"]
@@ -124,7 +124,7 @@ A .NET Framework 4.8 process (`D365MetadataBridge.exe`) spawned by the server, s
 It is not the *only* write path. Two cases fall through to purpose-built XML writers, and both are deliberate:
 
 - **Object types outside `BRIDGE_CREATE_TYPES`** (13 of the 39 create types route to the bridge). `security-privilege`/`duty`/`role` and `query`/`view` are excluded on purpose — the bridge's generic `properties: Dictionary<string,string>` channel cannot carry the structured collections they need (EntryPoints, Privileges, Duties, query data sources), so a bridge create would "succeed" and produce a functionally broken object. `securityPrivilegeXml.ts`, `queryViewXml.ts` and friends build these correctly instead.
-- **Modify operations with no backing C# op** — `add-delete-action`, `remove-delete-action`, `modify-property` on some types, `add-menu-item-to-menu`, `add-control`, `add-index`, `add-query-range`/`remove-query-range` and the data-entity-extension field writer fall back to the `directXml*` helpers in `src/tools/write/directXmlWriters.ts` (see also `dataEntityViewExtensionXml.ts`; `add-menu-item-to-menu` on a `menu-extension`, or into a submenu of a `menu`, and `add-submenu` go there directly, through `src/tools/xml/menuExtensionXml.ts` and `menuXml.ts`).
+- **Modify operations with no backing C# op** — `add-delete-action`, `remove-delete-action`, `modify-property` on some types, `add-menu-item-to-menu`, `add-control`, `add-index`, `add-query-range`/`remove-query-range` and the data-entity-extension field writer fall back to the `directXml*` helpers in `src/tools/write/directXmlWriters.ts` (see also `dataEntityViewExtensionXml.ts`; `add-menu-item-to-menu` on a `menu-extension`, or into a submenu of a `menu`, and `add-submenu` go there directly, through `src/tools/xml/menuExtensionXml.ts` and `menuXml.ts`; `move-control` and `wrap-controls` on a `form` through `src/tools/xml/formRestructure.ts`).
 
 The distinction matters for correctness, not for safety: **every write goes through the same grounding gates and the same path-containment check**, whichever writer commits it. The XML writers are structured builders with ambiguity guards (they refuse to guess when a target tag matches more than once), not blind string replacement.
 

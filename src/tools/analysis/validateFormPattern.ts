@@ -3,7 +3,7 @@
  * curated D365FO form pattern catalog (src/knowledge/formPatterns).
  *
  * Validates control hierarchy, ordering, sub-pattern usage, pattern versions
- * and datasource expectations. Rules FP001-FP010 (see
+ * and datasource expectations against the platform pattern definitions. Rules FP001-FP011 (see
  * src/validation/formPatternValidator.ts). Errors block form writes in
  * create_d365fo_file when FORM_PATTERN_ENFORCE is enabled (default: true).
  */

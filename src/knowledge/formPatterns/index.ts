@@ -18,7 +18,7 @@ import { detailsMaster, detailsMasterTabs } from './catalog/topLevel/detailsMast
 import { detailsTransaction } from './catalog/topLevel/detailsTransaction.js';
 import { dialogBasic, dropDialog, dialogFastTabs, dialogTabs, dialogReadOnly, dialogDoubleTabs, dropDialogReadOnly } from './catalog/topLevel/dialog.js';
 import { tableOfContents, advancedSelection } from './catalog/topLevel/tableOfContents.js';
-import { lookupBasic, lookupGridOnly, lookupTab, lookupPreview } from './catalog/topLevel/lookup.js';
+import { lookupBasic, lookupTab, lookupPreview } from './catalog/topLevel/lookup.js';
 import { listPage } from './catalog/topLevel/listPage.js';
 import {
   workspacePanorama,
@@ -35,7 +35,6 @@ import { wizard } from './catalog/topLevel/wizard.js';
 
 import { customFilterSubPatterns } from './catalog/subPatterns/customFilters.js';
 import { allFieldsSubPatterns } from './catalog/subPatterns/fields.js';
-import { panelSubPatterns } from './catalog/subPatterns/panels.js';
 import { toolbarSubPatterns } from './catalog/subPatterns/toolbar.js';
 import { workspaceSectionSubPatterns } from './catalog/subPatterns/workspaceSections.js';
 
@@ -59,7 +58,6 @@ export const FORM_PATTERN_CATALOG: FormPatternCatalog = {
     tableOfContents,
     advancedSelection,
     lookupBasic,
-    lookupGridOnly,
     lookupTab,
     lookupPreview,
     listPage,
@@ -78,7 +76,6 @@ export const FORM_PATTERN_CATALOG: FormPatternCatalog = {
   subPatterns: [
     ...customFilterSubPatterns,
     ...allFieldsSubPatterns,
-    ...panelSubPatterns,
     ...toolbarSubPatterns,
     ...workspaceSectionSubPatterns,
   ],
