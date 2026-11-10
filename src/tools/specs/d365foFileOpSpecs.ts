@@ -1024,13 +1024,20 @@ export const D365FO_FILE_CREATE_PROPERTY_SPECS: Record<string, string> = {
   table:
     'label, tableGroup, tableType, titleField1/2, cacheLookup?, primaryIndex?, ' +
     'allowRowVersionChangeTracking? (dual-write), subscriberAccessLevel? ("Read=Allow,Create=Deny" | ' +
-    '{read:"Allow"} | "None"; default Read=Allow, none on TempDB/InMemory), created/modifiedBy/DateTime?, ' +
+    '{read:"Allow"} | "No Access" | "None"; default what xppbp expects: No Access on TempDB/InMemory/Staging, ' +
+    'Read=Allow otherwise), operationalDomain? (Company|Shared|Local; default Local on TempDB/InMemory/Staging, ' +
+    'else Company, or Shared with saveDataPerCompany:false), created/modifiedBy/DateTime?, ' +
     'fields[{name,type?|edt?|fieldType?,enumType?,label?,mandatory?,allowEdit?,ignoreEdtRelation?}] — enum fields need ' +
     'enumType ONLY (it makes the field an AxTableFieldEnum by itself; fieldType is optional), ' +
     'allowEdit:false writes AllowEdit=No (staging key fields), ignoreEdtRelation:true writes IgnoreEDTRelation=Yes ' +
     '(EDT with a relation), validTimeStateFieldType? (Date|UtcDateTime — then ADD the ValidFrom/ValidTo ' +
     'fields yourself and give the key index validTimeStateKey:true), ' +
-    'indexes?[{name,fields[],allowDuplicates?,alternateKey?,validTimeStateKey?,validTimeStateMode?("Gap"|"NoGap")}]',
+    'indexes?[{name,fields[],allowDuplicates?,alternateKey?,validTimeStateKey?,validTimeStateMode?("Gap"|"NoGap")}], ' +
+    'relations?[{name,relatedTable,constraints[{field,relatedField}],onDelete?(Restricted|Cascade|CascadeRestricted|None; ' +
+    'default Restricted)}]. BP defaults written after the create, listed in the reply: PrimaryIndex and ' +
+    'alternate-key fields AllowEdit=No + Mandatory=Yes, a field in no group joins AutoReport, a field whose EDT ' +
+    'has a relation gets that table relation (unless ignoreEdtRelation), every relation gets OnDelete, ' +
+    'Cardinality, RelatedTableCardinality and RelationshipType',
   enum:
     'label, useEnumValue, configurationKey, isExtensible, enumValues[{name,value?,label?,helpText?}] — ' +
     'every member keeps its number: the value you pass (or its position when you pass none) is written as ' +
@@ -1061,9 +1068,12 @@ export const D365FO_FILE_CREATE_PROPERTY_SPECS: Record<string, string> = {
     'used to degrade silently to Read-only), dataEntity (grants perms)',
   'security-duty': 'label, privileges[] (change the list later with add-privilege / remove-privilege)',
   'security-role': 'label, duties[], privileges[] (change the lists later with add-duty / add-privilege and their remove- operations)',
-  'menu-item-display': 'label, object, objectType',
-  'menu-item-action': 'label, object, objectType',
-  'menu-item-output': 'label, object, objectType',
+  'menu-item-display': 'label, object, objectType, operationalDomain? (default Shared), subscriberAccessLevel? ' +
+    '(default Read=Allow on a form, every permission allowed with objectType Class)',
+  'menu-item-action': 'label, object, objectType, operationalDomain? (default Local), subscriberAccessLevel? ' +
+    '(default "No Access", which xppbp requires on an Action item with objectType Class)',
+  'menu-item-output': 'label, object, objectType, operationalDomain? (default Shared), subscriberAccessLevel? ' +
+    '(default Read=Allow)',
   'data-entity':
     'primaryTable + fields[{name,dataField?}] — BOTH REQUIRED (without them the entity has no query ' +
     'and returns no data, which builds clean; the create is refused instead), primaryKey?, ' +

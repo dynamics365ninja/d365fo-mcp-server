@@ -18,6 +18,7 @@ import { axTableFieldElement, baseTypeFromEdtName, normalizeFieldBaseType } from
 import { renderAxTableProperties } from '../../utils/axTablePropertyOrder.js';
 import { isYes } from './dataEntityXml.js';
 import { tableSubscriberAccessLevel } from '../../utils/subscriberAccessLevel.js';
+import { expectedTableBpDefaults, parseOperationalDomain } from '../../utils/bpCreateDefaults.js';
 import { yesNo } from './tableFieldPropertyEdit.js';
 
 /** Field spec as accepted by the tool surface; every key is optional but `name`. */
@@ -227,10 +228,22 @@ export function buildAxTableXml(
     FormRef: properties?.formRef,
     Label: properties?.label || tableName,
     TableGroup: properties?.tableGroup || 'Main',
-    // Read=Allow, as Visual Studio writes on a new table, unless the caller set
-    // one; none on TempDB/InMemory. An invalid value is left for the create
-    // reconcile to report.
-    SubscriberAccessLevel: tableSubscriberAccessLevel(properties?.subscriberAccessLevel, properties?.tableType),
+    // What xppbp expects (bpCreateDefaults.ts) unless the caller set one: Local
+    // on TempDB/InMemory/Staging, otherwise Company or Shared by SaveDataPerCompany.
+    OperationalDomain:
+      parseOperationalDomain(properties?.operationalDomain) ??
+      expectedTableBpDefaults({
+        tableType: properties?.tableType,
+        tableGroup: properties?.tableGroup,
+        saveDataPerCompany: properties?.saveDataPerCompany === false ? 'No' : properties?.saveDataPerCompany,
+      }).operationalDomain,
+    // Read=Allow unless the caller set one; No Access on TempDB/InMemory/Staging.
+    // An invalid value is left for the create reconcile to report.
+    SubscriberAccessLevel: tableSubscriberAccessLevel(
+      properties?.subscriberAccessLevel,
+      properties?.tableType,
+      properties?.tableGroup,
+    ),
     TitleField1: properties?.titleField1,
     TitleField2: properties?.titleField2,
     // Dual-write's table-side prerequisite; without it the entity syncs once

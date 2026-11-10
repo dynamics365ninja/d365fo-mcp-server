@@ -311,7 +311,8 @@ describe('reconcileTableCreateProperties', () => {
     const r = reconcileTableCreateProperties(base, { label: 'Something else' });
     expect(r.patched).toEqual([]);
     expect(r.unhonoured).toEqual([]);
-    expect(r.xml).toBe(base);
+    // Nothing beyond the BP defaults every new table gets.
+    expect(r.xml).toBe(reconcileTableCreateProperties(base, undefined).xml);
   });
 
   it('does not write a value that IS the serializer default', () => {
@@ -346,7 +347,8 @@ describe('reconcileTableCreateProperties', () => {
     const none = reconcileTableCreateProperties(noElement, { cacheLookup: 'None' });
     expect(none.patched).toEqual([]);
     expect(none.unhonoured).toEqual([]);
-    expect(none.xml).toBe(noElement);
+    expect(none.xml).toBe(reconcileTableCreateProperties(noElement, undefined).xml);
+    expect(none.xml).not.toContain('<CacheLookup>');
 
     const notInTts = reconcileTableCreateProperties(noElement, { cacheLookup: 'NotInTTS' });
     expect(notInTts.xml).toContain('<CacheLookup>NotInTTS</CacheLookup>');
@@ -390,7 +392,7 @@ describe('reconcileTableCreateProperties', () => {
 
   it('renders nothing when there is nothing to say', () => {
     expect(renderTableCreateHonestyReport({
-      xml: base, patched: [], unhonoured: [], droppedCollections: [],
+      xml: base, patched: [], unhonoured: [], droppedCollections: [], bpDefaults: [],
     })).toBe('');
   });
 });
@@ -417,7 +419,7 @@ describe('create table: SubscriberAccessLevel as Visual Studio writes it', () =>
     const result = await createVia(bridge, { label: 'Gated setting', tableGroup: 'Main' });
     expect((result as any).isError).toBeFalsy();
     const onDisk = files.get(TABLE_PATH)!.replace(/\r\n/g, '\n');
-    expect(onDisk).toMatch(/<Label>Gated setting<\/Label>\n\t<SubscriberAccessLevel>\n\t\t<Read>Allow<\/Read>\n\t<\/SubscriberAccessLevel>\n\t<TableGroup>/);
+    expect(onDisk).toMatch(/<Label>Gated setting<\/Label>\n\t<OperationalDomain>Company<\/OperationalDomain>\n\t<SubscriberAccessLevel>\n\t\t<Read>Allow<\/Read>\n\t<\/SubscriberAccessLevel>\n\t<TableGroup>/);
     // The default is not a dropped property — nothing to report.
     expect(result.content[0].text).not.toMatch(/Written after the create|DROPPED/);
   });

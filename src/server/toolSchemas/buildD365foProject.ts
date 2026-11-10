@@ -8,6 +8,11 @@
  * knob belongs on the build rather than costing a second round trip and a
  * second published schema. A partial sync with NO rebuild (a modify-only
  * session) stays reachable through the still-routable `trigger_db_sync` name.
+ *
+ * `deploy` follows the same precedent for UDE, where tests run in the cloud
+ * runtime against deployed code: a deployment always follows a successful build.
+ * `wait` and `waitTimeoutMs` are kept short because the tool description already
+ * says the call blocks until done.
  */
 
 export const buildD365foProjectTool = {
@@ -41,7 +46,11 @@ export const buildD365foProjectTool = {
         dbSync: {
           type: ['boolean', 'array'],
           items: { type: 'string' },
-          description: 'On a SUCCESSFUL build, also run the database sync (SyncEngine.exe) — REQUIRED after any table/view/data-entity change. true = partial sync of the syncable objects in the project, full-model when it has none; an ARRAY syncs exactly those tables/views (much faster).',
+          description: 'On a SUCCESSFUL build, also run the database sync (SyncEngine.exe) — REQUIRED after any table/view/data-entity change. true = partial sync of the syncable objects in the project, full-model when it has none; an ARRAY syncs exactly those tables/views (much faster). With deploy: full sync in the environment.',
+        },
+        deploy: {
+          type: 'boolean',
+          description: 'UDE: on a SUCCESSFUL build, deploy the model\'s package to the cloud runtime that run_systest_class tests run in. No DB sync (~3 min) unless dbSync (~20 min).',
         },
         restartAos: {
           type: 'boolean',
@@ -53,11 +62,11 @@ export const buildD365foProjectTool = {
         },
         wait: {
           type: 'boolean',
-          description: 'When true (default) the tool blocks until the build finishes and returns the final result in a single call. The agent should make exactly one call per requested build. Set false for legacy fire-and-forget polling behaviour.',
+          description: 'Default true: one call returns the final result. false = legacy fire-and-forget.',
         },
         waitTimeoutMs: {
           type: 'number',
-          description: 'Maximum time (ms) to block when wait:true before returning a "still running" snapshot. Defaults to 30 minutes. The build itself continues in the background.',
+          description: 'Max ms to block (default 30 min) before a "still running" snapshot; the build continues.',
         },
       },
       required: [],

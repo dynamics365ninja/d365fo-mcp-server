@@ -45,6 +45,10 @@ import { canonicalSymbolName, lookupSymbolNocase } from '../../utils/symbolLooku
 import { scaffoldWriteRefusalResult } from '../write/writeAnchorGuard.js';
 import { upsertWrittenFileIntoIndex } from '../write/inlineIndexUpsert.js';
 import { recordCreatedArtifact } from '../../workspace/createdArtifactLedger.js';
+import { reconcileTableCreateProperties } from '../xml/createTablePropertyHonesty.js';
+import { fieldEdtNames, resolveEdtRelations } from '../xml/edtRelationResolver.js';
+import { applyMenuItemBpDefaults } from '../xml/menuItemBpDefaults.js';
+import { menuItemKindOf } from '../../utils/bpCreateDefaults.js';
 
 /**
  * The field a report temp table's unique index is built on.
@@ -1143,6 +1147,24 @@ export async function handleGenerateSmartReport(
     content: reportXml,
   });
   log(`Generated Report: ${finalName} (${reportFieldDefs.length} fields, ${reportContractParams.length} contract params, ${resolvedExtraDatasets.length} extra datasets)`);
+
+  // ── BP defaults ────────────────────────────────────────────────────────────
+  // The same defaults d365fo_file(create) writes: OperationalDomain Local and No
+  // Access on the TempDB tables, key fields, field groups and EDT relations on
+  // them (xppbp checks TempDB tables too), and OperationalDomain plus Read on
+  // the output menu item. See bpCreateDefaults.ts and tableBpDefaults.ts.
+  {
+    let db: unknown;
+    try { db = symbolIndex.getReadDb(); } catch { db = undefined; }
+    for (const obj of generatedObjects) {
+      if (obj.aotFolder === 'AxTable') {
+        const edtRelations = await resolveEdtRelations(fieldEdtNames(obj.content), db);
+        obj.content = reconcileTableCreateProperties(obj.content, undefined, { edtRelations, dropWriterDeleteActions: true }).xml;
+      } else if (menuItemKindOf(obj.aotFolder)) {
+        obj.content = applyMenuItemBpDefaults(obj.content).xml;
+      }
+    }
+  }
 
   // ── Output ─────────────────────────────────────────────────────────────────
   const objectSummary = generatedObjects.map(o => `   - ${o.objectType}: **${o.objectName}**`).join('\n');

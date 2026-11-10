@@ -21,6 +21,7 @@ import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
 import { insertFormExtensionControl } from '../../utils/formExtensionControlXml.js';
 import { removeFormControl } from '../../utils/formControlRemoval.js';
 import { findBaseObjectXml } from '../../utils/baseObjectXml.js';
+import { findAotFilesInAllPackages } from '../../utils/objectFileLookup.js';
 import { checkNewControlPosition, findFormControl, formDefinesControl, placeFormControl, type PlaceFormControlSpec } from '../../utils/formControlPlacement.js';
 import { addSecurityEntryPoint, removeSecurityEntryPoint } from '../xml/securityPrivilegeXml.js';
 import {
@@ -390,24 +391,35 @@ function renamedElementNote(menuItemName: string, elementName: string): string {
       `base menu and extensions included), so this element is named '${fromXmlText(elementName)}'; it still opens '${menuItemName.trim()}'.`;
 }
 
-/** The XML of the OTHER indexed extensions of `baseMenu`. */
+/**
+ * The XML of the OTHER extensions of `baseMenu`. From the index, or — when it has
+ * none (a write-only companion) — from the package folders.
+ */
 async function otherExtensionXmls(baseMenu: string, self: string, symbolIndex: any): Promise<string[]> {
-  let names: string[];
+  const prefix = `${baseMenu.toLowerCase()}.`;
+  let names: string[] = [];
   try {
     const rows = symbolIndex.getReadDb()
       .prepare(`SELECT DISTINCT name FROM symbols WHERE type = 'menu-extension' AND name LIKE ?`)
       .all(`${baseMenu}.%`) as { name: string }[];
     // LIKE reads `_` as a wildcard, so the prefix is confirmed here.
-    names = rows.map(r => r.name).filter(n =>
-      n.toLowerCase().startsWith(`${baseMenu.toLowerCase()}.`) && n.toLowerCase() !== self.toLowerCase());
-  } catch {
-    return [];
+    names = rows.map(r => r.name).filter(n => n.toLowerCase().startsWith(prefix) && n.toLowerCase() !== self.toLowerCase());
+  } catch { /* no index */ }
+  let xmls: Array<string | null>;
+  if (names.length > 0) {
+    xmls = await Promise.all(names.map(n => findBaseObjectXml('menu-extension', n, symbolIndex).catch(() => null)));
+  } else {
+    // `.xml` at the end: a modify outside git leaves `<file>.xml.backup-<time>` next to it.
+    const files = await findAotFilesInAllPackages('AxMenuExtension', f => {
+      const lower = f.toLowerCase();
+      return lower.startsWith(prefix) && lower.endsWith('.xml') && lower !== `${self.toLowerCase()}.xml`;
+    }).catch(() => []);
+    xmls = await Promise.all(files.map(f => fs.readFile(f, 'utf-8').catch(() => null)));
   }
-  const xmls = await Promise.all(names.map(n => findBaseObjectXml('menu-extension', n, symbolIndex).catch(() => null)));
   return xmls.filter((x): x is string => !!x);
 }
 
-/** Submenus the OTHER indexed extensions of `baseMenu` add; a <Parent> may name one. */
+/** Submenus the OTHER extensions of `baseMenu` add; a <Parent> may name one. */
 async function otherExtensionSubmenus(baseMenu: string, self: string, symbolIndex: any): Promise<string[]> {
   return (await otherExtensionXmls(baseMenu, self, symbolIndex)).flatMap(menuSubmenuNames);
 }
@@ -437,7 +449,7 @@ async function checkExtensionParent(
     return {
       refusal:
         `Submenu '${parent}' is not in menu '${baseMenu}', nor added by ${extensionName} or another extension ` +
-        `of it in the index — nothing was written. A <Parent> naming no submenu fails the build.\n` +
+        `of it — nothing was written. A <Parent> naming no submenu fails the build.\n` +
         `   Submenus: ${known.length ? known.map(fromXmlText).join(', ') : '(none — omit parentMenuElement for the top level)'}`,
     };
   }

@@ -123,7 +123,7 @@ function escapeRegExp(str: string): string {
  * copy, so they can't be fooled by a method name or keyword mentioned in a
  * comment/attribute string, or by parens/commas inside string defaults.
  */
-function blankCommentsAndStrings(src: string): string {
+export function blankCommentsAndStrings(src: string): string {
   const out = src.split('');
   let state: 'code' | 'line' | 'block' | 'str' = 'code';
   let quote = '';

@@ -66,6 +66,23 @@ export function startProgressHeartbeat(
   return () => clearInterval(timer);
 }
 
+/**
+ * A reporter whose `progress` never goes down, whatever its callers pass.
+ *
+ * MCP requires progress to increase within one request, but a tool made of several timed
+ * phases naturally counts each from its own start: build_d365fo_project reports seconds
+ * since the compile began, then each post-build step (BP check, sync, deployment) seconds
+ * since that step began. Wrapping the request's reporter once lets every phase count its
+ * own way: a value at or below the last one sent goes out as last + 1.
+ */
+export function monotonicProgress(report: ProgressReporter): ProgressReporter {
+  let last = Number.NEGATIVE_INFINITY;
+  return (message, progress, total) => {
+    last = Number.isFinite(progress) && progress > last ? progress : (Number.isFinite(last) ? last + 1 : 0);
+    return report(message, last, total);
+  };
+}
+
 /** The slice of the SDK's request `extra` that the reporter needs. */
 export interface ProgressRequestExtra {
   _meta?: Record<string, unknown>;
