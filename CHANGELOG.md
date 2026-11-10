@@ -182,6 +182,14 @@ those are called out explicitly below.
   `openWorldHint: false`.
 
 ### Fixed
+- **Generated ListPage and Workspace forms write AllowCreate, AllowDelete, AllowEdit on
+  their data source in the platform's element order.** The templates wrote AllowCreate,
+  AllowEdit, AllowDelete. The order inside a form data source, measured on Microsoft
+  standard forms (13,234 data sources, no pair of elements in both orders), is
+  AllowCreate, AllowDelete, AllowEdit, and the platform drops an element it reads out of
+  order, so the read-only data source of a generated form could lose AllowDelete=No. The
+  same order is fixed in the smart XML builder. Forms generated earlier keep the old
+  order: swap the two lines in the form XML, or recreate the form.
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know
   neither property on a menu item, and a Staging or TempDB table kept Visual Studio's
