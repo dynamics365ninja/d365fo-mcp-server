@@ -170,6 +170,16 @@ describe('"Verified: on disk" is not a verification of the value', () => {
     expect(claimedMarkerFor('add-method', { methodName: 'foo' })).toBeNull();
     expect(renderClaimCheck(null, TABLE_BEFORE)).toBe('');
   });
+
+  it('finds a value whose element carries attributes (form Design properties carry xmlns="")', () => {
+    const marker = claimedMarkerFor('modify-property', { propertyPath: 'Pattern', propertyValue: 'TaskParentChild' });
+    expect(renderClaimCheck(marker, '<Design>\r\n\t\t<Pattern xmlns="">TaskParentChild</Pattern>\r\n')).toBe('');
+    expect(renderClaimCheck(marker, '<Design>\r\n\t\t<Pattern xmlns="">Custom</Pattern>\r\n')).toMatch(/is NOT in the file/);
+  });
+
+  it('makes no value check for an empty value: that is a removal', () => {
+    expect(claimedMarkerFor('modify-property', { propertyPath: 'Style', propertyValue: '' })).toBeNull();
+  });
 });
 
 // ─────────────── defect 3: one object stating three different identities ───────────────

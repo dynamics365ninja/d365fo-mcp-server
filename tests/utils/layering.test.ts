@@ -160,8 +160,14 @@ describe('layer direction', () => {
     // what landed here is the two schema parameters, the import, the objectType
     // refusal, the one switch arm for all four, the base lookup that lets a missing
     // role extension be created, and a line in the standard-model refusal.
+    //
+    // Raised 4,820 -> 4,825 for move-control and wrap-controls (4,817 -> 4,819 lines).
+    // The edits went to tools/xml/formRestructure.ts, the write to directXmlWriters.ts
+    // and the argument handling to formStructureOps.ts, so what landed here is that
+    // module's import and ONE switch line for both operations; the enum values and the
+    // parameter spread joined existing lines.
     const src = readFileSync('src/tools/write/modifyD365File.ts', 'utf8');
-    expect(src.split('\n').length).toBeLessThan(4820);
+    expect(src.split('\n').length).toBeLessThan(4825);
   });
 
   it('the dispatcher routes rather than implementing', () => {

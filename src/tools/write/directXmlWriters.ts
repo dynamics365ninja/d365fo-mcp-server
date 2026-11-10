@@ -44,6 +44,7 @@ import {
 import { escapeXml } from '../../utils/xmlEscape.js';
 import { methodSourceSpans, occurrencesInSpans } from '../../utils/methodSourceSpans.js';
 import { upsertTableFieldProperty } from '../xml/tableFieldPropertyEdit.js';
+import type { RestructureResult } from '../xml/formRestructure.js';
 import { convertEntityFieldToComputed, type ComputedFieldType } from '../xml/entityComputedField.js';
 import {
   addModuleReference, removeModuleReference, parseModuleReferences, invalidateModelVisibility,
@@ -3133,6 +3134,26 @@ export const directXmlSetTableFieldProperties = serializedOnFile(async (
     console.error(`[modify_d365fo_file] directXmlSetTableFieldProperties failed: ${err}`);
     return null;
   }
+});
+
+/**
+ * move-control / wrap-controls on an AxForm (formRestructure.ts). XML only: the bridge
+ * has no operation that changes a control's parent. Nothing is written when the edit is
+ * refused or the control already sits where it was asked to.
+ */
+export const directXmlRestructureForm = serializedOnFile(async (
+  filePath: string,
+  edit: (xml: string) => RestructureResult,
+): Promise<{ success: boolean; message: string; skipped?: boolean }> => {
+  const raw = await fs.readFile(filePath, 'utf-8');
+  const r = edit(raw.replace(/^﻿/, ''));
+  if (!r.ok) return { success: false, message: `❌ ${r.message} — nothing was written. File: ${filePath}` };
+  if (r.changed) await writeFileAtomic(filePath, normalizeD365Xml(r.xml));
+  return {
+    success: true,
+    ...(r.changed ? {} : { skipped: true }),
+    message: `${r.changed ? '✅' : 'ℹ️'} ${r.detail}. File: ${filePath}` + r.warnings.map(w => `\n⚠️ ${w}`).join(''),
+  };
 });
 
 /**

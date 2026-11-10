@@ -31,16 +31,26 @@ const AX_FORM_DESIGN_PROPERTIES = new Set([
 ]);
 
 /**
- * Set a form Design property, inserting it in alphabetical order when absent.
- * Returns the updated XML, or null when the document is not an AxForm, has no
- * <Design>, or the property is not a Design property (so the caller can surface
- * the original error rather than write something invented).
+ * Set a form Design property, inserting it in alphabetical order when absent; an
+ * empty value removes it. Returns the updated XML, or null when the document is not
+ * an AxForm, has no <Design>, or the property is not a Design property (so the caller
+ * can surface the original error rather than write something invented).
+ *
+ * The edit runs on LF lines and a CRLF document comes back CRLF. Shipped and saved
+ * forms are CRLF, and a match ending in `\n` never found the existing element there:
+ * the property was added a second time and the deserializer kept the old one.
  */
 export function upsertAxFormDesignProperty(
   xml: string,
   property: string,
   value: string,
 ): string | null {
+  if (!xml.includes('\r\n')) return upsertLf(xml, property, value);
+  const r = upsertLf(xml.replace(/\r\n/g, '\n'), property, value);
+  return r === null ? null : r.replace(/\n/g, '\r\n');
+}
+
+function upsertLf(xml: string, property: string, value: string): string | null {
   if (!/<AxForm[\s>]/.test(xml)) return null;
   if (!AX_FORM_DESIGN_PROPERTIES.has(property)) return null;
 
@@ -69,8 +79,9 @@ export function upsertAxFormDesignProperty(
     'm',
   );
   if (existing.test(region)) {
-    return head + region.replace(existing, element) + tail;
+    return head + region.replace(existing, value === '' ? '' : element) + tail;
   }
+  if (value === '') return xml;
 
   // Insert before the first existing property that sorts after this one.
   const propLine = /^[ \t]*<([A-Za-z_][\w.-]*)\b/gm;

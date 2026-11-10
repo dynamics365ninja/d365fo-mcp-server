@@ -84,4 +84,26 @@ describe('upsertAxFormDesignProperty (#37 forms half)', () => {
   it('returns null for a non-form document', () => {
     expect(upsertAxFormDesignProperty('<AxTable><Name>T</Name></AxTable>', 'Pattern', 'ListPage')).toBeNull();
   });
+
+  // Shipped and saved forms are CRLF. The "already there" match ended in `\n`, so on a
+  // CRLF file it never matched: modify-property appended a SECOND <Pattern> beside the
+  // old one, and the deserializer kept the old one (the write verified as missing).
+  const CRLF = FORM
+    .replace('\t\t<DataSource xmlns="">', '\t\t<DataSource xmlns="">')
+    .replace('<TitleDataSource', '<Pattern xmlns="">Custom</Pattern>\n\t\t<Style xmlns="">SimpleList</Style>\n\t\t<TitleDataSource')
+    .replace(/\n/g, '\r\n');
+
+  it('replaces an existing property in a CRLF file instead of adding a second one', () => {
+    const out = upsertAxFormDesignProperty(CRLF, 'Pattern', 'TaskParentChild')!;
+    expect(out.match(/<Pattern xmlns="">/g)).toHaveLength(1);
+    expect(out).toContain('\t\t<Pattern xmlns="">TaskParentChild</Pattern>\r\n\t\t<Style xmlns="">SimpleList</Style>\r\n');
+    expect(/[^\r]\n/.test(out)).toBe(false);
+  });
+
+  it('removes the property for an empty value, and leaves an absent one absent', () => {
+    const out = upsertAxFormDesignProperty(CRLF, 'Style', '')!;
+    expect(out).not.toContain('<Style xmlns="">');
+    expect(out).toContain('<Pattern xmlns="">Custom</Pattern>\r\n\t\t<TitleDataSource');
+    expect(upsertAxFormDesignProperty(FORM, 'Style', '')).toBe(FORM);
+  });
 });

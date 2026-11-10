@@ -108,6 +108,16 @@ those are called out explicitly below.
   that name, or a generated `SysComputedColumn::returnField` over the field it was
   mapped to. A key field is refused. This used to take a rewrite of the whole entity
   with `create` + `overwrite`.
+- **`move-control` and `wrap-controls` on a form.** Converting a form to a standard
+  pattern changes its nesting: fields go into a FieldsFieldGroups group, groups become
+  FastTab pages of a Tab, a grid moves under a TabPage. No operation changed a
+  control's parent, so the whole form was rewritten through `create` + `overwrite`.
+  `move-control` moves an existing control, with its subtree, under another parent at a
+  position. `wrap-controls` puts existing controls of one parent into a new Group, TabPage
+  or Tab with Pattern (PatternVersion defaults to the newest the catalogue knows), Caption
+  and Style, written in the shipped element order (a property the type never carries is
+  refused). Moved controls keep their XML byte for byte, only re-indented. The design's
+  own Pattern and PatternVersion are set with `modify-property`.
 
 ### Changed
 - **`build_d365fo_project` and `run_systest_class` are no longer marked as closed-world
@@ -257,6 +267,12 @@ those are called out explicitly below.
   literals changed. The decode now runs only on a payload that arrived
   entity-encoded as a whole (no literal angle bracket, and an entity outside any
   string literal).
+- **`modify-property` on a form's Design replaces the property in a CRLF file.** The
+  "already there" match expected `\n`, so on a saved (CRLF) form a second `<Pattern>`,
+  `<PatternVersion>` or `<Style>` was added beside the old one, and the deserializer kept
+  the old one. An empty value now removes a Design property instead of writing an empty
+  element, and the post-write check finds a value whose element carries `xmlns=""` and
+  makes no value check for a removal (both were reported as "NOT in the file").
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no

@@ -49,6 +49,7 @@ import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
 import {
   entityAddDataSource, entityAddFieldBindingError, entityAddField, modifyFieldOp, ENTITY_AND_FIELD_ZOD_PARAMS,
 } from './dataEntityOps.js';
+import { formStructureOp, FORM_STRUCTURE_ZOD_PARAMS } from './formStructureOps.js';
 import {
   upsertFormExtensionControlProperty, resolveControlPropertyTarget,
 } from '../../utils/formExtensionControlModifications.js';
@@ -544,7 +545,7 @@ export const ModifyD365FileArgsSchema = z.object({
     'remove-diagnostic-suppression', 'add-diagnostic-suppression',
     'add-module-reference', 'remove-module-reference',
     'add-enum-value', 'modify-enum-value', 'remove-enum-value',
-    'add-display-method', 'add-table-method', 'add-menu-item-to-menu', 'add-submenu',
+    'add-display-method', 'add-table-method', 'add-menu-item-to-menu', 'add-submenu', 'move-control', 'wrap-controls',
     'add-query-range', 'remove-query-range',
     'report-design',
   ]).describe(
@@ -707,7 +708,7 @@ export const ModifyD365FileArgsSchema = z.object({
   fieldHelpText: z.string().optional().describe('Field help text (modify-field).'),
   fieldEnumType: z.string().optional().describe('Enum name for an enum-typed field. On add-field this replaces fieldType entirely — it writes AxTableFieldEnum + EnumType and needs no EDT. Also settable later with modify-field.'),
   fieldStringSize: z.string().optional().describe('String size to set on the field (modify-field, for string-typed fields).'),
-  ...ENTITY_AND_FIELD_ZOD_PARAMS,
+  ...ENTITY_AND_FIELD_ZOD_PARAMS, ...FORM_STRUCTURE_ZOD_PARAMS,
   fields: z.array(z.object({
     name: z.string(),
     edt: z.string().optional(),
@@ -3214,6 +3215,7 @@ async function runModify(
         }
         break;
       }
+      case 'move-control': case 'wrap-controls': bridgeResult = await formStructureOp(operation, objectType, actualFilePath, args as any); break;
       case 'add-submenu': {
         // No C# op adds a submenu: XML only, on a menu and a menu extension alike.
         if ((args as any).submenuName) bridgeResult = viaXmlFallback(await directXmlAddSubmenu(actualFilePath, args as any, symbolIndex));
