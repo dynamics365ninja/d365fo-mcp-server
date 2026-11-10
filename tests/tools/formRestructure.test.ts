@@ -135,7 +135,7 @@ describe('wrapFormControls', () => {
     const r = ok(wrapFormControls(xml, {
       controlNames: ['TotalsPage', 'LinesPage'], containerName: 'DetailsTab', containerType: 'Tab', style: 'FastTabs',
     }));
-    expect(r.xml).toMatch(/<Name>DetailsTab<\/Name>\r\n\t{4}<Type>Tab<\/Type>[^]*<\/Controls>\r\n\t{4}<Style>FastTabs<\/Style>\r\n\t{3}<\/AxFormControl>/);
+    expect(r.xml).toMatch(/<Name>DetailsTab<\/Name>\r\n\t{4}<Type>Tab<\/Type>[\s\S]*<\/Controls>\r\n\t{4}<Style>FastTabs<\/Style>\r\n\t{3}<\/AxFormControl>/);
     // DetailsTab at depth 3, its pages at 5, their properties at 6.
     expect(r.xml).toMatch(/<Name>TotalsPage<\/Name>\r\n\t{6}<Pattern>FieldsFieldGroups<\/Pattern>/);
     expect(r.xml).toMatch(/<\/Controls>\r\n\t{6}<Caption>@Shop:Totals<\/Caption>\r\n\t{5}<\/AxFormControl>/);
