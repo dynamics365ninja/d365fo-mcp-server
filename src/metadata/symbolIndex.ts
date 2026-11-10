@@ -4157,7 +4157,9 @@ export class XppSymbolIndex {
 
     // An exact name first, then extension-shaped rows (the old result set), then names that
     // start with the query, so the first page is not filled by names that merely contain it.
-    sql += ` ORDER BY (name = ? COLLATE NOCASE) DESC, ${extensionShaped} DESC, (name LIKE ? ESCAPE '\\') DESC, name, parent_name LIMIT ?`;
+    // COALESCE: an object has no parent_name, so the OR comes out NULL rather than 0 for it,
+    // and NULL sorts last under DESC, below every member that merely contains the query.
+    sql += ` ORDER BY (name = ? COLLATE NOCASE) DESC, COALESCE(${extensionShaped}, 0) DESC, (name LIKE ? ESCAPE '\\') DESC, name, parent_name LIMIT ?`;
     params.push(query, `${escapeLikePattern(query)}%`, limit);
 
     const rows = this.getReadDb().prepare(sql).all(...params) as any[];

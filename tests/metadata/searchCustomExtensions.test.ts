@@ -56,6 +56,7 @@ beforeAll(() => {
   sym('SalesTable.CRExtension', 'table-extension', 'ContosoRobotics');
   sym('OtherCRThing', 'class', 'ContosoRobotics');
   sym('PartnerSetup', 'class', 'ContosoRobotics');
+  sym('openPartnerNote', 'method', 'ContosoRobotics', 'CRPartnerHelper');
 
   // Microsoft rows. `validateWriteExtension` is the exact shape that leaked into the
   // production run's results: a method whose own name ends in "Extension".
@@ -130,6 +131,10 @@ describe('searchCustomExtensions', () => {
   it('ranks names that start with the query ahead of names that contain it', () => {
     expect(index.searchCustomExtensions('Partner', undefined, 20, ['class']).map(h => h.name))
       .toEqual(['PartnerSetup', 'CRPartnerContract', 'CRPartnerHelper']);
+    // Unfiltered too: an object has no parent_name, and that NULL must not sort it below
+    // a member that merely contains the query.
+    expect(index.searchCustomExtensions('Partner').map(h => h.name))
+      .toEqual(['PartnerSetup', 'CRPartnerContract', 'CRPartnerHelper', 'openPartnerNote']);
     // An exact name beats extension-shaped rows and longer names that start with it.
     expect(index.searchCustomExtensions('crpartnerhelper').map(h => h.name)[0])
       .toBe('CRPartnerHelper');
