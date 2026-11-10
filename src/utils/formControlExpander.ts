@@ -144,9 +144,12 @@ function emitNode(
   }
 
   const inner = [childXml, gridColumns].filter(Boolean).join('\n');
-  elements.set('Controls', inner
-    ? `${indent}\t<Controls>\n${inner}\n${indent}\t</Controls>`
-    : `${indent}\t<Controls />`);
+  // Only container types carry a Controls element.
+  if (inner || (FORM_CONTROL_ELEMENT_ORDER[iType] ?? ['Controls']).includes('Controls')) {
+    elements.set('Controls', inner
+      ? `${indent}\t<Controls>\n${inner}\n${indent}\t</Controls>`
+      : `${indent}\t<Controls />`);
+  }
 
   for (const [k, v] of Object.entries(spec.properties ?? {})) {
     elements.set(k, `${indent}\t<${k}>${v}</${k}>`);
@@ -300,11 +303,30 @@ function requiredProperties(
 interface EmitContext {
   opt: ExpandFormOptions;
   usedNames: Set<string>;
-  /** Name of the first Grid emitted, the QuickFilter target. */
-  gridName?: string;
+  /** Grids emitted so far (the first one's columns keep the Grid_ prefix). */
+  gridCount: number;
 }
 
+/** Placeholder for a QuickFilter's target, resolved once the whole design is emitted. */
 const GRID_TOKEN = '\u0000GRID\u0000';
+
+/**
+ * Point every QuickFilter at the grid it filters: the first grid after it in
+ * the design (the pattern places a filter before its list, as DetailsMaster's
+ * NavigationList and GridPanel do), else the last grid before it.
+ */
+function resolveQuickFilterTargets(controls: string): string {
+  const grids = [...controls.matchAll(/i:type="AxFormGridControl">\s*<Name>([^<]+)<\/Name>/g)]
+    .map((m) => ({ at: m.index ?? 0, name: m[1] }));
+  let out = '';
+  let from = 0;
+  for (let at = controls.indexOf(GRID_TOKEN); at >= 0; at = controls.indexOf(GRID_TOKEN, from)) {
+    const target = grids.find((g) => g.at > at) ?? [...grids].reverse().find((g) => g.at < at);
+    out += controls.slice(from, at) + (target?.name ?? 'Grid');
+    from = at + GRID_TOKEN.length;
+  }
+  return out + controls.slice(from);
+}
 
 function uniqueName(ctx: EmitContext, wanted: string): string {
   const base = (wanted.replace(/[^A-Za-z0-9_]/g, '') || 'Control').replace(/^(\d)/, '_$1');
@@ -388,35 +410,47 @@ function emitPart(
 
   let inner = '';
   if (hostType === 'Grid') {
-    if (!ctx.gridName) ctx.gridName = name;
     const { opt } = ctx;
     if (opt.dsName) {
       elements.set('DataSource', `${indent}\t<DataSource>${opt.dsName}</DataSource>`);
       // Grid parts leave their children unchecked ('*'): the field columns go here.
+      // Control names are unique per form: the first grid's columns keep the
+      // Grid_ prefix the templates use, a further grid's take its own name.
       if (node.children === '*' && (opt.gridFields?.length ?? 0) > 0) {
+        const prefix = ctx.gridCount === 0 ? 'Grid_' : `${name}_`;
+        for (const f of opt.gridFields!) ctx.usedNames.add(`${prefix}${f}`.toLowerCase());
         inner = opt.gridFields!
-          .map((f) => FormPatternTemplates.fieldControl(f, opt.dsName!, '\t'.repeat(depth + 2), 'Grid_', opt.fieldTypes))
+          .map((f) => FormPatternTemplates.fieldControl(f, opt.dsName!, '\t'.repeat(depth + 2), prefix, opt.fieldTypes))
           .join('')
           .replace(/\n$/, '');
       }
     }
+    ctx.gridCount++;
   } else if (sub) {
     inner = sub.root.children === '*' ? '' : emitParts(requiredParts(sub.root.nodes), ctx, depth + 2);
   } else if (!node.subPatterns?.length && node.children !== '*') {
     inner = emitParts(requiredParts(node.nodes), ctx, depth + 2);
   }
 
-  // A plain extension control (no host type) carries no Controls element.
-  if (hostType) {
+  // AOT XML is order-sensitive: the deserializer silently drops an element
+  // written out of sequence (WidthMode after Style on a Tab, say). Write every
+  // element in the order shipped forms use. One the table does not rank goes last.
+  const own = FORM_CONTROL_ELEMENT_ORDER[iType];
+
+  // Only container types carry a Controls element (shipped forms never write one
+  // on a button, a field or a plain extension control).
+  if (inner || own?.includes('Controls')) {
     elements.set('Controls', inner
       ? `${indent}\t<Controls>\n${inner}\n${indent}\t</Controls>`
       : `${indent}\t<Controls />`);
   }
 
-  // AOT XML is order-sensitive: the deserializer silently drops an element
-  // written out of sequence (WidthMode after Style on a Tab, say). Write every
-  // element in the order shipped forms use. One the table does not rank goes last.
-  const order = FORM_CONTROL_ELEMENT_ORDER[iType] ?? [];
+  // A plain AxFormControl (an extension host such as QuickFilter) is not in the
+  // table. Its base properties come before FormControlExtension as on every
+  // control, so rank them by the Group order: WidthMode written after the
+  // extension block is dropped (the platform's PatternAnalyzer then sees the
+  // default SizeToContent).
+  const order = own ?? FORM_CONTROL_ELEMENT_ORDER.AxFormGroupControl ?? [];
   const rank = (k: string): number => {
     const i = order.indexOf(k);
     return i < 0 ? Number.MAX_SAFE_INTEGER : i;
@@ -454,7 +488,7 @@ function emitParts(parts: PlatformPatternNode[], ctx: EmitContext, depth: number
 export function expandPatternToXml(spec: FormPatternSpec, opt: ExpandFormOptions): string {
   const version = spec.versions[0] ?? '1.0';
   const def = definitionFor(spec);
-  const ctx: EmitContext = { opt, usedNames: new Set([opt.formName.toLowerCase()]) };
+  const ctx: EmitContext = { opt, usedNames: new Set([opt.formName.toLowerCase()]), gridCount: 0 };
 
   // Design properties: the definition's root rules, then caption and datasource.
   // Never the pattern name as Style: "SimpleDetails-ToolbarFields" is not a Style value.
@@ -481,7 +515,7 @@ export function expandPatternToXml(spec: FormPatternSpec, opt: ExpandFormOptions
       .filter(Boolean)
       .join('\n');
   }
-  controls = controls.split(GRID_TOKEN).join(ctx.gridName ?? 'Grid');
+  controls = resolveQuickFilterTargets(controls);
 
   // Design's direct-child properties are alphabetical and <Controls> closes the
   // block (see src/utils/axFormDesignProperties.ts).

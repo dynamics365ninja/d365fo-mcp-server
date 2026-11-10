@@ -83,6 +83,42 @@ describe('expandPatternToXml — emitted shape', () => {
     expect(report.violations.filter((v) => v.rule === 'FP006')).toEqual([]);
   });
 
+  // Found by running the expansions through the platform's PatternAnalyzer
+  // (npm run oracle:form-expansions), which our validator alone did not catch.
+  it('gives every control a unique name when a pattern has two grids', () => {
+    const spec = FORM_PATTERN_CATALOG.patterns.find((p) => p.xmlName === 'AdvancedSelection')!;
+    const xml = expandPatternToXml(spec, baseOpts);
+    const names = [...xml.matchAll(/<AxFormControl[^>]*>\s*<Name>([^<]+)<\/Name>/g)].map((m) => m[1]);
+    expect(names.length).toBeGreaterThan(4);
+    expect(new Set(names).size).toBe(names.length);
+    expect(xml).toContain('Grid_Name');
+    expect(xml).toContain('SelectedGrid_Name');
+  });
+
+  it('points each QuickFilter at the grid it filters, not the first grid of the form', () => {
+    const spec = FORM_PATTERN_CATALOG.patterns.find((p) => p.xmlName === 'DetailsMasterTabs')!;
+    const xml = expandPatternToXml(spec, baseOpts);
+    const targets = [...xml.matchAll(/<Name>targetControlName<\/Name>\s*<Type>String<\/Type>\s*<Value>([^<]+)<\/Value>/g)].map((m) => m[1]);
+    expect(targets).toEqual(['ListStyleGrid', 'MainGrid']);
+  });
+
+  it('writes no Controls element on buttons, fields or plain extension controls', () => {
+    const spec = FORM_PATTERN_CATALOG.patterns.find((p) => p.xmlName === 'DetailsMasterTabs')!;
+    const xml = expandPatternToXml(spec, baseOpts);
+    const leaf = /<AxFormControl xmlns=""(?: i:type="AxForm(?:CommandButton|String)Control")?>\s*<Name>(MainGridDefaultAction|HeaderTitle|QuickFilter)<\/Name>[\s\S]*?<\/AxFormControl>/g;
+    const leaves = [...xml.matchAll(leaf)];
+    expect(leaves.length).toBe(3);
+    for (const m of leaves) expect(m[0]).not.toContain('<Controls');
+  });
+
+  it("writes a plain extension control's WidthMode before its FormControlExtension", () => {
+    const spec = FORM_PATTERN_CATALOG.patterns.find((p) => p.xmlName === 'DetailsMasterTabs')!;
+    const xml = expandPatternToXml(spec, baseOpts);
+    const quickFilter = /<AxFormControl xmlns="">\s*<Name>QuickFilter<\/Name>[\s\S]*?<\/AxFormControl>/.exec(xml)![0];
+    expect(quickFilter.indexOf('<WidthMode>')).toBeGreaterThan(0);
+    expect(quickFilter.indexOf('<WidthMode>')).toBeLessThan(quickFilter.indexOf('<FormControlExtension>'));
+  });
+
   it('expands every catalog pattern the platform defines', () => {
     const notExpandable = FORM_PATTERN_CATALOG.patterns
       .filter((p) => p.versions.length > 0 && !canExpandPattern(p))
