@@ -75,12 +75,34 @@ those are called out explicitly below.
   open-world tools may now do so for these two. Every other tool keeps
   `openWorldHint: false`.
 
-### Dependencies
-- **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
-  native add-ons; with `@azure/msal-common` and `jsonwebtoken` (and their `jws`, `semver`
-  and `lodash.*` helpers) it adds 16 packages to the lockfile and changes none.
-
 ### Fixed
+- **On UDE, a tool call made right after the server starts no longer misses the custom
+  metadata folder.** The server marked the XPP config as loaded before reading it had
+  finished, so a call arriving during that read (in practice the first few seconds after
+  `initialize`, while the bridge was being set up) saw no config: the custom packages path
+  was empty, so e.g. `run_systest_class` reported "class not found" for a class in the
+  custom model, and the environment counted as traditional instead of UDE. If the tool call
+  won the race, the bridge itself was set up without the custom metadata folder for the
+  whole session. Every caller now waits for the same read; an XPP config that cannot be
+  read is logged and treated as missing.
+- **A build, DB sync, BP check or test run no longer waits 15 minutes and fails on a lock
+  whose owner died, when Windows has given that owner's process id to another process.**
+  An operation lock records its owner's process id, and a lock whose owner is running is
+  never taken over. When the owner died without releasing the lock (a crash, a killed
+  server) and the id went to a new process, the lock looked held, and every caller waited
+  the full `OPERATION_LOCK_TIMEOUT_MS` and failed with "Timeout waiting for filesystem
+  lock". A lock whose owner has not refreshed it for three heartbeats (3 minutes by
+  default) is now checked: if the process with that id started after the lock was taken,
+  it cannot be the owner, and the lock is taken over. A restarted server that got the
+  crashed one's id no longer waits on itself either. While the start time cannot be read,
+  the lock is kept as before.
+- **`run_systest_class` on UDE said it could not find SysTestConsole, as if a path were
+  wrong.** No path can make it work: SysTestConsole only runs tests against a local AOS,
+  and on UDE the AOS is hosted in the cloud, so even where it is found it stops with
+  "Failed to obtain app setting ... Common.HostingEnvironment" before any test runs. On
+  UDE the tool no longer looks for it and runs the tests in the cloud runtime instead
+  (see *Added*). A classic VM detected as UDE can set `environment.type` to
+  `traditional`; the UDE setup replies say so.
 - **`build_d365fo_project` could report a build that started before your latest edits as
   this call's result.** A call that found a build of the same model running attached to
   it, without checking whether sources had changed since it started, and returned its
@@ -104,13 +126,11 @@ those are called out explicitly below.
   could outlast a client's request timeout (about a minute in VS Code), and the client gave
   up on a call that was still working. Now a heartbeat runs during those steps, and the
   progress value keeps increasing across all phases of the call, as MCP requires.
-- **`run_systest_class` on UDE said it could not find SysTestConsole, as if a path were
-  wrong.** No path can make it work: SysTestConsole only runs tests against a local AOS,
-  and on UDE the AOS is hosted in the cloud, so even where it is found it stops with
-  "Failed to obtain app setting ... Common.HostingEnvironment" before any test runs. On
-  UDE the tool no longer looks for it and runs the tests in the cloud runtime instead
-  (see *Added*). A classic VM detected as UDE can set `environment.type` to
-  `traditional`; the UDE setup replies say so.
+
+### Dependencies
+- **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
+  native add-ons; with `@azure/msal-common` and `jsonwebtoken` (and their `jws`, `semver`
+  and `lodash.*` helpers) it adds 16 packages to the lockfile and changes none.
 
 ## [1.23.0] — 2026-11-05
 
