@@ -69,6 +69,7 @@
     "eval:brief": "tsx src/eval/improver/fixBriefCli.ts",
     "oracle:sweep": "tsx scripts/oracles/validatorSweep.ts",
     "oracle:form-sweep": "tsx scripts/oracles/formPatternSweep.ts",
+    "oracle:form-expansions": "tsx scripts/oracles/formExpansionSweep.ts",
     "oracle:form-patterns": "tsx scripts/oracles/patternAnalyzer.ts",
     "catalog:form-patterns": "tsx scripts/capture-form-pattern-definitions.ts",
     "oracle:census": "tsx scripts/oracles/census.ts",
