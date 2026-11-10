@@ -42,6 +42,7 @@ PowerShell / any terminal command **WILL HANG** in VS 2022 / VS 2026 MCP integra
 | Validate form XML against its pattern | `object_patterns(domain="form", action="validate", xml \| formName \| filePath)` — structural errors block form writes (FORM_PATTERN_ENFORCE) |
 | Resolve label / EDT / class refs | `validate_code(mode="references", code)` |
 | Build / BP / Sync | `build_d365fo_project(bpCheck: true, dbSync: true)` — ONE call compiles, runs the best-practice check and syncs AxDB |
+| Deploy to a UDE environment (before running changed tests there) | `build_d365fo_project(deploy: true)` — compiles and deploys the model's package to the cloud runtime `run_systest_class` uses; add `dbSync: true` only after a table/view/data-entity/enum/EDT change (~20 min instead of ~3) |
 | Error diagnosis | `get_knowledge(kind="error", errorText)` |
 | Parameters for a `d365fo_file` operation / `generate_object` mode | `get_knowledge(kind="op-spec", topic="add-index" \| "table" \| "scaffold:form")` — those two tools keep their parameters OUT of the tool schema; look the contract up once for the operation you picked, then nest the values in `params` (`properties` for `action="create"`) |
 
@@ -58,7 +59,7 @@ PowerShell / any terminal command **WILL HANG** in VS 2022 / VS 2026 MCP integra
 
 ### Build automation
 
-4. Never run `build_d365fo_project()` automatically — only on explicit user request ("build", "compile", "check errors").
+4. Never run `build_d365fo_project()` automatically — only on explicit user request ("build", "compile", "check errors"). On UDE, a request to run a test whose code changed since the last deployment counts: tests run against deployed code, so build with `deploy: true` first. Say so before a full sync (`dbSync: true`).
 
 ### X++ correctness (BP-clean code)
 

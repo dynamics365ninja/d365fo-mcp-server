@@ -233,6 +233,12 @@ async function buildDbOnlyResponse(
   if (classSymbol.implementsInterfaces) output += `  **Implements:** ${classSymbol.implementsInterfaces}`;
   output += '\n\n';
 
+  // Binary ISV model: no X++ source exists anywhere, so say so instead of promising bodies.
+  const isBinaryIsv = typeof classSymbol.filePath === 'string' && classSymbol.filePath.startsWith('binary-isv://');
+  if (isBinaryIsv) {
+    output += `> 🔒 **Binary ISV, signatures only** — compiled model, no X++ source or method bodies exist. ${classSymbol.description ?? ''}\n\n`;
+  }
+
   const totalMethods = methods.length;
   const paged = methods.slice(methodOffset, methodOffset + METHOD_PAGE_SIZE);
   const hasMore = methodOffset + METHOD_PAGE_SIZE < totalMethods;
@@ -278,7 +284,9 @@ async function buildDbOnlyResponse(
   // the two never disagree about the escape hatch.
   // Three outcomes, not two: bodies were never asked for, they were asked for
   // and the index supplied them, or they were asked for and nothing could.
-  const hint = reason === 'compact'
+  const hint = isBinaryIsv
+    ? '> 💡 Binary ISV: bodies are not available. `options:{"method":"<name>","include":"signature"}` gives one method signature, modifiers and attributes.'
+    : reason === 'compact'
     ? COMPACT_METHODS_HINT
     : bodies.size > 0 ? INDEXED_BODIES_HINT : SOURCE_UNAVAILABLE_HINT;
   output += totalMethods > 0 ? `\n${hint}\n` : '';

@@ -56,7 +56,7 @@ import { forgetCreatedArtifact } from '../../workspace/createdArtifactLedger.js'
 import { removeCompilerMetadataFor } from '../sdlc/compilerMetadataPrune.js';
 import { crossModelWriteRefusal } from '../../utils/crossModelWriteGuard.js';
 import { enforceGrounding } from '../../utils/provenanceStore.js';
-import { resolveAnchorModel } from './writeAnchorGuard.js';
+import { resolveAnchorModel, resolveModelDependency } from './writeAnchorGuard.js';
 import { bridgeRefreshProvider } from '../../bridge/index.js';
 import {
   removeDiagnosticSuppressionsByPathPrefix, suppressionPathSegmentsForObjectType,
@@ -235,6 +235,7 @@ export async function handleDeleteD365File(
     toolSwitchedModel: configManager.getToolProjectSwitch()?.forcedModel ?? null,
     action: 'delete',
     existingExtensions: [],
+    dependency: await resolveModelDependency(owningModel, activeModel, filePath),
   });
   if (crossModelRefusal) return fail(crossModelRefusal);
 

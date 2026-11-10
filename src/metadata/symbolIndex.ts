@@ -4076,27 +4076,30 @@ export class XppSymbolIndex {
   }
 
   /**
-   * Search custom extensions by prefix.
+   * search(scope="extensions"): every symbol in a custom/ISV model whose name contains `query`.
    *
-   * Restricts results to symbol types whose names carry the `*_Extension` /
-   * `*.<model>Extension` convention (class-extension, table-extension, etc.)
-   * so that unrelated symbols sharing a substring don't leak into extension UI.
+   * The scope is "custom models", as the tool and `scope` descriptions say. It used to also
+   * require an extension-shaped name or parent (`*_Extension`, `Base.SuffixExtension`), so new
+   * custom classes, tables and helpers never appeared and `type:"class"` could not bring them
+   * back (#1212). Callers who want extensions only pass `type:["class-extension", ...]`.
+   * Extension-shaped rows still sort first, so an unfiltered query keeps its old top results.
+   *
+   * `prefix` is the object prefix (`ISV_`, `Contoso`), as documented. It matches when the
+   * object, or the object a member belongs to, starts with it. Extension names carry the
+   * prefix in the middle (`CustTableContoso_Extension`, `CustTable.ContosoExtension`), so for
+   * an extension-shaped name it may appear anywhere. A model name starting with `prefix` still
+   * matches the whole model, so calls written against the old model-name behaviour keep working.
    *
    * `model IN (custom models)` is what makes this affordable, and it has to be the
    * FIRST predicate. A leading-wildcard `name LIKE '%q%'` is unindexable, so with the
    * whole corpus in scope every call scanned all 584 K symbols — measured at 122.8 s on
    * the production DB. Against idx_symbols_model the same scan covers only the ~25
-   * custom models. The filter is also a correctness fix: the results were already
-   * captioned "matches in custom extensions" while Microsoft rows could satisfy the
-   * name convention and appear there.
+   * custom models.
    *
-   * `types` narrows to symbol kinds (the `type` argument of search(scope="extensions"),
-   * which used to be dropped before it reached here). A method or field is matched on
-   * its PARENT carrying the extension convention — its own name never does.
+   * `types` narrows to symbol kinds (the `type` argument of search(scope="extensions")).
    */
   searchCustomExtensions(query: string, prefix?: string, limit: number = 20, types?: string[]): XppSymbol[] {
-    const customModels = this.getCustomModels()
-      .filter(m => !prefix || m.toLowerCase().startsWith(prefix.toLowerCase()));
+    const customModels = this.getCustomModels();
     if (customModels.length === 0) return [];
 
     // '_' is a single-character LIKE wildcard, so the unescaped '%_Extension' this
@@ -4105,27 +4108,42 @@ export class XppSymbolIndex {
     const escapeLikePattern = (value: string): string =>
       value.replace(/\\/g, '\\\\').replace(/[%_]/g, '\\$&');
 
-    const modelPlaceholders = customModels.map(() => '?').join(',');
-    let sql = `
-      SELECT *
-      FROM symbols
-      WHERE model IN (${modelPlaceholders})
-        AND name LIKE ? ESCAPE '\\'
-        AND (
+    // An extension-shaped name: a *-extension type, `X_Extension` or `Base.SuffixExtension`.
+    const extensionName = (col: string) =>
+      `(${col} LIKE '%\\_Extension' ESCAPE '\\' OR ${col} LIKE '%.%Extension')`;
+    const extensionShaped = `(
           type IN (
             'class-extension','table-extension','form-extension','enum-extension',
             'edt-extension','view-extension','query-extension','data-entity-extension',
             'map-extension','menu-extension','security-role-extension','security-duty-extension',
             'menu-item-display-extension','menu-item-action-extension','menu-item-output-extension'
           )
-          OR name LIKE '%\\_Extension' ESCAPE '\\'
-          OR name LIKE '%.%Extension'
-          OR parent_name LIKE '%\\_Extension' ESCAPE '\\'
-          OR parent_name LIKE '%.%Extension'
-        )
-    `;
+          OR ${extensionName('name')}
+          OR ${extensionName('parent_name')}
+        )`;
 
+    const modelPlaceholders = customModels.map(() => '?').join(',');
+    let sql = `
+      SELECT *
+      FROM symbols
+      WHERE model IN (${modelPlaceholders})
+        AND name LIKE ? ESCAPE '\\'
+    `;
     const params: any[] = [...customModels, `%${escapeLikePattern(query)}%`];
+
+    if (prefix) {
+      const starts = `${escapeLikePattern(prefix)}%`;
+      const anywhere = `%${escapeLikePattern(prefix)}%`;
+      sql += `
+        AND (
+          model LIKE ? ESCAPE '\\'
+          OR name LIKE ? ESCAPE '\\'
+          OR parent_name LIKE ? ESCAPE '\\'
+          OR (name LIKE ? ESCAPE '\\' AND ${extensionName('name')})
+          OR (parent_name LIKE ? ESCAPE '\\' AND ${extensionName('parent_name')})
+        )`;
+      params.push(starts, starts, starts, anywhere, anywhere);
+    }
 
     if (types && types.length > 0) {
       // Unary + strips the term of its index affinity. Written plainly, `type IN ('method')`
@@ -4137,8 +4155,12 @@ export class XppSymbolIndex {
       params.push(...types);
     }
 
-    sql += ` ORDER BY name LIMIT ?`;
-    params.push(limit);
+    // An exact name first, then extension-shaped rows (the old result set), then names that
+    // start with the query, so the first page is not filled by names that merely contain it.
+    // COALESCE: an object has no parent_name, so the OR comes out NULL rather than 0 for it,
+    // and NULL sorts last under DESC, below every member that merely contains the query.
+    sql += ` ORDER BY (name = ? COLLATE NOCASE) DESC, COALESCE(${extensionShaped}, 0) DESC, (name LIKE ? ESCAPE '\\') DESC, name, parent_name LIMIT ?`;
+    params.push(query, `${escapeLikePattern(query)}%`, limit);
 
     const rows = this.getReadDb().prepare(sql).all(...params) as any[];
     return rows.map(row => this.rowToSymbol(row));

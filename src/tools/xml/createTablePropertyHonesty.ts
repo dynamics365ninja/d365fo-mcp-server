@@ -40,11 +40,12 @@ import {
 import {
   DEFAULT_SUBSCRIBER_ACCESS_LEVEL,
   describeSubscriberAccessLevel,
-  isTempAxTable,
   parseSubscriberAccessLevel,
   readSubscriberAccessLevel,
   sameSubscriberAccessLevel,
 } from '../../utils/subscriberAccessLevel.js';
+import { expectedTableBpDefaults, tableBpInputsFromXml } from '../../utils/bpCreateDefaults.js';
+import { applyTableBpDefaults, type TableBpDefaultsOptions } from './tableBpDefaults.js';
 
 /** Keys of `properties` that are handled by their own bridge parameter, not as elements. */
 const STRUCTURAL_TABLE_KEYS = new Set(
@@ -73,8 +74,10 @@ const AX_TABLE_ENUM_VALUES: Record<string, readonly string[]> = {
   TableGroup: [
     'Miscellaneous', 'Parameter', 'Group', 'Main', 'Transaction',
     'WorksheetHeader', 'WorksheetLine', 'TransactionHeader', 'TransactionLine',
-    'Reference', 'Framework',
+    'Reference', 'Framework', 'Staging',
   ],
+  // The three values shipped metadata uses. xppbp names each one as an expected value.
+  OperationalDomain: ['Company', 'Shared', 'Local'],
   CacheLookup: ['None', 'NotInTTS', 'Found', 'FoundAndEmpty', 'EntireTable'],
   TableType: ['Regular', 'RegularTable', 'InMemory', 'TempDB'],
   ValidTimeStateFieldType: ['None', 'Date', 'UtcDateTime'],
@@ -179,6 +182,8 @@ export interface TableCreateReconcileResult {
   unhonoured: UnhonouredCreateProperty[];
   /** Structural collections (indexes/relations/field groups) missing from the written XML. */
   droppedCollections: DroppedCollection[];
+  /** Best-practice defaults this reconcile wrote (bpCreateDefaults.ts, tableBpDefaults.ts). */
+  bpDefaults: string[];
 }
 
 /** Contents of `<Container>…</Container>`, or '' when the element is empty or absent. */
@@ -261,13 +266,28 @@ function elementPresent(xml: string, element: string): boolean {
 export function reconcileTableCreateProperties(
   xml: string,
   properties: Record<string, unknown> | undefined,
+  bpOptions: TableBpDefaultsOptions = {},
 ): TableCreateReconcileResult {
-  const result: TableCreateReconcileResult = { xml, patched: [], unhonoured: [], droppedCollections: [] };
+  const result: TableCreateReconcileResult = { xml, patched: [], unhonoured: [], droppedCollections: [], bpDefaults: [] };
   if (!/<AxTable[\s>]/.test(xml)) return result;
 
-  reconcileSubscriberAccessLevel(result, properties);
-  if (!properties) return result;
+  if (properties) reconcileScalarProperties(result, xml, properties);
 
+  // After the caller's scalars, because TableType, TableGroup and SaveDataPerCompany decide the defaults.
+  reconcileSubscriberAccessLevel(result, properties);
+  reconcileOperationalDomain(result, properties);
+
+  const structural = applyTableBpDefaults(result.xml, bpOptions);
+  result.xml = structural.xml;
+  result.bpDefaults.push(...structural.notes);
+  return result;
+}
+
+function reconcileScalarProperties(
+  result: TableCreateReconcileResult,
+  xml: string,
+  properties: Record<string, unknown>,
+): void {
   result.droppedCollections = findDroppedTableCollections(xml, properties);
 
   for (const [key, rawValue] of Object.entries(properties)) {
@@ -332,16 +352,40 @@ export function reconcileTableCreateProperties(
       });
     }
   }
+}
 
-  return result;
+/**
+ * OperationalDomain on a new table. The scalar reconcile writes the caller's
+ * value. Without one, an absent element gets what xppbp expects
+ * (bpCreateDefaults.ts). No writer sets it on its own: the bridge's
+ * SetAxTableProperty() has no case for it.
+ */
+function reconcileOperationalDomain(
+  result: TableCreateReconcileResult,
+  properties: Record<string, unknown> | undefined,
+): void {
+  if (properties && Object.keys(properties).some(k => k.toLowerCase() === 'operationaldomain')) return;
+  if (/^[ \t]*<OperationalDomain>/m.test(result.xml.slice(0, propertyBlockEnd(result.xml)))) return;
+  const expected = expectedTableBpDefaults(tableBpInputsFromXml(result.xml));
+  const patched = upsertAxTableProperty(result.xml, 'OperationalDomain', expected.operationalDomain);
+  if (patched) {
+    result.xml = patched;
+    result.bpDefaults.push(`OperationalDomain=${expected.operationalDomain} (xppbp expects it because ${expected.reason})`);
+  }
+}
+
+/** Where an AxTable's property block ends: the first collection element. */
+function propertyBlockEnd(xml: string): number {
+  const m = /^[ \t]*<(DeleteActions|FieldGroups|Fields|FullTextIndexes|Indexes|Mappings|Relations|StateMachines)[\s/>]/m.exec(xml);
+  return m ? m.index : xml.length;
 }
 
 /**
  * SubscriberAccessLevel on a new table (issue #1073). The bridge's create writes
- * none and its property setter has no case for it, so this is where it lands
- * for every writer: the caller's value when one was passed, otherwise Visual
- * Studio's Read=Allow on a regular table that has none. Only a requested value
- * is reported; the default is what VS does without a word, too.
+ * Read=Allow (Visual Studio's default) or none, so this is where the final value
+ * lands for every writer: the caller's value when one was passed, otherwise what
+ * xppbp expects (bpCreateDefaults.ts): No Access on a TempDB, InMemory or Staging
+ * table, Read=Allow on any other. A default is listed with the BP defaults.
  */
 function reconcileSubscriberAccessLevel(
   result: TableCreateReconcileResult,
@@ -352,8 +396,20 @@ function reconcileSubscriberAccessLevel(
   const current = readSubscriberAccessLevel(result.xml);
 
   if (raw === undefined || raw === null) {
-    if (Object.keys(current).length > 0 || isTempAxTable(result.xml)) return;
-    result.xml = upsertAxTableSubscriberAccessLevel(result.xml, DEFAULT_SUBSCRIBER_ACCESS_LEVEL) ?? result.xml;
+    // A writer's Visual Studio default (Read=Allow) is replaced when xppbp expects
+    // something else. Any other value already in the document was chosen and is kept.
+    const expected = expectedTableBpDefaults(tableBpInputsFromXml(result.xml));
+    const isVsDefault = sameSubscriberAccessLevel(current, DEFAULT_SUBSCRIBER_ACCESS_LEVEL);
+    if (Object.keys(current).length > 0 && !isVsDefault) return;
+    if (sameSubscriberAccessLevel(current, expected.subscriberAccessLevel)) return;
+    const patched = upsertAxTableSubscriberAccessLevel(result.xml, expected.subscriberAccessLevel);
+    if (patched) {
+      result.xml = patched;
+      result.bpDefaults.push(
+        `SubscriberAccessLevel=${describeSubscriberAccessLevel(expected.subscriberAccessLevel)} ` +
+        `(xppbp expects it because ${expected.reason})`,
+      );
+    }
     return;
   }
 
@@ -404,6 +460,9 @@ export function renderTableCreateHonestyReport(result: TableCreateReconcileResul
         `\n   The C# bridge's SetAxTableProperty() does not know ${result.patched.map(p => p.element).join('/')}; ` +
         `the value was written into the AxTable XML in canonical element order instead.`,
     );
+  }
+  if (result.bpDefaults.length > 0) {
+    parts.push(`\n📋 BP defaults written after the create:\n${result.bpDefaults.map(n => `   • ${n}`).join('\n')}`);
   }
   if (result.unhonoured.length > 0) {
     parts.push(

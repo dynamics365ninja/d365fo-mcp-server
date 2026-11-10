@@ -135,11 +135,16 @@ describe('placement on real table shapes', () => {
   });
 });
 
-describe('new tables get what Visual Studio writes', () => {
-  it('Read=Allow on a regular table, none on TempDB/InMemory, the caller\'s value otherwise', () => {
+// What xppbp expects (src/utils/bpCreateDefaults.ts): Read=Allow on a regular
+// table, No Access (every permission denied) on TempDB, InMemory and Staging.
+const NO_ACCESS = { Correct: 'Deny', Create: 'Deny', Delete: 'Deny', Invoke: 'Deny', Read: 'Deny', Update: 'Deny' };
+
+describe('new tables get what xppbp expects', () => {
+  it('Read=Allow on a regular table, No Access on TempDB/InMemory/Staging, the caller\'s value otherwise', () => {
     expect(tableSubscriberAccessLevel(undefined, undefined)).toEqual({ Read: 'Allow' });
-    expect(tableSubscriberAccessLevel(undefined, 'TempDB')).toEqual({});
-    expect(tableSubscriberAccessLevel(undefined, 'InMemory')).toEqual({});
+    expect(tableSubscriberAccessLevel(undefined, 'TempDB')).toEqual(NO_ACCESS);
+    expect(tableSubscriberAccessLevel(undefined, 'InMemory')).toEqual(NO_ACCESS);
+    expect(tableSubscriberAccessLevel(undefined, undefined, 'Staging')).toEqual(NO_ACCESS);
     expect(tableSubscriberAccessLevel({ read: 'Allow', update: 'Allow' }, 'TempDB')).toEqual({ Read: 'Allow', Update: 'Allow' });
     expect(tableSubscriberAccessLevel('None', undefined)).toEqual({});
   });
@@ -147,7 +152,7 @@ describe('new tables get what Visual Studio writes', () => {
   it('the XML template writes it', () => {
     const xml = generateAxTableXml('ConDemoNote', { label: 'Note' });
     expect(xml).toContain(READ_ALLOW + '\t<TableGroup>');
-    expect(generateAxTableXml('ConDemoNoteTmp', { tableType: 'TempDB' })).not.toContain('SubscriberAccessLevel');
+    expect(readSubscriberAccessLevel(generateAxTableXml('ConDemoNoteTmp', { tableType: 'TempDB' }))).toEqual(NO_ACCESS);
     expect(generateAxTableXml('ConDemoNote', { subscriberAccessLevel: 'Read=Allow,Create=Deny' })).toContain(
       '\t<SubscriberAccessLevel>\n\t\t<Create>Deny</Create>\n\t\t<Read>Allow</Read>\n\t</SubscriberAccessLevel>',
     );
@@ -158,26 +163,27 @@ describe('new tables get what Visual Studio writes', () => {
     const regular = builder.buildTableXml({ name: 'ConDemoNote', label: 'Note', fields: [{ name: 'NoteId', edt: 'Name' }] } as any);
     expect(regular).toContain(READ_ALLOW);
     const temp = builder.buildTableXml({ name: 'ConDemoNoteTmp', tableType: 'TempDB', fields: [{ name: 'NoteId', edt: 'Name' }] } as any);
-    expect(temp).not.toContain('SubscriberAccessLevel');
+    expect(readSubscriberAccessLevel(temp)).toEqual(NO_ACCESS);
   });
 });
 
 describe('create reconcile — tables a bridge wrote', () => {
-  it('adds Read=Allow to a regular table the bridge wrote without it, silently', () => {
+  it('adds Read=Allow to a regular table the bridge wrote without it, and lists it as a BP default', () => {
     const r = reconcileTableCreateProperties(bridgeTable(), undefined);
-    expect(r.xml).toBe(bridgeTable().replace('\t<TableGroup>', `${READ_ALLOW}\t<TableGroup>`));
+    expect(r.xml).toContain(`${READ_ALLOW}\t<TableGroup>`);
     expect(r.patched).toEqual([]);
     expect(r.unhonoured).toEqual([]);
+    expect(r.bpDefaults).toContain('SubscriberAccessLevel=Read=Allow (xppbp expects it because SaveDataPerCompany is Yes)');
   });
 
-  it('leaves a TempDB table and an existing value alone', () => {
+  it('gives a TempDB table No Access and leaves an existing non-default value alone', () => {
     const temp = bridgeTable('\t<TableType>TempDB</TableType>\n');
-    expect(reconcileTableCreateProperties(temp, undefined).xml).toBe(temp);
+    expect(readSubscriberAccessLevel(reconcileTableCreateProperties(temp, undefined).xml)).toEqual(NO_ACCESS);
     const denied = bridgeTable().replace(
       '\t<TableGroup>',
       '\t<SubscriberAccessLevel>\n\t\t<Read>Deny</Read>\n\t</SubscriberAccessLevel>\n\t<TableGroup>',
     );
-    expect(reconcileTableCreateProperties(denied, { label: 'Note' }).xml).toBe(denied);
+    expect(readSubscriberAccessLevel(reconcileTableCreateProperties(denied, { label: 'Note' }).xml)).toEqual({ Read: 'Deny' });
   });
 
   it('writes a requested value and says so', () => {
@@ -188,7 +194,7 @@ describe('create reconcile — tables a bridge wrote', () => {
 
   it('"None" leaves the table without one', () => {
     const r = reconcileTableCreateProperties(bridgeTable(), { subscriberAccessLevel: 'None' });
-    expect(r.xml).toBe(bridgeTable());
+    expect(r.xml).not.toContain('SubscriberAccessLevel');
   });
 
   it('reports an invalid value instead of writing it', () => {

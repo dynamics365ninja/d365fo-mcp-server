@@ -12,7 +12,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { getConfigManager, fallbackPackagePath } from './configManager.js';
 import { resolveDbPathLocally } from './metadataResolver.js';
-import { findD365FileOnDisk } from './objectFileLookup.js';
+import { findAotFilesInAllPackages, findD365FileOnDisk } from './objectFileLookup.js';
 import { readIndexedXml, symbolTypesFor } from './indexedXmlLookup.js';
 
 /**
@@ -94,7 +94,8 @@ export async function findBaseObjectXml(
   //     package root instead (~3,000 probes, ~200 ms on a full PackagesLocalDirectory).
   const unindexedFolder = UNINDEXED_AOT_FOLDERS[objectType];
   if (unindexedFolder) {
-    const found = await findInAnyPackage(unindexedFolder, objectName);
+    const fileName = `${objectName.toLowerCase()}.xml`;
+    const [found] = await findAotFilesInAllPackages(unindexedFolder, n => n.toLowerCase() === fileName);
     if (found) {
       const content = await tryRead(found);
       if (content) return content;
@@ -117,35 +118,3 @@ export async function findBaseObjectXml(
  * reachable only on disk.
  */
 const UNINDEXED_AOT_FOLDERS: Record<string, string> = { menu: 'AxMenu' };
-
-/**
- * `<root>/<package>/<model>/<axFolder>/<name>.xml` under every configured package
- * root, every model folder included (package == model is not the rule: AxMenu
- * OrganizationAdministration is in ApplicationSuite\Foundation). First hit wins,
- * in root order.
- */
-async function findInAnyPackage(axFolder: string, objectName: string): Promise<string | null> {
-  const cm = getConfigManager();
-  await cm.ensureLoaded();
-  const roots = [...new Set([
-    await cm.getCustomPackagesPath(),
-    (await cm.getDevEnvironmentType()) === 'ude' ? await cm.getMicrosoftPackagesPath() : null,
-    cm.getPackagePath() || fallbackPackagePath(),
-  ].filter((r): r is string => !!r))];
-  for (const root of roots) {
-    let packages: string[];
-    try { packages = await fs.readdir(root); } catch { continue; }
-    const hits = await Promise.all(packages.map(async pkg => {
-      let models: string[];
-      try { models = await fs.readdir(path.join(root, pkg)); } catch { return null; }
-      for (const model of models) {
-        const candidate = path.join(root, pkg, model, axFolder, `${objectName}.xml`);
-        try { await fs.access(candidate); return candidate; } catch { /* next */ }
-      }
-      return null;
-    }));
-    const hit = hits.find(h => h);
-    if (hit) return hit;
-  }
-  return null;
-}
