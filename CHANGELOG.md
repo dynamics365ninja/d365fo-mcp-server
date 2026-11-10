@@ -238,6 +238,11 @@ those are called out explicitly below.
   there. It still refuses: the only route remains the user's
   `D365FO_CROSS_MODEL_WRITE_MODELS`. For a shared model the workspace builds on, the
   original case, nothing changes, and with no descriptor found the wording is as before.
+- **`labels(action="create")` writes only the languages the label file has.** Every
+  folder under the model's shared `LabelResources` was treated as a language of the
+  target file, so a sibling label file's `ja` added a `.ja.label.txt` and a
+  descriptor to a file that never had Japanese. Supplied translations and an explicit
+  `languages` scope still add a language.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
