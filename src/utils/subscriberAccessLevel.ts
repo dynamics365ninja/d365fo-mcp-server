@@ -43,6 +43,7 @@ export type ParsedSubscriberAccessLevel =
 const USAGE =
   'Pass an object such as { "read": "Allow" } or { "read": "Allow", "create": "Deny" }, ' +
   'the same as a string "Read=Allow,Create=Deny", "No Access" for every permission denied, ' +
+  '"All" for every permission allowed, ' +
   'or "None" for no access level. ' +
   `Permissions: ${SUBSCRIBER_PERMISSIONS.join(', ')}; values: Allow, Deny, Unset.`;
 
@@ -74,6 +75,10 @@ export function parseSubscriberAccessLevel(raw: unknown): ParsedSubscriberAccess
     // "No Access" is how the property sheet and xppbp name every permission denied.
     if (/^no\s*access$/i.test(s)) {
       return { ok: true, level: Object.fromEntries(SUBSCRIBER_PERMISSIONS.map(p => [p, 'Deny'])) as SubscriberAccessLevel };
+    }
+    // "All" grants every permission, as xppbp expects on a Display menu item that opens a class.
+    if (/^(all|full(\s*access)?)$/i.test(s)) {
+      return { ok: true, level: Object.fromEntries(SUBSCRIBER_PERMISSIONS.map(p => [p, 'Allow'])) as SubscriberAccessLevel };
     }
     // A bare permission list ("Read" / "Read,Update") grants Allow, as the
     // property sheet's commonest setting does.

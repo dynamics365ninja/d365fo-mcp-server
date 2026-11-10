@@ -93,7 +93,7 @@ import { nextEnumValue } from '../../utils/axEnumProperties.js';
 // The direct-XML writers moved to their own module; this file dispatches to them.
 import {
   directXmlReplaceCode,
-  directXmlModifyProperty,
+  directXmlModifyProperty, directXmlSetBpAccessProperty, directXmlSetRelationOnDelete,
   directXmlAddMenuItemToMenu,
   directXmlAddMenuItemToMenuExtension,
   directXmlAddSubmenu,
@@ -707,6 +707,7 @@ export const ModifyD365FileArgsSchema = z.object({
   fieldLabel: z.string().optional().describe('Field label'),
   fieldHelpText: z.string().optional().describe('Field help text (modify-field).'),
   fieldEnumType: z.string().optional().describe('Enum name for an enum-typed field. On add-field this replaces fieldType entirely — it writes AxTableFieldEnum + EnumType and needs no EDT. Also settable later with modify-field.'),
+  fieldEnumValues: z.array(z.unknown()).optional().describe('add-field: values of the enum created when fieldEnumType does not exist (names or {name,label}).'),
   fieldStringSize: z.string().optional().describe('String size to set on the field (modify-field, for string-typed fields).'),
   ...ENTITY_AND_FIELD_ZOD_PARAMS, ...FORM_STRUCTURE_ZOD_PARAMS,
   fields: z.array(z.object({
@@ -766,6 +767,7 @@ export const ModifyD365FileArgsSchema = z.object({
   relationCardinality: z.string().optional().describe('Cardinality on local side: ZeroMore | ZeroOne | ExactlyOne (default: ZeroMore).'),
   relatedTableCardinality: z.string().optional().describe('Cardinality on related side: ZeroMore | ZeroOne | ExactlyOne (default: ExactlyOne).'),
   relationshipType: z.string().optional().describe('Relationship type: Association | Composition | Aggregation | Link | Specialization (default: Association).'),
+  relationOnDelete: z.string().optional().describe('OnDelete for add-relation: None | Restricted | Cascade | CascadeRestricted. On a relation that already exists (table or table-extension) it sets only OnDelete.'),
 
   // For add-delete-action / remove-delete-action (table)
   deleteActionTable: z.string().optional().describe(
@@ -952,7 +954,8 @@ export const ModifyD365FileArgsSchema = z.object({
   propertyPath: z.string().optional().describe(
     'Property name to set. ' +
     'For tables (AxTable): TableGroup, TitleField1, TitleField2, TableType (TempDB/RegularTable/InMemory), ' +
-    'CacheLookup, ClusteredIndex, PrimaryIndex, SaveDataPerCompany, Label, HelpText, Extends, SystemTable. ' +
+    'CacheLookup, ClusteredIndex, PrimaryIndex, SaveDataPerCompany, Label, HelpText, Extends, SystemTable, ' +
+    'OperationalDomain, SubscriberAccessLevel (also on menu items; values in the modify-property op-spec). ' +
     'For table-extensions (AxTableExtension): properties are stored inside <PropertyModifications> as ' +
     '<AxPropertyModification> entries. Supported: Label, HelpText, TableGroup, CacheLookup, TitleField1, TitleField2, ' +
     'ClusteredIndex, PrimaryIndex, SaveDataPerCompany, TableType, SystemTable, ' +
@@ -2520,6 +2523,8 @@ async function runModify(
         break;
       }
       case 'add-relation': {
+        const onDel = (args as any).relationOnDelete && (args as any).relationName ? await directXmlSetRelationOnDelete(actualFilePath, objectName, (args as any).relationName, (args as any).relationOnDelete) : null;
+        if (onDel) { if (!onDel.success) return { content: [{ type: 'text', text: onDel.message }], isError: true }; bridgeResult = viaXmlFallback(onDel); break; }
         if ((args as any).relationName && (args as any).relatedTable) {
           // relationConstraints is documented as [{ fieldName, relatedFieldName }], but the
           // bridge/C# WriteRelationConstraint deserializes the JSON keys { field, relatedField }.
@@ -2571,6 +2576,8 @@ async function runModify(
               };
             }
           }
+          const newOnDel = bridgeResult?.success && (args as any).relationOnDelete ? await directXmlSetRelationOnDelete(actualFilePath, objectName, (args as any).relationName, (args as any).relationOnDelete) : null;
+          if (newOnDel && bridgeResult) bridgeResult = { ...bridgeResult, success: newOnDel.success, message: `${bridgeResult.message}\n${newOnDel.message}` };
         }
         break;
       }
@@ -2675,6 +2682,9 @@ async function runModify(
       }
       case 'modify-property': {
         if (args.propertyPath && args.propertyValue !== undefined) {
+          // OperationalDomain / SubscriberAccessLevel on a table or menu item: XML only, never the bridge.
+          const bpWrite = await directXmlSetBpAccessProperty(actualFilePath, objectType, objectName, args.propertyPath, args.propertyValue);
+          if (bpWrite) { if (!bpWrite.success) return { content: [{ type: 'text', text: bpWrite.message }], isError: true }; bridgeResult = viaXmlFallback(bpWrite); break; }
           const own = await directXmlModifyControlProperty(actualFilePath, objectType, objectName, args.propertyPath, String(args.propertyValue), (args as { controlName?: string }).controlName);
           if (own) { bridgeResult = viaXmlFallback(own); break; } // a control this file defines (own form, or one an extension adds)
           // ── Form extension targeting a BASE-FORM control ─────────────────────

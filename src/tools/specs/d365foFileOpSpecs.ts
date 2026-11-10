@@ -103,7 +103,11 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
       'Enum name for an enum-typed field. On add-field this is all an enum field needs — ' +
       'it writes AxTableFieldEnum + EnumType, no EDT.',
   },
-  fieldStringSize: { type: 'string', description: 'String size to set on a string-typed field.' },
+  fieldStringSize: { type: 'string', description: 'String size to set on a string-typed field (on add-field: of the EDT created for it).' },
+  fieldEnumValues: {
+    type: 'array of string | {name,label?}',
+    description: 'add-field: the values of the enum created when fieldEnumType does not exist yet. Each gets a label.',
+  },
   autoCorrect: {
     type: 'boolean (default true)',
     description:
@@ -258,6 +262,11 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
     type: 'string',
     description:
       'Association | Composition | Aggregation | Link | Specialization | NotSpecified (default: Association).',
+  },
+  relationOnDelete: {
+    type: 'string',
+    description:
+      'None | Restricted | Cascade | CascadeRestricted. On a relation that already exists it sets only OnDelete.',
   },
   // field groups
   fieldGroupName: { type: 'string', description: 'Field group name.' },
@@ -625,9 +634,12 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   },
   'add-field': {
     required: ['fieldName'],
-    optional: ['fieldType', 'fieldBaseType', 'fieldEnumType', 'fieldMandatory', 'fieldLabel', 'dataField', 'dataSource', 'fieldGroupName', 'autoCorrect'],
+    optional: ['fieldType', 'fieldBaseType', 'fieldEnumType', 'fieldEnumValues', 'fieldStringSize', 'fieldMandatory', 'fieldLabel', 'dataField', 'dataSource', 'fieldGroupName', 'autoCorrect'],
     mutationOneOf: ['fieldType', 'fieldEnumType', 'dataField', 'dataSource', 'fieldBaseType'],
     note:
+      'Table/table-extension: a fieldType EDT or fieldEnumType enum that does not exist is created first ' +
+      '(fieldBaseType, fieldStringSize, fieldLabel and fieldEnumValues shape it), and fieldBaseType alone gets ' +
+      'an EDT named after the field (reused when one of that name and base type exists). ' +
       'Enum field: pass fieldEnumType="<enum name>" and NO fieldType — an enum-typed table field ' +
       'is an AxTableFieldEnum with an EnumType and needs no EDT. (fieldType is the EDT name here, ' +
       'never an XML element name like "AxTableFieldEnum" — that one is read as fieldEnumType when the ' +
@@ -705,7 +717,13 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   'remove-table-mapping': { required: ['mapName'], optional: [] },
   'add-relation': {
     required: ['relationName', 'relatedTable'],
-    optional: ['relationConstraints', 'relationCardinality', 'relatedTableCardinality', 'relationshipType'],
+    optional: ['relationConstraints', 'relationCardinality', 'relatedTableCardinality', 'relationshipType', 'relationOnDelete'],
+    note:
+      'relationOnDelete (None | Restricted | Cascade | CascadeRestricted) writes <OnDelete> on the relation, ' +
+      'the fix for BPCheckMissingDeleteActions. When the table or table-extension ALREADY has a relation ' +
+      'named relationName, only its OnDelete is set (relatedTable not needed, nothing else changes), in the ' +
+      'element order shipped metadata uses (after Cardinality, before RelatedTable). An existing value is ' +
+      'replaced.',
   },
   'remove-relation': { required: ['relationName'], optional: [] },
   'add-delete-action': {
@@ -1044,7 +1062,15 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       'path — ConfigurationKey, PrimaryCompanyContext (e.g. "DataAreaId"), CountryRegionCodes, ' +
       'SingularLabel, IsObsolete, AllowArchival, AutoCreateDataverse, EnableSetBasedSqlOperations and ' +
       'ValidTimeStateEnabled. Modules, OperationalDomain and SubscriberAccessLevel are refused. ' +
-      'Yes/No properties take true/false/Yes/No.',
+      'Yes/No properties take true/false/Yes/No. ' +
+      'table, menu-item-action, menu-item-display, menu-item-output: OperationalDomain (Company | Shared | ' +
+      'Local) and SubscriberAccessLevel ("NoAccess" = all six permissions Deny, "Read" = Read Allow, ' +
+      '"All" = all six Allow, "None" removes it, or an explicit "Read=Allow,Create=Deny") are written on ' +
+      'the XML, never by the bridge: in canonical element order (tables after Label, menu items ' +
+      'alphabetically after Name), children in serializer order, xmlns="" on menu item children. An ' +
+      'existing element is replaced. The reply says when the value differs from what xppbp expects: ' +
+      'TempDB/InMemory/Staging tables Local + NoAccess, SaveDataPerCompany=No Shared + Read, other tables ' +
+      'Company + Read. Action menu item on a class NoAccess, Display on a class any right Allow. No hint for a menu item on a form or report: xppbp decides from its data sources (all Local, i.e. TempDB, gives Local + NoAccess, otherwise Read).',
   },
 };
 
@@ -1066,7 +1092,8 @@ export const D365FO_FILE_CREATE_PROPERTY_SPECS: Record<string, string> = {
     '{read:"Allow"} | "No Access" | "None"; default what xppbp expects: No Access on TempDB/InMemory/Staging, ' +
     'Read=Allow otherwise), operationalDomain? (Company|Shared|Local; default Local on TempDB/InMemory/Staging, ' +
     'else Company, or Shared with saveDataPerCompany:false), created/modifiedBy/DateTime?, ' +
-    'fields[{name,type?|edt?|fieldType?,enumType?,label?,mandatory?,allowEdit?,ignoreEdtRelation?}] — enum fields need ' +
+    'fields[{name,type?|edt?|fieldType?,enumType?,enumValues?,label?,mandatory?,allowEdit?,ignoreEdtRelation?}] — enum fields need ' +
+    'A missing EDT/enum, or one for a primitive-only field, is created first (see add-field). ' +
     'enumType ONLY (it makes the field an AxTableFieldEnum by itself; fieldType is optional), ' +
     'allowEdit:false writes AllowEdit=No (staging key fields), ignoreEdtRelation:true writes IgnoreEDTRelation=Yes ' +
     '(EDT with a relation), validTimeStateFieldType? (Date|UtcDateTime — then ADD the ValidFrom/ValidTo ' +
@@ -1108,7 +1135,8 @@ export const D365FO_FILE_CREATE_PROPERTY_SPECS: Record<string, string> = {
   'security-duty': 'label, privileges[] (change the list later with add-privilege / remove-privilege)',
   'security-role': 'label, duties[], privileges[] (change the lists later with add-duty / add-privilege and their remove- operations)',
   'menu-item-display': 'label, object, objectType, operationalDomain? (default Shared), subscriberAccessLevel? ' +
-    '(default Read=Allow on a form, every permission allowed with objectType Class)',
+    '(default Read=Allow on a form, every permission allowed with objectType Class). A form whose data sources ' +
+    'are all Local (TempDB) tables gets Local and "No Access" instead, as xppbp expects',
   'menu-item-action': 'label, object, objectType, operationalDomain? (default Local), subscriberAccessLevel? ' +
     '(default "No Access", which xppbp requires on an Action item with objectType Class)',
   'menu-item-output': 'label, object, objectType, operationalDomain? (default Shared), subscriberAccessLevel? ' +

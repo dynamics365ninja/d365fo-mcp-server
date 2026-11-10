@@ -34,6 +34,7 @@
 
 import { AX_TABLE_SERIALIZER_DEFAULTS } from '../xml/createTablePropertyHonesty.js';
 import { scanXmlLeaves } from '../../utils/xmlScan.js';
+import { SUBSCRIBER_PERMISSIONS, subscriberAccessLevelValue } from '../../utils/subscriberAccessLevel.js';
 
 /**
  * True when an element's value is the one the serializer omits, so its absence
@@ -191,6 +192,9 @@ export function claimedMarkerFor(
       // Only top-level scalar properties: a dotted path addresses something this
       // check cannot see with a regex, and guessing is what got us here.
       if (name.includes('.') || name.includes('/')) return null;
+      // SubscriberAccessLevel is written as child elements, one per permission
+      // ("NoAccess" → six <X>Deny</X>), never as the text passed in.
+      if (name.toLowerCase() === 'subscriberaccesslevel') return subscriberAccessLevelMarker(value);
       return {
         label: `${name}=${value}`,
         // Attributes allowed: a form's Design properties are written <Pattern xmlns="">…</Pattern>.
@@ -225,6 +229,25 @@ export function claimedMarkerFor(
     default:
       return null;
   }
+}
+
+/**
+ * The claim for a SubscriberAccessLevel write: every permission the value sets,
+ * with its grant, inside the element (menu item children carry xmlns="").
+ * Null for an empty level: "None" removes the element, and absence is not
+ * something this marker can show.
+ */
+function subscriberAccessLevelMarker(value: string): { label: string; pattern: RegExp } | null {
+  const parsed = subscriberAccessLevelValue(value);
+  if (!parsed.ok) return null;
+  const set = SUBSCRIBER_PERMISSIONS.filter(p => parsed.level[p]);
+  if (set.length === 0) return null;
+  const body = '(?:(?!</SubscriberAccessLevel>)[\\s\\S])*?';
+  const looks = set.map(p => `(?=${body}<${p}(?:\\s[^>]*)?>\\s*${parsed.level[p]}\\s*</${p}>)`).join('');
+  return {
+    label: `SubscriberAccessLevel=${parsed.bridgeText}`,
+    pattern: new RegExp(`<SubscriberAccessLevel>${looks}`),
+  };
 }
 
 function escapeRe(v: string): string {

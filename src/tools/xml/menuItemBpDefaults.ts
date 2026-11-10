@@ -41,6 +41,8 @@ export interface MenuItemBpResult {
   unhonoured: string[];
   /** The rule behind the defaults, when a default was written. */
   reason?: string;
+  /** xppbp names the OperationalDomain too (a form whose data sources are all Local). */
+  domainExpected?: boolean;
 }
 
 function escapeRegExp(s: string): string {
@@ -103,7 +105,10 @@ function readAccessLevel(block: string): SubscriberAccessLevel {
 export function applyMenuItemBpDefaults(
   xml: string,
   properties?: Record<string, unknown>,
+  options: { withDefaults?: boolean; allDataSourcesLocal?: boolean } = {},
 ): MenuItemBpResult {
+  // modify-property sets only what it was asked for: no default fills the other property.
+  const withDefaults = options.withDefaults !== false;
   const result: MenuItemBpResult = { xml, applied: [], unhonoured: [] };
   const root = /<(AxMenuItem(?:Action|Display|Output))[\s>]/.exec(xml);
   const kind = root ? menuItemKindOf(root[1]) : undefined;
@@ -112,7 +117,9 @@ export function applyMenuItemBpDefaults(
   const eol = /\r\n/.test(xml) ? '\r\n' : '\n';
   const indent = topIndent(xml);
   const objectType = /^[ \t]*<ObjectType>\s*([^<]*?)\s*<\/ObjectType>/m.exec(xml)?.[1];
-  const defaults: BpDefaults = expectedMenuItemBpDefaults(kind, objectType);
+  const defaults: BpDefaults = expectedMenuItemBpDefaults(kind, objectType, {
+    allDataSourcesLocal: options.allDataSourcesLocal,
+  });
   // Children of a property element leave the root's default namespace, as in every shipped file.
   const childNs = /<AxMenuItem\w+\b[^>]*\sxmlns="[^"]+"/.test(xml) ? ' xmlns=""' : '';
   let usedDefault = false;
@@ -128,7 +135,7 @@ export function applyMenuItemBpDefaults(
     );
   }
   const odExisting = findTopLevel(result.xml, indent, 'OperationalDomain');
-  if (!odWanted && !odExisting) { odWanted = defaults.operationalDomain; usedDefault = true; }
+  if (withDefaults && !odWanted && !odExisting) { odWanted = defaults.operationalDomain; usedDefault = true; }
   if (odWanted) {
     const line = `${indent}<OperationalDomain>${odWanted}</OperationalDomain>${eol}`;
     const current = odExisting ? /<OperationalDomain>\s*([^<]*?)\s*</.exec(odExisting[0])?.[1] : undefined;
@@ -150,7 +157,7 @@ export function applyMenuItemBpDefaults(
     else result.unhonoured.push(`subscriberAccessLevel — ${parsed.error}`);
   }
   const salExisting = findTopLevel(result.xml, indent, 'SubscriberAccessLevel');
-  if (!salWanted && !salExisting) { salWanted = defaults.subscriberAccessLevel; usedDefault = true; }
+  if (withDefaults && !salWanted && !salExisting) { salWanted = defaults.subscriberAccessLevel; usedDefault = true; }
   if (salWanted) {
     const current = salExisting ? readAccessLevel(salExisting[0]) : {};
     if (!salExisting || !sameSubscriberAccessLevel(current, salWanted)) {
@@ -165,7 +172,10 @@ export function applyMenuItemBpDefaults(
     }
   }
 
-  if (usedDefault && result.applied.length > 0) result.reason = defaults.reason;
+  if (usedDefault && result.applied.length > 0) {
+    result.reason = defaults.reason;
+    if (options.allDataSourcesLocal && defaults.operationalDomain === 'Local' && kind === 'Display') result.domainExpected = true;
+  }
   return result;
 }
 
@@ -173,10 +183,20 @@ export function applyMenuItemBpDefaults(
 export function renderMenuItemBpNote(r: MenuItemBpResult): string {
   const parts: string[] = [];
   if (r.applied.length > 0) {
-    parts.push(
-      `\n📋 BP defaults: ${r.applied.join(', ')}` +
-      (r.reason ? ` (xppbp expects these because ${r.reason}).` : '.'),
-    );
+    // xppbp names an expected SubscriberAccessLevel, but for OperationalDomain it
+    // only requires one (BPCheckMenuItemOperationalDomainPropertyNotSpecified).
+    const sal = r.applied.some(a => a.startsWith('SubscriberAccessLevel='));
+    const od = r.applied.some(a => a.startsWith('OperationalDomain='));
+    const why = r.reason
+      ? ' (' +
+        [
+          sal ? `xppbp expects this SubscriberAccessLevel because ${r.reason}` : '',
+          od && r.domainExpected ? `xppbp expects this OperationalDomain because ${r.reason}` : '',
+          od && !r.domainExpected ? 'xppbp requires an OperationalDomain but names no value' : '',
+        ].filter(Boolean).join('. ') +
+        ').'
+      : '.';
+    parts.push(`\n📋 BP defaults: ${r.applied.join(', ')}${why}`);
   }
   if (r.unhonoured.length > 0) parts.push(`\n⚠️ ${r.unhonoured.join('\n⚠️ ')}`);
   return parts.join('');

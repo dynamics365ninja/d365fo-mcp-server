@@ -31,6 +31,7 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { XppServerContext } from '../types/context.js';
 import { codeGenTool } from './smart/codeGen.js';
 import { generateSmartTool } from './smart/generateSmart.js';
+import { provisionFieldTypes, renderProvisionNotes, slotsFromFieldSpecs } from './write/fieldTypeProvisioning.js';
 import { generateFindMethodsTool } from './smart/generateFindMethods.js';
 import { generateRelationXppTool } from './smart/generateRelationXpp.js';
 import { generateTableFieldsTool } from './xml/generateTableFields.js';
@@ -40,6 +41,24 @@ import {
   getGenerateObjectRequiredParams,
   renderGenerateObjectSpec,
 } from './specs/generateObjectOpSpecs.js';
+
+/**
+ * scaffold of a table: the EDTs and enums its fields name (or need) are created
+ * first, through the create pipeline (write/fieldTypeProvisioning.ts). The
+ * generators may not import the write tools, so it happens here, in front of them.
+ * autoCorrect=false writes the fields as passed.
+ */
+async function scaffoldWithFieldTypes(request: CallToolRequest, context: XppServerContext) {
+  const args = (request.params.arguments ?? {}) as Record<string, unknown>;
+  if (args.objectType !== 'table' || args.autoCorrect === false) return generateSmartTool(request, context);
+  const types = await provisionFieldTypes(slotsFromFieldSpecs(args.fields), args, context);
+  const notes = renderProvisionNotes(types);
+  if (types.error) return err(`❌ ${types.error}\nThe table was NOT generated.${notes}`);
+  const result: any = await generateSmartTool(request, context);
+  const first = result?.content?.[0];
+  if (!notes || first?.type !== 'text') return result;
+  return { ...result, content: [{ ...first, text: first.text + notes }, ...result.content.slice(1)] };
+}
 
 function err(text: string) {
   return { content: [{ type: 'text' as const, text }], isError: true };
@@ -84,7 +103,7 @@ export async function generateObjectTool(request: CallToolRequest, context: XppS
     case 'pattern':
       return codeGenTool(request);
     case 'scaffold':
-      return generateSmartTool(request, context);
+      return scaffoldWithFieldTypes(request, context);
     case 'find-methods':
       return generateFindMethodsTool(request, context);
     case 'relation-xpp':

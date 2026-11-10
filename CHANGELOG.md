@@ -29,6 +29,53 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`d365fo_file(action="modify", operation="modify-property")` sets OperationalDomain and
+  SubscriberAccessLevel on existing tables and menu items.** Menu items had no writer for
+  either (the bridge's setter has no case for them), and SubscriberAccessLevel holds child
+  elements no scalar writer can express, so the BP warnings on existing objects could not
+  be fixed with the tool. Both are now written on the XML for `table`,
+  `menu-item-action`, `menu-item-display` and `menu-item-output`, in canonical element
+  order, replacing an existing element. SubscriberAccessLevel takes `NoAccess`, `Read`,
+  `All`, `None` or an explicit `Read=Allow,Create=Deny` list (`All` is new). The reply
+  names the value xppbp expects when the one written differs: SubscriberAccessLevel on
+  tables and on menu items that open a class, OperationalDomain on tables only (for menu
+  items xppbp requires one but names no value). A menu item on a form or report gets no
+  hint: xppbp decides from its data sources (all TempDB gives Local and No Access). The after-write check reads SubscriberAccessLevel's child elements, so a correct
+  write is no longer reported as "NOT in the file".
+- **`add-relation` takes `relationOnDelete` and sets OnDelete on a relation that already
+  exists, on a table or a table extension.** BPCheckMissingDeleteActions on an existing
+  relation had no fix: add-relation had no OnDelete parameter and add-delete-action is
+  table-only. `relationOnDelete` (None, Restricted, Cascade, CascadeRestricted) is written
+  after Cardinality and before RelatedTable, as in shipped metadata. When the relation
+  exists only its OnDelete changes. A new relation gets it after the add.
+- **New table fields get the EDT or base enum they need, created first.** A field with only
+  a primitive type drew BPErrorTableFieldNotDefinedUsingType, and a field naming an EDT or
+  enum that did not exist failed the build (the scaffold refused it). `d365fo_file` create
+  of a table, `add-field` on a table or table extension (single or in `operations[]`) and
+  `generate_object` scaffold of a table now create the missing EDT (base type from the
+  field, or implied by its name, with its label and string size) or enum (values from
+  `enumValues` / `fieldEnumValues`, each labelled). A primitive-only field reuses the EDT of
+  its name and base type or gets a new one named after the field. An Int64 `…RecId` EDT
+  extends RefRecId. The type takes the field's label and the field drops its copy
+  (BPErrorFieldLabelIsCopyOf…). The reply lists every type created. `autoCorrect=false`
+  writes the fields as passed. Nothing is created when the symbol index cannot be read.
+- **`run_bp_check` (and `build_d365fo_project` with `bpCheck: true`) reports the
+  OperationalDomain and SubscriberAccessLevel warnings the Azure DevOps build reports.** The
+  build pipeline restores newer Microsoft build packages whose BP rules check both properties
+  on tables and menu items. The xppbp on a UDE has no such rule, so a clean local check met
+  them for the first time in the pull request build. The check now adds them, with the
+  pipeline's monikers and messages, under a "Reproduced pipeline rules (not reported by this
+  xppbp)" heading, as detail lines the findings section and the build summary count. They
+  are added only when xppbp reported none of them and its rule assemblies (`bin\BPExtensions`)
+  do not name them, so a platform that ships the real rules keeps its own answer. A whole-model
+  run checks every table and menu item of the model, a targeted run only a requested table or
+  menu item. A finding in the model's suppression list is left out, as the pipeline leaves it
+  out. Checked against an ISV model's pipeline log: 646 of 646 warnings, same object, rule and
+  message, none extra.
+- **Label false positives are marked.** A `BPErrorUnknownLabel` for a label that exists in the
+  model's label files, and a `BPUnusedStrFmtArgument` in the same method on a placeholder that
+  label has, get a "Likely label false positives" note. xppbp reports them when it cannot read
+  the compiled label assembly, so the note tells the caller not to create the label again.
 - **`run_systest_class` runs tests on UDE, in the environment's cloud runtime.** A UDE
   machine has no local AOS, so SysTestConsole cannot run there; the tool now sends the
   tests where Visual Studio sends them, through the Dataverse environment the UDE belongs
@@ -146,6 +193,8 @@ those are called out explicitly below.
   InMemory and Staging, otherwise Company (or Shared with SaveDataPerCompany=No) and
   Read. On a menu item Local and No Access for an Action item, Shared and Read for
   Display on a form and for Output, Shared and every permission for Display on a class.
+  A Display item on a form whose data sources are all Local (TempDB) tables gets Local and
+  No Access, read from the form and its tables in the index.
   `properties.operationalDomain` and `properties.subscriberAccessLevel` (now also
   `"No Access"`) override them. The reply lists what was written and why.
 - **A new table no longer fails the field-level best-practice rules.** After every table

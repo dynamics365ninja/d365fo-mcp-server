@@ -59,6 +59,7 @@ import {
 import { relationOnDeleteFromSpecs, type TableBpDefaultsOptions } from '../xml/tableBpDefaults.js';
 import { fieldEdtNames, resolveEdtRelations } from '../xml/edtRelationResolver.js';
 import { applyMenuItemBpDefaults, renderMenuItemBpNote } from '../xml/menuItemBpDefaults.js';
+import { menuItemFormAllLocal } from '../xml/formDataSourceDomain.js';
 import { menuItemKindOf } from '../../utils/bpCreateDefaults.js';
 import type { XppServerContext } from '../../types/context.js';
 
@@ -726,12 +727,12 @@ function readDbOf(context: Pick<XppServerContext, 'symbolIndex'> | Partial<Pick<
  * (menuItemBpDefaults.ts). The bridge's SetAxMenuItemProperty() knows neither.
  * Best-effort, like the table reconcile: a failure never fails the create.
  */
-async function reconcileCreatedMenuItem(filePath: string | undefined, properties: unknown): Promise<string> {
+async function reconcileCreatedMenuItem(filePath: string | undefined, properties: unknown, db: unknown): Promise<string> {
   if (!filePath) return '';
   try {
     const onDisk = await fs.readFile(filePath, 'utf-8');
     const props = properties && typeof properties === 'object' ? (properties as Record<string, unknown>) : undefined;
-    const r = applyMenuItemBpDefaults(onDisk, props);
+    const r = applyMenuItemBpDefaults(onDisk, props, { allDataSourcesLocal: await menuItemFormAllLocal(onDisk, db) });
     if (r.xml !== onDisk) await writeFileAtomic(filePath, normalizeD365Xml(r.xml));
     return renderMenuItemBpNote(r);
   } catch (e) {
@@ -764,6 +765,8 @@ function writtenAfterBridgeCreate(objectType: string, key: string): boolean {
 export interface CreateOutcome {
   finalObjectName?: string;
   filePath?: string;
+  /** The object was already on disk and overwrite was not set: nothing was written. */
+  alreadyExisted?: boolean;
 }
 
 export async function handleCreateD365File(
@@ -1336,6 +1339,7 @@ export async function handleCreateD365File(
 
     if (fileExisted) {
       if (!args.overwrite) {
+        if (outcome) outcome.alreadyExisted = true;
         // Surface what's already on disk so the caller doesn't have to read the
         // file in chunks just to discover its contents. Previously this branch
         // returned only "already exists", forcing repeated read_file calls.
@@ -1867,7 +1871,7 @@ export async function handleCreateD365File(
             ? await reconcileCreatedTableProperties(bridgeResult.filePath, args.properties, readDbOf(context))
               + await stampIndexValidTimeState(bridgeResult.filePath, args.properties)
             : menuItemKindOf(args.objectType)
-              ? await reconcileCreatedMenuItem(bridgeResult.filePath, args.properties)
+              ? await reconcileCreatedMenuItem(bridgeResult.filePath, args.properties, readDbOf(context))
               : '';
 
           // Refresh only after the reconcile — see the smart-table path for what
@@ -2107,7 +2111,9 @@ export async function handleCreateD365File(
       tableHonestyReport = renderTableCreateHonestyReport(reconciled);
     } else if (menuItemKindOf(args.objectType)) {
       // Same report slot: the BP defaults a menu item got (menuItemBpDefaults.ts).
-      const r = applyMenuItemBpDefaults(xmlContent, args.properties as Record<string, unknown> | undefined);
+      const r = applyMenuItemBpDefaults(xmlContent, args.properties as Record<string, unknown> | undefined, {
+        allDataSourcesLocal: await menuItemFormAllLocal(xmlContent, readDbOf(context)),
+      });
       xmlContent = r.xml;
       tableHonestyReport = renderMenuItemBpNote(r);
     }
