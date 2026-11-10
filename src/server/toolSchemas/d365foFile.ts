@@ -69,9 +69,7 @@ Model + prefix auto-applied.`,
         properties: {
           type: 'object',
           additionalProperties: true,
-          description:
-            '[create] Per-objectType creation properties (label, fields[], extends, enumValues[], primaryTable, …) — ' +
-            'per the op-spec lookup above.'
+          description: '[create] Per-objectType properties, per the op-spec lookup above.'
         },
         addToProject: { type: 'boolean', description: 'Add to the ACTIVE .rnrproj — keep the default.', default: true },
         projectPath: {
@@ -100,6 +98,7 @@ Model + prefix auto-applied.`,
             'add-field-modification',
             'add-data-source', 'add-control', 'remove-control',
             'add-entry-point', 'remove-entry-point',
+            'add-duty', 'remove-duty', 'add-privilege', 'remove-privilege',
             'remove-diagnostic-suppression', 'add-diagnostic-suppression',
             'add-module-reference', 'remove-module-reference',
             'add-enum-value', 'modify-enum-value', 'remove-enum-value',

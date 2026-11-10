@@ -154,15 +154,22 @@ describe('layer direction', () => {
     // argument lines, the import, the add-submenu arm and the branch that sends an
     // item for a submenu of a menu to the XML writer (the C# op has no parent).
     //
-    // Raised 4,800 -> 4,810 for modify-property OperationalDomain /
+    // Raised 4,800 -> 4,820 for add-/remove-duty and add-/remove-privilege (4,798 ->
+    // 4,817 lines). The checks went to write/securityReferences.ts, the writers to
+    // directXmlWriters.ts and the transform to tools/xml/securityDutyRoleXml.ts, so
+    // what landed here is the two schema parameters, the import, the objectType
+    // refusal, the one switch arm for all four, the base lookup that lets a missing
+    // role extension be created, and a line in the standard-model refusal.
+    // Separately raised 4,800 -> 4,810 for modify-property OperationalDomain /
     // SubscriberAccessLevel on tables and menu items (4,798 -> 4,802 lines). The
     // writer went to directXmlWriters.ts and tools/xml/bpAccessPropertyModify.ts, so
     // what landed here is the three-line arm ahead of the bridge and one line of the
     // propertyPath description. add-relation's relationOnDelete (-> 4,807 lines) went
     // the same way: its writer is in directXmlWriters.ts and tools/xml/tableBpDefaults.ts,
     // and what landed here is the argument, two lines ahead of the bridge and two after it.
+    // Raised 4,820 -> 4,830 when both landed together (4,827 lines).
     const src = readFileSync('src/tools/write/modifyD365File.ts', 'utf8');
-    expect(src.split('\n').length).toBeLessThan(4810);
+    expect(src.split('\n').length).toBeLessThan(4830);
   });
 
   it('the dispatcher routes rather than implementing', () => {

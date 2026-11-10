@@ -63,6 +63,7 @@ import {
 } from '../analysis/validateFormPattern.js';
 import { validateEdtExtensionChange } from '../../utils/edtExtensionValidator.js';
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
+import { applySecurityReferenceOperation, securityReferenceTypeRefusal } from './securityReferences.js';
 import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, renderBatchEditHint, verifyFormElementOrder } from './inlineWriteVerification.js';
 import { lintXppSelect } from '../../utils/xppSelectLint.js';
 import { validateWrittenXpp } from './inlineXppValidation.js';
@@ -517,7 +518,7 @@ export const ModifyD365FileArgsSchema = z.object({
     'menu-item-display', 'menu-item-action', 'menu-item-output',
     'menu-item-display-extension', 'menu-item-action-extension', 'menu-item-output-extension',
     'menu', 'menu-extension',
-    'security-privilege', 'security-duty', 'security-role',
+    'security-privilege', 'security-duty', 'security-role', 'security-duty-extension', 'security-role-extension',
     'ignore-diagnostic-list',
     'model-descriptor',
   ]).describe('Type of D365FO object'),
@@ -539,7 +540,7 @@ export const ModifyD365FileArgsSchema = z.object({
     'add-data-source',
     'modify-property',
     'add-control', 'remove-control',
-    'add-entry-point', 'remove-entry-point',
+    'add-entry-point', 'remove-entry-point', 'add-duty', 'remove-duty', 'add-privilege', 'remove-privilege',
     'remove-diagnostic-suppression', 'add-diagnostic-suppression',
     'add-module-reference', 'remove-module-reference',
     'add-enum-value', 'modify-enum-value', 'remove-enum-value',
@@ -826,6 +827,10 @@ export const ModifyD365FileArgsSchema = z.object({
     'add-entry-point: permissions the <Grant> carries. "view"/"read" grant Read; "maintain" grants ' +
     'Correct+Create+Delete+Read+Update (plus Invoke on a ServiceOperation). Defaults to "view".'
   ),
+
+  // For add-/remove-duty and add-/remove-privilege (security role, duty, their extensions).
+  dutyName: z.string().optional().describe('add-duty / remove-duty: REQUIRED — the duty to reference, by AOT name.'),
+  privilegeName: z.string().optional().describe('add-privilege / remove-privilege: REQUIRED — the privilege to reference, by AOT name.'),
 
   // For remove-diagnostic-suppression (ignore-diagnostic-list).
   diagnosticPath: z.string().optional().describe(
@@ -1370,6 +1375,9 @@ async function runModify(
       }
     }
 
+    const securityRefusal = securityReferenceTypeRefusal(String(args.operation), args.objectType);
+    if (securityRefusal) return { content: [{ type: 'text', text: securityRefusal }], isError: true };
+
     // Grounding enforcement: modifying an extension changes the behaviour of an
     // existing base object — when GROUNDING_ENFORCE=true the model must prove
     // (via prepare_change) that it inspected the real object first.
@@ -1744,7 +1752,8 @@ async function runModify(
           `To extend a standard object, create an extension instead:\n` +
           `  • Table: d365fo_file(action="create", objectType="table-extension", objectName="${objectName}.${configuredModel || 'YourModel'}Extension")\n` +
           `  • Class: d365fo_file(action="create", objectType="class-extension", objectName="${objectName}_Extension")\n` +
-          `  • Form:  d365fo_file(action="create", objectType="form-extension", objectName="${objectName}.${configuredModel || 'YourModel'}Extension")`
+          `  • Form:  d365fo_file(action="create", objectType="form-extension", objectName="${objectName}.${configuredModel || 'YourModel'}Extension")\n` +
+          `  • Role / duty: objectType="security-role-extension" / "security-duty-extension", same objectName form`
         );
       }
     }
@@ -2989,6 +2998,13 @@ async function runModify(
         }
         break;
       }
+      case 'add-duty': case 'remove-duty': case 'add-privilege': case 'remove-privilege': {
+        // Security objects have no bridge write path at all (see the writer).
+        bridgeResult = viaXmlFallback(await applySecurityReferenceOperation(actualFilePath, operation, args, {
+          objectType, symbolIndex, baseNames: baseObjectNameCandidates(objectName, modelName),
+        }));
+        break;
+      }
       case 'remove-diagnostic-suppression': {
         // Not an AOT object at all — no bridge write path exists (see the writer).
         const diagnosticPath = (args as any).diagnosticPath;
@@ -3763,6 +3779,9 @@ async function missingExtensionVerdict(
   let baseFound: string | null = null;
   for (const candidate of baseObjectNameCandidates(objectName, modelName)) {
     baseFound = await resolveD365FileByName(symbolIndex, baseType, candidate, undefined, packagePath);
+    // The name lookup reads security types in the configured model only, and the
+    // base of a role extension is usually Microsoft's: ask the index as well.
+    if (!baseFound && baseType.startsWith('security-')) baseFound = await findBaseObjectXml(baseType, candidate, symbolIndex);
     if (baseFound) break;
   }
   // Nothing to extend — fall through to the ordinary "file not found" answer,
