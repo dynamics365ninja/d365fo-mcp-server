@@ -182,6 +182,15 @@ those are called out explicitly below.
   `openWorldHint: false`.
 
 ### Fixed
+- **Large bridge replies are read in linear time and keep their non-ASCII characters.**
+  The client appended every stdout chunk to one string and searched it for the newline
+  from the start, so the work grew with the square of the reply size (measured on the
+  same loop: 208 ms for a 5 MB single-line reply and 2.7 s for 20 MB, against 22 and
+  122 ms when only the new chunk is searched). It also decoded each chunk on its own, so
+  a multi-byte character that fell on a chunk boundary became U+FFFD, which corrupted
+  labels, comments and source text with non-ASCII characters in large replies. Stdout is
+  now decoded as one stream and only the newly arrived text is searched. Nothing to
+  change on your side.
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know
   neither property on a menu item, and a Staging or TempDB table kept Visual Studio's
