@@ -40,6 +40,14 @@ those are called out explicitly below.
   refused). Moved controls keep their XML byte for byte, only re-indented. The design's
   own Pattern and PatternVersion are set with `modify-property`.
 
+### Fixed
+- **`modify-property` on a form's Design replaces the property in a CRLF file.** The
+  "already there" match expected `\n`, so on a saved (CRLF) form a second `<Pattern>`,
+  `<PatternVersion>` or `<Style>` was added beside the old one, and the deserializer kept
+  the old one. An empty value now removes a Design property instead of writing an empty
+  element, and the post-write check finds a value whose element carries `xmlns=""` and
+  makes no value check for a removal (both were reported as "NOT in the file").
+
 ## [1.23.0] — 2026-11-05
 
 ### Added

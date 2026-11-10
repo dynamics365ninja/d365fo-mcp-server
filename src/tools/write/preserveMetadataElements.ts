@@ -186,13 +186,15 @@ export function claimedMarkerFor(
     case 'modify-property': {
       const name = str(args.propertyPath);
       const value = str(args.propertyValue) ?? (args.propertyValue != null ? String(args.propertyValue) : null);
-      if (!name || value === null) return null;
+      // An empty value removes the property: there is no value to find afterwards.
+      if (!name || value === null || value.trim() === '') return null;
       // Only top-level scalar properties: a dotted path addresses something this
       // check cannot see with a regex, and guessing is what got us here.
       if (name.includes('.') || name.includes('/')) return null;
       return {
         label: `${name}=${value}`,
-        pattern: new RegExp(`<${escapeRe(name)}>\\s*${escapeRe(value)}\\s*</${escapeRe(name)}>`, 'i'),
+        // Attributes allowed: a form's Design properties are written <Pattern xmlns="">…</Pattern>.
+        pattern: new RegExp(`<${escapeRe(name)}(?:\\s[^>]*)?>\\s*${escapeRe(value)}\\s*</${escapeRe(name)}>`, 'i'),
       };
     }
     case 'add-delete-action': {
