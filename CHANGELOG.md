@@ -180,6 +180,18 @@ those are called out explicitly below.
   default, open-world. Clients that ask for confirmation or show a warning before
   open-world tools may now do so for these two. Every other tool keeps
   `openWorldHint: false`.
+- **Looking up the event handlers of an object reads far fewer methods.**
+  `extension_info(mode="events")`, the event handler section of
+  `extension_info(mode="coc")` and the two subscriber scans in
+  `extension_info(mode="points")` first selected every method in the index that has
+  a `SubscribesTo` attribute (about 1,800 on a production-size index) and then read each
+  one's source to look for the object name. The object name is now part of the
+  full-text match, as a prefix so that longer names starting with it still match, and
+  only the candidates are read. Handlers found through `classStr(…)`, `tableStr(…)` and
+  `formStr(…)` are the same as before. In `mode="points"` a subscriber that has the
+  object name only inside a longer identifier (`MyFooHelper` for `Foo`) is no longer
+  counted, because it does not subscribe to that object. A name that starts with an
+  underscore is searched the old way.
 
 ### Fixed
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
