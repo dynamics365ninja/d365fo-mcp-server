@@ -998,7 +998,7 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       'to parentControl (a Group/Tab/TabPage/Grid/… that has <Controls>; omitted or "Design" = the design ' +
       'itself) — after previousSibling, or positionType "Begin"/"End" (default End). The control\'s XML is ' +
       'kept byte for byte, only re-indented. A move into the control\'s own subtree, or into a control ' +
-      'with no <Controls>, is refused; a control already there is skipped. To convert a form to a pattern: ' +
+      'with no <Controls>, or a non-TabPage into a Tab, is refused; a control already there is skipped. To convert a form to a pattern: ' +
       'wrap-controls builds the containers, move-control fills them, modify-property sets the design\'s ' +
       'Pattern and PatternVersion (both, in one operations[] call).',
   },

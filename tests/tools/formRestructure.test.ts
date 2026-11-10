@@ -97,6 +97,49 @@ describe('moveFormControl', () => {
   });
 });
 
+describe('moveFormControl and Tabs', () => {
+  const tabs = FORM.replace(
+    ctl(3, 'Grid', 'LinesGrid').join('
+'),
+    [
+      '			<AxFormControl xmlns=""',
+      '				i:type="AxFormTabControl">',
+      '				<Name>Pages</Name>',
+      '				<Type>Tab</Type>',
+      '				<FormControlExtension',
+      '					i:nil="true" />',
+      '				<Controls>',
+      '					<AxFormControl xmlns=""',
+      '						i:type="AxFormTabPageControl">',
+      '						<Name>Page1</Name>',
+      '						<Type>TabPage</Type>',
+      '						<FormControlExtension',
+      '							i:nil="true" />',
+      '						<Controls />',
+      '					</AxFormControl>',
+      '				</Controls>',
+      '			</AxFormControl>',
+    ].join('
+'),
+  );
+
+  it('refuses a control that is not a TabPage under a Tab (all 14,500 shipped children of a Tab are pages)', () => {
+    const r = moveFormControl(tabs, { controlName: 'Description', parentControl: 'Pages' });
+    expect(r).toMatchObject({ ok: false, message: expect.stringMatching(/Tab holds TabPages only/) });
+  });
+
+  it('allows a page out of its Tab, with a warning, since the next wrap usually fixes it', () => {
+    const r = ok(moveFormControl(tabs, { controlName: 'Page1', parentControl: 'Totals' }));
+    expect(r.warnings.join(' ')).toMatch(/not a Tab/);
+  });
+
+  it('moves a page between Tabs without a warning', () => {
+    const r = ok(moveFormControl(tabs, { controlName: 'Page1', parentControl: 'Pages', positionType: 'Begin' }));
+    expect(r.changed).toBe(false);
+    expect(r.warnings).toEqual([]);
+  });
+});
+
 describe('wrapFormControls', () => {
   it('wraps controls in a FieldsFieldGroups group in census order, where the first one was', () => {
     const r = ok(wrapFormControls(FORM, {

@@ -255,6 +255,12 @@ export function moveFormControl(source: string, spec: MoveControlSpec): Restruct
       const already = anchor ? idx > 0 && all[idx - 1].node === anchor : anchor === null ? idx === 0 : idx === all.length - 1;
       if (already) return { ok: true, xml, changed: false, detail: `"${ctl.name}" is already ${where} in "${target.name}"`, warnings: [] };
     }
+    // Same rule as wrap-controls: of 14,500 shipped TabPages all sit in a Tab, and a Tab holds nothing else.
+    const typeOf = (n: XmlNode) => ITYPE.exec(xml.slice(n.start, n.openEnd))?.[1];
+    const isPage = typeOf(ctl.node) === 'AxFormTabPageControl';
+    const intoTab = !!target.owner && typeOf(target.owner.node) === 'AxFormTabControl';
+    if (intoTab && !isPage) return fail(`a Tab holds TabPages only; "${ctl.name}" is not one. Wrap it in a TabPage first`);
+    const warnings = isPage && !intoTab ? [`the TabPage "${ctl.name}" now sits in "${target.name}", which is not a Tab: wrap it (with its sibling pages) in a Tab next`] : [];
     const indent = lineIndentOf(xml, ctl.node.start);
     const cut = cutBlocks(xml, [ctl.node]);
     if (!cut) return fail(`"${ctl.name}" does not sit on lines of its own; it cannot be moved safely`);
@@ -267,7 +273,7 @@ export function moveFormControl(source: string, spec: MoveControlSpec): Restruct
     const bad = verify(out, [[ctl.name, target.name]]);
     if (bad) return fail(bad);
     return {
-      ok: true, xml: out, changed: true, warnings: [],
+      ok: true, xml: out, changed: true, warnings,
       detail: from.toLowerCase() === target.name.toLowerCase()
         ? `moved "${ctl.name}" ${where} in "${target.name}"`
         : `moved "${ctl.name}" from "${from}" to "${target.name}", ${where}`,
