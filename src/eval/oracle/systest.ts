@@ -43,6 +43,20 @@ const NOT_RUN_PATTERNS = [
   /WaitForDebugger/i,
 ];
 
+/**
+ * The tool's own "this never got to a test" diagnoses: runner startup faults, UDE setup, a
+ * misspelt testMethod on UDE, a cloud run that did not come back. Counted only in a reply that
+ * HEADS with an error other than the "❌ Tests FAILED" status, because a real run's reply also
+ * carries the tests' own failure messages, which may say anything.
+ */
+const NOT_RUN_DIAGNOSES = [/\bNo test ran\b/i, /\bNo test result came back\b/i];
+
+function isNotRunDiagnosis(text: string): boolean {
+  const head = text.split(/\r?\n/, 1)[0];
+  if (!/^❌/.test(head) || /^❌\s*Tests FAILED/.test(head)) return false;
+  return NOT_RUN_DIAGNOSES.some(re => re.test(text));
+}
+
 /** A line that looks like a concrete test failure (not the status header). */
 const FAILURE_LINE = /\b(fail(?:ed|ure)?|assert\w*|exception|unhandled)\b/i;
 
@@ -73,7 +87,7 @@ export function parseSysTestResult(output: string | null | undefined): SysTestRe
   if (text === '') return { ran: false, passed: null, failures: [] };
 
   // Infrastructure / invocation problems → never ran.
-  if (NOT_RUN_PATTERNS.some(re => re.test(text))) {
+  if (NOT_RUN_PATTERNS.some(re => re.test(text)) || isNotRunDiagnosis(text)) {
     return { ran: false, passed: null, failures: [] };
   }
   // The catch-block form "❌ Tests failed:\n\n<exception>" is a runner error, not a

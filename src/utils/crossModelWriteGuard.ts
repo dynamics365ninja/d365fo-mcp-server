@@ -58,6 +58,7 @@
 import { resolveObjectPrefix, applyObjectPrefix, isAsGivenNamingMode, isNoPrefixMode } from './modelClassifier.js';
 import { reloadWritePolicy } from './loadEnv.js';
 import { resolveFormattedExtensionName } from './objectNaming.js';
+import type { ModelDependency } from '../metadata/modelDescriptor.js';
 
 /** An extension of the target object that already exists in the active model. */
 export interface ExistingExtension {
@@ -108,6 +109,14 @@ export interface CrossModelWriteCheck {
    * what WOULD be written instead of reporting a write that never happened.
    */
   dryRun?: boolean;
+  /**
+   * Wording only — how `owningModel` stands to `activeModel`, from their descriptors
+   * (resolveModelDependency). When the owning model is built ON the active one, a
+   * test model being the common case, the active model cannot see it, so "extend it
+   * from the active model instead" is advice that cannot compile. Absent or null
+   * means "not known", and the usual advice stands.
+   */
+  dependency?: ModelDependency | null;
 }
 
 /**
@@ -305,14 +314,35 @@ export function crossModelWriteRefusal(check: CrossModelWriteCheck): string | nu
     );
   }
 
-  lines.push(
-    `"${owningModel}" is a different model: the change would land in code that "${activeModel}" ` +
-    `only consumes, it would not appear in this workspace's project or version control, and every ` +
-    `other model built on "${owningModel}" would inherit it.`,
-    '',
-  );
+  // A model built ON the active one (its test model, typically) is the reverse of
+  // the case this guard was written for: the active model cannot see it, so the
+  // extension remedy below would not compile, and pieces of a feature already in it
+  // are where that feature belongs, not traces of a misplaced write.
+  const buildsOnActive = check.dependency?.buildsOnBase === true;
+  if (buildsOnActive) {
+    lines.push(
+      `"${owningModel}" is built on "${activeModel}": its descriptor references "${activeModel}", so ` +
+      `"${activeModel}" cannot see "${owningModel}", and nothing in "${activeModel}" can extend ` +
+      `${baseObject} — such an extension would not compile.` +
+      (check.dependency?.testModelOfBase
+        ? ` "${activeModel}" lists "${owningModel}" in <InternalsVisibleTo>: it is this workspace's test model.`
+        : ''),
+      '',
+      `There is no in-model route for this ${verb}.`,
+      '',
+    );
+  } else {
+    lines.push(
+      `"${owningModel}" is a different model: the change would land in code that "${activeModel}" ` +
+      `only consumes, it would not appear in this workspace's project or version control, and every ` +
+      `other model built on "${owningModel}" would inherit it.`,
+      '',
+    );
+  }
 
-  if (verb === 'delete') {
+  // No remedy block for a model built on the active one: neither an extension nor a
+  // delete has an in-model equivalent there.
+  if (!buildsOnActive && verb === 'delete') {
     // The extension remedy below answers "I need this object to behave
     // differently". It is not an answer to "I need this object gone" — an
     // extension cannot un-define its base — so offering it here would send the
@@ -324,7 +354,7 @@ export function crossModelWriteRefusal(check: CrossModelWriteCheck): string | nu
       `references in "${activeModel}" — find_references(name="${objectName}") lists them.`,
       '',
     );
-  } else if (extType) {
+  } else if (!buildsOnActive && extType) {
     const existing = (check.existingExtensions ?? []).filter(e => !eq(e.name, objectName));
     lines.push(`Extend it from "${activeModel}" instead:`);
     if (existing.length > 0) {
@@ -347,9 +377,12 @@ export function crossModelWriteRefusal(check: CrossModelWriteCheck): string | nu
 
   lines.push(
     `Do NOT route around this guard: no retry with a different modelName, filePath, ` +
-    `packagePath, or a get_workspace_info project switch. Half-finished pieces of this very feature sitting in ` +
-    `"${owningModel}" — a matching enum, field, label or scaffold — are evidence that an ` +
-    `earlier run made this same mistake, NOT evidence that the feature belongs there.`,
+    `packagePath, or a get_workspace_info project switch.` +
+    (buildsOnActive
+      ? ''
+      : ` Half-finished pieces of this very feature sitting in ` +
+        `"${owningModel}" — a matching enum, field, label or scaffold — are evidence that an ` +
+        `earlier run made this same mistake, NOT evidence that the feature belongs there.`),
     '',
     `Writing into "${owningModel}" is the user's decision, not yours. If they want it, they add ` +
     `D365FO_CROSS_MODEL_WRITE_MODELS=${owningModel} (or D365FO_ALLOW_CROSS_MODEL_WRITE=true) to the ` +
