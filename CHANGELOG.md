@@ -182,6 +182,19 @@ those are called out explicitly below.
   `openWorldHint: false`.
 
 ### Fixed
+- **`d365fo_file(action="modify", operation="remove-field")` no longer leaves the table's
+  field groups naming the removed field.** The bridge removes the field from `<Fields>`
+  and nothing else, so every `<AxTableFieldGroupField>` that listed it stayed in the file
+  and the next build failed on a field group that references an unknown field. After a
+  successful removal the server now takes the field out of the field groups of the same
+  file: the `<FieldGroups>` of a table, and on a table extension both its own
+  `<FieldGroups>` and its `<FieldGroupExtensions>`. Names match in any letter case and
+  the reply lists the groups. Indexes, full-text indexes, relations, mappings,
+  `TitleField1` / `TitleField2` and field properties that still name the field are not
+  changed, because removing them changes what the table does. The reply lists each one
+  in a warning with the operation that fixes it (for an index it also says when it is the
+  table's `PrimaryIndex`, `ClusteredIndex` or `ReplacementKey`). Nothing to do for
+  callers. A field that was in no group gets the same reply as before.
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know
   neither property on a menu item, and a Staging or TempDB table kept Visual Studio's
