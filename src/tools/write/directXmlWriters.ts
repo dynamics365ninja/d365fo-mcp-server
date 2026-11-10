@@ -36,6 +36,7 @@ import { describeSubscriberAccessLevel, subscriberAccessLevelValue } from '../..
 import { upsertAxFormDesignProperty } from '../../utils/axFormDesignProperties.js';
 import { bpAccessPropertyOf, isBpAccessObjectType, setBpAccessProperty } from '../xml/bpAccessPropertyModify.js';
 import { setRelationOnDelete } from '../xml/tableBpDefaults.js';
+import { isEdtReferenceFieldProperty, setEdtTableReference } from '../xml/edtTableReferenceEdit.js';
 import { upsertFormControlProperty } from '../../utils/formControlPropertyXml.js';
 import { resolveControlPropertyTarget } from '../../utils/formExtensionControlModifications.js';
 import { buildAxDataEntityViewFieldXml } from '../xml/dataEntityViewExtensionXml.js';
@@ -204,6 +205,39 @@ export const directXmlSetBpAccessProperty = serializedOnFile(async (
       `(${outcome.changed ? 'in canonical element order' : 'already in that state, nothing written'}). ` +
       `File: ${filePath}` +
       (outcome.bpNote ? `\n⚠️ ${outcome.bpNote}` : ''),
+  };
+});
+
+/**
+ * modify-property ReferenceField on an EDT: the related field of the EDT's table
+ * reference, a child of <TableReferences> that no scalar property setter can
+ * write. See tools/xml/edtTableReferenceEdit.ts. Null when the request is not
+ * this one, so the dispatcher carries on; a failure result means nothing was
+ * written.
+ */
+export const directXmlSetEdtTableReference = serializedOnFile(async (
+  filePath: string,
+  objectType: string,
+  objectName: string,
+  propertyPath: string,
+  propertyValue: unknown,
+): Promise<{ success: boolean; message: string } | null> => {
+  if (objectType !== 'edt' || !isEdtReferenceFieldProperty(propertyPath)) return null;
+  const before = (await fs.readFile(filePath, 'utf-8')).replace(/^﻿/, '');
+  const outcome = setEdtTableReference(before, propertyValue);
+  if (!outcome) return null;
+  if (!outcome.ok) {
+    return { success: false, message: `❌ Could not set ReferenceField on ${objectName}: ${outcome.error} Nothing was written.` };
+  }
+  if (outcome.changed) await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
+  return {
+    success: true,
+    message: outcome.changed
+      ? `✅ Table reference of ${objectName} set to ${outcome.table}.${outcome.relatedField} via direct XML ` +
+        `(<TableReferences>${outcome.wroteReferenceTable ? ' and <ReferenceTable>' : ''}). ` +
+        (outcome.syncedLegacyRelation ? `The EDT's legacy relation (<Relations><AxEdtRelation>) was updated to the same table and field. ` : '') +
+        `File: ${filePath}`
+      : `ℹ️ ${objectName} already references ${outcome.table}.${outcome.relatedField}, nothing written. File: ${filePath}`,
   };
 });
 

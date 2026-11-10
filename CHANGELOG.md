@@ -182,6 +182,20 @@ those are called out explicitly below.
   `openWorldHint: false`.
 
 ### Fixed
+- **`d365fo_file(action="modify", operation="modify-property")` with `ReferenceField` gives
+  an existing EDT its table reference.** The property was listed for EDTs but refused with
+  "Unknown AxEdt property 'ReferenceField'", because the related field is not a scalar
+  property. It is a child of `<TableReferences>`, which no property setter writes. So an
+  EDT could not be pointed at a table and field without hand-written XML. The value is now
+  written on the XML as the EDT's single `<AxEdtTableReference>` (`<RelatedField>` and
+  `<Table>`). Pass `propertyValue="AccountNum"` when the EDT already has a ReferenceTable,
+  or `propertyValue="CustTable.AccountNum"` to set `<ReferenceTable>` and the reference in
+  one call. An existing reference is updated in place. When the EDT also carries one
+  legacy `<Relations>` entry (`AxEdtRelation`), as many shipped EDTs do, that entry gets
+  the same table and field and the reply says so. A bare field on an EDT with no
+  reference table is refused with a message that asks for the table. An EDT with more
+  than one legacy relation or more than one table reference is refused too. EDT
+  extensions are not covered (#1161).
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know
   neither property on a menu item, and a Staging or TempDB table kept Visual Studio's
