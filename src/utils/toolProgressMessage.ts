@@ -12,7 +12,7 @@ export function buildProgressMessage(toolName: string, args: Record<string, any>
         return `🔍 Batch search: ${a.queries.map((q: any) => `"${q.query ?? q}"`).join(', ')}`;
       }
       if (a.scope === 'extensions') {
-        return `🔍 Searching custom extensions: "${a.query ?? ''}"`;
+        return `🔍 Searching custom models: "${a.query ?? ''}"`;
       }
       return `🔍 Searching D365FO index: "${a.query ?? ''}"${a.type ? ` [${a.type}]` : ''}`;
     case 'get_object_info':
@@ -157,7 +157,8 @@ export function buildProgressMessage(toolName: string, args: Record<string, any>
     case 'update_symbol_index':
       return `🔄 Updating symbol index${a.filePath ? ` for ${a.filePath}` : ''}`;
     case 'build_d365fo_project':
-      return `🔨 Building D365FO project${a.projectPath ? ` ${a.projectPath}` : ''}`;
+      return `🔨 Building D365FO project${a.projectPath ? ` ${a.projectPath}` : ''}` +
+        (a.deploy === true || a.deploy === 'true' ? ' and deploying it to the UDE environment' : '');
     case 'trigger_db_sync':
       return `🗄️ Triggering database sync${a.tableName ? ` for ${a.tableName}` : ''}`;
     case 'run_bp_check':
