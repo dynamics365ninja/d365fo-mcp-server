@@ -369,6 +369,73 @@ export async function findD365FileViaIndex(
   return null;
 }
 
+/** <Package>/<Model> folders per packages root, listed once per process. */
+const modelDirsByRoot = new Map<string, Promise<string[]>>();
+
+async function modelDirs(root: string): Promise<string[]> {
+  let listed = modelDirsByRoot.get(root);
+  if (!listed) {
+    listed = (async () => {
+      const dirs: string[] = [];
+      let packages: import('fs').Dirent[];
+      try { packages = await fs.readdir(root, { withFileTypes: true }); } catch { return dirs; }
+      for (const pkg of packages) {
+        // isSymbolicLink too: a Dirent describes the link itself, so a package linked into
+        // the packages folder (a junction, how a source-controlled model gets there) has
+        // isDirectory() false. A link to a file fails the readdir below and is skipped.
+        if (!pkg.isDirectory() && !pkg.isSymbolicLink()) continue;
+        try {
+          for (const m of await fs.readdir(path.join(root, pkg.name), { withFileTypes: true })) {
+            if (m.isDirectory() || m.isSymbolicLink()) dirs.push(path.join(root, pkg.name, m.name));
+          }
+        } catch { /* unreadable package folder */ }
+      }
+      return dirs;
+    })();
+    modelDirsByRoot.set(root, listed);
+  }
+  return listed;
+}
+
+/** For tests: forget the listed package folders. */
+export function resetPackageFolderCache(): void {
+  modelDirsByRoot.clear();
+}
+
+/**
+ * Files in one Ax* folder of EVERY package under the configured roots whose name
+ * passes `match` — <root>/<Package>/<Model>/<aotFolder>/<file>.
+ *
+ * findD365FileOnDisk looks in the configured model only, which is right for a write
+ * and leaves a STANDARD object out of reach when the index has no row for it: an
+ * AxMenu, which the index build never extracts (findBaseObjectXml), and on a
+ * write-only companion (no index) the other extensions of a menu too. Menus have no
+ * bridge read either, so this is the only way to them. Every model folder counts —
+ * package == model is not the rule (AxMenu OrganizationAdministration is in
+ * ApplicationSuite\Foundation). Hits in root order: custom packages, Microsoft
+ * packages (UDE), then the packages path. The package/model folder list is taken
+ * once per process; the Ax* folders are read on every call, so a file written this
+ * session is found.
+ */
+export async function findAotFilesInAllPackages(aotFolder: string, match: (fileName: string) => boolean): Promise<string[]> {
+  const configManager = getConfigManager();
+  await configManager.ensureLoaded();
+  const roots = [...new Set([
+    await configManager.getCustomPackagesPath(),
+    (await configManager.getDevEnvironmentType()) === 'ude' ? await configManager.getMicrosoftPackagesPath() : null,
+    configManager.getPackagePath() || fallbackPackagePath(),
+  ].filter((r): r is string => !!r))];
+  const hits: string[] = [];
+  for (const root of roots) {
+    for (const dir of await modelDirs(root)) {
+      let names: string[];
+      try { names = await fs.readdir(path.join(dir, aotFolder)); } catch { continue; }
+      for (const n of names) if (match(n)) hits.push(path.join(dir, aotFolder, n));
+    }
+  }
+  return hits;
+}
+
 /**
  * The models that hold an object of this type and name, for a "not found" message
  * that can name the answer instead of asking the caller to guess it.
