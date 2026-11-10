@@ -93,8 +93,9 @@
  * creates a staging table; the first fix over-corrected to an explicit
  * No/empty pair that no shipped file writes). Enabling data-management for a
  * real staging scenario is an explicit opt-in via
- * properties.dataManagementEnabled — the caller is then responsible for the
- * staging table existing (create it as its own table).
+ * properties.dataManagementEnabled. This builder still writes the reference
+ * only. The create that writes the entity then creates the staging table
+ * (write/stagingTableProvisioning.ts, xml/dataEntityStagingTableXml.ts).
  */
 import { escapeXml } from '../../utils/xmlEscape.js';
 
@@ -165,9 +166,11 @@ export function findIgnoredEntityProperties(properties?: Record<string, any>): s
 }
 
 /**
- * The staging table an entity with dataManagementEnabled=true points at. This
- * builder writes the REFERENCE only; nothing creates the table, so the next full
+ * The warning for an entity with dataManagementEnabled=true whose staging table
+ * was NOT created with it: the entity holds the REFERENCE only, so the next full
  * build fails with a missing-table error. Empty when data management is off.
+ * The create normally creates the table (write/stagingTableProvisioning.ts) and
+ * says so instead. This is what it answers when it could not, or was told not to.
  */
 export function stagingTableNote(entityName: string, properties?: Record<string, any>): string {
   if (!isYes(properties?.dataManagementEnabled)) return '';

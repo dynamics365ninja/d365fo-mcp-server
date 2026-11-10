@@ -29,6 +29,25 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **A data entity created with `dataManagementEnabled=true` gets its staging table.**
+  `d365fo_file(action="create", objectType="data-entity")` wrote
+  `<DataManagementStagingTable>` and no table, so the next build failed with a missing
+  table and the reply could only warn. The create now writes the table in the same model
+  and project, in the shape of shipped staging tables such as
+  `CustCustomerGroupEntityStaging`: a regular table with TableGroup Staging, the DMF fields
+  DefinitionGroup, ExecutionId, IsSelected and TransferStatus, one field per public entity
+  field, the alternate-key index StagingIdx on DefinitionGroup, ExecutionId and the entity
+  key, and the relation DataEntity. Each field takes the EDT or enum of the table field it
+  maps to, read from that table's file or from the symbol index. A type is never guessed:
+  a field that cannot be resolved is left out and named in the reply, to add with
+  `add-field`. A table of that name that already exists is left as is. `autoCorrect=false`
+  keeps the create to the entity, with the old warning. `undo_last_modification` tracks
+  the table like any other created file. Fields and relations marked
+  `IsSystemGenerated=Yes` no longer get an EDT relation or `OnDelete=Restricted` from the
+  table best-practice defaults, because shipped staging tables carry neither. The
+  `data-entity-staging` template of `generate_object` said TempDB and TableGroup Main and
+  now describes the same shape. Not compiled against a D365FO environment yet, so build
+  the model after the first use (#1161).
 - **`d365fo_file(action="modify", operation="modify-property")` sets OperationalDomain and
   SubscriberAccessLevel on existing tables and menu items.** Menu items had no writer for
   either (the bridge's setter has no case for them), and SubscriberAccessLevel holds child
