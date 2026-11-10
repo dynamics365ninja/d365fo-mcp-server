@@ -259,6 +259,75 @@ describe('crossModelWriteRefusal', () => {
   });
 });
 
+// The workspace's test model references the workspace model, never the reverse.
+// The refusal used to advise a class extension from the workspace model, which
+// cannot see the test model, so the advice could not compile.
+describe('crossModelWriteRefusal — a model built on the active one', () => {
+  const TEST_MODEL = 'ContosoFinanceSKTests';
+  const testModelCheck = (dependency: { buildsOnBase: boolean; testModelOfBase: boolean } | null) => ({
+    objectName: 'ContosoSK_VatReportTest',
+    objectType: 'class',
+    owningModel: TEST_MODEL,
+    owningPackage: TEST_MODEL,
+    activeModel: ACTIVE_MODEL,
+    dependency,
+  });
+
+  it('drops the extension advice and says why it cannot compile', () => {
+    primeInferredModelPrefix(ACTIVE_MODEL, ACTIVE_MODEL_OBJECTS);
+    const msg = crossModelWriteRefusal(testModelCheck({ buildsOnBase: true, testModelOfBase: false }))!;
+
+    expect(msg).toContain('Refusing to modify');
+    expect(msg).toContain(`"${TEST_MODEL}" is built on "${ACTIVE_MODEL}"`);
+    expect(msg).toContain('would not compile');
+    expect(msg).not.toContain('Extend it from');
+    expect(msg).not.toContain('action="create"');
+    expect(msg).not.toContain('only consumes');
+    // Pieces of the feature in a dependent model are not evidence of a mistake.
+    expect(msg).not.toContain('Half-finished pieces');
+    // The decision is still the user's, and the guard still refuses.
+    expect(msg).toContain(`D365FO_CROSS_MODEL_WRITE_MODELS=${TEST_MODEL}`);
+    expect(msg).toContain('Do NOT route around this guard');
+  });
+
+  it('names the test model when the active model lists it in InternalsVisibleTo', () => {
+    const msg = crossModelWriteRefusal(testModelCheck({ buildsOnBase: true, testModelOfBase: true }))!;
+
+    expect(msg).toContain("it is this workspace's test model");
+  });
+
+  it('gives no extension advice for a delete either', () => {
+    const msg = crossModelWriteRefusal({
+      ...testModelCheck({ buildsOnBase: true, testModelOfBase: true }),
+      action: 'delete' as const,
+    })!;
+
+    expect(msg).toContain('There is no in-model route for this delete');
+    expect(msg).not.toContain('An extension cannot remove');
+  });
+
+  it('keeps the usual advice when the dependency is unknown or runs the other way', () => {
+    primeInferredModelPrefix(ACTIVE_MODEL, ACTIVE_MODEL_OBJECTS);
+    for (const dependency of [null, { buildsOnBase: false, testModelOfBase: false }]) {
+      const msg = crossModelWriteRefusal({
+        objectName: CORE_TABLE,
+        objectType: 'table',
+        owningModel: CORE_MODEL,
+        owningPackage: CORE_MODEL,
+        activeModel: ACTIVE_MODEL,
+        dependency,
+      })!;
+      expect(msg).toContain('Extend it from');
+      expect(msg).toContain('only consumes');
+    }
+  });
+
+  it('still lets an allowed model through', () => {
+    process.env.D365FO_CROSS_MODEL_WRITE_MODELS = TEST_MODEL;
+    expect(crossModelWriteRefusal(testModelCheck({ buildsOnBase: true, testModelOfBase: true }))).toBeNull();
+  });
+});
+
 describe('baseObjectOf', () => {
   it('strips the extension token from both extension forms', () => {
     expect(baseObjectOf('CustTable.FooExtension', 'table-extension')).toBe('CustTable');
