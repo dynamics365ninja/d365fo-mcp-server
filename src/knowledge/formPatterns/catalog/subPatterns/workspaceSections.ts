@@ -3,12 +3,14 @@
  * Workspace) + Panorama Section form-part patterns.
  * https://learn.microsoft.com/en-us/dynamics365/fin-ops-core/dev-itpro/user-interface/section-tiles-subpattern
  *
- * Workspace sub-pattern xmlNames follow the underscore convention observed in
- * real metadata (e.g. Workspace_SummaryNumbers_UnboundFields). The remaining
- * exact names are to be confirmed by mining — aliases cover the candidates.
+ * xmlNames are the platform definition names (SubPatterns.Section*.xml,
+ * WorkspacePageFilterGroup.xml, FiltersAndToolbar.xml in
+ * Microsoft.Dynamics.AX.Metadata.Patterns.dll). The aliases keep the names an
+ * earlier version of this catalog guessed, so they still resolve to guidance.
  */
 
 import type { SubPatternSpec } from '../../types.js';
+import { platformVersions } from '../../platform.js';
 
 function workspaceSection(
   id: string,
@@ -23,73 +25,72 @@ function workspaceSection(
     xmlName,
     xmlAliases: aliases,
     displayName,
-    versions: ['1.0'],
+    versions: platformVersions(xmlName).map((d) => d.version),
     appliesToControlTypes: ['Group', 'TabPage'],
     parentPatterns: ['Workspace', 'WorkspaceOperational'],
     purpose,
     referenceForms,
     root: [],
     extraRootChildren: 'any',
-    notes: ['xmlName to be confirmed by mining.'],
   };
 }
 
 export const workspaceSectionSubPatterns: SubPatternSpec[] = [
   workspaceSection(
     'WorkspaceSectionTiles',
-    'Workspace_Tiles',
-    ['SectionTiles', 'WorkspaceTiles'],
+    'SectionTiles',
+    ['WorkspaceTiles', 'Workspace_Tiles'],
     'Section Tiles',
     'Set of count tiles / charts in a workspace summary section (tiles bound to menu items, charts via Form Part controls).',
     ['SalesOrderProcessingWorkspace'],
   ),
   workspaceSection(
     'WorkspaceSectionRelatedLinks',
-    'Workspace_Links',
-    ['SectionRelatedLinks', 'WorkspaceLinks', 'Workspace_RelatedLinks'],
+    'SectionRelatedLinks',
+    ['WorkspaceLinks', 'Workspace_RelatedLinks', 'Workspace_Links'],
     'Section Related Links',
     'Set of hyperlinks (menu item buttons) in a workspace links section.',
     ['SalesOrderProcessingWorkspace'],
   ),
   workspaceSection(
     'WorkspaceSectionTabbedList',
-    'Workspace_TabbedList',
-    ['SectionTabbedList'],
+    'SectionTabbedList',
+    ['Workspace_TabbedList'],
     'Section Tabbed List',
     'Multiple list variants in one workspace section — only one visible at a time.',
   ),
   workspaceSection(
     'WorkspaceSectionStackedChart',
-    'Workspace_StackedChart',
-    ['SectionStackedChart'],
+    'SectionStackedChart',
+    ['Workspace_StackedChart'],
     'Section Stacked Chart',
     'Up to two charts stacked in an Operational Workspace section.',
   ),
   workspaceSection(
     'WorkspaceSectionPowerBI',
-    'Workspace_PowerBI',
-    ['SectionPowerBI'],
+    'SectionPowerBI',
+    ['Workspace_PowerBI'],
     'Section Power BI',
     'Power BI content section in an Operational Workspace.',
   ),
   workspaceSection(
     'WorkspacePageFilterGroup',
-    'Workspace_FilterGroup',
-    ['WorkspacePageFilterGroup', 'Workspace_PageFilter'],
+    'WorkspacePageFilterGroup',
+    ['Workspace_PageFilter', 'Workspace_FilterGroup'],
     'Workspace Page Filter Group',
     'A single page-level filter applied across workspace sections.',
   ),
   workspaceSection(
     'FiltersAndToolbarStacked',
-    'FiltersAndToolbar_Stacked',
-    ['FiltersAndToolbarStacked'],
+    'FiltersAndToolbarStacked',
+    ['FiltersAndToolbar_Stacked'],
     'Filters and Toolbar - Stacked',
     'Form Part Section List: actions BELOW filters.',
   ),
   workspaceSection(
     'FiltersAndToolbarInline',
-    'FiltersAndToolbar_Inline',
-    ['FiltersAndToolbarInline'],
+    'FiltersAndToolbarInline',
+    ['FiltersAndToolbar_Inline'],
     'Filters and Toolbar - Inline',
     'Form Part Section List: filters and actions on the SAME line.',
   ),

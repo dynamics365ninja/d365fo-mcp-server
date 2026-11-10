@@ -32,6 +32,12 @@ export interface FormControlNode {
   type: string;
   /** Raw i:type attribute when present (e.g. 'AxFormGridControl') */
   axType?: string;
+  /**
+   * FormControlExtension name when the control hosts one (e.g. 'TileButtonControl'
+   * on a MenuFunctionButton, 'FormPartControl' or 'SysChart' on a Container).
+   * The platform's pattern engine identifies such a control by this name.
+   */
+  extension?: string;
   /** Sub-pattern declared on this container (e.g. 'CustomAndQuickFilters') */
   pattern?: string;
   patternVersion?: string;
@@ -63,7 +69,7 @@ export interface PatternNodeRecord {
   childSequence: string[];
 }
 
-/** Control/Design properties surfaced into `properties` (when present as simple values) */
+/** Control/Design properties always surfaced into `properties` (when present as simple values) */
 const PROPERTY_KEYS = [
   'Caption',
   'Visible',
@@ -89,6 +95,34 @@ const PROPERTY_KEYS = [
   'WidthMode',
   'HeightMode',
 ];
+
+/** Elements that are structure, not properties of the control. */
+const NON_PROPERTY_KEYS = new Set(['Name', 'Pattern', 'PatternVersion', 'Controls', 'Type', 'i:type', 'xmlns', 'xmlns:i', 'FormControlExtension']);
+
+/**
+ * Every simple-valued child element of a control or the Design. The platform's
+ * pattern definitions require values for some 70 properties (ViewEditMode,
+ * Columns, FrameType, …); a fixed short list would miss the ones it checks.
+ */
+function scalarProperties(node: any): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of Object.keys(node)) {
+    if (NON_PROPERTY_KEYS.has(key) || key.startsWith('xmlns')) continue;
+    // An explicitly empty element (<Text></Text>) is a value, not an absence:
+    // the metamodel default can differ (StaticText.Text defaults to "Text").
+    if (node[key] === '') {
+      out[key] = '';
+      continue;
+    }
+    const value = asString(node[key]);
+    if (value !== undefined) out[key] = value;
+  }
+  for (const prop of PROPERTY_KEYS) {
+    const value = asString(node[prop]);
+    if (value !== undefined) out[prop] = value;
+  }
+  return out;
+}
 
 function asString(value: unknown): string | undefined {
   if (typeof value === 'string' && value.length > 0) return value;
@@ -157,16 +191,18 @@ function extractControlNode(node: any): FormControlNode | null {
     children: [],
   };
   if (axType) control.axType = axType;
+  const extension = node.FormControlExtension;
+  if (extension && typeof extension === 'object' && extension['i:nil'] !== 'true') {
+    const extName = asString(extension.Name);
+    if (extName) control.extension = extName;
+  }
 
   const pattern = asString(node.Pattern);
   if (pattern) control.pattern = pattern;
   const patternVersion = asString(node.PatternVersion);
   if (patternVersion) control.patternVersion = patternVersion;
 
-  for (const prop of PROPERTY_KEYS) {
-    const value = asString(node[prop]);
-    if (value !== undefined) control.properties[prop] = value;
-  }
+  control.properties = scalarProperties(node);
 
   // Child controls live under <Controls><AxFormControl>…
   const controlsNode = node.Controls;
@@ -192,10 +228,7 @@ export function walkFormDesign(designNode: any): FormDesignInfo {
   design.patternVersion = asString(designNode.PatternVersion);
   design.style = asString(designNode.Style);
 
-  for (const prop of PROPERTY_KEYS) {
-    const value = asString(designNode[prop]);
-    if (value !== undefined) design.properties[prop] = value;
-  }
+  design.properties = scalarProperties(designNode);
 
   const controlsNode = designNode.Controls;
   if (controlsNode && typeof controlsNode === 'object') {

@@ -2042,7 +2042,7 @@ export async function handleCreateD365File(
         `back with get_object_info before building on it.\n`
       : '';
 
-    // Form pattern gate: structural pattern violations (FP001-FP005, FP007)
+    // Form pattern gate: what the compiler rejects (FP001-FP005, FP007, FP011)
     // block the write when FORM_PATTERN_ENFORCE is enabled (default).
     // Recommendations are appended to the success message instead.
     let formPatternWarnings = '';

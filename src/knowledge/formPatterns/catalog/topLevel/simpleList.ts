@@ -10,7 +10,7 @@ export const simpleList: FormPatternSpec = {
   id: 'SimpleList',
   xmlName: 'SimpleList',
   displayName: 'Simple List',
-  versions: ['1.1', '1.0'],
+  versions: ['1.1', 'UX7 1.0'],
   purpose:
     'Maintains data for simple entities as a single editable grid with fewer than ~10 fields per record. ' +
     'The default pattern for setup/group tables.',
@@ -27,7 +27,8 @@ export const simpleList: FormPatternSpec = {
   referenceForms: ['CustGroup', 'VendGroup', 'CustClassificationGroup'],
   designProperties: { Style: 'SimpleList' },
   requiresDataSource: 'one',
-  root: [actionPane('required'), filterGroup('optional'), mainGrid('required')],
+  // SimpleList 1.1 requires the custom filter group (part CustomFilterGroup, Count 1).
+  root: [actionPane('required'), filterGroup('required'), mainGrid('required')],
   extraRootChildren: 'none',
   lifecycleGuidance: [
     'Usually no form methods are needed — the grid binds straight to the datasource.',

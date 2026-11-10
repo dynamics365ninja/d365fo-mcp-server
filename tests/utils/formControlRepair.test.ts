@@ -41,6 +41,7 @@ public class TestRepairForm extends FormRun
 \t\t\t\t<FormControlExtension i:nil="true" />
 \t\t\t\t<Controls />
 \t\t\t\t<DataSource>MyTable</DataSource>
+\t\t\t\t<Style>Tabular</Style>
 \t\t\t</AxFormControl>
 \t\t</Controls>
 \t</Design>

@@ -65,7 +65,7 @@ Forms are the hardest artifact to generate correctly — each pattern dictates r
 flowchart LR
     A["object_patterns<br/>(domain=form, action=analyze)"] --> B["object_patterns<br/>(domain=form, action=spec)"]
     B --> C["generate_object<br/>objectType=form, cloneFrom"]
-    C --> D["object_patterns<br/>(domain=form, action=validate) FP001–FP010"]
+    C --> D["object_patterns<br/>(domain=form, action=validate) FP001–FP011"]
     D -->|clean| E["d365fo_file<br/>(action=create) write + project"]
     D -->|errors| C
 ```

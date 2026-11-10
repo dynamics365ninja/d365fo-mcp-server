@@ -8,9 +8,12 @@ import { filterGroup, mainGrid } from './common.js';
 
 export const lookupBasic: FormPatternSpec = {
   id: 'Lookup',
-  xmlName: 'Lookup',
-  displayName: 'Lookup - Basic',
-  versions: ['1.2', '1.1', '1.0'],
+  // The platform has no "Lookup" pattern: the basic lookup (optional custom
+  // filter group, a grid/tree/list, optional action buttons) is LookupGridOnly.
+  xmlName: 'LookupGridOnly',
+  xmlAliases: ['Lookup'],
+  displayName: 'Lookup - Basic / Grid Only',
+  versions: ['1.1', 'UX7 1.0'],
   purpose:
     'Form used as a lookup: a grid (or tree) optimized for picking a value, with optional ' +
     'filters or buttons.',
@@ -35,28 +38,12 @@ export const lookupBasic: FormPatternSpec = {
   ],
 };
 
-export const lookupGridOnly: FormPatternSpec = {
-  id: 'LookupGridOnly',
-  xmlName: 'LookupGridOnly',
-  variantOf: 'Lookup',
-  displayName: 'Lookup - Grid Only',
-  versions: ['1.2', '1.1', '1.0'],
-  purpose: 'Simplified lookup with only a grid (no filter bar or extra buttons) — the most common lookup variant.',
-  whenToUse: ['Auto-lookup replacement where no filter bar is needed'],
-  whenNotToUse: ['Filter bar needed → Lookup - Basic'],
-  referenceForms: ['CurrencyCodeLookup'],
-  designProperties: { Style: 'Lookup' },
-  requiresDataSource: 'one',
-  root: [mainGrid('required')],
-  extraRootChildren: 'any',
-};
-
 export const lookupTab: FormPatternSpec = {
   id: 'LookupTab',
   xmlName: 'LookupTab',
   variantOf: 'Lookup',
   displayName: 'Lookup w/ Tabs',
-  versions: ['1.2', '1.1', '1.0'],
+  versions: ['1.0'],
   purpose: 'Lookup with multiple tab pages offering alternative views (e.g. grid view + tree view) for picking a value.',
   whenToUse: ['Lookup that offers multiple selection modes or views in tabs'],
   whenNotToUse: ['Single grid view → Lookup - Grid Only'],
@@ -80,7 +67,7 @@ export const lookupPreview: FormPatternSpec = {
   xmlName: 'LookupPreview',
   variantOf: 'Lookup',
   displayName: 'Lookup w/ Preview',
-  versions: ['1.2', '1.1', '1.0'],
+  versions: ['1.0'],
   purpose: 'Lookup with a grid on the left and a preview/details pane on the right for the selected record.',
   whenToUse: ['Lookup where users need to see record details before confirming their selection'],
   whenNotToUse: ['No preview needed → Lookup - Grid Only'],

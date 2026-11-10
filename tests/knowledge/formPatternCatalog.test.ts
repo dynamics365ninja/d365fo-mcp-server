@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { currentPlatformPattern } from '../../src/knowledge/formPatterns/platform';
 import {
   FORM_PATTERN_CATALOG,
   resolvePattern,
@@ -71,27 +72,13 @@ describe('catalog integrity', () => {
     }
   });
 
-  it('versions are sorted newest-first', () => {
-    const numeric = (v: string) => {
-      // Strip non-numeric prefixes like 'UX7 ' before parsing
-      const clean = v.replace(/^[^0-9]+/, '');
-      return clean.split('.').map((n) => parseInt(n, 10) || 0);
-    };
-    const isNewerOrEqual = (a: string, b: string) => {
-      const pa = numeric(a); const pb = numeric(b);
-      for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-        const d = (pa[i] ?? 0) - (pb[i] ?? 0);
-        if (d !== 0) return d > 0;
-      }
-      return true;
-    };
+  it('lists the current platform version first', () => {
+    // "Newest" is not numeric: "UX7 1.0" predates "1.1", and FillText's only
+    // version is "UX7 1.0". The platform definitions decide (formPatternPlatform.test.ts
+    // pins the whole list); generators emit versions[0].
     for (const spec of [...FORM_PATTERN_CATALOG.patterns, ...FORM_PATTERN_CATALOG.subPatterns]) {
-      for (let i = 1; i < spec.versions.length; i++) {
-        expect(
-          isNewerOrEqual(spec.versions[i - 1], spec.versions[i]),
-          `${spec.id}: ${spec.versions.join(',')}`,
-        ).toBe(true);
-      }
+      if (spec.versions.length === 0) continue;
+      expect(spec.versions[0], spec.id).toBe(currentPlatformPattern(spec.xmlName)?.version);
     }
   });
 
@@ -165,9 +152,9 @@ describe('subPatternsFor', () => {
   });
 
   it('respects parentPatterns restriction', () => {
-    const inSld = subPatternsFor('Group', 'SimpleListDetails').map((sp) => sp.id);
-    expect(inSld).toContain('SidePanel');
-    const inSimpleList = subPatternsFor('Group', 'SimpleList').map((sp) => sp.id);
-    expect(inSimpleList).not.toContain('SidePanel');
+    const inWorkspace = subPatternsFor('TabPage', 'WorkspaceOperational').map((sp) => sp.id);
+    expect(inWorkspace).toContain('WorkspaceSectionTiles');
+    const inSimpleList = subPatternsFor('TabPage', 'SimpleList').map((sp) => sp.id);
+    expect(inSimpleList).not.toContain('WorkspaceSectionTiles');
   });
 });

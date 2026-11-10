@@ -42,7 +42,7 @@ export const simpleListDetailsListGrid: FormPatternSpec = {
   xmlName: 'SimpleListDetails',
   xmlAliases: ['SimpleListDetails-Grid'],
   displayName: 'Simple List & Details - List Grid',
-  versions: ['1.4', '1.3', '1.2', '1.1', '1.0'],
+  versions: ['1.3', '1.2', '1.1', 'UX7 1.0'],
   purpose:
     'Maintains data for entities of medium complexity: a left navigation list (2-3 fields) ' +
     'plus a right details panel. The default Simple List & Details variant.',
@@ -77,7 +77,7 @@ export const simpleListDetailsTree: FormPatternSpec = {
   xmlName: 'SimpleListDetails-Tree',
   variantOf: 'SimpleListDetails',
   displayName: 'Simple List & Details - Tree',
-  versions: ['1.3', '1.2', '1.1', '1.0'],
+  versions: ['1.3', '1.2', '1.1', 'UX7 1.0'],
   purpose:
     'Simple List & Details variant where the left navigation panel contains a tree control ' +
     'instead of a flat grid (for hierarchical entities).',

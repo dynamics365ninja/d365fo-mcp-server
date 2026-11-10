@@ -28,7 +28,7 @@ export const detailsMaster: FormPatternSpec = {
   id: 'DetailsMaster',
   xmlName: 'DetailsMaster',
   displayName: 'Details Master',
-  versions: ['1.4', '1.3', '1.1', '1.0'],
+  versions: ['1.4', '1.3', 'UX7 1.2', 'UX7 1.1', 'UX7 1.0'],
   purpose:
     'Displays the details of a complex master entity on FastTabs, with a grid view and a details view ' +
     '(e.g. customers, vendors, products).',
@@ -69,7 +69,7 @@ export const detailsMasterTabs: FormPatternSpec = {
   xmlName: 'DetailsMasterTabs',
   variantOf: 'DetailsMaster',
   displayName: 'Details Master w/ Standard Tabs',
-  versions: ['1.4', '1.0'],
+  versions: ['1.4', '1.3', 'UX7 1.2'],
   purpose:
     'Details Master variant for forms with a large number of FastTabs (>15) grouped into ' +
     'categories using standard tabs.',

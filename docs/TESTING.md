@@ -23,7 +23,7 @@ npx tsx tests/bridge-e2e.ts             # manual bridge E2E (Windows D365FO VM o
 | `tests/utils/` | utilities: config manager, templates, cloner, dedup, provenance, staleness, tool inventory |
 | `tests/golden/` | **quality-gate suites** — lock the grounding chain (`quality-gate.test.ts`) and the form-pattern write gate (`form-pattern-gate.test.ts`): correct artifacts must pass, hallucinated/violating variants must be rejected before any write |
 | `tests/knowledge/` | two gates on the form-pattern catalog (unique names, resolving references, version ordering) **and three on `KNOWLEDGE_BASE`**: `entryIntegrity` (entry shape, `related:` ids resolve), `exampleValidation` (every example passes `validate_code`), `apiSymbols` (every named AOT type resolves against a VM-captured snapshot). See [KNOWLEDGE_AUTHORING.md](KNOWLEDGE_AUTHORING.md) |
-| `tests/validation/` | form pattern validator rules FP001–FP010 |
+| `tests/validation/` | form pattern validator rules FP001–FP011, held to the platform PatternAnalyzer verdicts in `tests/fixtures/formPatterns` |
 | `tests/metadata/` | XML parser + pattern miner + SQLite indexing against fixture forms |
 | `tests/bridge/` | bridge client behavior (debounced refresh); `bridge-e2e.ts` is manual |
 
