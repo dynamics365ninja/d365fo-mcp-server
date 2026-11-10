@@ -182,6 +182,12 @@ those are called out explicitly below.
   `openWorldHint: false`.
 
 ### Fixed
+- **First-start indexing waits for its worker to finish closing the index.** The server
+  terminated the indexing worker the moment it reported its result. The worker closes its
+  database after it reports (the step that folds the write-ahead log into the index file
+  the server then opens), so that close and the worker's last console lines could be cut
+  off. The worker is now left to exit on its own and the result is handed over when it
+  has. A worker that does not exit within a minute is terminated as before.
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know
   neither property on a menu item, and a Staging or TempDB table kept Visual Studio's
