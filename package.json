@@ -86,6 +86,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@azure/msal-node": "^7.1.1",
     "@azure/storage-blob": "^12.31.0",
     "@clack/prompts": "^1.6.0",
     "@modelcontextprotocol/sdk": "^1.27.0",

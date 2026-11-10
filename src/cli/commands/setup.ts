@@ -208,6 +208,8 @@ async function configureEnvironment(store: SettingsStore, scenario: Scenario): P
     } else {
       p.log.info('No XPP configs found — the server will auto-detect at runtime.');
     }
+    // Optional: only run_systest_class needs it, to reach the cloud runtime.
+    await askSetting(store, setting('environment.dataverseUrl'));
     await configureSqlForEnvironment(store, 'ude');
     return 'ude';
   }
