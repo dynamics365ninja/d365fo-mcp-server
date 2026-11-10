@@ -29,6 +29,22 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`d365fo_file` create and modify now warn when something you asked for is not in the
+  saved file.** A write could answer ✅ while the platform or a writer dropped part of the
+  request, for example a field or method the reply said was added, or a data entity's
+  staging table. That surfaced much later as a build or data-management error naming
+  something else. After a successful write the tool now reads the file back and compares
+  it with the request, with no bridge round trip and for every object type, including data
+  entities and their extensions, which had no read-back before. Modify checks
+  `add-field`, `add-method`, `add-index`, `add-field-group`, `add-relation` and
+  `add-enum-value` (the named child must be there), their `remove-` counterparts (it must
+  be gone) and `modify-property` (a top-level property must hold the value). Create checks
+  the scalar `properties` you passed on every type except tables, which keep their own
+  reconciliation. A miss is listed in one `⚠️ Read-back` block at the end of the reply. The
+  write is not rolled back and the call is still a success, so re-read the object and
+  apply the listed item again. The check only reports what is certain: a property the
+  serializer may omit as a default, a label given as text, a form control property and a
+  control or data source method are not compared. Nothing to configure. (#1161)
 - **`d365fo_file(action="modify", operation="modify-property")` sets OperationalDomain and
   SubscriberAccessLevel on existing tables and menu items.** Menu items had no writer for
   either (the bridge's setter has no case for them), and SubscriberAccessLevel holds child
