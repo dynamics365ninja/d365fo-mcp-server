@@ -47,8 +47,9 @@ those are called out explicitly below.
   Mandatory=Yes (BPErrorTablePrimaryKeyEditable / …NotMandatory, staging tables
   included), puts a field that is in no field group into AutoReport and fills an empty
   AutoReport (BPErrorTableFieldNotInFieldGroup, BPErrorTableMissingGroupAutoReport),
-  adds the table relation a field's EDT describes, TempDB tables included
-  (BPErrorEDTNotMigrated, BPUpgradeMetadataEDTRelation), and gives every relation
+  adds the table relation a field's EDT describes, TempDB tables included, except on the
+  key field the EDT itself points at (BPErrorEDTNotMigrated,
+  BPUpgradeMetadataEDTRelation), and gives every relation
   OnDelete (default Restricted, or `relations[].onDelete`) plus Cardinality,
   RelatedTableCardinality and RelationshipType when missing (BPCheckMissingDeleteActions,
   BPErrorTableRelationshipPropertiesCompleteness). An explicit AllowEdit=Yes or
