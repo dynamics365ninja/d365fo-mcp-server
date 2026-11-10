@@ -101,11 +101,10 @@ export const CreateLabelArgsSchema = z.object({
     .describe(
       'Restrict which language .label.txt files are written/created. ' +
         'When provided, the label is created ONLY for these locales (e.g. ["en-US"] for an ' +
-        'English-only customization), creating the folders if needed. This avoids leaking the ' +
-        'label into locales that exist only because OTHER label files in the same model ship ' +
-        'them (LabelResources is shared across the whole model). ' +
-        'When omitted or empty, the label is written to every language folder already present ' +
-        'in the model (default behavior).',
+        'English-only customization), creating the folders if needed. ' +
+        'When omitted or empty, the label is written to every language the label file already ' +
+        'has (its own .label.txt or descriptor), plus the supplied translations. A folder that ' +
+        'only OTHER label files of the model use is not one of its languages.',
     ),
   description: z
     .string()
@@ -990,8 +989,7 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
     };
 
     // 2. Discover the language folders that already exist in the model.
-    //    NOTE: LabelResources/ is shared by EVERY label file in the model, so this lists
-    //    locales owned by sibling label files too. The `languages` arg scopes the writes.
+    //    Only this file's own languages count (ownsLanguage below).
     // `en-US` and `en_US` are one folder: list it once, or it is written and then
     // reported as already existing.
     // The FIRST spelling is kept, as in translationsByLocale (a Map built from pairs keeps the last).
@@ -1000,12 +998,30 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       if (!requestedLanguages.some(r => r.toLowerCase() === l.toLowerCase())) requestedLanguages.push(l);
     }
 
-    let discoveredLanguages: string[] = [];
+    // LabelResources/ holds the folders of EVERY label file in the model, so a folder is
+    // not a language of THIS file: a sibling's `ja` folder made create add
+    // `<File>.ja.label.txt` and `<File>_ja.xml` to a file that never had Japanese.
+    // A language is the file's own when its .label.txt or its descriptor exists.
+    // All folders still decide the on-disk casing (`en-us` vs `en-US`) of a new language.
+    let modelFolders: string[] = [];
     try {
-      discoveredLanguages = await fs.readdir(labelResourcesDir);
+      modelFolders = await fs.readdir(labelResourcesDir);
     } catch {
       // LabelResources dir does not exist yet
     }
+    const folderCasing = new Map(modelFolders.map(l => [l.toLowerCase(), l]));
+    const onDisk = (lang: string) => folderCasing.get(lang.toLowerCase()) ?? lang;
+    const ownsLanguage = async (lang: string) => {
+      for (const p of [
+        path.join(labelResourcesDir, lang, `${labelFileId}.${lang}.label.txt`),
+        path.join(axLabelDir, `${labelFileId}_${lang}.xml`),
+      ]) {
+        try { await fs.access(p); return true; } catch { /* try the next */ }
+      }
+      return false;
+    };
+    const discoveredLanguages: string[] = [];
+    for (const lang of modelFolders) if (await ownsLanguage(lang)) discoveredLanguages.push(lang);
 
     // Helper: create directory structure + XML descriptor for a single new language
     const createLangDirectory = async (lang: string): Promise<void> => {
@@ -1026,7 +1042,7 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
     // 3. Determine the target language set and create any missing folders.
     //    A brand-new label file (no locales at all anywhere in the model) is still guarded
     //    by createLabelFileIfMissing regardless of which mode we're in.
-    const labelFileMissing = discoveredLanguages.length === 0;
+    const labelFileMissing = modelFolders.length === 0;
     if (labelFileMissing && !createLabelFileIfMissing) {
       return {
         content: [
@@ -1091,8 +1107,8 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       const discoveredMap = new Map(discoveredLanguages.map(l => [l.toLowerCase(), l]));
       for (const lang of requestedLanguages) {
         if (!discoveredMap.has(lang.toLowerCase())) {
-          await createLangDirectory(lang);
-          discoveredMap.set(lang.toLowerCase(), lang);
+          await createLangDirectory(onDisk(lang));
+          discoveredMap.set(lang.toLowerCase(), onDisk(lang));
         }
       }
       // Resolve each requested locale to its actual on-disk name; fall back to the
@@ -1106,12 +1122,12 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
         // `it-IT` and `IT-it` are one locale: one folder, one descriptor.
         if (seeded.has(lang.toLowerCase())) continue;
         seeded.add(lang.toLowerCase());
-        await createLangDirectory(lang);
-        existingLanguages.push(lang);
+        await createLangDirectory(onDisk(lang));
+        existingLanguages.push(onDisk(lang));
       }
     } else {
-      // No explicit scope — default behavior: write to every language folder that already
-      // exists in the model, plus any new languages supplied via translations.
+      // No explicit scope — default behavior: write to every language the label file
+      // already has, plus any new languages supplied via translations.
       existingLanguages = [...discoveredLanguages];
       const existingSet = new Set(existingLanguages.map(l => l.toLowerCase()));
       // A supplied regional translation that already fills an existing bare folder
@@ -1126,8 +1142,8 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       for (const [lang] of translationMap) {
         const key = lang.toLowerCase();
         if (existingSet.has(key) || consumedByRegional.has(key)) continue;
-        await createLangDirectory(lang);
-        existingLanguages.push(lang);
+        await createLangDirectory(onDisk(lang));
+        existingLanguages.push(onDisk(lang));
         existingSet.add(key);
       }
     }

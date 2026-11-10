@@ -1338,8 +1338,8 @@ async function runModify(
 
     // Decode XML entities in X++ payloads. An AI that copied entity-encoded code (an
     // SSRS <Text> block, or escaped doc comments like "/// &lt;summary&gt;") sends
-    // &lt;/&gt;/&amp;/&quot;/&apos;; the serializer would otherwise write them literally
-    // into the source. No-op for clean X++ — literal <, >, && and " are not entities.
+    // &lt;/&gt;/&amp;/&quot;/&apos;. Real X++ round-trips unchanged: a doc comment's
+    // P&amp;L and markup in string literals stay as written (see utils/xmlEscape.ts).
     if (args.sourceCode) args.sourceCode = decodeXmlEntitiesFromXppSource(args.sourceCode);
     if ((args as any).methodCode) (args as any).methodCode = decodeXmlEntitiesFromXppSource((args as any).methodCode);
     if (args.newCode) args.newCode = decodeXmlEntitiesFromXppSource(args.newCode);
@@ -2356,7 +2356,7 @@ async function runModify(
         break;
       }
       case 'modify-field': {
-        if (args.fieldName) bridgeResult = await modifyFieldOp(context.bridge, objectName, actualFilePath, args as any);
+        if (args.fieldName) bridgeResult = await modifyFieldOp(context.bridge, objectName, actualFilePath, args as any, symbolIndex);
         break;
       }
       case 'rename-field': {

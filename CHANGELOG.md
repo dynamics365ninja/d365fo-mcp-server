@@ -100,6 +100,14 @@ those are called out explicitly below.
   and refuses a name listed twice. A modify of a missing role or duty extension whose
   standard base is in the index now offers the one `create` call that does it, and the
   refusal to modify a standard role or duty names the extension types.
+- **`modify-field` turns a data entity's mapped field into a computed field.**
+  `computedFieldMethod` rewrites the entity's own mapped field as
+  `AxDataEntityViewUnmappedField<Type>` (type, EDT and enum read from the source
+  table field; system fields such as `CreatedDateTime` known without it) and writes
+  its static method in the same edit: `sourceCode` when given, an existing method of
+  that name, or a generated `SysComputedColumn::returnField` over the field it was
+  mapped to. A key field is refused. This used to take a rewrite of the whole entity
+  with `create` + `overwrite`.
 - **Form pattern oracles.** `npm run catalog:form-patterns` regenerates the platform
   definitions and property defaults from a local D365FO install.
   `npm run oracle:form-patterns -- verdicts` runs the platform's `PatternAnalyzer`
@@ -301,6 +309,17 @@ those are called out explicitly below.
   there. It still refuses: the only route remains the user's
   `D365FO_CROSS_MODEL_WRITE_MODELS`. For a shared model the workspace builds on, the
   original case, nothing changes, and with no descriptor found the wording is as before.
+- **`labels(action="create")` writes only the languages the label file has.** Every
+  folder under the model's shared `LabelResources` was treated as a language of the
+  target file, so a sibling label file's `ja` added a `.ja.label.txt` and a
+  descriptor to a file that never had Japanese. Supplied translations and an explicit
+  `languages` scope still add a language.
+- **X++ source round-trips exactly through `add-method`, `replace-code` and `create`.**
+  Every XML entity in the source was decoded, so a doc comment's `P&amp;L` became a
+  bare `&` (malformed XML documentation, BPXmlDocMalformed) and markup in string
+  literals changed. The decode now runs only on a payload that arrived
+  entity-encoded as a whole (no literal angle bracket, and an entity outside any
+  string literal).
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
