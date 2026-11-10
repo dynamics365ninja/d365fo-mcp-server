@@ -1573,6 +1573,17 @@ export function summarizeBpOutput(
   // run_bp_check's caveat that BPErrorUnknownLabel may come from a failed label
   // compile, not from the source: it qualifies the findings below, so it stays.
   const labelCaveat = text.match(/^⚠️ Labels could not be compiled.*$/m)?.[0].trim();
+  // Pipeline parity (bpPipelineParity.ts): which findings are reproduced pipeline rules,
+  // and how many are label false positives. Both change how the counts below are read.
+  const reproduced = findings.filter(f => /^BPCheck(Table|MenuItem)(OperationalDomain|SubscriberAccessLevel)Property/.test(f.moniker ?? '')).length;
+  const reproducedNote = /^Reproduced pipeline rules/m.test(text) && reproduced > 0
+    ? `${reproduced} finding(s) are reproduced pipeline rules (OperationalDomain/SubscriberAccessLevel): this xppbp lacks them, the Azure DevOps build reports them.`
+    : undefined;
+  const labelArtifacts = [...text.matchAll(/^Likely label false positives: (\d+) BPErrorUnknownLabel and (\d+) BPUnusedStrFmtArgument/gm)]
+    .reduce((n, m) => n + Number(m[1]) + Number(m[2]), 0);
+  const labelArtifactNote = labelArtifacts > 0
+    ? `${labelArtifacts} BPErrorUnknownLabel/BPUnusedStrFmtArgument finding(s) name labels that exist in the model's label files: likely false positives, do not create those labels again.`
+    : undefined;
   // xppbp's own tally is the total; the parser recognises only BP-moniker lines
   // (not CodeAnalysis ones, for instance), so its count can be lower.
   const total = (label: string) => [...text.matchAll(new RegExp(`^\\s*${label}\\s*:\\s*(\\d+)\\s*$`, 'gim'))].at(-1)?.[1];
@@ -1583,6 +1594,8 @@ export function summarizeBpOutput(
     '',
     ...(totals ? [`xppbp totals: ${totals}.`] : []),
     ...(labelCaveat ? [labelCaveat] : []),
+    ...(reproducedNote ? [reproducedNote] : []),
+    ...(labelArtifactNote ? [labelArtifactNote] : []),
     `Counted below: ${findings.length} finding(s) the parser recognises (BP rule lines), across ${rules.length} rule(s). ` +
       `The full output (${text.split('\n').length} lines) is too large for a build result` +
       (savedTo ? ` and is saved to: ${savedTo}` : '') +

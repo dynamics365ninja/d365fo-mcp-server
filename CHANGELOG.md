@@ -59,6 +59,22 @@ those are called out explicitly below.
   extends RefRecId. The type takes the field's label and the field drops its copy
   (BPErrorFieldLabelIsCopyOf…). The reply lists every type created. `autoCorrect=false`
   writes the fields as passed. Nothing is created when the symbol index cannot be read.
+- **`run_bp_check` (and `build_d365fo_project` with `bpCheck: true`) reports the
+  OperationalDomain and SubscriberAccessLevel warnings the Azure DevOps build reports.** The
+  build pipeline restores newer Microsoft build packages whose BP rules check both properties
+  on tables and menu items. The xppbp on a UDE has no such rule, so a clean local check met
+  them for the first time in the pull request build. The check now adds them, with the
+  pipeline's monikers and messages, under a "Reproduced pipeline rules (not reported by this
+  xppbp)" heading, as detail lines the findings section and the build summary count. They
+  are added only when xppbp reported none of them and its rule assemblies (`bin\BPExtensions`)
+  do not name them, so a platform that ships the real rules keeps its own answer. A whole-model
+  run checks every table and menu item of the model, a targeted run only a requested table or
+  menu item. Checked against an ISV model's pipeline log: 646 of 646 warnings, same object,
+  rule and message, none extra.
+- **Label false positives are marked.** A `BPErrorUnknownLabel` for a label that exists in the
+  model's label files, and a `BPUnusedStrFmtArgument` in the same method on a placeholder that
+  label has, get a "Likely label false positives" note. xppbp reports them when it cannot read
+  the compiled label assembly, so the note tells the caller not to create the label again.
 
 ### Fixed
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
