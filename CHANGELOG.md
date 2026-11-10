@@ -59,6 +59,23 @@ those are called out explicitly below.
   extends RefRecId. The type takes the field's label and the field drops its copy
   (BPErrorFieldLabelIsCopyOf…). The reply lists every type created. `autoCorrect=false`
   writes the fields as passed. Nothing is created when the symbol index cannot be read.
+- **`run_bp_check` (and `build_d365fo_project` with `bpCheck: true`) reports the
+  OperationalDomain and SubscriberAccessLevel warnings the Azure DevOps build reports.** The
+  build pipeline restores newer Microsoft build packages whose BP rules check both properties
+  on tables and menu items. The xppbp on a UDE has no such rule, so a clean local check met
+  them for the first time in the pull request build. The check now adds them, with the
+  pipeline's monikers and messages, under a "Reproduced pipeline rules (not reported by this
+  xppbp)" heading, as detail lines the findings section and the build summary count. They
+  are added only when xppbp reported none of them and its rule assemblies (`bin\BPExtensions`)
+  do not name them, so a platform that ships the real rules keeps its own answer. A whole-model
+  run checks every table and menu item of the model, a targeted run only a requested table or
+  menu item. A finding in the model's suppression list is left out, as the pipeline leaves it
+  out. Checked against an ISV model's pipeline log: 646 of 646 warnings, same object, rule and
+  message, none extra.
+- **Label false positives are marked.** A `BPErrorUnknownLabel` for a label that exists in the
+  model's label files, and a `BPUnusedStrFmtArgument` in the same method on a placeholder that
+  label has, get a "Likely label false positives" note. xppbp reports them when it cannot read
+  the compiled label assembly, so the note tells the caller not to create the label again.
 - **`run_systest_class` runs tests on UDE, in the environment's cloud runtime.** A UDE
   machine has no local AOS, so SysTestConsole cannot run there; the tool now sends the
   tests where Visual Studio sends them, through the Dataverse environment the UDE belongs
@@ -344,10 +361,30 @@ those are called out explicitly below.
   the Workspace template adds the required related-links section, the DetailsMaster
   template always emits the required header title control, and the pattern
   expander writes control elements in canonical order and the Design Style the
-  platform requires. The expander still builds platform-rejected forms for 22
-  long-tail patterns. `generate_smart_form` self-tests every expansion and falls
-  back to a template or clone for those, and the expander test lists them with
-  `it.fails`.
+  platform requires.
+- **The pattern expander builds from the platform definition, so every long-tail
+  pattern gets a deterministic scaffold.** `generate_smart_form` expands patterns
+  without a hand-written template through `expandPatternToXml`, which walked the
+  curated catalog structure and built forms the platform rejects for 22 patterns
+  (the Dialog, DropDialog, Lookup, FormPart, SimpleDetails and workspace variants,
+  `Wizard`, `AdvancedSelection`), so those fell back to a template or clone. It now
+  reads the platform definition of the declared pattern version: one control per
+  required part in definition order (a OneOf only when none of its alternatives is
+  optional), every Equals property rule the metamodel default does not already
+  meet, a caption for a Caption or Text that must not be empty, a grid's
+  DefaultAction pointed at the sibling default-action button, and for a
+  sub-pattern part the first named sub-pattern (FieldsFieldGroups when listed),
+  declared and expanded in turn. A `$Button` part whose rule sets Command becomes a
+  CommandButton, a QuickFilter targets the emitted grid. All catalog patterns the
+  platform defines now expand validator-clean, and the expander test's gap list is
+  empty. The datasource, grid-field and caption behaviour is unchanged.
+  `npm run oracle:form-expansions` (Windows) runs every expansion through the
+  platform's own PatternAnalyzer, with a negative control that must fail: all 27
+  are accepted. It found what the validator cannot see, now fixed: a plain
+  extension control's WidthMode written after its FormControlExtension (the
+  deserializer drops it), duplicate column names when a pattern has two grids, a
+  QuickFilter aimed at the first grid of the form instead of its own, and an empty
+  `<Controls />` on buttons and fields, which shipped forms never write.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no

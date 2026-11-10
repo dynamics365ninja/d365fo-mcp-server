@@ -9,6 +9,8 @@ import { lookupSymbolsNocase, lookupSymbolNocase, type DbLike } from '../../util
 import { compileModelLabels } from '../write/compileLabels.js';
 import { buildFreshness, type BuildFreshnessStatus } from '../../utils/buildMarker.js';
 import { validateMoniker, BP_MONIKER_CATALOG } from '../../knowledge/bpMonikers/index.js';
+import { pipelineParitySections } from './bpPipelineParity.js';
+import { formDataSourcesAllLocal } from '../xml/formDataSourceDomain.js';
 
 const execFileAsync = util.promisify(execFile);
 
@@ -763,6 +765,23 @@ export const runBpCheckTool = async (params: any, context: any) => {
       };
     }
 
+    // Pipeline parity (bpPipelineParity.ts): the OperationalDomain/SubscriberAccessLevel
+    // rules the pipeline's newer BP packages have and this xppbp lacks go INTO the output,
+    // as detail lines, so every reader below (verdict, findings section, build summary)
+    // counts them. Label false positives get a note after the findings.
+    const parity = await pipelineParitySections({
+      frameworkPath,
+      metadataPath,
+      modelName,
+      targets: runTargets,
+      outputs: combinedByTarget,
+      skip: combinedByTarget.map((o, i) => !!describeNonRun(o, runTargets[i]?.name)),
+      indexFormAllLocal: db ? form => formDataSourcesAllLocal(form, db) : undefined,
+      labelsCompiled: labelResult.success,
+      parse: parseBpFindings,
+    });
+    for (let i = 0; i < combinedByTarget.length; i++) combinedByTarget[i] += parity.appended[i];
+
     // xppbp emits either "BPError..."/XML <Diagnostic severity="error"> or
     // "BestPractices Warning/Error: ..." — both count as a violation.
     const hasIssues = (output: string) =>
@@ -814,7 +833,8 @@ export const runBpCheckTool = async (params: any, context: any) => {
             scopeNote +
             labelNote +
             `\n\n${combined || '(no output)'}` +
-            renderFindingsSection(combined)
+            renderFindingsSection(combined) +
+            parity.notes[0]
         }]
       };
     }
@@ -839,7 +859,8 @@ export const runBpCheckTool = async (params: any, context: any) => {
         `── ${selector(target)} ── ${hasIssues(combined) ? '⚠️ issues' : '✅ clean'}` +
         (target ? describeScope(target.name, combined) : '') +
         `\n${body || '(no findings)'}` +
-        renderFindingsSection(combined)
+        renderFindingsSection(combined) +
+        parity.notes[i]
       );
     });
 
