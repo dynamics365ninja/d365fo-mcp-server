@@ -80,6 +80,50 @@ export interface ExtensionMetadataRecord {
 }
 
 /**
+ * How many read-only connections the index opens when READ_POOL_SIZE is not set.
+ *
+ * One. The SQLite driver is synchronous and every tool runs on the main thread,
+ * so there is never more than one read in flight: a second and third connection
+ * add no concurrency, only a second and third page cache, statement cache and
+ * FTS state for the same work, each warmed a third as often.
+ *
+ * It stays a connection of its own rather than the writer, because a separate
+ * connection reads the last committed snapshot while the writer has a
+ * transaction open.
+ */
+export const DEFAULT_READ_POOL_SIZE = 1;
+
+/**
+ * Page-cache budget for the read connections together, in KiB (128 MB).
+ *
+ * The symbols file is larger than the 1 GiB mmap window, so a scan outside the
+ * window lives on this cache. Three connections at 32 MB each ran the same
+ * scan in 630 to 910 ms where one connection with 256 MB took 100 to 130 ms.
+ * 128 MB on one connection is slightly more than the old three pools together
+ * (96 MB), and the six labels connections that went with them are gone.
+ */
+export const READ_CACHE_BUDGET_KIB = 128_000;
+
+/** The per-connection page cache before this budget existed. Never go below it. */
+const MIN_READ_CACHE_KIB = 32_000;
+
+/** READ_POOL_SIZE, clamped to 1-8. Unset, empty or not a number means the default. */
+export function readPoolSizeFromEnv(env: NodeJS.ProcessEnv = process.env): number {
+  const parsed = parseInt(env.READ_POOL_SIZE || '', 10);
+  const wanted = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_READ_POOL_SIZE;
+  return Math.min(8, Math.max(1, wanted));
+}
+
+/**
+ * The budget split across the pool, so asking for more connections does not
+ * multiply the memory. Floored at the old 32 MB so an override is never worse
+ * off per connection than it was.
+ */
+export function readCacheKibPerConnection(poolSize: number): number {
+  return Math.max(MIN_READ_CACHE_KIB, Math.floor(READ_CACHE_BUDGET_KIB / Math.max(1, poolSize)));
+}
+
+/**
  * Construction-time switches for the deferred file_path index builds.
  *
  * The defaults describe the long-running server: build in the background, treat
@@ -323,11 +367,11 @@ export class XppSymbolIndex {
   // answer is constant per model within a run. Cleared by setNonMicrosoftModels().
   private mineableModelCache: Map<string, boolean> = new Map();
 
-  // Read-only connection pool: WAL mode allows N readers + 1 writer without
-  // blocking each other. Pool size: READ_POOL_SIZE env var (default 3, clamped 1-8).
+  // Read-only connections to the symbols database. One by default — see
+  // DEFAULT_READ_POOL_SIZE. READ_POOL_SIZE overrides the count (clamped 1-8).
   // Not used for :memory: databases (each connection would be a separate empty DB).
+  // There is no labels counterpart: every label query runs on labelsDb.
   private readPool: Database[] = [];
-  private labelsReadPool: Database[] = [];
   private readPoolRR = 0;
   // Symbol-count scans are expensive (full index scan of 1M+ rows, 30-60 s
   // cold) — memoize the result and compute it off-thread (see getSymbolCounts).
@@ -424,36 +468,27 @@ export class XppSymbolIndex {
 
     // Skip pool for :memory: — each new connection would be a separate empty DB.
     if (dbPath !== ':memory:') {
-      const poolSize = Math.min(8, Math.max(1,
-        parseInt(process.env.READ_POOL_SIZE || '3', 10) || 3
-      ));
+      const poolSize = readPoolSizeFromEnv();
+      const cacheKib = readCacheKibPerConnection(poolSize);
       for (let i = 0; i < poolSize; i++) {
         const rConn = new Database(dbPath, { readonly: true });
         rConn.pragma('busy_timeout = 5000');
-        rConn.pragma('cache_size = -32000'); // 32 MB page cache per connection
+        rConn.pragma(`cache_size = -${cacheKib}`);
         rConn.pragma('temp_store = MEMORY');
         rConn.pragma('mmap_size = 1073741824');
         this.readPool.push(rConn);
-
-        if (labelPath !== ':memory:') {
-          const rLabels = new Database(labelPath, { readonly: true });
-          rLabels.pragma('busy_timeout = 5000');
-          rLabels.pragma('cache_size = -16000'); // 16 MB per labels connection
-          rLabels.pragma('temp_store = MEMORY');
-          rLabels.pragma('mmap_size = 536870912');
-          this.labelsReadPool.push(rLabels);
-        }
       }
     }
   }
 
   /**
-   * Returns the next read-only connection from the pool (round-robin).
-   * Falls back to the main writer connection when the pool is empty
-   * (e.g. :memory: databases used in write-only mode).
+   * Returns the read-only connection (round-robin when READ_POOL_SIZE asked for
+   * more than one). Falls back to the main writer connection when the pool is
+   * empty (e.g. :memory: databases used in write-only mode).
    *
-   * Tool handlers should use this instead of accessing `db` directly
-   * to benefit from read-pool parallelism and per-connection stmt caching.
+   * Tool handlers should use this instead of accessing `db` directly: a separate
+   * connection reads the last committed snapshot while the writer has a
+   * transaction open, and keeps its own page cache and prepared statements.
    */
   getReadDb(): Database {
     if (this.readPool.length === 0) return this.db;
@@ -490,10 +525,6 @@ export class XppSymbolIndex {
       try { conn.close(); } catch { /* ignore */ }
     }
     this.readPool = [];
-    for (const conn of this.labelsReadPool) {
-      try { conn.close(); } catch { /* ignore */ }
-    }
-    this.labelsReadPool = [];
     this.readPoolRR = 0;
   }
 

@@ -173,7 +173,7 @@ Each `symbols` row carries enhanced metadata beyond name/type/path: description,
 
 `property_stats` is a corpus of **Microsoft-authored models only** — it answers "what does the standard platform do", so mining our own or a third-party ISV's objects would feed our own habits back to us as platform convention. The gate is `XppSymbolIndex.isMineableModel()`, fed by the extract manifest (the only source of truth on UDE, where `CUSTOM_MODELS` is empty by design) plus the name-based `isStandardModel()`. Counts are cumulative, so `build-database` also purges rows that fail today's gate; `npm run purge-property-stats [-- --dry-run]` does the same to an existing database without a rebuild.
 
-Read concurrency: WAL mode, read-connection pool with per-connection prepared-statement caches, 256 MB mmap.
+Reads: WAL mode, one read-only connection beside the writer (it reads the last committed snapshot while the writer has a transaction open) with a 128 MB page cache and its own prepared-statement cache, 1 GiB mmap. `READ_POOL_SIZE` opens more connections and splits the cache between them.
 
 ---
 

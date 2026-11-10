@@ -174,6 +174,17 @@ those are called out explicitly below.
   error.
 
 ### Changed
+- **The server opens one read connection to the index instead of three, with a 128 MB
+  page cache, and no longer opens label read connections it never used.** Reads run one
+  at a time (the SQLite driver is synchronous and tools run on the main thread), so three
+  round-robin connections gave no concurrency, only three 32 MB caches, statement caches
+  and full-text states for the same work. The index file is larger than the memory-mapped
+  window, so scans depend on that cache: the same scan took 630 to 910 ms with 32 MB and
+  100 to 130 ms with 256 MB. Three label connections with a 512 MiB mapping each were
+  opened beside them and nothing read from them. The default of `READ_POOL_SIZE`
+  (`server.readPoolSize`) changes from 3 to 1. If you set it yourself it still opens that
+  many connections, and the 128 MB is now split between them (never less than 32 MB
+  each). Remove the setting to get the single connection.
 - **`build_d365fo_project` and `run_systest_class` are no longer marked as closed-world
   tools.** Both reach the UDE environment's cloud runtime (a deployment, tests in the
   cloud), so their annotations drop `openWorldHint: false` and fall back to MCP's
