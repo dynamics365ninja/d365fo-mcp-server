@@ -109,6 +109,17 @@ those are called out explicitly below.
   builder no longer writes it, the create removes the bridge's, and the relation's
   OnDelete=Restricted protects the parent instead. A delete action that names its
   relation, or comes from your own `xmlContent`, is kept.
+- **A build, DB sync, BP check or test run no longer waits 15 minutes and fails on a lock
+  whose owner died, when Windows has given that owner's process id to another process.**
+  An operation lock records its owner's process id, and a lock whose owner is running is
+  never taken over. When the owner died without releasing the lock (a crash, a killed
+  server) and the id went to a new process, the lock looked held, and every caller waited
+  the full `OPERATION_LOCK_TIMEOUT_MS` and failed with "Timeout waiting for filesystem
+  lock". A lock whose owner has not refreshed it for three heartbeats (3 minutes by
+  default) is now checked: if the process with that id started after the lock was taken,
+  it cannot be the owner, and the lock is taken over. A restarted server that got the
+  crashed one's id no longer waits on itself either. While the start time cannot be read,
+  the lock is kept as before.
 
 ## [1.23.0] — 2026-11-05
 
