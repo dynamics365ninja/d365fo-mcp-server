@@ -17,6 +17,10 @@
 
 import { crossModelWriteRefusal } from '../../utils/crossModelWriteGuard.js';
 import { getConfigManager } from '../../utils/configManager.js';
+import { resolveModelDependency } from './modelDependencyResolver.js';
+
+// Re-exported so each writer takes both guard inputs from one place.
+export { resolveModelDependency };
 
 /**
  * The write anchor, resolved the way every guard must resolve it.
@@ -81,6 +85,7 @@ export async function scaffoldWriteCheck(target: ScaffoldWriteTarget) {
     activeModel: anchor,
     toolSwitchedModel: switched,
     action: 'create' as const,
+    dependency: await resolveModelDependency(target.targetModel, anchor),
   };
 }
 

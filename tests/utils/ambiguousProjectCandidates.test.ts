@@ -52,7 +52,7 @@ function makeManager() {
   const proto = Object.getPrototypeOf(getConfigManager());
   const mgr = new proto.constructor('/nonexistent/.mcp.json') as ReturnType<typeof getConfigManager>;
   (mgr as any).config = { servers: {} };
-  (mgr as any).xppConfigLoaded = true;
+  (mgr as any).xppConfigLoad = Promise.resolve();
   (mgr as any).xppConfig = null;
   (mgr as any).runtimeContext = {};
   return mgr;
