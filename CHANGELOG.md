@@ -187,7 +187,8 @@ those are called out explicitly below.
   Every XML entity in the source was decoded, so a doc comment's `P&amp;L` became a
   bare `&` (malformed XML documentation, BPXmlDocMalformed) and markup in string
   literals changed. The decode now runs only on a payload that arrived
-  entity-encoded as a whole (no literal angle bracket, an encoded one present).
+  entity-encoded as a whole (no literal angle bracket, and an entity outside any
+  string literal).
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
