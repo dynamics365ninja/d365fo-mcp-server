@@ -29,6 +29,19 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`d365fo_file` create and modify accept `params.terse` for a short reply.** Every
+  successful write answered with the same confirmations and hints (verified on disk, symbol
+  index updated, added to project, the bridge API line, the next-step and batch hints, and
+  for replace-code an echo of the changed lines). Over a session of a few hundred writes
+  that is a large share of the context. With `params: { terse: true }` (flat `terse: true`
+  works too) the reply keeps the verdict line or lines, the file path, and every warning,
+  error and finding: anything not done, not applied, skipped, ignored, dropped or failed,
+  best-practice and validation findings, auto-correction notes and backup paths. An
+  `operations[]` batch keeps its header and one verdict per operation. Only lines the
+  server knows to be plain confirmations are removed, so a note it does not recognise
+  stays. An error reply is never shortened. Off by default, and without the flag every
+  reply is unchanged. The flag is not in the tool schema. It is documented in
+  `get_knowledge(kind="op-spec", topic="d365fo_file")` next to `bpCheck`. (#1161)
 - **`d365fo_file(action="modify", operation="modify-property")` sets OperationalDomain and
   SubscriberAccessLevel on existing tables and menu items.** Menu items had no writer for
   either (the bridge's setter has no case for them), and SubscriberAccessLevel holds child

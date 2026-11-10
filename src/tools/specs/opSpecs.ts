@@ -228,6 +228,9 @@ const D365FO_FILE_OVERRIDE_PARAMS: Record<string, string> = {
     'instead of spending a round trip on run_bp_check afterwards. Off by default: ' +
     'xppbp needs the compiler and takes seconds, which is the wrong trade for the common case. ' +
     'The write result already carries an on-disk + .rnrproj verification without it.',
+  terse:
+    '[create|modify] true = short reply: verdict line(s), file path, and every warning, error ' +
+    'and finding. Drops the success confirmations, next-step hints and the changed-lines echo.',
 };
 
 /**

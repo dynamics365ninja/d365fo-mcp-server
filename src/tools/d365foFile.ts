@@ -39,6 +39,7 @@ import {
   provisionFieldTypes, renderProvisionNotes, slotFromAddField, slotsFromFieldSpecs,
   type FieldTypeSlot, type ProvisionResult,
 } from './write/fieldTypeProvisioning.js';
+import { isTerse, terseResult } from './write/terseReply.js';
 import { writeFile } from 'fs/promises';
 
 export const D365_FILE_ACTIONS = ['generate', 'create', 'project', 'modify', 'delete', 'undo'] as const;
@@ -558,6 +559,13 @@ export async function d365foFileTool(request: CallToolRequest, context: XppServe
       ? { ...flat, ...params }
       : flat;
 
+  // `terse` is a reply option, not a write parameter: taken out here so no writer
+  // sees it (or reports it as ignored), and applied to the finished create / modify
+  // reply in one pass — see write/terseReply.ts. Unpublished, like bpCheck.
+  const terse = isTerse(rest.terse);
+  delete rest.terse;
+  const done = <T>(result: T): T => (terse ? terseResult(result) : result);
+
   // A write changes the AOT out from under anything prepare aggregated earlier, so
   // the remembered answers stop being answers. Cleared before the write rather than
   // after: a handler that throws half-way has still touched disk.
@@ -595,7 +603,7 @@ export async function d365foFileTool(request: CallToolRequest, context: XppServe
       renderProvisionNotes(types),
     );
 
-    if (!Array.isArray(operations) || operations.length === 0) return created;
+    if (!Array.isArray(operations) || operations.length === 0) return done(created);
     // Never run edits against an object that was not created.
     if (created?.isError) {
       return appendToResult(created,
@@ -605,10 +613,10 @@ export async function d365foFileTool(request: CallToolRequest, context: XppServe
     // actually wrote (prefix normalization included); without it, a chained edit
     // could land on a different object — or on nothing — while reporting success.
     if (!outcome.finalObjectName) {
-      return appendToResult(created,
+      return done(appendToResult(created,
         `\n\n> ${operations.length} operation(s) were NOT attempted: this create did not report the ` +
         `final object name, so the target cannot be established without guessing. Send them as a ` +
-        `separate d365fo_file(action="modify", operations:[…]) call.`);
+        `separate d365fo_file(action="modify", operations:[…]) call.`));
     }
 
     // Make the bridge SEE the new object before the edits run.
@@ -642,13 +650,13 @@ export async function d365foFileTool(request: CallToolRequest, context: XppServe
       objectName: outcome.finalObjectName,
       operations,
     }, context, 'create');
-    return {
+    return done({
       content: [{
         type: 'text',
         text: `${resultText(created)}\n\n---\n\n${resultText(batch)}`,
       }],
       ...((batch as { isError?: boolean }).isError ? { isError: true } : {}),
-    };
+    });
   }
   if (action === 'modify') {
     const types = await provisionFieldTypesFor(rest, rest.operations, context);
@@ -656,7 +664,7 @@ export async function d365foFileTool(request: CallToolRequest, context: XppServe
     const modified = Array.isArray(rest.operations)
       ? await runModifyBatch(rest, context)
       : await modifyWithExtensionAutoCreate(rest, context, {});
-    return withTestCoverageNote(appendToResult(modified, renderProvisionNotes(types)), rest, context);
+    return done(withTestCoverageNote(appendToResult(modified, renderProvisionNotes(types)), rest, context));
   }
   if (action === 'delete') {
     return handleDeleteD365File(subRequest('delete_d365fo_file', rest), context);
