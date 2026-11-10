@@ -126,6 +126,20 @@ those are called out explicitly below.
   could outlast a client's request timeout (about a minute in VS Code), and the client gave
   up on a call that was still working. Now a heartbeat runs during those steps, and the
   progress value keeps increasing across all phases of the call, as MCP requires.
+- **`search(scope="extensions")` returns every custom object, and `prefix` is the object
+  prefix (#1212).** The scope is described as "custom/ISV models only", but it returned only
+  extension-shaped rows (`*_Extension`, `Base.SuffixExtension` and their members). New custom
+  classes, tables and helpers never appeared, and `type:"class"` could not bring them back.
+  `prefix`, described as an object prefix (`ISV_`), was matched against the model name, so a
+  model whose name does not start with its object prefix returned nothing at all. Now the
+  scope returns every symbol in a custom model, and `type:"class-extension"` (or another
+  `*-extension` type) narrows it to extensions. `prefix` matches the object name or, for a
+  member, the object it belongs to, and anywhere in an extension-shaped name. A model name
+  that starts with `prefix` still matches, so existing calls keep working. Results put an
+  exact name first, then extension-shaped rows (the old result set), then names that start
+  with the query. `model IN (custom models)` stays the leading predicate, so the
+  `idx_symbols_model` seek is unchanged. Result captions say "custom models" instead of
+  "custom extensions".
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no

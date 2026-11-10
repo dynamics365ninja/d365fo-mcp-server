@@ -33,7 +33,7 @@ export const searchTool = {
           description: '[single] Filter by object type ("all" = no filter).',
           default: 'all'
         },
-        prefix: { type: 'string', description: '[extensions] Extension prefix filter (e.g., ISV_, Custom_).' },
+        prefix: { type: 'string', description: '[extensions] Object name prefix (e.g., ISV_, Contoso).' },
         limit: { type: 'number', description: '[single|extensions] Maximum results to return', default: 20 },
         verbose: {
           type: 'boolean',
