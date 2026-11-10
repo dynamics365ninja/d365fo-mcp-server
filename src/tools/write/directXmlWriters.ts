@@ -44,6 +44,8 @@ import {
 import { escapeXml } from '../../utils/xmlEscape.js';
 import { methodSourceSpans, occurrencesInSpans } from '../../utils/methodSourceSpans.js';
 import { upsertTableFieldProperty } from '../xml/tableFieldPropertyEdit.js';
+import type { RestructureResult } from '../xml/formRestructure.js';
+import { convertEntityFieldToComputed, type ComputedFieldType } from '../xml/entityComputedField.js';
 import {
   addModuleReference, removeModuleReference, parseModuleReferences, invalidateModelVisibility,
 } from '../../metadata/modelDescriptor.js';
@@ -3130,6 +3132,67 @@ export const directXmlSetTableFieldProperties = serializedOnFile(async (
     return { success: true, message: `✅ Field property set via direct XML (canonical order): ${done.join(', ')}. File: ${filePath}` };
   } catch (err) {
     console.error(`[modify_d365fo_file] directXmlSetTableFieldProperties failed: ${err}`);
+    return null;
+  }
+});
+
+/**
+ * move-control / wrap-controls on an AxForm (formRestructure.ts). XML only: the bridge
+ * has no operation that changes a control's parent. Nothing is written when the edit is
+ * refused or the control already sits where it was asked to.
+ */
+export const directXmlRestructureForm = serializedOnFile(async (
+  filePath: string,
+  edit: (xml: string) => RestructureResult,
+): Promise<{ success: boolean; message: string; skipped?: boolean }> => {
+  const raw = await fs.readFile(filePath, 'utf-8');
+  const r = edit(raw.replace(/^﻿/, ''));
+  if (!r.ok) return { success: false, message: `❌ ${r.message} — nothing was written. File: ${filePath}` };
+  if (r.changed) await writeFileAtomic(filePath, normalizeD365Xml(r.xml));
+  return {
+    success: true,
+    ...(r.changed ? {} : { skipped: true }),
+    message: `${r.changed ? '✅' : 'ℹ️'} ${r.detail}. File: ${filePath}` + r.warnings.map(w => `\n⚠️ ${w}`).join(''),
+  };
+});
+
+/**
+ * modify-field computedFieldMethod on a data-entity: the mapped field becomes a computed
+ * (unmapped) field and its method lands in the same write, so the entity is never left
+ * pointing at a method it does not have. `source` = null keeps an existing method of that name.
+ */
+export const directXmlMakeEntityFieldComputed = serializedOnFile(async (
+  filePath: string,
+  spec: { fieldName: string; methodName: string; type: ComputedFieldType; source: string | null },
+): Promise<{ success: boolean; message: string } | null> => {
+  try {
+    const raw = await fs.readFile(filePath, 'utf-8');
+    const content = raw.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+    if (!/<AxDataEntityView[\s>]/.test(content)) return null;
+    const conv = convertEntityFieldToComputed(content, spec.fieldName, spec.methodName, spec.type);
+    if (!conv.ok) return { success: false, message: `❌ modify-field: ${conv.message} — nothing was written.` };
+    const has = locateSourceCodeMethods(conv.xml)?.methodSpans.some(s => s.name.toLowerCase() === spec.methodName.toLowerCase());
+    if (!has && spec.source === null) {
+      return { success: false, message: `❌ modify-field: the entity has no method '${spec.methodName}' and none was given — nothing was written.` };
+    }
+    let xml = conv.xml;
+    if (spec.source !== null) {
+      const m = upsertSourceCodeMethod(xml, spec.methodName, spec.source.replace(/\r\n/g, '\n'));
+      if (!m.ok) return { success: false, message: `❌ modify-field: ${m.message} — nothing was written.` };
+      xml = m.xml;
+    }
+    await writeFileAtomic(filePath, normalizeD365Xml(xml));
+    const t = spec.type;
+    return {
+      success: true,
+      message:
+        `✅ Field '${spec.fieldName}' is now a computed field (AxDataEntityViewUnmappedField${t.baseType}` +
+        `${t.edt ? `, EDT ${t.edt}` : ''}${t.enumType ? `, enum ${t.enumType}` : ''}) with ComputedFieldMethod ` +
+        `'${spec.methodName}' (${spec.source === null ? 'existing method kept' : has ? 'method replaced' : 'method added'}). ` +
+        `A computed field is read only: build the model and sync the database. File: ${filePath}`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlMakeEntityFieldComputed failed: ${err}`);
     return null;
   }
 });

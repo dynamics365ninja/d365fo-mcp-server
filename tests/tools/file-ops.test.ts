@@ -1979,6 +1979,55 @@ describe('modify_d365fo_file', () => {
     expect(writtenMenu[1]).toMatch(/<Name>ContosoSetup<\/Name>\r?\n\t\t\t<Elements>\r?\n\t\t\t\t<AxMenuElement xmlns="" i:type="AxMenuElementMenuItem">/);
   });
 
+  it('wrap-controls and move-control on a form go to the XML writer, and refuse a form extension', async () => {
+    const fsMod = await import('fs/promises');
+    const formXml =
+      `<?xml version="1.0" encoding="utf-8"?>\n` +
+      `<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">\n` +
+      `\t<Name>ContosoRent</Name>\n\t<Design>\n\t\t<Controls xmlns="">\n` +
+      `\t\t\t<AxFormControl xmlns=""\n\t\t\t\ti:type="AxFormStringControl">\n\t\t\t\t<Name>RentId</Name>\n\t\t\t\t<Type>String</Type>\n\t\t\t</AxFormControl>\n` +
+      `\t\t\t<AxFormControl xmlns=""\n\t\t\t\ti:type="AxFormGridControl">\n\t\t\t\t<Name>Lines</Name>\n\t\t\t\t<Type>Grid</Type>\n\t\t\t\t<Controls />\n\t\t\t</AxFormControl>\n` +
+      `\t\t</Controls>\n\t</Design>\n</AxForm>`;
+    const addControl = vi.fn();
+    (ctx as any).bridge = { isReady: true, metadataAvailable: true, addControl, refreshProvider: vi.fn() };
+    (fsMod.readFile as any).mockResolvedValue(formXml);
+    const filePath = 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxForm\\ContosoRent.xml';
+
+    const wrap = await modifyD365FileTool(
+      req('modify_d365fo_file', {
+        objectType: 'form', objectName: 'ContosoRent', operation: 'wrap-controls', filePath,
+        controlNames: ['RentId'], containerName: 'HeaderGroup', containerPattern: 'FieldsFieldGroups',
+        containerCaption: '@ContosoRental:Header',
+      }),
+      ctx,
+    );
+    expect(wrap.isError, wrap.content[0].text).toBeFalsy();
+    expect(wrap.content[0].text).toContain('wrapped "RentId" in new Group "HeaderGroup"');
+    const written = (fsMod.writeFile as any).mock.calls.find((c: any[]) => c[0].includes('ContosoRent.xml'));
+    expect(written[1]).toMatch(/<Name>HeaderGroup<\/Name>\r\n\t\t\t\t<Pattern>FieldsFieldGroups<\/Pattern>/);
+
+    const move = await modifyD365FileTool(
+      req('modify_d365fo_file', {
+        objectType: 'form', objectName: 'ContosoRent', operation: 'move-control', filePath,
+        controlName: 'RentId', parentControl: 'Lines',
+      }),
+      ctx,
+    );
+    expect(move.isError, move.content[0].text).toBeFalsy();
+    expect(move.content[0].text).toContain('moved "RentId" from "Design" to "Lines"');
+    expect(addControl).not.toHaveBeenCalled();
+
+    const ext = await modifyD365FileTool(
+      req('modify_d365fo_file', {
+        objectType: 'form-extension', objectName: 'ContosoRent.MyExt', operation: 'move-control',
+        filePath: 'K:\\PackagesLocalDirectory\\MyPackage\\MyModel\\AxFormExtension\\ContosoRent.MyExt.xml',
+        controlName: 'RentId', parentControl: 'Lines',
+      }),
+      ctx,
+    );
+    expect(ext.isError).toBe(true);
+  });
+
   it('add-control on a form-extension bypasses the bridge and writes the XML directly', async () => {
     // The C# AddControl reads _provider.Forms.Read(name), which never resolves a form
     // EXTENSION ("Base.Suffix") — those live in FormExtensions. The call cannot succeed,

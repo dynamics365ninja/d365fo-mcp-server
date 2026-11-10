@@ -119,6 +119,10 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
     type: 'boolean',
     description: 'modify-field: true writes <IgnoreEDTRelation>Yes</IgnoreEDTRelation> (EDT with a relation).',
   },
+  computedFieldMethod: {
+    type: 'string',
+    description: 'modify-field on a data-entity: static method name; the mapped field becomes a computed field using it.',
+  },
   dataField: {
     type: 'string',
     description:
@@ -526,6 +530,13 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
   },
   submenuName: { type: 'string', description: 'Name of the submenu to add (e.g. "ContosoRentals").' },
   submenuLabel: { type: 'string', description: 'Label id of the new submenu (e.g. "@ContosoRental:Rentals").' },
+  controlNames: { type: 'string[]', description: 'Existing controls to wrap, all children of one parent (e.g. ["ClaimId","Description"]).' },
+  containerName: { type: 'string', description: 'Name of the new container control (unique on the form).' },
+  containerType: { type: 'string', description: 'Group (default), TabPage or Tab.' },
+  containerPattern: { type: 'string', description: 'Pattern of the new container (e.g. "FieldsFieldGroups", "ToolbarList").' },
+  containerPatternVersion: { type: 'string', description: 'PatternVersion; default = newest version the pattern catalogue knows.' },
+  containerCaption: { type: 'string', description: 'Caption label id of the new container (e.g. "@MyModel:General").' },
+  containerStyle: { type: 'string', description: 'Style of the new container (e.g. "FastTabs" on a Tab).' },
 };
 
 export interface D365FileOpSpec {
@@ -635,9 +646,13 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   },
   'modify-field': {
     required: ['fieldName'],
-    optional: ['fieldType', 'fieldMandatory', 'fieldLabel', 'fieldHelpText', 'fieldEnumType', 'fieldStringSize', 'fieldAllowEdit', 'fieldIgnoreEdtRelation'],
-    mutationOneOf: ['fieldType', 'fieldMandatory', 'fieldLabel', 'fieldHelpText', 'fieldEnumType', 'fieldStringSize', 'fieldAllowEdit', 'fieldIgnoreEdtRelation'],
+    optional: ['fieldType', 'fieldMandatory', 'fieldLabel', 'fieldHelpText', 'fieldEnumType', 'fieldStringSize', 'fieldAllowEdit', 'fieldIgnoreEdtRelation', 'computedFieldMethod', 'sourceCode'],
+    mutationOneOf: ['fieldType', 'fieldMandatory', 'fieldLabel', 'fieldHelpText', 'fieldEnumType', 'fieldStringSize', 'fieldAllowEdit', 'fieldIgnoreEdtRelation', 'computedFieldMethod'],
     note:
+      'DATA-ENTITY: computedFieldMethod turns the entity\'s own mapped field into a computed (unmapped) ' +
+      'field of the source field\'s type and EDT (fieldType overrides the EDT), in one write with its ' +
+      'static method: sourceCode when given, else an existing method of that name, else a generated ' +
+      'SysComputedColumn::returnField over the field it was mapped to. A key field is refused. ' +
       'fieldType (an EDT name) works on an ENUM field too — it re-types the field to that EDT; fieldLabel ' +
       'takes a label id or raw text. fieldAllowEdit=false writes <AllowEdit>No</AllowEdit> (staging key ' +
       'fields, BPErrorTablePrimaryKeyEditable); fieldIgnoreEdtRelation=true writes ' +
@@ -798,7 +813,7 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       + 'extension-defined parent by its order among the children of the parent, under a base-form parent as '
       + '<PositionType>AfterItem</PositionType> + <PreviousSibling>. On a control the file ALREADY defines, '
       + 'add-control with previousSibling or positionType MOVES it there (same parent only; to change parent, '
-      + 'remove-control then add-control) — the way to put a field next to another after creating it.',
+      + 'move-control) — the way to put a field next to another after creating it.',
   },
   'remove-control': {
     required: ['controlName'],
@@ -982,6 +997,30 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       'add-menu-item-to-menu\'s. The name must be new in the whole menu, items included (a <Parent> names submenus by plain ' +
       'name): one that exists elsewhere is refused, the same one under the same parent again is skipped. ' +
       'Then fill it with add-menu-item-to-menu, parentMenuElement=<submenuName>.',
+  },
+  'move-control': {
+    required: ['controlName'],
+    optional: ['parentControl', 'previousSibling', 'positionType'],
+    note:
+      'objectType="form" (a form of your own model). Moves an existing control, with everything under it, ' +
+      'to parentControl (a Group/Tab/TabPage/Grid/… that has <Controls>; omitted or "Design" = the design ' +
+      'itself) — after previousSibling, or positionType "Begin"/"End" (default End). The control\'s XML is ' +
+      'kept byte for byte, only re-indented. A move into the control\'s own subtree, or into a control ' +
+      'with no <Controls>, or a non-TabPage into a Tab, is refused; a control already there is skipped. To convert a form to a pattern: ' +
+      'wrap-controls builds the containers, move-control fills them, modify-property sets the design\'s ' +
+      'Pattern and PatternVersion (both, in one operations[] call).',
+  },
+  'wrap-controls': {
+    required: ['controlNames', 'containerName'],
+    optional: ['containerType', 'containerPattern', 'containerPatternVersion', 'containerCaption', 'containerStyle'],
+    note:
+      'objectType="form". Puts existing controls (controlNames, all children of ONE parent) into a NEW ' +
+      'container where the first of them was, in their current order. containerType Group (default), ' +
+      'TabPage or Tab (a Tab holds TabPages only). containerPattern (e.g. FieldsFieldGroups, ToolbarList) ' +
+      'gets containerPatternVersion, default the newest the pattern catalogue knows. containerCaption (label ' +
+      'id), containerStyle (e.g. FastTabs on a Tab). Written in shipped element order (Pattern before ' +
+      '<Controls>, Caption and Style after it); a property the type never carries (Caption on a Tab) is ' +
+      'refused. FastTabs: wrap each group in a TabPage, then the pages in a Tab with containerStyle=FastTabs.',
   },
   'modify-property': {
     required: ['propertyPath', 'propertyValue'],

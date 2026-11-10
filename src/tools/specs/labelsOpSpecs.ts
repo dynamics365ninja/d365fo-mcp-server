@@ -48,7 +48,7 @@ export const LABELS_OVERRIDE_PARAMS: Record<string, string> = {
     'false = append at end).',
   languages:
     '[create] string[] — restrict which language .label.txt files are written (e.g. ["en-US"]). ' +
-    'Omitted = every language folder present in the model.',
+    'Omitted = every language the label file already has, plus the supplied translations.',
   defaultComment:
     '[create] Developer comment for languages without an explicit comment. On update, an existing ' +
     'comment is replaced only by a comment, defaultComment or description the call states.',
