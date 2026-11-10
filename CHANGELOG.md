@@ -28,6 +28,13 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Fixed
+- **X++ source round-trips exactly through `add-method`, `replace-code` and `create`.**
+  Every XML entity in the source was decoded, so a doc comment's `P&amp;L` became a
+  bare `&` (malformed XML documentation, BPXmlDocMalformed) and markup in string
+  literals changed. The decode now runs only on a payload that arrived
+  entity-encoded as a whole (no literal angle bracket, an encoded one present).
+
 ## [1.23.0] — 2026-11-05
 
 ### Added
