@@ -47,6 +47,7 @@
     "test": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "extract-metadata": "tsx scripts/extract-metadata.ts",
+    "extract-binary-models": "tsx scripts/extract-binary-models.ts",
     "build-database": "node --max-old-space-size=6144 --import tsx/esm scripts/build-database.ts",
     "build-fts": "node --max-old-space-size=6144 --import tsx/esm scripts/build-fts.ts",
     "index-metadata": "tsx scripts/extract-metadata.ts && node --max-old-space-size=6144 --import tsx/esm scripts/build-database.ts",
@@ -89,6 +90,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@azure/msal-node": "^7.1.1",
     "@azure/storage-blob": "^12.31.0",
     "@clack/prompts": "^1.6.0",
     "@modelcontextprotocol/sdk": "^1.27.0",

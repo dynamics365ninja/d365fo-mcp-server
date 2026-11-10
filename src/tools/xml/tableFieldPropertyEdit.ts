@@ -23,7 +23,9 @@ export const FIELD_ELEMENT_ORDER = [
 ] as const;
 
 /** The properties this module writes. */
-export const TABLE_FIELD_EDITABLE_PROPERTIES: readonly string[] = ['AllowEdit', 'IgnoreEDTRelation'];
+// Mandatory joins them for the create's key-field default (tableBpDefaults.ts):
+// BPErrorTablePrimaryKeyNotMandatory.
+export const TABLE_FIELD_EDITABLE_PROPERTIES: readonly string[] = ['AllowEdit', 'IgnoreEDTRelation', 'Mandatory'];
 
 export interface FieldEditResult {
   ok: boolean;

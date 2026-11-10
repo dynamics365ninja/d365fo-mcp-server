@@ -1,6 +1,6 @@
 /**
  * X++ Extension Search Tool
- * Search for symbols only in custom extensions/ISV models
+ * search(scope="extensions"): symbols in custom/ISV models only, extensions and plain objects alike
  */
 
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
@@ -9,7 +9,7 @@ import type { XppServerContext } from '../../types/context.js';
 
 const ExtensionSearchArgsSchema = z.object({
   query: z.string().describe('Search query (class name, method name, etc.)'),
-  prefix: z.string().optional().describe('Extension prefix filter (e.g., ISV_, Custom_)'),
+  prefix: z.string().optional().describe('Object name prefix (e.g., ISV_, Contoso). A model name starting with it matches too'),
   limit: z.number().optional().default(20).describe('Maximum results to return'),
   // search(scope="extensions", type="method") forwards `type` here. It used to be
   // dropped silently by this schema — z.object() strips unknown keys — so a typed
@@ -44,7 +44,7 @@ export async function extensionSearchTool(request: CallToolRequest, context: Xpp
             text: noCustomModels
               ? `⚠️ No custom/ISV models are known to the index, so scope="extensions" can never match.\n` +
                 `Set CUSTOM_MODELS or EXTENSION_PREFIX, or drop scope="extensions" to search the whole index.`
-              : `No custom extension symbols${typeMsg} found matching "${args.query}"${prefixMsg}.\n` +
+              : `No custom symbols${typeMsg} found matching "${args.query}"${prefixMsg}.\n` +
                 `This scope covers CUSTOM/ISV models only. For the standard corpus drop scope="extensions".`,
           },
         ],
@@ -60,7 +60,7 @@ export async function extensionSearchTool(request: CallToolRequest, context: Xpp
       return acc;
     }, {} as Record<string, typeof results>);
 
-    let output = `Found ${results.length} matches in custom extensions:\n\n`;
+    let output = `Found ${results.length} matches in custom models:\n\n`;
 
     for (const [model, symbols] of Object.entries(byModel)) {
       output += `**${model}** (${(symbols as typeof results).length} symbols)\n`;
@@ -91,7 +91,7 @@ export async function extensionSearchTool(request: CallToolRequest, context: Xpp
       content: [
         {
           type: 'text',
-          text: `Error searching custom extensions: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          text: `Error searching custom models: ${error instanceof Error ? error.message : 'Unknown error'}`,
         },
       ],
       isError: true,

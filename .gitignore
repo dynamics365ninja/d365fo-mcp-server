@@ -123,3 +123,5 @@ tests/trace-host/obj/
 
 # Visual Studio workspace caches (including nested projects)
 .vs/
+bridge/BinaryModelExtractor/bin/
+bridge/BinaryModelExtractor/obj/

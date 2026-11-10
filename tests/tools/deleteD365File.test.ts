@@ -134,6 +134,7 @@ vi.mock('../../src/bridge/index', () => ({
 
 vi.mock('../../src/tools/write/writeAnchorGuard', () => ({
   resolveAnchorModel: vi.fn(async () => 'MyModel'),
+  resolveModelDependency: vi.fn(async () => null),
 }));
 
 import { handleDeleteD365File } from '../../src/tools/write/deleteD365File';
