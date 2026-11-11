@@ -182,6 +182,14 @@ those are called out explicitly below.
   `openWorldHint: false`.
 
 ### Fixed
+- **`build_d365fo_project` syncs a table a later call names when the build was started with
+  `dbSync: true`.** `dbSync: true` syncs the project's tables (a full sync only without a
+  project), but it was taken to cover any table list: a call that collected or waited on
+  that build with `dbSync: ["SomeTable"]`, for a table outside the project, got the result
+  with its sync section and the table was never synced. The table is now synced by that
+  call, and its result shows the sync. A full sync still covers every list, and a repeat of
+  `dbSync: true` still collects without syncing again. The sync tool now reports what it
+  synced to the build tool.
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know
   neither property on a menu item, and a Staging or TempDB table kept Visual Studio's
