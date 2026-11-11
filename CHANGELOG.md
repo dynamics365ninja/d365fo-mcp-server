@@ -29,6 +29,16 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`validate_code` warns about a `throw error(...)` directly in a `static void main(Args)`
+  (UI001), and `get_knowledge` gains a `menu-item-guards` topic.** When such a `main` is an
+  action menu item's entry point, an unhandled throw has been observed to show D365's
+  "Unable to open menu item" dialog instead of only the intended message, so a guard for an
+  expected case (no record selected, optional data missing) reads better as
+  `warning("@…"); return;` before any write. The rule is advisory (a warning, never an
+  error): source alone does not prove the menu binding or the intent, so it skips methods
+  with `try`/`catch`/`ttsbegin`, local functions, and throws after a visible database
+  write. The knowledge topic says when to keep the exception (rollback, security, batch,
+  caller contracts) and is linked from `error-handling`.
 - **`d365fo_file(action="modify", operation="modify-property")` sets OperationalDomain and
   SubscriberAccessLevel on existing tables and menu items.** Menu items had no writer for
   either (the bridge's setter has no case for them), and SubscriberAccessLevel holds child

@@ -1988,7 +1988,8 @@
   ],
   "orphans": {
     "knowledge": [
-      "form-adaptor-tests"
+      "form-adaptor-tests",
+      "menu-item-guards"
     ],
     "cases": [
       "L0-create-readback-no-reindex",

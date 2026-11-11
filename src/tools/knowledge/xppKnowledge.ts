@@ -732,7 +732,37 @@ class MyReportDP extends SrsReportDataProviderBase
 }`,
       },
     ],
-    related: ['transactions', 'labels'],
+    related: ['transactions', 'labels', 'menu-item-guards'],
+  },
+
+  {
+    id: 'menu-item-guards',
+    title: 'Menu-item guards: expected negative outcomes versus exceptions (UI001)',
+    keywords: ['ui001', 'menu-item-guards', 'menu item', 'action', 'main', 'args', 'guard', 'missing data', 'not found', 'unable to open menu item', 'warning', 'return', 'throw error'],
+    summary:
+      'For an interactive action menu-item entry point, expected missing-data or not-found outcomes can usually be reported with a labeled warning and an early return before writes. ' +
+      'An unhandled throw error from main(Args) has been observed to produce the D365 system dialog "Unable to open menu item" instead of only the intended business message.',
+    rules: [
+      'First distinguish an expected negative guard from an exceptional failure. For a normal missing selection or absent optional record, before writes or transactions, use warning("@MyModel:MissingSelection"); return; so the action stops and the user receives the intended message.',
+      'Preserve exceptions needed for rollback, security enforcement, batch failure, caller error contracts or genuine faults. Do not mechanically replace throw error with warning, swallow exceptions or return success after partial work. Inspect callers and transaction scope before changing behavior.',
+      'UI001 in validate_code is advisory only: static void main(Args ...) does not prove that an action menu item invokes the method or that a thrown condition is expected. The heuristic skips methods with handler/transaction/local-function syntax and throws after visible database writes; it does not trace helper calls or prove absence of side effects.',
+      'Microsoft documents that error() writes diagnostic information and returns an exception value; throw raises it, and an exception inside a transaction cancels the transaction. See [X++ exception handling](https://learn.microsoft.com/en-us/dynamics365/fin-ops-core/dev-itpro/dev-ref/xpp-exceptions). The menu-item wrapper above is observed runtime evidence, not a universal Microsoft requirement to replace exceptions with warnings.',
+      'Verify the negative path through the actual action menu item: the labeled business warning should appear, the action should stop without writes, and no system error dialog should appear. A successful compilation alone does not verify that user-visible outcome.',
+    ],
+    examples: [{
+      label: 'Expected missing selection before side effects',
+      code: `public static void main(Args _args)
+{
+    if (!_args || !_args.record())
+    {
+        warning("@MyModel:MissingSelection");
+        return;
+    }
+
+    // Continue the action only after the expected guard has passed.
+}`,
+    }],
+    related: ['error-handling', 'transactions', 'labels'],
   },
 
   // ── Labels ──────────────────────────────────────────────────────────────

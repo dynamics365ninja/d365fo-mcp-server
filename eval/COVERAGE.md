@@ -196,7 +196,7 @@ Nothing uncovered.
 
 ## Orphans
 
-- Knowledge entries no leaf claims (**unproven knowledge**): form-adaptor-tests
+- Knowledge entries no leaf claims (**unproven knowledge**): form-adaptor-tests, menu-item-guards
 - Eval cases no leaf claims (**unmapped proof**): L0-create-readback-no-reindex, L2-batched-object-reads, L2-object-delete-and-entry-point-cleanup, L2-oracle-discriminator-random-wrapper-name, L4-headerlines-document-slice
 
-_Generated 2026-09-03._
+_Generated 2026-11-11._

@@ -26,6 +26,7 @@
  *   TTS001  Unbalanced ttsbegin / ttscommit
  *   TTS002  Dead catch inside an open tts scope (only UpdateConflict/DuplicateKeyException reach it)
  *   TTS003  retry with no visible guard in its catch block (infinite-loop risk)
+ *   UI001   Possible action-menu main(Args) guard throws an unhandled error (advisory)
  *   SEL006  index hint without allowIndexHint(true)
  *   SEL007  left/right join or join…on — SQL/C# join syntax that is not X++
  *   CS001   C# constructs that do not compile in X++ ($"…", =>, foreach, ??, string type)
@@ -1491,6 +1492,51 @@ function checkUnguardedRetry(code: string): ValidationViolation[] {
   return violations;
 }
 
+/**
+ * UI001 — review an unhandled error thrown directly by a possible menu entry point.
+ * This is source-only advice, not a compiler error or proof of menu-item binding.
+ * Skip whole methods containing handlers, transactions or local functions: resolving
+ * catchability, rollback or interprocedural intent needs more than this heuristic.
+ */
+function checkMenuEntryGuardThrow(code: string): ValidationViolation[] {
+  const masked = maskStringsAndComments(code);
+  const violations: ValidationViolation[] = [];
+  const main = /\bstatic\s+(?:(?:public|private|protected|internal|final|server|client)\s+)*void\s+main\s*\(\s*Args\s+\w+\s*\)\s*\{/gi;
+  while (main.exec(masked) !== null) {
+    const start = main.lastIndex;
+    let end = start;
+    let depth = 1;
+    while (end < masked.length && depth > 0) {
+      if (masked[end] === '{') depth++;
+      else if (masked[end] === '}') depth--;
+      end++;
+    }
+    if (depth !== 0) continue; // incomplete source: do not infer a method boundary
+    main.lastIndex = end;
+    const body = masked.slice(start, end - 1);
+    if (/\b(?:try|catch|finally|ttsbegin|ttscommit|ttsabort)\b/i.test(body)) continue;
+    const localDeclarations = body.matchAll(/\b(\w+)\s+\w+\s*\([^;{}]*\)\s*\{/g);
+    if ([...localDeclarations].some(match => !/^(?:else|return|throw)$/i.test(match[1]))) continue;
+
+    for (const thrown of body.matchAll(/\bthrow\s+(?:Global\s*::\s*)?error\s*\(/gi)) {
+      const prefix = body.slice(0, thrown.index);
+      if (/\.\s*(?:do)?(?:insert|update|delete)\s*\(|\b(?:insert_recordset|update_recordset|delete_from)\b/i.test(prefix)) continue;
+      const index = start + thrown.index;
+      violations.push({
+        rule: 'UI001', severity: 'warning', line: lineNumber(code, index),
+        excerpt: code.slice(index, index + thrown[0].length).trim(),
+        fix: 'If this main(Args) is an action menu-item entry point, an unhandled throw error can surface as ' +
+          '"Unable to open menu item" (observed runtime behavior). For an expected missing-data/not-found guard ' +
+          'before writes or transactions, consider warning("@MyModel:Message"); return; instead. ' +
+          'Source alone does not prove menu binding or business intent. Preserve exceptions required for rollback, ' +
+          'security, batch failure or genuine faults; review the call path, do not automatically replace throws ' +
+          '(knowledge topic: menu-item-guards).',
+      });
+    }
+  }
+  return violations;
+}
+
 /** SEL006 — `index hint` used without evidence of allowIndexHint(true). */
 function checkIndexHint(code: string): ValidationViolation[] {
   const masked = maskStringsAndComments(code);
@@ -2804,6 +2850,7 @@ const XPP_RULES = [
   checkCSharpIsms,
   checkCatchInsideTts,
   checkUnguardedRetry,
+  checkMenuEntryGuardThrow,
   checkIndexHint,
   checkForeignJoinSyntax,
   checkReportDpShape,
