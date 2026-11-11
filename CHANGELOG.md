@@ -390,6 +390,11 @@ those are called out explicitly below.
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
   native add-ons; with `@azure/msal-common` and `jsonwebtoken` (and their `jws`, `semver`
   and `lodash.*` helpers) it adds 16 packages to the lockfile and changes none.
+- **Lockfile refreshed with `npm update`.** Runtime: `@azure/msal-node` 7.2.1,
+  `@clack/prompts` 1.9.0, `@modelcontextprotocol/sdk` 1.32.2, `commander` 15.1.0, `dotenv`
+  18.0.10, `express` 5.3.0, `express-rate-limit` 8.7.4, `zod` 4.6.7. Dev: `@biomejs/biome`
+  2.6.6, `@types/node` 26.6.6, `vitest` and `@vitest/coverage-v8` 5.1.0. The ranges in
+  `package.json` are unchanged.
 
 ## [1.23.0] — 2026-11-05
 
