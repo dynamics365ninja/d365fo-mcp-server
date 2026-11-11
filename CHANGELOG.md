@@ -182,6 +182,15 @@ those are called out explicitly below.
   `openWorldHint: false`.
 
 ### Fixed
+- **`build_d365fo_project` fails a build whose forms break their pattern, as a pipeline build
+  does.** A pipeline build (MSBuild and Microsoft's BuildTask) compiles the whole package and
+  rejected a form whose `FieldsFieldGroups` header had no `ColumnsMode` `Fill`, while an
+  incremental build here had passed it with 0 errors: xppc does not report pattern errors for
+  forms it does not recompile. After a successful xppc build the tool now validates every form
+  of the package against the platform's pattern definitions (the rules of
+  `object_patterns(domain="form", action="validate")`). Errors give
+  `❌ Compiled; form pattern errors a pipeline build rejects` and list each form, control and
+  property. `FORM_PATTERN_ENFORCE=false` keeps them as a warning.
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know
   neither property on a menu item, and a Staging or TempDB table kept Visual Studio's

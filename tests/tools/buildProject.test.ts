@@ -92,6 +92,11 @@ vi.mock('../../src/tools/sdlc/odataActionGuard.js', async () => ({
   ...(await vi.importActual<any>('../../src/tools/sdlc/odataActionGuard.js')),
   scanODataActions: scanMock,
 }));
+const { patternScanMock } = vi.hoisted(() => ({ patternScanMock: vi.fn() }));
+vi.mock('../../src/tools/sdlc/formPatternGuard.js', async () => ({
+  ...(await vi.importActual<any>('../../src/tools/sdlc/formPatternGuard.js')),
+  scanFormPatternErrors: patternScanMock,
+}));
 
 import path from 'path';
 import { buildProjectTool, readFullLog, renderFailureLog, trimSucceededLog } from '../../src/tools/sdlc/buildProject';
@@ -194,6 +199,7 @@ describe('build_d365fo_project', () => {
     statMock.mockResolvedValue({ mtimeMs: 0 });
     pruneMock.mockResolvedValue({ stale: [], phantoms: [], skippedModels: [], errors: [], scanned: 0 });
     scanMock.mockResolvedValue(NO_ODATA_FINDINGS);
+    patternScanMock.mockResolvedValue({ errors: [], formsChecked: 0, unreadable: [] });
     cfgGetProjectPath.mockResolvedValue(PROJECT_PATH);
     cfgGetPackagePath.mockReturnValue(null);
     cfgGetContext.mockReturnValue({});
@@ -757,6 +763,73 @@ describe('build_d365fo_project', () => {
       expect(text).not.toContain('✅ Build succeeded');
       expect(text).toContain('ProbeEntity (NewAction)');
       expect(text).toContain('fullBuild: true');
+    });
+  });
+
+  describe('form patterns, which a pipeline build checks on every form of the package', () => {
+    const lastState = () => writeFileMock.mock.calls.filter((c: any[]) => c[0].includes('d365build_state')).at(-1)![1];
+    const build = async (params: Record<string, unknown> = {}) => {
+      let closeCallback: ((code: number | null) => Promise<void>) | undefined;
+      spawnMock.mockReturnValue({
+        pid: 42,
+        unref: vi.fn(),
+        on: vi.fn().mockImplementation((event: string, cb: any) => { if (event === 'close') closeCallback = cb; }),
+      });
+      allowPaths([XPPC, PKG]);
+      await buildProjectTool({ modelName: MODEL_NAME, wait: false, ...params }, {});
+      readFileMock.mockImplementation(async (p: string) => {
+        if (p.includes('d365build_state')) return lastState();
+        if (p.includes('d365build_log')) return 'Build complete.';
+        throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+      });
+      await closeCallback!(0);
+      const state = JSON.parse(lastState());
+      readdirMock.mockResolvedValue([]);
+      const collected = await buildProjectTool({ modelName: MODEL_NAME }, {});
+      return { state, collected, text: collected.content[0].text };
+    };
+    const COLUMNS_MODE = {
+      form: 'ContosoRentEquipment', rule: 'FP011', path: 'Design/Group[HeaderGroup]',
+      excerpt: 'sub-pattern FieldsFieldGroups 1.1: ColumnsMode must be "Fill", is "Fixed" (default)',
+    };
+
+    it('fails a compiled build whose forms break their pattern, naming form, control and property', async () => {
+      patternScanMock.mockResolvedValue({ errors: [COLUMNS_MODE], formsChecked: 3, unreadable: [] });
+      const { state, collected, text } = await build();
+      expect(patternScanMock).toHaveBeenCalledWith(PKG, MODEL_NAME);
+      expect(state.formPatternErrors).toEqual([COLUMNS_MODE]);
+      expect(collected.isError).toBe(true);
+      expect(text).toContain('❌ Compiled; form pattern errors a pipeline build rejects');
+      expect(text).not.toContain('✅ Build succeeded');
+      expect(text).toContain('AxForm/ContosoRentEquipment: Design/Group[HeaderGroup]: sub-pattern FieldsFieldGroups 1.1: ColumnsMode must be "Fill"');
+    });
+
+    it('stays green when every form follows its pattern', async () => {
+      const { state, collected, text } = await build();
+      expect(patternScanMock).toHaveBeenCalledTimes(1);
+      expect(state.formPatternErrors).toBeUndefined();
+      expect(collected.isError).toBeFalsy();
+      expect(text).toContain('✅ Build succeeded');
+    });
+
+    it('reports without failing the build when FORM_PATTERN_ENFORCE is off', async () => {
+      vi.stubEnv('FORM_PATTERN_ENFORCE', 'false');
+      try {
+        patternScanMock.mockResolvedValue({ errors: [COLUMNS_MODE], formsChecked: 1, unreadable: [] });
+        const { collected, text } = await build();
+        expect(collected.isError).toBeFalsy();
+        expect(text).toContain('⚠️ Build succeeded; form pattern errors');
+        expect(text).toContain('FORM_PATTERN_ENFORCE is off');
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it('keeps the build green when the check itself fails', async () => {
+      patternScanMock.mockRejectedValue(new Error('disk gone'));
+      const { collected, text } = await build();
+      expect(collected.isError).toBeFalsy();
+      expect(text).toContain('✅ Build succeeded');
     });
   });
 
