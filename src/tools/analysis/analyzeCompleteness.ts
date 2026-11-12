@@ -6,6 +6,7 @@
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
+import { suggestionPatternType } from '../../metadata/symbolIndex.js';
 
 const AnalyzeClassCompletenessArgsSchema = z.object({
   className: z.string().describe('Name of the class to analyze'),
@@ -104,9 +105,16 @@ function formatAnalysis(analysis: any, classSymbol: any): string {
     output += `2. Use \`search\` to find classes that implement these methods\n`;
     output += `3. Use \`get_object_info(objectType="class", name=...)\` to study similar classes\n`;
   } else {
-    output += `## ✅ Analysis Result\n\n`;
-    output += `No commonly missing methods detected. Class appears complete for its ${classSymbol.patternType || 'pattern'} type.\n\n`;
-    
+    if (suggestionPatternType(classSymbol.name, classSymbol.patternType)) {
+      output += `## ✅ Analysis Result\n\n`;
+      output += `No commonly missing methods detected. Class appears complete for its ${classSymbol.patternType || 'pattern'} type.\n\n`;
+    } else {
+      // No pattern means nothing was compared, so "appears complete" would be a
+      // claim the analysis cannot support.
+      output += `## ℹ️ Analysis Result\n\n`;
+      output += `No method suggestions: this class has no known pattern (no pattern type in the index, and its name does not end in Helper, Service or Controller), so there are no similar classes to compare it with.\n\n`;
+    }
+
     if (existingMethods.length === 0) {
       output += `**Note:** No existing methods found. This might be:\n`;
       output += `- A newly created class\n`;

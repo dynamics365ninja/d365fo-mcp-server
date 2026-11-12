@@ -841,8 +841,8 @@ export const SETTINGS: Setting[] = [
     tier: 'advanced',
     type: 'int',
     label: 'SQLite read connections',
-    description: 'Parallel read connections to the index (clamped 1–8). More helps concurrent searches on fast disks.',
-    default: 3,
+    description: 'Read connections to the index (clamped 1–8). One is right for the server: reads run one at a time, and the 128 MB page cache is split across the connections.',
+    default: 1,
   },
   {
     path: 'server.operationLockTimeoutMs',
