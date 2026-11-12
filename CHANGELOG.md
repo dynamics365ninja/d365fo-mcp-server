@@ -460,6 +460,19 @@ those are called out explicitly below.
   order, so the read-only data source of a generated form could lose AllowDelete=No. The
   same order is fixed in the smart XML builder. Forms generated earlier keep the old
   order: swap the two lines in the form XML, or recreate the form.
+- **`d365fo-mcp index` no longer replaces a working index with an empty one when the pinned
+  XPP config file is gone.** Visual Studio keeps the old XPP config after a UDE update, but a
+  cleanup that deletes it, or a removed environment, leaves `environment.xppConfigName`
+  naming a file that no longer exists. `start` and `doctor` warned about that pin, but `index`
+  (and `rebuild-instance.ps1`, which runs it) did not check it. The extraction then found no
+  UDE config and read the packages folder found by scanning the drives, which on many UDE
+  machines is an empty leftover `C:\AosService\PackagesLocalDirectory`. It extracted no
+  models, exited 0, and the full rebuild cleared the database. Now `index` refuses such a
+  target before extracting, keeps the existing index, and names the fix
+  (`d365fo-mcp instance upgrade <name>`). `extract-metadata` itself also stops with an error
+  when the pinned name matches none of the XPP configs on the machine, instead of falling back
+  to the drive scan. This covers direct `npm run extract-metadata` runs and a pin that differs
+  from the file name only in case. A machine with no XPP configs falls back as before.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
