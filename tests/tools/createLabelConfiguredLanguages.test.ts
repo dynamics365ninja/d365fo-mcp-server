@@ -179,6 +179,54 @@ describe('create_label adds languages only when LABEL_LANGUAGES allows', () => {
     expect(await exists(txt('ContosoExt', 'en-US'))).toBe(true);
   });
 
+  async function createRaw(args: Record<string, unknown>) {
+    const result = await createLabelTool({
+      method: 'tools/call',
+      params: { name: 'create_label', arguments: {
+        labelId: 'Greeting', labelFileId: 'ContosoExt', model: 'ContosoExt',
+        packageName: 'ContosoExt', packagePath: root, addToProject: false, ...args,
+      } },
+    }, { symbolIndex: { bulkAddLabels: vi.fn() } } as unknown as XppServerContext);
+    return { isError: !!result.isError, text: String(result.content[0].text) };
+  }
+
+  it('fails instead of replacing a label file that exists but cannot be read', async () => {
+    // A directory in place of the .label.txt: reading it fails with EISDIR, not ENOENT.
+    await fs.rm(txt('ContosoExt', 'fi'));
+    await fs.mkdir(txt('ContosoExt', 'fi'));
+    const r = await createRaw({ translations: [{ language: 'en-US', text: 'Hello' }, { language: 'fi', text: 'Hei' }] });
+    expect(r.isError).toBe(true);
+    expect((await fs.stat(txt('ContosoExt', 'fi'))).isDirectory()).toBe(true);
+    expect(lookupCreatedArtifact(txt('ContosoExt', 'fi'))).toBeUndefined();
+  });
+
+  it('refuses a new label file with createLabelFileIfMissing=false although other label files exist', async () => {
+    process.env.LABEL_LANGUAGES = 'en-US,fi';
+    const r = await createRaw({ labelFileId: 'ContosoExtt', createLabelFileIfMissing: false,
+      translations: [{ language: 'en-US', text: 'Hello' }] });
+    expect(r.isError).toBe(true);
+    expect(r.text).toMatch(/not found/);
+    expect(await exists(xml('ContosoExtt', 'en-US'))).toBe(false);
+    expect(await exists(txt('ContosoExtt', 'fi'))).toBe(false);
+  });
+
+  it('stops offering a created label file to undo once a later call adds a label to it', async () => {
+    process.env.LABEL_LANGUAGES = 'en-US,fi';
+    await createRaw({ labelFileId: 'ContosoNew', translations: [{ language: 'en-US', text: 'Hello' }] });
+    expect(lookupCreatedArtifact(txt('ContosoNew', 'en-US'))).toBeDefined();
+    expect(lookupCreatedArtifact(xml('ContosoNew', 'fi'))).toBeDefined();
+
+    await createRaw({ labelFileId: 'ContosoNew', labelId: 'Second', translations: [{ language: 'en-US', text: 'Second' }] });
+    for (const lang of ['en-US', 'fi']) {
+      expect(lookupCreatedArtifact(txt('ContosoNew', lang))).toBeUndefined();
+      expect(lookupCreatedArtifact(xml('ContosoNew', lang))).toBeUndefined();
+    }
+    const undo = await undoLastModificationTool({ filePath: txt('ContosoNew', 'en-US') },
+      { symbolIndex: {} } as unknown as XppServerContext);
+    expect(undo.isError).toBe(true);
+    expect(await fs.readFile(txt('ContosoNew', 'en-US'), 'utf8')).toMatch(/Greeting=Hello[\s\S]*|Second=Second/);
+  });
+
   it('skips a translation for a locale the file lacks when LABEL_LANGUAGES does not list it', async () => {
     process.env.LABEL_LANGUAGES = 'en-US,fi';
     const reply = await create([
@@ -232,7 +280,12 @@ describe('LABEL_LANGUAGES parsing', () => {
     expect(configuredLabelLanguages('')).toBeNull();
     expect(configuredLabelLanguages('  ')).toBeNull();
     expect(configuredLabelLanguages('ALL')).toBeNull();
-    expect(configuredLabelLanguages(' , ')).toBeNull();
+  });
+
+  it('reads a value with no usable code as "nothing allowed", not "everything"', () => {
+    // The indexer would otherwise ingest every shipped language over a typo.
+    expect(parseLabelLanguages(' , ')).toEqual([]);
+    expect(configuredLabelLanguages(' , ')).toEqual([]);
   });
 
   it('keeps the configured spelling and order, without duplicates', () => {
@@ -291,6 +344,36 @@ describe('labels info with a label file id', () => {
       expect(core).toContain(`${goneCore}  (missing on disk)`);
       expect(core).not.toContain(`${present}  (missing on disk)`);
       expect(removeLabelsByFile).toHaveBeenCalledWith(goneLt);
+      expect(removeLabelsByFile).toHaveBeenCalledWith(goneCore);
+      expect(removeLabelsByFile).toHaveBeenCalledTimes(2);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('leaves the index alone when none of the file\'s indexed paths exist on this machine', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'label-info-'));
+    try {
+      // An index built elsewhere (downloaded database, a build VM's drive).
+      const removeLabelsByFile = vi.fn(() => 1);
+      const symbolIndex = {
+        getLabelFileIds: () => [{ labelFileId: 'ContosoExt', model: 'ContosoExt', languages: 'en-US,fi' }],
+        getLabelFilePaths: () => [
+          { language: 'en-US', filePath: path.join(dir, 'elsewhere', 'ContosoExt.en-US.label.txt'), model: 'ContosoExt' },
+          { language: 'fi', filePath: path.join(dir, 'elsewhere', 'ContosoExt.fi.label.txt'), model: 'ContosoExt' },
+        ],
+        removeLabelsByFile,
+      };
+      const result = await getLabelInfoTool({
+        method: 'tools/call',
+        params: { name: 'get_label_info', arguments: { labelFileId: 'ContosoExt', model: 'ContosoExt' } },
+      }, { symbolIndex } as unknown as XppServerContext);
+      const text = String(result.content[0].text);
+      expect(text).toMatch(/Languages\s+: en-US,fi\n/);
+      expect(text).toMatch(/none of the indexed files exist on this machine/);
+      expect(text).not.toContain('Stale index');
+      expect(text).not.toContain('(missing on disk)');
+      expect(removeLabelsByFile).not.toHaveBeenCalled();
     } finally {
       await fs.rm(dir, { recursive: true, force: true });
     }

@@ -238,6 +238,25 @@ export class ProjectFileFinder {
 /**
  * Visual Studio Project (.rnrproj) Manipulator
  */
+/**
+ * Run a .rnrproj read or write, retrying while Visual Studio or another process
+ * holds the file (EBUSY / EPERM / EACCES), with the same back-off as the inline
+ * loops of the other project writers.
+ */
+async function retryWhileLocked<T>(op: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await op();
+    } catch (err: any) {
+      if ((err?.code === 'EBUSY' || err?.code === 'EPERM' || err?.code === 'EACCES') && attempt < 4) {
+        await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 export class ProjectFileManager {
   private parser: Parser;
   private builder: Builder;
@@ -620,7 +639,9 @@ export class ProjectFileManager {
   async removeIncludeFromProject(projectPath: string, include: string): Promise<boolean> {
     await this.assertWithinRoots(projectPath);
     return withFileLock(projectPath, async () => {
-      const projectXml = await fs.readFile(projectPath, 'utf-8');
+      // Visual Studio holds the .rnrproj open; retry a locked read/write like the
+      // other project writers do, or undo leaves the entry behind.
+      const projectXml = await retryWhileLocked(() => fs.readFile(projectPath, 'utf-8'));
       const hadBom = projectXml.charCodeAt(0) === 0xFEFF;
       const body = hadBom ? projectXml.slice(1) : projectXml;
       const project = await this.parser.parseStringPromise(body);
@@ -641,7 +662,7 @@ export class ProjectFileManager {
       }
       if (!removed) return false;
       const eolXml = withEol(this.builder.buildObject(project), detectEol(body));
-      await fs.writeFile(projectPath, hadBom ? '﻿' + eolXml : eolXml, 'utf-8');
+      await retryWhileLocked(() => fs.writeFile(projectPath, hadBom ? '\uFEFF' + eolXml : eolXml, 'utf-8'));
       console.error(`[ProjectFileManager] Removed '${include}' from project ${path.basename(projectPath)}`);
       return true;
     });

@@ -32,7 +32,7 @@ import {
 import { isExtensionLabelFile, isListedLabelLanguage, parseLabelLanguages } from '../../metadata/labelParser.js';
 import { ProjectFileManager, ProjectFileFinder } from '../../workspace/projectFile.js';
 import { recordWriteSideEffect } from '../../utils/writeSideEffects.js';
-import { recordCreatedArtifact } from '../../workspace/createdArtifactLedger.js';
+import { forgetCreatedArtifact, lookupCreatedArtifact, recordCreatedArtifact } from '../../workspace/createdArtifactLedger.js';
 
 const UTF8_BOM = '\uFEFF';
 
@@ -104,8 +104,12 @@ export const CreateLabelArgsSchema = z.object({
         'When provided, the label is created ONLY for these locales (e.g. ["en-US"] for an ' +
         'English-only customization), creating the folders if needed. ' +
         'When omitted or empty, the label is written to every language the label file already ' +
-        'has (its own .label.txt or descriptor), plus the supplied translations. A folder that ' +
-        'only OTHER label files of the model use is not one of its languages.',
+        'has (its own .label.txt or descriptor); a folder that only OTHER label files of the ' +
+        'model use is not one of its languages. A supplied translation for a language the file ' +
+        'lacks is added only when LABEL_LANGUAGES lists it (exact code: fi is not fi-FI), else ' +
+        'it is reported as "Not written". A label file with no language yet starts with every ' +
+        'LABEL_LANGUAGES language (untranslated ones get the fallback text). Pass `languages` ' +
+        'only to add a language to a file on purpose.',
     ),
   description: z
     .string()
@@ -1082,6 +1086,7 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       // Create the empty .label.txt with UTF-8 BOM (will be populated in step 4)
       const txtPath = path.join(langDir, `${labelFileId}.${lang}.label.txt`);
       try { await fs.access(txtPath); } catch (err) {
+        if (!isMissing(err)) throw err;
         await writeFileWithBom(txtPath, '');
         if (isMissing(err)) recordNewLabelFile(txtPath, lang, `${labelFileId}.${lang}.label.txt`);
       }
@@ -1089,16 +1094,20 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       // Create XML descriptor
       const xmlPath = path.join(axLabelDir, `${labelFileId}_${lang}.xml`);
       try { await fs.access(xmlPath); } catch (err) {
+        if (!isMissing(err)) throw err;
         await fs.writeFile(xmlPath, buildAxLabelFileXml(labelFileId, lang, resolvedPackageName, model), 'utf-8');
-        if (isMissing(err)) recordNewLabelFile(xmlPath, lang, `AxLabelFile\\${labelFileId}_${lang}`);
+        recordNewLabelFile(xmlPath, lang, `AxLabelFile\\${labelFileId}_${lang}`);
       }
     };
 
     // 3. Determine the target language set and create any missing folders.
-    //    A brand-new label file (no locales at all anywhere in the model) is still guarded
-    //    by createLabelFileIfMissing regardless of which mode we're in.
+    //    A label file with no language of its own is a NEW label file, whatever folders
+    //    other label files of the model have, and createLabelFileIfMissing=false refuses
+    //    it regardless of which mode we're in: a mistyped labelFileId must not quietly
+    //    become a new file. `labelFileMissing` (no folder at all) only picks the seeding
+    //    path and the model-directory check below.
     const labelFileMissing = modelFolders.length === 0;
-    if (labelFileMissing && !createLabelFileIfMissing) {
+    if (discoveredLanguages.length === 0 && !createLabelFileIfMissing) {
       return {
         content: [
           {
@@ -1269,8 +1278,10 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       try {
         content = await fs.readFile(txtPath, 'utf-8');
       } catch (err) {
-        // File doesn't exist yet — start empty
-        txtIsNew = isMissing(err);
+        // Only a missing file starts empty. One that exists but cannot be read (locked,
+        // no permission) would otherwise be replaced by a file holding just this label.
+        if (!isMissing(err)) throw err;
+        txtIsNew = true;
       }
 
       // Preserve the existing file's line endings so VCS diffs only show the new label.
@@ -1307,6 +1318,13 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       const newContent = serializeLabelMap(labelMap, shouldSort, eol);
       await writeFileWithBom(txtPath, newContent);
       if (txtIsNew) recordNewLabelFile(txtPath, lang, `${labelFileId}.${lang}.label.txt`);
+      else if (lookupCreatedArtifact(txtPath) && !createdLabelFiles.some(f => f.filePath === txtPath)) {
+        // An earlier call of this session created the file; this call added to it. Undo
+        // deletes whole files, which would now take this label and every later one with
+        // it, so the language's files leave the ledger and undo refuses them instead.
+        forgetCreatedArtifact(txtPath);
+        forgetCreatedArtifact(path.join(axLabelDir, `${labelFileId}_${lang}.xml`));
+      }
       written.push(lang);
       writtenDetails.push(`  ✔ ${lang}  → ${entry.text}`);
       if (lastResort) {
@@ -1337,8 +1355,9 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       try {
         await fs.access(xmlPath);
       } catch (err) {
+        if (!isMissing(err)) throw err;
         await fs.writeFile(xmlPath, buildAxLabelFileXml(labelFileId, lang, resolvedPackageName, model), 'utf-8');
-        if (isMissing(err)) recordNewLabelFile(xmlPath, lang, `AxLabelFile\\${labelFileId}_${lang}`);
+        recordNewLabelFile(xmlPath, lang, `AxLabelFile\\${labelFileId}_${lang}`);
       }
     }
 

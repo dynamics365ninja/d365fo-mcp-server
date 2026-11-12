@@ -32,7 +32,9 @@ const DEFAULT_LABEL_LANGUAGES = (settingByEnv('LABEL_LANGUAGES')!.default as str
 /**
  * Parse a LABEL_LANGUAGES value: the listed language codes in their configured
  * spelling and order (`_` read as `-`, duplicates dropped ignoring case), or null
- * for `all` / an empty list, meaning no restriction. The one parser of the
+ * for `all`, meaning no restriction. A value with no usable code (`" , "`) is an
+ * empty list — nothing is allowed — never "no restriction": the indexer would
+ * otherwise ingest every shipped language over a typo. The one parser of the
  * setting, shared by the indexer and labels(action="create"). Matching against it
  * is exact apart from case: `fi` and `fi-FI` are distinct label languages.
  */
@@ -43,7 +45,7 @@ export function parseLabelLanguages(value: string): string[] | null {
     const lang = raw.trim().replace(/_/g, '-');
     if (lang && !languages.some(l => l.toLowerCase() === lang.toLowerCase())) languages.push(lang);
   }
-  return languages.length > 0 ? languages : null;
+  return languages;
 }
 
 /** True when `language` is one of the parsed `languages` (ignoring case and `_` vs `-`). */
