@@ -272,6 +272,17 @@ those are called out explicitly below.
   configured one, the untranslated ones with the English text (or the first supplied
   translation) as a placeholder, reported as a translation fallback. When none of the
   supplied languages is configured, the supplied ones are used as before.
+- **A change to the custom models list applies without a server restart.** The list
+  (`environment.customModels` in `d365fo-mcp.json`, or `CUSTOM_MODELS` in `.env`) was read
+  once at startup, so a model added while the server ran, for example a new test model,
+  stayed a Microsoft standard, read-only model until the restart. The server now re-reads
+  this one setting when the file it came from has a newer modification time, checked at
+  most once a second. A model added to the list is custom on the next tool call, and a
+  model removed from it stops being custom, unless the server also detected it on its own
+  (the workspace, the active project, a model it wrote into). A value set in the real
+  environment (the shell, the `env` block of `.mcp.json`, App Settings) still wins and is
+  never replaced from a file. Nothing is indexed by this: a newly listed model that is not
+  in the index yet still needs `update_symbol_index(model=…)`. (#1161)
 
 ### Fixed
 - **First-start indexing waits for its worker to finish closing the index.** The server
