@@ -727,14 +727,12 @@ export class XppSymbolIndex {
       CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
       CREATE INDEX IF NOT EXISTS idx_symbols_type ON symbols(type);
       CREATE INDEX IF NOT EXISTS idx_symbols_model ON symbols(model);
-      CREATE INDEX IF NOT EXISTS idx_symbols_pattern_type ON symbols(pattern_type);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_symbols_unique
         ON symbols(name, type, COALESCE(parent_name, ''), model);
       
       -- Composite indexes for common query patterns (major speed boost)
       CREATE INDEX IF NOT EXISTS idx_type_parent ON symbols(type, parent_name) WHERE parent_name IS NOT NULL;
       CREATE INDEX IF NOT EXISTS idx_type_name ON symbols(type, name);
-      CREATE INDEX IF NOT EXISTS idx_parent_type ON symbols(parent_name, type) WHERE parent_name IS NOT NULL;
       CREATE INDEX IF NOT EXISTS idx_name_type ON symbols(name, type);
       -- Covering index for field/method lookups by parent (avoids table access)
       CREATE INDEX IF NOT EXISTS idx_parent_type_name ON symbols(parent_name, type, name) WHERE parent_name IS NOT NULL;
@@ -1261,6 +1259,28 @@ export class XppSymbolIndex {
   }
 
   /**
+   * Indexes on `symbols` that earlier versions created and no query uses.
+   * Measured with dbstat on a 3.3 GB index (1.2 M symbols) they were 284 MB,
+   * 8.6 % of the file, and three more B-trees to maintain on every insert:
+   *
+   *  • `idx_symbols_file_path` (223 MB) — BINARY collation. Every comparison of
+   *    file_path is COLLATE NOCASE and uses idx_symbols_file_path_nocase; an
+   *    index of another collation cannot serve those.
+   *  • `idx_parent_type` (49 MB) — (parent_name, type), a strict prefix of
+   *    idx_parent_type_name (parent_name, type, name) under the same partial
+   *    predicate, so anything it could answer the longer one answers too.
+   *  • `idx_symbols_pattern_type` (12 MB) — nothing filters or orders on
+   *    symbols.pattern_type (code_patterns has its own index).
+   *
+   * No longer created, and dropped by ensureDeferredIndexes() where they exist.
+   */
+  static readonly RETIRED_SYMBOL_INDEXES: readonly string[] = [
+    'idx_symbols_file_path',
+    'idx_parent_type',
+    'idx_symbols_pattern_type',
+  ];
+
+  /**
    * The indexes built AFTER the schema exists rather than with it.
    *
    * Deliberately not part of the CREATE INDEX block above, and all for one
@@ -1274,7 +1294,7 @@ export class XppSymbolIndex {
    *
    * What is deferred, and why each earns its bytes:
    *
-   *  • `symbols.file_path` / `labels.file_path` (+ their NOCASE twins) are the
+   *  • `symbols.file_path COLLATE NOCASE` / `labels.file_path_id` are the
    *    lookup key of removeSymbolsByFile()/removeLabelsByFile(), which every
    *    update_symbol_index, undo_last_modification and resync runs first.
    *    Unindexed, each of those scans the entire table — measured on the 2 GB
@@ -1291,6 +1311,10 @@ export class XppSymbolIndex {
    *    walks in the order asked for and stops at the limit, and with parent_name
    *    carried as the fourth column nothing touches the table at all: 152 ms to
    *    0.2 ms on a 480k-row fixture, with the temp B-tree gone from the plan.
+   *
+   * It also DROPS the indexes in RETIRED_SYMBOL_INDEXES from a database that
+   * still carries them, on the same terms: inline when small, on the worker when
+   * large, because DROP INDEX walks every page of the index it frees.
    *
    * Public because build scripts defer it (see XppSymbolIndexOptions) and run it
    * themselves after their bulk load, with the worker dispatch turned off.
@@ -1311,14 +1335,17 @@ export class XppSymbolIndex {
     };
 
     const labelsPath = this.labelsDbPath;
-    const work: Array<{ db: Database; dbFile: string; sql: string; name: string }> = [];
-    if (missing(this.db, 'idx_symbols_file_path')) {
-      work.push({
-        db: this.db,
-        dbFile: this.dbPath,
-        name: 'idx_symbols_file_path',
-        sql: 'CREATE INDEX IF NOT EXISTS idx_symbols_file_path ON symbols(file_path);',
-      });
+    const work: Array<{ db: Database; dbFile: string; sql: string; name: string; drop?: boolean }> = [];
+    for (const name of XppSymbolIndex.RETIRED_SYMBOL_INDEXES) {
+      if (!missing(this.db, name)) {
+        work.push({
+          db: this.db,
+          dbFile: this.dbPath,
+          name,
+          sql: `DROP INDEX IF EXISTS ${name};`,
+          drop: true,
+        });
+      }
     }
     if (missing(this.db, 'idx_model_type_name')) {
       work.push({
@@ -1339,11 +1366,10 @@ export class XppSymbolIndex {
         sql: 'CREATE INDEX IF NOT EXISTS idx_labels_file_path_id ON labels(file_path_id);',
       });
     }
-    // NOCASE twins. removeSymbolsByFile/removeLabelsByFile compare COLLATE NOCASE
-    // (Windows paths differ only in case between the indexer and a tool argument),
-    // and SQLite will only use an index whose collation matches the comparison —
-    // without these the case-insensitive delete falls back to the full-table scan
-    // the BINARY indexes above exist to avoid.
+    // NOCASE, and only NOCASE. Every comparison of symbols.file_path is COLLATE
+    // NOCASE (Windows paths differ only in case between the indexer and a tool
+    // argument), and SQLite will only use an index whose collation matches the
+    // comparison — so a BINARY index on the same column serves no query at all.
     if (missing(this.db, 'idx_symbols_file_path_nocase')) {
       work.push({
         db: this.db,
@@ -1364,7 +1390,7 @@ export class XppSymbolIndex {
       // checked here rather than assumed — off WAL the only safe build is inline.
       const inWal = (item.db.pragma('journal_mode', { simple: true }) as string) === 'wal';
       if (isLarge(item.dbFile) && this.backgroundIndexBuilds && inWal) {
-        this.buildIndexInWorker(item.dbFile, item.sql, item.name);
+        this.buildIndexInWorker(item.dbFile, item.sql, item.name, item.drop === true);
       } else {
         item.db.exec(item.sql);
       }
@@ -1382,7 +1408,7 @@ export class XppSymbolIndex {
    * Best-effort: a failure leaves the index absent, which is exactly the state
    * the server ran in before, so it is logged and never thrown.
    */
-  private buildIndexInWorker(dbPath: string, sql: string, indexName: string): void {
+  private buildIndexInWorker(dbPath: string, sql: string, indexName: string, drop = false): void {
     try {
       const worker = new Worker(new URL('./buildIndexWorker.js', import.meta.url), {
         workerData: { dbPath, sql, indexName },
@@ -1392,9 +1418,9 @@ export class XppSymbolIndex {
       worker.unref();
       worker.once('message', (msg: { ok: boolean; elapsedMs?: number; error?: string }) => {
         if (msg.ok) {
-          console.error(`[SymbolIndex] Built ${indexName} in background (${msg.elapsedMs}ms)`);
+          console.error(`[SymbolIndex] ${drop ? 'Dropped' : 'Built'} ${indexName} in background (${msg.elapsedMs}ms)`);
         } else {
-          console.error(`[SymbolIndex] Background build of ${indexName} failed: ${msg.error}`);
+          console.error(`[SymbolIndex] Background ${drop ? 'drop' : 'build'} of ${indexName} failed: ${msg.error}`);
         }
         this.pendingIndexWorkers.delete(worker);
         void worker.terminate();

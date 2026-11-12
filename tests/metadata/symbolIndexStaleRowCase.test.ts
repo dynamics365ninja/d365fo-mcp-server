@@ -11,7 +11,7 @@
  * strings for one file.
  *
  * The index that makes the NOCASE lookup affordable is pinned here too — without
- * it the delete is the full-table scan idx_symbols_file_path exists to avoid
+ * it the delete is the full-table scan the file_path index exists to avoid
  * (319 s + 173 s on the 2 GB production DB, see tests/metadata/filePathIndex).
  */
 
