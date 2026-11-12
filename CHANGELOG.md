@@ -217,6 +217,17 @@ those are called out explicitly below.
   written with a note, because it must be a data source of the base form. CounterField,
   ValidTimeStateAutoQuery, ValidTimeStateUpdate, OptionalRecordMode and MaxRecordsToLoad
   are too rare to place with certainty and are refused with the supported list (#1161).
+- **`add-method` with `methodName="Control.method"` adds an override on a form control.**
+  On `objectType="form"` a dotted name worked for data sources (`DS.method`,
+  `DS.Field.method`) and for a control override that already existed, but a new one such
+  as `OkButton.clicked` became a form method literally named "OkButton.clicked", which
+  does not compile. A new control override is now written by this server into the
+  control's holder under `<SourceCode><DataControls>`, typed like the design control,
+  where the designer keeps it and where `replace-code` already looks for it. The source
+  gets the same doc comment and indentation pass as every other `add-method`. Data source
+  names and overrides that already exist go to the bridge as before. A first segment that
+  is neither a data source nor a control of the form is refused with the close control
+  names, and nothing is written (#1161).
 
 ### Changed
 - **The server opens one read connection to the index instead of three, with a 128 MB
