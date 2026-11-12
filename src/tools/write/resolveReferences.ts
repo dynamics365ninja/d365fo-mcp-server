@@ -107,6 +107,16 @@ export interface ResolverDeps {
   ): Array<{ labelId: string; labelFileId: string; language?: string; text?: string }>;
   getLabelFileIds(): Array<{ labelFileId: string }>;
   /**
+   * Optional narrow answers to "is this label file id indexed?". `getLabelFileIds()`
+   * groups the whole labels table (about 2 s on a production-size index) and the
+   * resolver asked it once per unknown `@File:Id` literal. `hasLabelFileId` is an
+   * exact-case index seek, `getDistinctLabelFileIds` the bare id list for the
+   * case-insensitive comparison. Absent, the resolver falls back to
+   * `getLabelFileIds()`.
+   */
+  hasLabelFileId?(labelFileId: string): boolean;
+  getDistinctLabelFileIds?(): string[];
+  /**
    * Optional Descriptor-backed answer to "may the target model see this type?".
    * Presence in the index is not visibility. Absent, the check is not run.
    */
@@ -838,6 +848,10 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
     return verdict !== null;
   };
 
+  // Built at most once per call, and only when an exact seek misses: a missing
+  // label file is the common case and each literal used to pay for the full list.
+  const labelFileLookup: LabelFileLookup = { known: new Map() };
+
   // 1. Label references (from original string literals)
   for (const s of strings) {
     const modern = s.value.match(/^@([A-Za-z][A-Za-z0-9_]*):([A-Za-z0-9_]+)$/);
@@ -851,7 +865,7 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
         if (v) violations.push(v);
       } else {
         // Known label file with missing id is an error; unknown file is a warning.
-        const fileKnown = labelFileExists(deps, fileId);
+        const fileKnown = labelFileExists(deps, fileId, labelFileLookup);
         violations.push({
           kind: 'unknown-label',
           severity: fileKnown ? 'error' : 'warning',
@@ -1236,14 +1250,39 @@ function strFmtArgs(cleaned: string, index: number): number | null {
   return args;
 }
 
-/** True when the label file id is present in the labels index. */
-function labelFileExists(deps: ResolverDeps, fileId: string): boolean {
+/** Per-call memo for labelFileExists: verdict per id, and the lowercased id set. */
+interface LabelFileLookup {
+  known: Map<string, boolean>;
+  lowerIds?: Set<string>;
+}
+
+/**
+ * True when the label file id is present in the labels index, compared
+ * case-insensitively. An exact-case seek answers the hit; the miss falls to the
+ * lowercased id set, which is built at most once per resolver call.
+ */
+function labelFileExists(deps: ResolverDeps, fileId: string, lookup: LabelFileLookup): boolean {
+  const target = fileId.toLowerCase();
+  const memo = lookup.known.get(target);
+  if (memo !== undefined) return memo;
+  let exists: boolean;
   try {
-    const target = fileId.toLowerCase();
-    return deps.getLabelFileIds().some(f => f.labelFileId.toLowerCase() === target);
+    if (deps.hasLabelFileId?.(fileId)) {
+      exists = true;
+    } else {
+      if (!lookup.lowerIds) {
+        const ids = deps.getDistinctLabelFileIds
+          ? deps.getDistinctLabelFileIds()
+          : deps.getLabelFileIds().map(f => f.labelFileId);
+        lookup.lowerIds = new Set(ids.map(id => id.toLowerCase()));
+      }
+      exists = lookup.lowerIds.has(target);
+    }
   } catch {
-    return false;
+    exists = false;
   }
+  lookup.known.set(target, exists);
+  return exists;
 }
 
 /**
@@ -1257,6 +1296,8 @@ export function gateOnReferenceErrors(
     getReadDb(): ResolverDeps['db'];
     getLabelById: ResolverDeps['getLabelById'];
     getLabelFileIds: ResolverDeps['getLabelFileIds'];
+    hasLabelFileId?: ResolverDeps['hasLabelFileId'];
+    getDistinctLabelFileIds?: ResolverDeps['getDistinctLabelFileIds'];
   } | undefined,
   operationDescription: string,
 ): { isError: true; content: [{ type: 'text'; text: string }] } | null {
@@ -1268,6 +1309,8 @@ export function gateOnReferenceErrors(
       db: symbolIndex.getReadDb(),
       getLabelById: symbolIndex.getLabelById.bind(symbolIndex),
       getLabelFileIds: symbolIndex.getLabelFileIds.bind(symbolIndex),
+      hasLabelFileId: symbolIndex.hasLabelFileId?.bind(symbolIndex),
+      getDistinctLabelFileIds: symbolIndex.getDistinctLabelFileIds?.bind(symbolIndex),
       visibility: resolverModelVisibility(),
     });
   } catch {
@@ -1317,6 +1360,8 @@ export async function resolveReferencesTool(
       db: context.symbolIndex.getReadDb(),
       getLabelById: context.symbolIndex.getLabelById.bind(context.symbolIndex),
       getLabelFileIds: context.symbolIndex.getLabelFileIds.bind(context.symbolIndex),
+      hasLabelFileId: context.symbolIndex.hasLabelFileId?.bind(context.symbolIndex),
+      getDistinctLabelFileIds: context.symbolIndex.getDistinctLabelFileIds?.bind(context.symbolIndex),
       visibility: resolverModelVisibility(),
     });
   } catch (error) {

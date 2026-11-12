@@ -366,6 +366,19 @@ function recordIndexed(filePath: string, model: string, symbolIndex: XppServerCo
   } catch { /* vanished after indexing — the next pass sees it as deleted */ }
 }
 
+/**
+ * The name the index stored for the object a file declares.
+ *
+ * COLLATE NOCASE like every other comparison of symbols.file_path: these are
+ * Windows paths, removeSymbolsByFile() has just deleted the file's rows on the
+ * same terms, and it is the only collation symbols.file_path is indexed under —
+ * a BINARY comparison here would scan the table.
+ *
+ * Exported so the plan can be pinned by a test.
+ */
+export const INDEXED_ROW_NAME_SQL =
+  'SELECT name FROM symbols WHERE file_path = ? COLLATE NOCASE AND type = ? AND parent_name IS NULL LIMIT 1';
+
 export async function indexOneFile(
   filePath: string,
   context: XppServerContext,
@@ -916,9 +929,7 @@ export async function indexOneFile(
     // The stored copy follows the file, as in the full build (writeFormSymbols stores forms).
     // Keyed by the indexed row's name, as the build keys it, not the file name's casing.
     if (objectType !== 'form' && insertedCount > 0 && symbolIndex.writeObjectSource) {
-      const row = symbolIndex.db.prepare(
-        'SELECT name FROM symbols WHERE file_path = ? AND type = ? AND parent_name IS NULL LIMIT 1'
-      ).get(filePath, objectType) as { name?: string } | undefined;
+      const row = symbolIndex.db.prepare(INDEXED_ROW_NAME_SQL).get(filePath, objectType) as { name?: string } | undefined;
       symbolIndex.writeObjectSource(objectType, row?.name ?? objectName, model, sourceXml);
     }
 
