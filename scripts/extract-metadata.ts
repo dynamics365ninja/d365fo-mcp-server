@@ -14,8 +14,9 @@ import type { XppClassInfo } from '../src/metadata/types.js';
 import { isCustomModel as checkIsCustomModel, getCustomModels } from '../src/utils/modelClassifier.js';
 import { writeExtractManifest } from '../src/utils/extractManifest.js';
 import { readBlobDownloadMarker } from '../src/utils/blobDownloadMarker.js';
-import { XppConfigProvider } from '../src/utils/xppConfigProvider.js';
+import { XppConfigProvider, type XppEnvironmentConfig } from '../src/utils/xppConfigProvider.js';
 import { defaultPackagesRoot } from '../src/utils/packagesRoot.js';
+import { storeObjectSourceEnabled } from '../src/metadata/objectSourceSetting.js';
 import { box, kv, sectionTitle, statusLine, spread, c, glyph, log, shortPath, supportsUnicode, sanitize } from '../src/utils/terminalUi.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -115,11 +116,19 @@ function sourcePathReplacer(key: string, value: unknown): unknown {
 const writtenByModel = new Map<string, Set<string>>();
 
 /**
+ * index.storeObjectSource: whether objects' original XML is kept for object_source. Read
+ * once; bootstrapEnv, this script's first import, has already loaded the configuration.
+ */
+const STORE_OBJECT_SOURCE = storeObjectSourceEnabled();
+
+/**
  * The object's original XML rides along as `raw` (the convention enums and forms use) so
  * the index build can store it: a host with only the database has no AOT files to read.
- * The parsers do not return the XML, hence the second read (OS-cached).
+ * The parsers do not return the XML, hence the second read (OS-cached). Skipped when
+ * index.storeObjectSource is off: readers use it only when the AOT file is not on disk.
  */
 async function withRaw<T extends object>(filePath: string, data: T): Promise<T & { raw?: string }> {
+  if (!STORE_OBJECT_SOURCE) return data;
   try {
     return { ...data, raw: await fs.readFile(filePath, 'utf-8') };
   } catch {
@@ -472,6 +481,34 @@ export const EXTRACTED_AOT_DIRS: string[] = AOT_EXTRACTORS.flatMap(e => e.dirs);
 const MODEL_MARKER_DIRS = ['AxClass', 'AxTable', 'AxEnum', 'AxEdt', 'AxView', 'AxDataEntityView'];
 
 /**
+ * The XPP config to extract from, or null when this box has none (a traditional
+ * VM, which falls back to PACKAGES_PATH).
+ *
+ * A pinned name that matches none of the configs on a box that has some is an
+ * error, not a fallback. getActiveConfig() deliberately returns null for it
+ * rather than another environment's config, but treating that null as "no
+ * UDE" sent the extraction to the drive-scanned packages root: often an empty
+ * leftover `C:\AosService\PackagesLocalDirectory` on UDE boxes, so 0 models
+ * were extracted with exit code 0, and the full rebuild that followed cleared
+ * the database. Failing here leaves the existing index as it is.
+ */
+export async function resolveExtractXppConfig(
+  provider: Pick<XppConfigProvider, 'getActiveConfig' | 'listConfigs'>,
+  configName: string | undefined,
+): Promise<XppEnvironmentConfig | null> {
+  const config = await provider.getActiveConfig(configName);
+  if (config || !configName) return config;
+  const available = await provider.listConfigs();
+  if (available.length === 0) return null;
+  throw new Error(
+    `Pinned XPP config '${configName}' matches none of the XPP configs on this machine ` +
+    `(${available.map(c => c.fullFilename).join(', ')}). Nothing was extracted. ` +
+    'Point environment.xppConfigName (XPP_CONFIG_NAME) at an existing config, for an instance with ' +
+    '`d365fo-mcp instance upgrade <name>`, then run the extraction again.',
+  );
+}
+
+/**
  * Map a model's real subdirectory names by their lowercased form, so callers can look
  * up a canonical 'AxClass' regardless of the casing on disk (the AOT ships PascalCase,
  * but Linux checkouts may be lowercased).
@@ -534,9 +571,7 @@ async function extractMetadata() {
   let customRoot: string | null = null; // UDE: path whose models are all "custom"
   const devEnvType = process.env.DEV_ENVIRONMENT_TYPE || 'auto';
   if (devEnvType !== 'traditional') {
-    const xppProvider = new XppConfigProvider();
-    const configName = process.env.XPP_CONFIG_NAME || undefined;
-    const xppConfig = await xppProvider.getActiveConfig(configName);
+    const xppConfig = await resolveExtractXppConfig(new XppConfigProvider(), process.env.XPP_CONFIG_NAME || undefined);
     if (xppConfig) {
       log.info(`UDE config: ${xppConfig.configName} v${xppConfig.version}`);
       customRoot = xppConfig.customPackagesPath;
@@ -1143,13 +1178,12 @@ export async function extractForms(
 
       // The original XML rides along as `raw` (the convention enums use) so the index
       // build can store it: a host with only the database has no AOT files to read.
-      // parseFormFile does not return it, hence the second read (OS-cached).
-      const raw = await fs.readFile(filePath, 'utf-8');
-
+      // parseFormFile does not return it, hence the second read (OS-cached). Not kept
+      // when index.storeObjectSource is off.
       const outputDir = path.join(OUTPUT_PATH, modelName, 'forms');
       await fs.mkdir(outputDir, { recursive: true });
       const outputFile = path.join(outputDir, `${formInfo.name}.json`);
-      await writeMetadataJson(outputFile, { ...formInfo, raw }, isCustom, modelName);
+      await writeMetadataJson(outputFile, await withRaw(filePath, formInfo), isCustom, modelName);
 
       stats.forms++;
     } catch (error) {

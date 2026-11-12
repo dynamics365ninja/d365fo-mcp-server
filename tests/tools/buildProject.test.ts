@@ -92,6 +92,11 @@ vi.mock('../../src/tools/sdlc/odataActionGuard.js', async () => ({
   ...(await vi.importActual<any>('../../src/tools/sdlc/odataActionGuard.js')),
   scanODataActions: scanMock,
 }));
+const { schemaScanMock } = vi.hoisted(() => ({ schemaScanMock: vi.fn() }));
+vi.mock('../../src/tools/sdlc/schemaChangeGuard.js', async () => ({
+  ...(await vi.importActual<any>('../../src/tools/sdlc/schemaChangeGuard.js')),
+  scanSchemaChanges: schemaScanMock,
+}));
 const { patternScanMock } = vi.hoisted(() => ({ patternScanMock: vi.fn() }));
 vi.mock('../../src/tools/sdlc/formPatternGuard.js', async () => ({
   ...(await vi.importActual<any>('../../src/tools/sdlc/formPatternGuard.js')),
@@ -199,6 +204,7 @@ describe('build_d365fo_project', () => {
     statMock.mockResolvedValue({ mtimeMs: 0 });
     pruneMock.mockResolvedValue({ stale: [], phantoms: [], skippedModels: [], errors: [], scanned: 0 });
     scanMock.mockResolvedValue(NO_ODATA_FINDINGS);
+    schemaScanMock.mockResolvedValue({ changed: [], errors: [] });
     patternScanMock.mockResolvedValue({ errors: [], formsChecked: 0, unreadable: [] });
     cfgGetProjectPath.mockResolvedValue(PROJECT_PATH);
     cfgGetPackagePath.mockReturnValue(null);
@@ -744,13 +750,59 @@ describe('build_d365fo_project', () => {
       expect(args).toContain('-incremental');
       // Once before xppc (recompile + deployed file), once after it (deployed file only).
       expect(scanMock.mock.calls.map(c => c[3])).toEqual([undefined, { checkRecompile: false }]);
+      expect(schemaScanMock).toHaveBeenCalledTimes(1);
       expect(text).toContain('✅ Build succeeded (xppc.exe, incremental');
+    });
+
+    it('runs a full build when a table or an EDT changed since the last build', async () => {
+      const changed = ['AxTable/ContosoRentEquipmentTable', 'AxTable/ContosoRentOrderTable', 'AxEdt/ContosoRentEquipmentId'];
+      schemaScanMock.mockResolvedValueOnce({ changed, errors: [] });
+      const { started, state, args, text } = await build();
+      expect(args).not.toContain('-incremental');
+      expect(pruneMock).not.toHaveBeenCalled();
+      expect(schemaScanMock).toHaveBeenCalledTimes(1);
+      expect(schemaScanMock.mock.calls[0][2]).toBe(MODEL_NAME);
+      expect(started.content[0].text).toContain('Full build started');
+      expect(state).toMatchObject({ fullBuild: true, autoFullBuild: { recompiled: [], missing: [], schemaChanged: changed } });
+      expect(text).toContain('✅ Build succeeded (xppc.exe, full build, switched from incremental');
+      expect(text).toContain(
+        '2 tables, 1 EDT changed since the last build: ContosoRentEquipmentTable, ContosoRentOrderTable, ContosoRentEquipmentId.',
+      );
+      expect(text).toContain('can report 0 errors where a full build fails');
+      // The OData explanation belongs to the OData reason only.
+      expect(text).not.toContain('ODataExtends.runtime');
+    });
+
+    it('gives both reasons when an entity with actions and an enum changed', async () => {
+      scanMock.mockResolvedValueOnce({ ...NO_ODATA_FINDINGS, recompiled: ['AxDataEntityView/ProbeEntity'] });
+      schemaScanMock.mockResolvedValueOnce({ changed: ['AxEnum/ContosoRentStatus'], errors: [] });
+      const { args, text } = await build();
+      expect(args).not.toContain('-incremental');
+      expect(text).toContain(
+        'changed elements with OData actions: AxDataEntityView/ProbeEntity; 1 enum changed since the last build: ContosoRentStatus.',
+      );
+      expect(text).toContain('ODataExtends.runtime');
+    });
+
+    it('does not treat fullBuild: false as an opt-out, like the OData switch', async () => {
+      schemaScanMock.mockResolvedValueOnce({ changed: ['AxTable/ContosoRentEquipmentTable'], errors: [] });
+      const { args, state } = await build({ fullBuild: false });
+      expect(args).not.toContain('-incremental');
+      expect(state.autoFullBuild.schemaChanged).toEqual(['AxTable/ContosoRentEquipmentTable']);
+    });
+
+    it('stays incremental when the table, EDT and enum scan fails', async () => {
+      schemaScanMock.mockRejectedValueOnce(new Error('boom'));
+      const { args, state } = await build();
+      expect(args).toContain('-incremental');
+      expect(state.autoFullBuild).toBeUndefined();
     });
 
     it('does not run the pre-build scan for a requested full build', async () => {
       const { args, state } = await build({ fullBuild: true });
       expect(args).not.toContain('-incremental');
       expect(scanMock.mock.calls.map(c => c[3])).toEqual([{ checkRecompile: false }]);
+      expect(schemaScanMock).not.toHaveBeenCalled();
       expect(state.autoFullBuild).toBeUndefined();
     });
 
