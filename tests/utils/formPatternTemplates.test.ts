@@ -12,6 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import { CAPTION_LABELS, FormPatternTemplates, type FormPattern } from '../../src/utils/formPatternTemplates';
 import { validateFormPatternXml } from '../../src/validation/formPatternValidator';
+import { findControlElementOrderViolations, formatElementOrderViolations } from '../../src/validation/formControlElementOrder';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -616,14 +617,44 @@ describe('typed field controls', () => {
 // ─── Generated forms conform to their own pattern (no validator errors) ───────
 
 describe('generated forms pass the pattern validator', () => {
-  const cases: Array<[string, string]> = [
-    ['SimpleList', FormPatternTemplates.buildSimpleList(defaultOpts)],
-    ['SimpleListDetails', FormPatternTemplates.buildSimpleListDetails(defaultOpts)],
-    ['DetailsMaster', FormPatternTemplates.buildDetailsMaster(defaultOpts)],
-    ['DetailsTransaction', FormPatternTemplates.buildDetailsTransaction({
-      ...defaultOpts, linesDsName: 'Lines', linesDsTable: 'LineT', linesFields: ['Field1'],
-    })],
+  // A build fails on any error here (formPatternGuard.ts, FORM_PATTERN_ENFORCE), so
+  // every pattern the scaffold offers is checked, with fields and with none known
+  // yet. The verdicts agree with the platform's PatternAnalyzer
+  // (scripts/oracles/patternAnalyzer.ts): before the fix it rejected the Workspace
+  // scaffold without `sections` and DetailsTransaction without fields, as this did.
+  const patterns: FormPattern[] = [
+    'SimpleList', 'SimpleListDetails', 'DetailsMaster', 'DetailsTransaction', 'Dialog',
+    'TableOfContents', 'Lookup', 'ListPage', 'Workspace',
   ];
+  const lines = { linesDsName: 'Lines', linesDsTable: 'LineT', linesFields: ['Field1'] };
+  const cases: Array<[string, string]> = patterns.flatMap((p): Array<[string, string]> => [
+    [p, FormPatternTemplates.build(p, { ...defaultOpts, ...lines })],
+    [`${p} (no fields known)`, FormPatternTemplates.build(p, { ...defaultOpts, gridFields: [] })],
+  ]);
+  cases.push(['Workspace (two sections)', FormPatternTemplates.buildWorkspace({
+    ...defaultOpts, sections: [{ name: 'Open', caption: '@SYS9039' }, { name: 'Closed', caption: '@SYS2952' }],
+  })]);
+
+  it('Workspace without sections gets one list section over the primary data source', () => {
+    const xml = FormPatternTemplates.buildWorkspace(defaultOpts);
+    expect(xml).toContain('<Name>ListSection</Name>');
+    expect(xml).toContain(`<Caption>${CAPTION_LABELS.list}</Caption>`);
+    expect(xml).toMatch(/<Name>ListGrid<\/Name>[\s\S]*?<DataSource>TestDS<\/DataSource>/);
+    // Named sections replace the default rather than add to it.
+    const named = FormPatternTemplates.buildWorkspace({ ...defaultOpts, sections: [{ name: 'Open', caption: '@SYS9039' }] });
+    expect(named).toContain('<Name>OpenSection</Name>');
+    expect(named).not.toContain('<Name>ListSection</Name>');
+    // The section caption came after FastTabExpanded (dropped by the deserializer)
+    // next to a FrameType no tab page has.
+    expect(formatElementOrderViolations(findControlElementOrderViolations(named))).toBe('');
+  });
+
+  it('DetailsTransaction keeps an unbound HeaderTitle when no field is known', () => {
+    const xml = FormPatternTemplates.buildDetailsTransaction({ ...defaultOpts, gridFields: [] });
+    const header = /<Name>HeaderTitle<\/Name>[\s\S]*?<\/AxFormControl>/.exec(xml)?.[0] ?? '';
+    expect(header).toContain('<Style>TitleField</Style>');
+    expect(header).not.toContain('<DataField>');
+  });
 
   for (const [name, xml] of cases) {
     it(`${name} produces no pattern errors`, async () => {

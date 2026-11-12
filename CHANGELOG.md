@@ -436,6 +436,21 @@ those are called out explicitly below.
   in the index yet still needs `update_symbol_index(model=…)`. (#1161)
 
 ### Fixed
+- **A generated Workspace form, and a DetailsTransaction form generated before its table has
+  fields, now build.** Since this release a build fails on a form that breaks its pattern
+  (the `build_d365fo_project` entry below), and the scaffold wrote two forms the
+  platform's own PatternAnalyzer rejects. The Workspace scaffold had no list
+  section unless `sections` was passed, and WorkspaceOperational 1.1 requires one, so every
+  `generate_object` Workspace form came back "❌ Compiled; form pattern errors" with
+  "SectionRelatedLinks is missing". It now gets one list section, `ListSection` with a grid
+  over the primary data source captioned `@SYS6188` ("List"), when no `sections` are
+  named. DetailsTransaction left out its required `HeaderTitle` when no field of the table
+  was known. It now writes it unbound, as DetailsMaster already did. All nine scaffold
+  patterns, with and without fields, now pass both the validator and PatternAnalyzer.
+  A section named in `sections` also lost its caption, because `<Caption>` was written
+  after `<FastTabExpanded>` and the metadata deserializer drops an element out of order;
+  it now comes first, and the `<FrameType>` no tab page has is gone. Forms generated
+  before the fix need the section, the HeaderTitle control or the caption added.
 - **`d365fo_file(action="generate")` previews the object `create` would write, under its
   name and at its path.** Generate used `objectName` as passed and built the path as
   `<packagePath>\<model>\<model>\…`. Under a configured prefix the preview said
