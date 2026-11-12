@@ -40,7 +40,7 @@ describe('file_path indexes', () => {
     const idx = tempIndex();
 
     const symbolIdx = idx.db
-      .prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_symbols_file_path'`)
+      .prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_symbols_file_path_nocase'`)
       .get();
     // Labels reach their path through label_files now, so the indexed column is the
     // foreign key, and the path text itself is indexed once on the lookup table.
@@ -79,10 +79,10 @@ describe('file_path indexes', () => {
     // The plan is the assertion: "SCAN symbols" here means every future
     // single-object index call re-reads the entire table.
     const plan = idx.db
-      .prepare(`EXPLAIN QUERY PLAN SELECT DISTINCT name FROM symbols WHERE file_path IN (?, ?) AND parent_name IS NULL`)
+      .prepare(`EXPLAIN QUERY PLAN SELECT DISTINCT name FROM symbols WHERE file_path COLLATE NOCASE IN (?, ?) AND parent_name IS NULL`)
       .all(filePath, filePath) as Array<{ detail: string }>;
 
-    expect(plan.some(r => r.detail.includes('idx_symbols_file_path'))).toBe(true);
+    expect(plan.some(r => r.detail.includes('idx_symbols_file_path_nocase'))).toBe(true);
     expect(plan.some(r => /^SCAN symbols/.test(r.detail))).toBe(false);
 
     expect(idx.removeSymbolsByFile(filePath).deletedCount).toBe(1);

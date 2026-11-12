@@ -6,7 +6,11 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { parseStringPromise } from '../utils/xml.js';
-import { isFileUnderRoot } from '../utils/pathContainment.js';
+import { isLinkedFileUnderRoot, resolveScanRoot } from '../utils/pathContainment.js';
+import { mapWithConcurrency } from '../utils/concurrency.js';
+
+/** How many lstat calls a scan keeps in flight. */
+const STAT_CONCURRENCY = 16;
 
 /**
  * Directories never worth walking in a D365FO workspace. fs.glob's `exclude`
@@ -80,23 +84,59 @@ export class WorkspaceScanner {
       xmlFiles.push(path.resolve(workspacePath, relPath));
     }
 
-    for (const filePath of xmlFiles) {
-      // Reject symlinks that resolve outside the workspace root.
-      if (!isFileUnderRoot(filePath, workspacePath)) {
-        console.warn(`[WorkspaceScanner] Skipping ${filePath} — resolves outside workspace root ${workspacePath}`);
-        continue;
+    // Resolve the root once. It cannot change during the scan, and resolving it
+    // again for every file was a synchronous realpath per glob result.
+    const scanRoot = resolveScanRoot(workspacePath);
+    const rootDir = path.resolve(workspacePath);
+
+    // A glob result is lexically under the root by construction, so it can only
+    // resolve elsewhere through a link: the entry itself, or a directory between
+    // the root and the entry. Each directory is checked once per scan.
+    const linkedDirs = new Map<string, Promise<boolean>>();
+    const isBelowLinkedDir = (dir: string): Promise<boolean> => {
+      if (dir === rootDir) return Promise.resolve(false);
+      let known = linkedDirs.get(dir);
+      if (!known) {
+        known = (async () => {
+          const parent = path.dirname(dir);
+          if (parent === dir) return false;
+          if (await isBelowLinkedDir(parent)) return true;
+          try {
+            return (await fs.lstat(dir)).isSymbolicLink();
+          } catch {
+            return true; // cannot tell — take the full check
+          }
+        })();
+        linkedDirs.set(dir, known);
+      }
+      return known;
+    };
+
+    const scanned = await mapWithConcurrency(xmlFiles, STAT_CONCURRENCY, async (filePath) => {
+      // lstat does not follow links, so one call both detects a link and, for
+      // the plain file that almost every entry is, supplies the mtime.
+      let stat = await fs.lstat(filePath);
+      if (stat.isSymbolicLink() || await isBelowLinkedDir(path.dirname(filePath))) {
+        // Reject links that resolve outside the workspace root.
+        if (!isLinkedFileUnderRoot(filePath, scanRoot)) {
+          console.warn(`[WorkspaceScanner] Skipping ${filePath} — resolves outside workspace root ${workspacePath}`);
+          return null;
+        }
+        stat = await fs.stat(filePath);
       }
 
-      const stat = await fs.stat(filePath);
-      const fileName = path.basename(filePath, '.xml');
-      const type = this.detectFileType(filePath);
-      
-      files.push({
+      const file: WorkspaceFile = {
         path: filePath,
-        name: fileName,
-        type,
+        name: path.basename(filePath, '.xml'),
+        type: this.detectFileType(filePath),
         lastModified: stat.mtime,
-      });
+      };
+      return file;
+    });
+
+    // mapWithConcurrency keeps input order, so the result order is the glob order.
+    for (const file of scanned) {
+      if (file) files.push(file);
     }
 
     this.workspaceCache.set(workspacePath, { files, scannedAt: Date.now() });

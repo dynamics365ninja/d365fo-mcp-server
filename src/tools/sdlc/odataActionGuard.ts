@@ -245,7 +245,7 @@ export function describeMissingODataActions(missing: MissingODataActions[], max 
 const SCAN_CONCURRENCY = 16;
 
 /** Same rule as pruneStaleCompilerMetadata: an equal mtime is current. */
-async function willRecompile(sourceFile: string, metaFile: string): Promise<boolean> {
+export async function willRecompile(sourceFile: string, metaFile: string): Promise<boolean> {
   const sourceMtime = (await stat(sourceFile)).mtimeMs;
   try {
     return sourceMtime > (await stat(metaFile)).mtimeMs;

@@ -51,14 +51,13 @@ describe('file_path index build mode', () => {
 
     // Nothing synchronous built it, so it is not there yet — that is the whole
     // point of the worker, and the reason it collides with an EXCLUSIVE lock.
-    expect(hasIndex(idx.db, 'idx_symbols_file_path')).toBe(false);
+    expect(hasIndex(idx.db, 'idx_symbols_file_path_nocase')).toBe(false);
     expect(idx.hasPendingIndexBuilds()).toBe(true);
   });
 
   it('builds inline with backgroundIndexBuilds: false, however large the database', () => {
     const idx = tempIndex({ largeDbThresholdBytes: 0, backgroundIndexBuilds: false });
 
-    expect(hasIndex(idx.db, 'idx_symbols_file_path')).toBe(true);
     expect(hasIndex(idx.db, 'idx_symbols_file_path_nocase')).toBe(true);
     expect(hasIndex(idx.labelsDb, 'idx_labels_file_path_id')).toBe(true);
     // No second write connection exists, so nothing can contend with EXCLUSIVE.
@@ -72,12 +71,12 @@ describe('file_path index build mode', () => {
       deferFilePathIndexes: true,
     });
 
-    expect(hasIndex(idx.db, 'idx_symbols_file_path')).toBe(false);
+    expect(hasIndex(idx.db, 'idx_symbols_file_path_nocase')).toBe(false);
     expect(idx.hasPendingIndexBuilds()).toBe(false);
 
     idx.ensureDeferredIndexes();
 
-    expect(hasIndex(idx.db, 'idx_symbols_file_path')).toBe(true);
+    expect(hasIndex(idx.db, 'idx_symbols_file_path_nocase')).toBe(true);
     expect(hasIndex(idx.labelsDb, 'idx_labels_file_path_id')).toBe(true);
   });
 
@@ -94,7 +93,7 @@ describe('file_path index build mode', () => {
 
     idx.ensureDeferredIndexes();
 
-    expect(hasIndex(idx.db, 'idx_symbols_file_path')).toBe(true);
+    expect(hasIndex(idx.db, 'idx_symbols_file_path_nocase')).toBe(true);
     expect(hasIndex(idx.labelsDb, 'idx_labels_file_path_id')).toBe(true);
     expect(idx.hasPendingIndexBuilds()).toBe(false);
   });
@@ -141,7 +140,7 @@ describe('file_path index build mode', () => {
   it('keeps the small-database default: inline, no worker, no flags needed', () => {
     const idx = tempIndex({});
 
-    expect(hasIndex(idx.db, 'idx_symbols_file_path')).toBe(true);
+    expect(hasIndex(idx.db, 'idx_symbols_file_path_nocase')).toBe(true);
     expect(idx.hasPendingIndexBuilds()).toBe(false);
   });
 });

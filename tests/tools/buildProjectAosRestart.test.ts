@@ -38,6 +38,7 @@ vi.mock('../../src/tools/sdlc/runBpCheck.js', () => ({ runBpCheckTool: m.bp }));
 vi.mock('../../src/tools/sdlc/odataActionGuard.js', async () => ({
   ...(await vi.importActual<any>('../../src/tools/sdlc/odataActionGuard.js')), scanODataActions: m.scan,
 }));
+vi.mock('../../src/tools/sdlc/schemaChangeGuard.js', () => ({ scanSchemaChanges: async () => ({ changed: [], errors: [] }), describeSchemaChanges: () => '' }));
 const noOdataFindings = { recompiled: [], missing: [], runtimeFile: null, errors: [] };
 const lostExistingAction = { ...noOdataFindings, missing: [{ entity: 'ProbeEntity', actions: ['ExistingAction'] }] };
 import { buildProjectTool } from '../../src/tools/sdlc/buildProject.js';

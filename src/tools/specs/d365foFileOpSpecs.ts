@@ -156,7 +156,9 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
       'ClusteredIndex, PrimaryIndex, SaveDataPerCompany, Label, HelpText, Extends, SystemTable.\n' +
       '    table-extension (stored as <AxPropertyModification>): the table names above plus ' +
       'ModifiedDateTime, CreatedDateTime, ModifiedBy, CreatedBy (Yes/No), CountryRegionCodes ("CZ,SK").\n' +
-      '    edt: Extends, StringSize, Label, HelpText, ReferenceTable, ReferenceField.\n' +
+      '    edt: Extends, StringSize, Label, HelpText, ReferenceTable, ReferenceField (the related field ' +
+      'of the EDT\'s table reference: "AccountNum" once ReferenceTable is set, or "CustTable.AccountNum" ' +
+      'to set table and field in one call).\n' +
       '    class: Extends, Abstract, Final, Label.\n' +
       '    form: any single text element (Caption, Pattern) via XML fallback.\n' +
       '    Example: propertyPath="TableGroup" propertyValue="Group".',

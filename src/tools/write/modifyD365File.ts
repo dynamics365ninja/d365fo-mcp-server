@@ -94,7 +94,7 @@ import { nextEnumValue } from '../../utils/axEnumProperties.js';
 // The direct-XML writers moved to their own module; this file dispatches to them.
 import {
   directXmlReplaceCode,
-  directXmlModifyProperty, directXmlSetBpAccessProperty, directXmlSetRelationOnDelete,
+  directXmlModifyProperty, directXmlSetBpAccessProperty, directXmlSetEdtTableReference,directXmlSetRelationOnDelete,
   directXmlAddMenuItemToMenu,
   directXmlAddMenuItemToMenuExtension,
   directXmlAddSubmenu,
@@ -102,7 +102,7 @@ import {
   directXmlAddControl,
   coerceNoYesFlag,
   directXmlAddIndex,
-  directXmlSetIndexValidTimeState,
+  directXmlSetIndexValidTimeState, withRemovedFieldCleanup,
   directXmlClearEmptyProperty,
   directXmlAddQueryRange,
   directXmlRemoveQueryRange,
@@ -2377,11 +2377,11 @@ async function runModify(
       }
       case 'remove-field': {
         if (args.fieldName) {
-          bridgeResult = await bridgeRemoveField(
+          bridgeResult = await withRemovedFieldCleanup(await bridgeRemoveField(
             context.bridge,
             objectName,
             args.fieldName,
-          );
+          ), actualFilePath, args.fieldName);
         }
         break;
       }
@@ -2686,6 +2686,9 @@ async function runModify(
           // OperationalDomain / SubscriberAccessLevel on a table or menu item: XML only, never the bridge.
           const bpWrite = await directXmlSetBpAccessProperty(actualFilePath, objectType, objectName, args.propertyPath, args.propertyValue);
           if (bpWrite) { if (!bpWrite.success) return { content: [{ type: 'text', text: bpWrite.message }], isError: true }; bridgeResult = viaXmlFallback(bpWrite); break; }
+          // ReferenceField on an EDT: a child of <TableReferences>, XML only as well.
+          const edtRef = await directXmlSetEdtTableReference(actualFilePath, objectType, objectName, args.propertyPath, args.propertyValue);
+          if (edtRef) { if (!edtRef.success) return { content: [{ type: 'text', text: edtRef.message }], isError: true }; bridgeResult = viaXmlFallback(edtRef); break; }
           const own = await directXmlModifyControlProperty(actualFilePath, objectType, objectName, args.propertyPath, String(args.propertyValue), (args as { controlName?: string }).controlName);
           if (own) { bridgeResult = viaXmlFallback(own); break; } // a control this file defines (own form, or one an extension adds)
           // ── Form extension targeting a BASE-FORM control ─────────────────────
