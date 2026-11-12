@@ -260,34 +260,45 @@ export async function searchTool(request: CallToolRequest, context: XppServerCon
 
     const startedAt = Date.now();
     // Both probes feed the bridge splice AND the index answer, so they run once
-    // per call whichever route is taken.
+    // per call whichever route is taken: the raw rows are read here and handed to
+    // both consumers. The custom-model probe is the most expensive query of a
+    // broad search, so running it per consumer doubled the cost of the call.
     // The exact-name probe is passed along so an exact match that fell outside
     // the bridge's truncated result window is still ranked first (#15).
     // The custom-model probe is passed along so custom/ISV matches truncated out
     // of the Microsoft-dominated bridge window are spliced back in and
     // prioritized (never "only Microsoft objects").
     const searchTypes = args.type === 'all' ? undefined : [args.type];
-    const [exactMatches, customMatches] = await Promise.all([
-      dropStaleRows(probeExactMatches(symbolIndex, args.query, searchTypes)),
-      dropStaleRows(probeCustomMatches(symbolIndex, args.query, searchTypes)),
-    ]);
-    const bridgeOpts = {
-      exactMatches,
-      customMatches,
-      resolveMeta: buildBridgeMetaResolver(symbolIndex),
+    const probes: SearchProbes = {
+      exact: probeExactMatches(symbolIndex, args.query, searchTypes),
+      custom: probeCustomMatches(symbolIndex, args.query, searchTypes),
+    };
+    // The bridge splice wants the rows whose file is gone dropped (see
+    // dropStaleRows), which costs a file check per row. Only the bridge routes
+    // need that, so it is derived when one is actually taken, not up front.
+    const bridgeOptsFor = async () => {
+      const [exactMatches, customMatches] = await Promise.all([
+        dropStaleRows(probes.exact),
+        dropStaleRows(probes.custom),
+      ]);
+      return {
+        exactMatches,
+        customMatches,
+        resolveMeta: buildBridgeMetaResolver(symbolIndex),
+      };
     };
 
     // TYPE-SCOPED → bridge first. Measured 0.33 s, and it is live metadata, so an
     // object written seconds ago is in the answer. Unchanged behaviour, splice included.
     if (searchTypes) {
       const bridgeResult = await tryBridgeSearch(
-        context.bridge, args.query, args.type, args.limit, bridgeOpts,
+        context.bridge, args.query, args.type, args.limit, await bridgeOptsFor(),
       );
       if (bridgeResult) {
         logSearchRoute('bridge-typed', args.query, args.type, null, startedAt);
         return bridgeResult;
       }
-      const answer = await collectIndexAnswer(args, symbolIndex);
+      const answer = await collectIndexAnswer(args, symbolIndex, probes);
       logSearchRoute('index-bridge-unavailable', args.query, args.type, answer.results.length, startedAt);
       return renderIndexAnswer(args, symbolIndex, answer);
     }
@@ -300,7 +311,7 @@ export async function searchTool(request: CallToolRequest, context: XppServerCon
     // until this routing made that omission visible. That premise is what makes
     // answering from the index safe; if a new writer skips the upsert, its object
     // goes missing from search in the session that created it.
-    const answer = await collectIndexAnswer(args, symbolIndex);
+    const answer = await collectIndexAnswer(args, symbolIndex, probes);
     // "Live" excludes rows whose file is gone from disk. An answer made ONLY of
     // those is an answer about objects that are not here any more — exactly the
     // case where the provider may hold a recreated object the index still has
@@ -316,7 +327,7 @@ export async function searchTool(request: CallToolRequest, context: XppServerCon
     // a write whose in-process upsert failed) exists only in the provider, and
     // "no such object" is the most expensive wrong answer this tool can give.
     const bridgeResult = await tryBridgeSearch(
-      context.bridge, args.query, undefined, args.limit, bridgeOpts,
+      context.bridge, args.query, undefined, args.limit, await bridgeOptsFor(),
     );
     if (bridgeResult) {
       logSearchRoute('bridge-untyped-confirm', args.query, args.type, null, startedAt);
@@ -520,9 +531,21 @@ interface IndexAnswer {
   indexFailed: boolean;
 }
 
+/**
+ * The raw rows of the two index probes for one search call, before any stale-row
+ * handling. Read once in searchTool and shared by the bridge splice and the index
+ * answer, which each treat rows whose file is gone their own way (dropped for the
+ * splice, marked for the index answer).
+ */
+interface SearchProbes {
+  exact: ReturnType<typeof probeExactMatches>;
+  custom: ReturnType<typeof probeCustomMatches>;
+}
+
 async function collectIndexAnswer(
   args: z.infer<typeof SearchArgsSchema>,
   symbolIndex: any,
+  probes: SearchProbes,
 ): Promise<IndexAnswer> {
   try {
     const types = args.type === 'all' ? undefined : [args.type];
@@ -532,14 +555,14 @@ async function collectIndexAnswer(
     // exact-name hit can be missing from (or buried inside) the window. Probe for
     // it on-index and rank it first.
     const seen = new Set(raw.map(r => `${String(r.name).toLowerCase()} ${r.type}`));
-    const missingExact = probeExactMatches(symbolIndex, args.query, types)
+    const missingExact = probes.exact
       .filter(hit => !seen.has(`${hit.name.toLowerCase()} ${hit.type}`));
     for (const hit of missingExact) seen.add(`${hit.name.toLowerCase()} ${hit.type}`);
 
     // Custom/ISV matches are likewise buried under the Microsoft-dominated FTS
     // window, so splice any the window missed and mark every custom hit so
     // rankCustomFirst can lift them just behind the exact matches.
-    const customProbe = probeCustomMatches(symbolIndex, args.query, types);
+    const customProbe = probes.custom;
     const customKeys = new Set(customProbe.map(h => `${h.name.toLowerCase()} ${h.type}`));
     const missingCustom = customProbe
       .filter(hit => !seen.has(`${hit.name.toLowerCase()} ${hit.type}`));
