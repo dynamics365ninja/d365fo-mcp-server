@@ -486,10 +486,12 @@ export class SmartXmlBuilder {
     // Empty <Fields /> means all table fields are available in the datasource.
     xml += `\t\t\t<Fields />\n`;
     xml += `\t\t\t<ReferencedDataSources />\n`;
-    // AllowCreate/Edit/Delete must come after ReferencedDataSources to match AOT XML order.
+    // The platform's element order, measured on Microsoft standard forms: AllowCreate,
+    // AllowDelete, AllowEdit, after ReferencedDataSources. Not alphabetical elsewhere in
+    // the data source, and the deserializer drops an element it meets out of order.
     if (allowCreate === false) xml += `\t\t\t<AllowCreate>No</AllowCreate>\n`;
+    if (allowDelete === false) xml += `\t\t\t<AllowDelete>No</AllowDelete>\n`;
     if (allowEdit === false)   xml += `\t\t\t<AllowEdit>No</AllowEdit>\n`;
-    if (allowDelete === false)  xml += `\t\t\t<AllowDelete>No</AllowDelete>\n`;
     xml += `\t\t\t<DataSourceLinks />\n`;
     xml += `\t\t\t<DerivedDataSources />\n`;
     xml += `\t\t</AxFormDataSource>\n`;

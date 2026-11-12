@@ -457,10 +457,6 @@ shapes the catalog already covers with recorded SysTest runs — `L2-coc-extensi
 evidence. **Trigger to revisit:** a corpus record showing one of those shapes
 failing in a way the existing case does not exercise.
 
-**One defect noted and not fixed.** `remove-field` leaves the field's
-`AxTableFieldGroupField` entry behind, so a table can be left referencing a field
-that no longer exists. Small, real, and wants its own change.
-
 ## X++ coverage v3 non-goals — recorded here when the plan file was deleted
 
 **Status:** deferred / non-goal 2026-09-01 · **Area:** knowledge, generator, eval

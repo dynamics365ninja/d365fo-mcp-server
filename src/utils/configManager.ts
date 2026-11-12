@@ -10,7 +10,7 @@ import { findDescriptorPath } from '../metadata/modelDescriptor.js';
 import * as os from 'os';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { autoDetectD365Project, detectD365Project, scanAllD365Projects, extractModelNameFromProject, detectGitBranch, isMicrosoftDemoModel, distinctCustomModels, type D365ProjectInfo } from './workspaceDetector.js';
-import { registerCustomModel, getCustomModels } from './modelClassifier.js';
+import { registerCustomModel } from './modelClassifier.js';
 import { XppConfigProvider, type XppEnvironmentConfig } from './xppConfigProvider.js';
 import { FALLBACK_PACKAGES_ROOT, findPackagesRoot, warmPackagesRoots } from './packagesRoot.js';
 import { debugLog } from './logger.js';
@@ -915,10 +915,10 @@ class ConfigManager {
     // loop. Resolves immediately once warm, which it is after the first call.
     await warmPackagesRoots();
 
-    // Register the explicitly-configured custom models exactly once. The target
+    // Register the explicitly-configured target model exactly once. The target
     // model resolved from configuration (D365FO_MODEL_NAME env var or a modelName
-    // key in .mcp.json) is custom by definition, as are any CUSTOM_MODELS entries.
-    // Registering them here makes isCustomModel() deterministic regardless of call
+    // key in .mcp.json) is custom by definition.
+    // Registering it here makes isCustomModel() deterministic regardless of call
     // ordering — without it, a long model name whose ISV prefix is only an
     // abbreviation (e.g. prefix "CR" for "ContosoRobotics") is misclassified as a
     // Microsoft standard model until some later operation happens to register it.
@@ -930,13 +930,10 @@ class ConfigManager {
         registerCustomModel(configuredModel);
       }
 
-      // CUSTOM_MODELS literals (wildcard patterns are matched directly by
-      // isCustomModel, so they don't need to be registered as exact names).
-      for (const entry of getCustomModels()) {
-        if (!entry.includes('*')) {
-          registerCustomModel(entry);
-        }
-      }
+      // CUSTOM_MODELS entries are deliberately NOT registered. isCustomModel()
+      // matches the live list itself (literals and wildcards, case-insensitive),
+      // and the registry is add-only: a literal copied into it here would stay
+      // custom after the user took it off the list (see reloadCustomModels).
     }
   }
 

@@ -36,6 +36,7 @@ import { describeSubscriberAccessLevel, subscriberAccessLevelValue } from '../..
 import { upsertAxFormDesignProperty } from '../../utils/axFormDesignProperties.js';
 import { bpAccessPropertyOf, isBpAccessObjectType, setBpAccessProperty } from '../xml/bpAccessPropertyModify.js';
 import { setRelationOnDelete } from '../xml/tableBpDefaults.js';
+import { isEdtReferenceFieldProperty, setEdtTableReference } from '../xml/edtTableReferenceEdit.js';
 import { upsertMenuProperty } from '../xml/menuPropertyUpsert.js';
 import { upsertFormControlProperty } from '../../utils/formControlPropertyXml.js';
 import { resolveControlPropertyTarget } from '../../utils/formExtensionControlModifications.js';
@@ -47,6 +48,7 @@ import {
 import { escapeXml } from '../../utils/xmlEscape.js';
 import { methodSourceSpans, occurrencesInSpans } from '../../utils/methodSourceSpans.js';
 import { upsertTableFieldProperty } from '../xml/tableFieldPropertyEdit.js';
+import { cleanRemovedFieldReferences, renderRemovedFieldCleanup } from '../xml/tableFieldRemoval.js';
 import type { RestructureResult } from '../xml/formRestructure.js';
 import { convertEntityFieldToComputed, type ComputedFieldType } from '../xml/entityComputedField.js';
 import {
@@ -205,6 +207,39 @@ export const directXmlSetBpAccessProperty = serializedOnFile(async (
       `(${outcome.changed ? 'in canonical element order' : 'already in that state, nothing written'}). ` +
       `File: ${filePath}` +
       (outcome.bpNote ? `\n⚠️ ${outcome.bpNote}` : ''),
+  };
+});
+
+/**
+ * modify-property ReferenceField on an EDT: the related field of the EDT's table
+ * reference, a child of <TableReferences> that no scalar property setter can
+ * write. See tools/xml/edtTableReferenceEdit.ts. Null when the request is not
+ * this one, so the dispatcher carries on; a failure result means nothing was
+ * written.
+ */
+export const directXmlSetEdtTableReference = serializedOnFile(async (
+  filePath: string,
+  objectType: string,
+  objectName: string,
+  propertyPath: string,
+  propertyValue: unknown,
+): Promise<{ success: boolean; message: string } | null> => {
+  if (objectType !== 'edt' || !isEdtReferenceFieldProperty(propertyPath)) return null;
+  const before = (await fs.readFile(filePath, 'utf-8')).replace(/^﻿/, '');
+  const outcome = setEdtTableReference(before, propertyValue);
+  if (!outcome) return null;
+  if (!outcome.ok) {
+    return { success: false, message: `❌ Could not set ReferenceField on ${objectName}: ${outcome.error} Nothing was written.` };
+  }
+  if (outcome.changed) await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
+  return {
+    success: true,
+    message: outcome.changed
+      ? `✅ Table reference of ${objectName} set to ${outcome.table}.${outcome.relatedField} via direct XML ` +
+        `(<TableReferences>${outcome.wroteReferenceTable ? ' and <ReferenceTable>' : ''}). ` +
+        (outcome.syncedLegacyRelation ? `The EDT's legacy relation (<Relations><AxEdtRelation>) was updated to the same table and field. ` : '') +
+        `File: ${filePath}`
+      : `ℹ️ ${objectName} already references ${outcome.table}.${outcome.relatedField}, nothing written. File: ${filePath}`,
   };
 });
 
@@ -3215,6 +3250,52 @@ export const directXmlSetTableFieldProperties = serializedOnFile(async (
     return null;
   }
 });
+
+/**
+ * After remove-field: takes the removed field out of the file's field groups and
+ * says what else in the file still names it (tools/xml/tableFieldRemoval.ts). The
+ * bridge's RemoveField removes the field alone. Null when there is nothing to
+ * say, when the file still defines the field, or when it cannot be read: the
+ * removal itself already succeeded and this must not turn it into a failure.
+ */
+export const directXmlCleanRemovedFieldReferences = serializedOnFile(async (
+  filePath: string,
+  fieldName: string,
+): Promise<{ message: string; removedFromGroups: string[] } | null> => {
+  try {
+    const raw = await fs.readFile(filePath, 'utf-8');
+    const content = raw.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+    const cleanup = cleanRemovedFieldReferences(content, fieldName);
+    if (!cleanup) return null;
+    if (cleanup.removedFromGroups.length > 0) {
+      await writeFileAtomic(filePath, normalizeD365Xml(cleanup.xml));
+      console.error(
+        `[modify_d365fo_file] ✅ directXmlCleanRemovedFieldReferences: '${fieldName}' out of ` +
+        `${cleanup.removedFromGroups.join(', ')} in ${filePath}`,
+      );
+    }
+    const message = renderRemovedFieldCleanup(fieldName, cleanup);
+    return message ? { message, removedFromGroups: cleanup.removedFromGroups } : null;
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlCleanRemovedFieldReferences failed: ${err}`);
+    return null;
+  }
+});
+
+/**
+ * A remove-field result with the cleanup above appended to its message. Runs only
+ * after a removal that succeeded and was not skipped: a failed or skipped removal
+ * left the field where it was, so nothing in the file is dangling.
+ */
+export async function withRemovedFieldCleanup<T extends { success: boolean; message: string; skipped?: boolean } | null>(
+  result: T,
+  filePath: string,
+  fieldName: string,
+): Promise<T> {
+  if (!result?.success || result.skipped) return result;
+  const cleaned = await directXmlCleanRemovedFieldReferences(filePath, fieldName);
+  return cleaned ? { ...result, message: `${result.message}\n${cleaned.message}` } : result;
+}
 
 /**
  * move-control / wrap-controls on an AxForm (formRestructure.ts). XML only: the bridge
