@@ -1162,8 +1162,9 @@ export const D365FO_FILE_CREATE_PROPERTY_SPECS: Record<string, string> = {
     'primaryKeyFields?[], isPublic?, entityCategory? ' +
     '(Master|Configuration|Transaction|Reference|Document|Parameters — note the plural), ' +
     'dynamicFields?, allowRowVersionChangeTracking? (dual-write: set on the source ' +
-    'TABLES too), dataManagementEnabled? (writes the staging-table REFERENCE only — the staging table is NOT ' +
-    'created, so create it yourself or the full build fails; the reply says so), ' +
+    'TABLES too), dataManagementEnabled? (also creates the staging table <entity>Staging in the same model: DMF fields, ' +
+    'one field per public entity field, index StagingIdx, relation DataEntity. The reply names any field it ' +
+    'left out. An existing table is kept. autoCorrect=false skips it), ' +
     'isReadOnly?, tags?, configurationKey?, primaryCompanyContext? (e.g. "DataAreaId"), ' +
     'surrogateKey? (true: key EntityKey = a SourceKey field bound to RecId — instead of ' +
     'primaryKeyFields). Any other key is not read and is listed in the reply as NOT written. ' +

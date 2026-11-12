@@ -2876,7 +2876,7 @@ else
       'Error handling: dual-write has a retry mechanism — failed records go to an error queue',
       'Live sync: changes in one system propagate to the other in near-real-time (~seconds)',
       'Virtual entities: NO data copy — F&O data accessed via OData at runtime in Dataverse; read-only by default',
-      'For custom entities: IsPublic=Yes + PublicEntityName/CollectionName. DataManagementEnabled is a DMF concern, NOT a dual-write prerequisite — turning it on without an existing DataManagementStagingTable fails the build',
+      'For custom entities: IsPublic=Yes + PublicEntityName/CollectionName. DataManagementEnabled is a DMF concern, NOT a dual-write prerequisite — turning it on needs the DataManagementStagingTable to exist, or the build fails (the data-entity create writes that table with the entity)',
       'Match on a stable business key, not RecId: give the entity an AxDataEntityViewKey over a real alternate key (unique index, AlternateKey=Yes, backed by ReplacementKey on the table)',
       'NEVER put complex business logic in dual-write transform — keep transforms simple (field mapping, default value)',
       'For custom pre/post processing: use business events + Power Automate instead of dual-write plug-ins',
