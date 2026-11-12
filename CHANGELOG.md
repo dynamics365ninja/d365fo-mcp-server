@@ -628,6 +628,20 @@ those are called out explicitly below.
   in a warning with the operation that fixes it (for an index it also says when it is the
   table's `PrimaryIndex`, `ClusteredIndex` or `ReplacementKey`). Nothing to do for
   callers. A field that was in no group gets the same reply as before.
+- **`d365fo_file(action="modify", operation="modify-property")` with `ReferenceField` gives
+  an existing EDT its table reference.** The property was listed for EDTs but refused with
+  "Unknown AxEdt property 'ReferenceField'", because the related field is not a scalar
+  property. It is a child of `<TableReferences>`, which no property setter writes. So an
+  EDT could not be pointed at a table and field without hand-written XML. The value is now
+  written on the XML as the EDT's single `<AxEdtTableReference>` (`<RelatedField>` and
+  `<Table>`). Pass `propertyValue="AccountNum"` when the EDT already has a ReferenceTable,
+  or `propertyValue="CustTable.AccountNum"` to set `<ReferenceTable>` and the reference in
+  one call. An existing reference is updated in place. When the EDT also carries one
+  legacy `<Relations>` entry (`AxEdtRelation`), as many shipped EDTs do, that entry gets
+  the same table and field and the reply says so. A bare field on an EDT with no
+  reference table is refused with a message that asks for the table. An EDT with more
+  than one legacy relation or more than one table reference is refused too. EDT
+  extensions are not covered (#1161).
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
