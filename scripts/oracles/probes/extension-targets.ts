@@ -15,14 +15,22 @@
  * with the base EDT (only a warning), a kernel table method the table does not
  * declare.
  *
- * Three answers the first run gave were not the expected ones, and each changed
+ * Two answers the first run gave were not the expected ones, and each changed
  * a rule:
  *  - `[Wrappable(false)]` on a protected method does NOT stop a wrapper from
  *    compiling, while `final` (reported as "Wrappable = false") and
  *    `[Hookable(false)]` do. The attribute alone is not an error rule.
- *  - `[PostHandlerFor]` naming a method that does not exist compiles.
  *  - A static delegate must be named with `staticDelegateStr`; `delegateStr` on
  *    it fails ("must not specify an instance delegate").
+ *
+ * A third one was this batch fooling itself, and it is why every "missing"
+ * member below has its OWN name. The first run reused `conProbeNoSuchMethod` for
+ * `CocMissing`, `HdlPostMissing` and `MethodStrMissing`. `CocMissing`'s extension
+ * class DECLARES that method, and an extension class adds its methods to the
+ * augmented class, so in the same build `methodStr(AssetProposal,
+ * conProbeNoSuchMethod)` named a real method and compiled. That "xppc does not
+ * check methodStr's member" was filed as #1270 and refuted there by
+ * probes/intrinsic-members.ts: every two-argument intrinsic checks it.
  *
  * Targets are shipped Microsoft classes in ApplicationSuite / ApplicationPlatform:
  *   AssetProposal (extends RunBaseBatch) — canGoBatch, isBundleReady(int),
@@ -171,13 +179,19 @@ const probes: Probe[] = [
     handlerMethod('[PostHandlerFor(classStr(AssetProposal), methodStr(AssetProposal, getJournalLink))]',
       'postGetJournalLink', 'XppPrePostArgs _args'), 'fails'),
   handler('HdlPostMissing', '[PostHandlerFor] a method the class does not have',
-    handlerMethod('[PostHandlerFor(classStr(AssetProposal), methodStr(AssetProposal, conProbeNoSuchMethod))]',
-      'postMissing', 'XppPrePostArgs _args'), 'compiles'),
+    handlerMethod('[PostHandlerFor(classStr(AssetProposal), methodStr(AssetProposal, conProbeNoSuchPostTarget))]',
+      'postMissing', 'XppPrePostArgs _args'), 'fails'),
   {
     id: 'MethodStrMissing',
     question: 'methodStr() naming a method the class does not have, in a method body',
+    body: 'str name = methodStr(AssetProposal, conProbeNoSuchMethodStrTarget);',
+    expect: 'fails',
+  },
+  {
+    id: 'MethodStrExtensionAdded',
+    question: 'methodStr() naming the method CocMissing\'s extension class adds to AssetProposal',
     body: 'str name = methodStr(AssetProposal, conProbeNoSuchMethod);',
-    expect: undefined,
+    expect: 'compiles',
   },
 
   // ── [SysObsolete]: the error flag is what turns a call into a build error ──
