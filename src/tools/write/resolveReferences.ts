@@ -46,6 +46,7 @@ import {
   indexedEnumValueNames,
   type EnumValueSet,
 } from './enumValueNames.js';
+import { checkExtensionTargets, obsoleteCallViolation } from './extensionTargets.js';
 
 export const resolveReferencesArgsSchema = z.object({
   code: z.string().describe(
@@ -80,7 +81,13 @@ export interface ReferenceViolation {
     | 'label-placeholder-mismatch'
     | 'unknown-intrinsic-target'
     | 'arity-mismatch'
-    | 'not-visible-from-model';
+    | 'not-visible-from-model'
+    /** A Chain of Command wrapper whose target is missing, unwrappable or declared differently. */
+    | 'coc-target'
+    /** An event handler whose delegate or pre/post target is missing, of the wrong kind or not hookable. */
+    | 'handler-target'
+    /** A call to a method marked [SysObsolete] (an error when its isError argument is true). */
+    | 'obsolete-method';
   severity: 'error' | 'warning';
   line: number;
   identifier: string;
@@ -190,7 +197,7 @@ const KERNEL_TYPES = new Set([
 ]);
 
 /** Methods available on every table buffer via the kernel xRecord/Common base. */
-const TABLE_BUILTIN_METHODS = new Set([
+export const TABLE_BUILTIN_METHODS = new Set([
   'insert', 'doinsert', 'update', 'doupdate', 'delete', 'dodelete', 'write',
   'validatewrite', 'validatedelete', 'validatefield', 'validatefieldvalue',
   'initvalue', 'modifiedfield', 'modifiedfieldvalue', 'clear', 'selectforupdate',
@@ -212,7 +219,7 @@ const TABLE_SYSTEM_FIELDS = new Set([
 ]);
 
 /** Methods available on every class instance via the kernel Object base. */
-const OBJECT_BUILTIN_METHODS = new Set([
+export const OBJECT_BUILTIN_METHODS = new Set([
   'new', 'finalize', 'tostring', 'handle', 'notify', 'wait', 'objectonserver',
   'usagecount', 'owner', 'gettimeouttimerhandle', 'cancurrenttimeout',
   'setrefcountzero', 'equal',
@@ -802,6 +809,8 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
   const selfDeclared = new Set<string>(
     [...cleaned.matchAll(/\b(?:class|interface)\s+([A-Za-z_]\w*)/g)].map(d => d[1].toLowerCase()),
   );
+  // Obsolete code may call obsolete code: the compiler stays silent (see obsoleteCallViolation).
+  const callerObsolete = /\bSysObsolete/i.test(cleaned);
 
   const typeExistsCache = new Map<string, string[]>();
   const lookupTypes = (name: string): string[] => {
@@ -1034,6 +1043,10 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
       continue;
     }
     verifiedCount++;
+    {
+      const obsolete = obsoleteCallViolation(method.source, `${typeName}::${member}`, line, callerObsolete);
+      if (obsolete) violations.push(obsolete);
+    }
 
     // Arity check when the call site and the declaration are both parseable
     {
@@ -1104,8 +1117,13 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
         const builtin = isTableLike
           ? TABLE_BUILTIN_METHODS.has(member.toLowerCase())
           : OBJECT_BUILTIN_METHODS.has(member.toLowerCase());
-        if (builtin || findMethod(deps, typeName, member)) {
+        const method = builtin ? undefined : findMethod(deps, typeName, member);
+        if (builtin || method) {
           verifiedCount++;
+          const obsolete = method
+            ? obsoleteCallViolation(method.source, `${typeName}.${member}()`, line, callerObsolete)
+            : undefined;
+          if (obsolete) violations.push(obsolete);
         } else {
           violations.push({
             kind: 'unknown-method',
@@ -1125,6 +1143,12 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
       }
     }
   }
+
+  // 6. What extensions bind to: CoC wrappers and event handlers (#1225)
+  violations.push(...checkExtensionTargets(code, deps.db, {
+    table: TABLE_BUILTIN_METHODS,
+    object: OBJECT_BUILTIN_METHODS,
+  }));
 
   return { violations, verifiedCount };
 }
@@ -1410,7 +1434,8 @@ export async function resolveReferencesTool(
     lines.push(
       '**Fix all errors before writing** — these identifiers could not be resolved against the ' +
       'indexed codebase (`not-visible-from-model` means the name exists but its package is not ' +
-      'referenced by the target model).',
+      'referenced by the target model; `coc-target`, `handler-target` and `obsolete-method` mean the ' +
+      'name exists but its indexed declaration rejects this use).',
     );
   } else {
     lines.push('Warnings are informational (kernel classes and new labels are not indexable). Review, then proceed.');
