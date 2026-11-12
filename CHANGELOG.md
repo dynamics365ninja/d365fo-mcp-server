@@ -452,6 +452,14 @@ those are called out explicitly below.
   suggestions and no query runs. The report says that the class has no known pattern
   and nothing was compared, where it used to say the class "appears complete". Classes
   with a known pattern get the same suggestions as before.
+- **Generated ListPage and Workspace forms write AllowCreate, AllowDelete, AllowEdit on
+  their data source in the platform's element order.** The templates wrote AllowCreate,
+  AllowEdit, AllowDelete. The order inside a form data source, measured on Microsoft
+  standard forms (13,234 data sources, no pair of elements in both orders), is
+  AllowCreate, AllowDelete, AllowEdit, and the platform drops an element it reads out of
+  order, so the read-only data source of a generated form could lose AllowDelete=No. The
+  same order is fixed in the smart XML builder. Forms generated earlier keep the old
+  order: swap the two lines in the form XML, or recreate the form.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
