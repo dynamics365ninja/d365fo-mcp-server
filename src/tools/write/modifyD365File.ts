@@ -66,7 +66,7 @@ import {
 import { validateEdtExtensionChange } from '../../utils/edtExtensionValidator.js';
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
 import { applySecurityReferenceOperation, securityReferenceTypeRefusal } from './securityReferences.js';
-import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, bridgeMessageNote, verifyFormElementOrder, readBackAfterModify } from './inlineWriteVerification.js';
+import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, bridgeMessageNote, renderBatchEditHint, verifyFormElementOrder, readBackAfterModify } from './inlineWriteVerification.js';
 import { lintXppSelect } from '../../utils/xppSelectLint.js';
 import { validateWrittenXpp } from './inlineXppValidation.js';
 import { createPhaseTimer } from '../../utils/phaseTimer.js';
@@ -3628,12 +3628,10 @@ async function runModify(
             // successes; a skip keeps the bridge's own message, which carries the
             // reason.
             //
-            // An applied write says only what varies with the call. Gone: "—
-            // applied via IMetadataProvider.Update()" (or "via this server's XML
-            // writer"), a `🔧 API: ✅ <thing> added via <Api>` line restating the
-            // headline, and the fixed "Next: build_d365fo_project(bpCheck:true)…"
-            // and "More edits? Send them together…" tail that restated the
-            // build_d365fo_project and operations[] descriptions on every call.
+            // An applied write says only what varies with the call, plus the one
+            // fixed tail below. Gone: "— applied via IMetadataProvider.Update()"
+            // (or "via this server's XML writer") and a `🔧 API: ✅ <thing> added
+            // via <Api>` line restating the headline.
             (bridgeResult.skipped
               ? `⏭️ ${operation} on ${objectType} "${objectName}" — SKIPPED, nothing was written${crossModelNotice}${autoCorrectNote}\n`
               : `✅ ${operation} on ${objectType} "${objectName}"${crossModelNotice}${autoCorrectNote}\n`) +
@@ -3642,7 +3640,13 @@ async function runModify(
             `${preservationNote}${changedLinesNote}${xppLintNote}${xppRuleNote}${addFieldBpNote}${fieldGroupRenderNote}${dataSourceTableNote}${backupNote}${verifyNote}${indexNote}${bpNote}${formOrderNote}${readBackNote}${timer.render()}` +
             // "Review changes in Visual Studio" is not something the caller can act
             // on, and it rode along on every write.
-            (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : ''),
+            (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') +
+            // Fixed, but measured: see the create tail in createD365File.ts. Not in a
+            // batch (runModifyBatch emits one for the call) or after a skip.
+            (inBatch || bridgeResult.skipped
+              ? ''
+              : `\n\nNext: build_d365fo_project(bpCheck:true) — builds and runs the best-practice check in one call.` +
+                renderBatchEditHint(objectType, objectName)),
         },
       ],
     };

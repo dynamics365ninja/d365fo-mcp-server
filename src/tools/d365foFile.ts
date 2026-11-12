@@ -528,9 +528,13 @@ async function runModifyBatch(
       trailerLines.push((written.size > 1 ? `\n${target.objectName ?? target.filePath}:` : '') + note);
     }
   }
-  // No fixed "Next: build_d365fo_project(bpCheck:true)…" line: it restated the
-  // build_d365fo_project description on every batch.
-  const trailer = trailerLines.length ? `\n${trailerLines.join('')}` : '';
+  // No batch-edit hint here: this call already IS the batch. The Next line stays
+  // (once per batch): it is what turned build → run_bp_check → verify into one
+  // call (see the modify tail in modifyD365File.ts).
+  const trailer = (trailerLines.length ? `\n${trailerLines.join('')}` : '') +
+    (written.size > 0
+      ? `\n\nNext: build_d365fo_project(bpCheck:true) — builds and runs the best-practice check in one call.`
+      : '');
 
   return {
     content: [{ type: 'text', text: head + body + tail + trailer }],

@@ -294,24 +294,23 @@ those are called out explicitly below.
   (`server.readPoolSize`) changes from 3 to 1. If you set it yourself it still opens that
   many connections, and the 128 MB is now split between them (never less than 32 MB
   each). Remove the setting to get the single connection.
-- **A successful `d365fo_file` create or modify replies in two lines instead of six to
-  ten.** The reply now holds the headline, the path and only what varies with the call
-  (warnings, refusals, a skip and its reason, a project the object is missing from, BP
-  defaults the bridge chose, an unapplied property, a failed index update). Removed from
-  every success, because they were the same on every call: `✅ Verified: on disk (N
-  bytes), referenced by the .rnrproj.`, `🔎 Symbol index updated in place — no
-  update_symbol_index call needed.`, the `🔧 API: ✅ … via <Api>` line and the `via
-  IMetadataProvider.Create()` / `applied via IMetadataProvider.Update()` / `applied via
-  this server's XML writer` tail of the headline, and the closing `Next:
-  build_d365fo_project(bpCheck:true)…`, `Further edits … go in ONE call…` / `More edits
-  …? Send them together…` and `It exists now — do not create it again.` lines, which
-  restated the `build_d365fo_project` and `operations[]` descriptions. A `File: <path>`
-  inside a writer message is dropped when the reply already prints that path. Measured
-  on mocked calls: create enum 555 → 95 chars, create class 405 → 112 (bridge) and
-  582 → 109 (XML writer), modify add-data-source 569 → 124, and modify add-field with
-  its field-group BP warning 914 → 471. A batch (`operations[]`) loses the same
-  trailer. Nothing to change on the caller's side: a write that needs attention still
-  says so.
+- **A successful `d365fo_file` create or modify reply drops the confirmations that were
+  the same on every call.** The reply holds the headline, the path and what varies with
+  the call (warnings, refusals, a skip and its reason, a project the object is missing
+  from, BP defaults the bridge chose, an unapplied property, a failed index update).
+  Removed from every success: `✅ Verified: on disk (N bytes), referenced by the
+  .rnrproj.`, `🔎 Symbol index updated in place — no update_symbol_index call needed.`,
+  the `🔧 API: ✅ … via <Api>` line, and the `via IMetadataProvider.Create()` / `applied
+  via IMetadataProvider.Update()` / `applied via this server's XML writer` tail of the
+  headline. A `File: <path>` inside a writer message is dropped when the reply already
+  prints that path. The closing `Next: build_d365fo_project(bpCheck:true)…` line and the
+  batch-edit hint (`Further edits … go in ONE call…` after a create, `More edits …? Send
+  them together…` after a single modify) stay, and a batch (`operations[]`) keeps its
+  one `Next:` line: each was added against a measured round-trip pattern (single-op
+  modify chains, and `verify_d365fo_project` / `run_bp_check` calls right after writes
+  that had verified themselves). After a skipped modify the `Next:` line and the hint
+  are no longer printed, since nothing was written. Nothing to change on the caller's
+  side: a write that needs attention still says so.
 - **`build_d365fo_project` and `run_systest_class` are no longer marked as closed-world
   tools.** Both reach the UDE environment's cloud runtime (a deployment, tests in the
   cloud), so their annotations drop `openWorldHint: false` and fall back to MCP's

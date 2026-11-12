@@ -88,11 +88,12 @@ describe('one trailer for the whole batch', () => {
     expect(mockUpsert).toHaveBeenCalledTimes(1);
   });
 
-  it('says nothing about a clean file — no Verified, no index line, no Next:', async () => {
+  it('says nothing about a clean file but the one Next: line — no Verified, no index line', async () => {
     const t = text(await twoOps());
     expect(t).not.toContain('Verified');
     expect(t).not.toContain('Symbol index updated');
-    expect(t).not.toMatch(/^Next: /m);
+    // One call that builds AND best-practice-checks, once for the whole batch.
+    expect(t.match(/^Next: build_d365fo_project\(bpCheck:true\)/gm) ?? []).toHaveLength(1);
     expect(t).not.toContain('verify_d365fo_project');
     expect(t).not.toContain('run_bp_check');
   });

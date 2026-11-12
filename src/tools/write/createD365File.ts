@@ -17,7 +17,7 @@ import { getConfigManager, fallbackPackagePath } from '../../utils/configManager
 import { describePackagesRootScan } from '../../utils/packagesRoot.js';
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
 import { ProjectFileManager, ProjectFileFinder, registerFileInActiveProject } from '../../workspace/projectFile.js';
-import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, bridgeMessageNote, verifyWriteIntent, createIntentFor } from './inlineWriteVerification.js';
+import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, bridgeMessageNote, renderBatchEditHint, verifyWriteIntent, createIntentFor } from './inlineWriteVerification.js';
 import { validateWrittenXpp } from './inlineXppValidation.js';
 import { createPhaseTimer } from '../../utils/phaseTimer.js';
 import { isAsGivenNamingMode, registerCustomModel } from '../../utils/modelClassifier.js';
@@ -2361,13 +2361,28 @@ export async function handleCreateD365File(
       }
     }
 
-    // No fixed "Next: build_d365fo_project(bpCheck:true)…", "Further edits … go
-    // in ONE call…" or "It exists now — do not create it again." tail. The same
-    // ~330 chars on every create through this path (the bridge paths never had
-    // them), and each one restates a tool description: build_d365fo_project's
-    // bpCheck and d365fo_file's operations[] ("PREFERRED for 2+ edits to the SAME
-    // object"). A project the object is missing from is still reported, by the
-    // membership check in verifyNote.
+    // Only the step the AGENT can take, and only ONE of them. Kept although it is
+    // the same text on every create: unlike the confirmations trimmed above, each
+    // line was added against a measured round-trip pattern, and the tool
+    // descriptions it seems to restate were already there when that was measured.
+    //
+    // `bpCheck:true` makes the build run the best-practice checker too, so this
+    // is one follow-up call rather than the build → run_bp_check →
+    // verify_d365fo_project chain the logs actually show (39 run_bp_check and 35
+    // verify_d365fo_project calls in 1,400, largely right after writes that had
+    // already verified themselves inline).
+    //
+    // The batch-edit hint answers the dominant waste pattern (40 of 49 modifies
+    // were single-op although operations[] existed: a discovery gap, not a
+    // capability gap — see renderBatchEditHint). The old tail also carried a
+    // `⛔ TASK COMPLETE — do NOT call … again` banner; the last clause says the
+    // same in 47 chars.
+    const nextSteps = (args.addToProject
+      ? `Next: build_d365fo_project(bpCheck:true) — builds AND best-practice-checks in one call.\n`
+      : `Next: add the file to your .rnrproj, then build_d365fo_project(bpCheck:true) — builds AND best-practice-checks in one call.\n`) +
+      // finalObjectName, not args.objectName — see renderBatchEditHint.
+      renderBatchEditHint(args.objectType, finalObjectName, { afterCreate: true }) +
+      `It exists now — do not create it again.\n`;
 
     // Record the freshly-created file for non-git undo (see the bridge paths above).
     if (!fileExisted) {
@@ -2446,7 +2461,8 @@ export async function handleCreateD365File(
             bpNote +
             xppRuleNote +
             readBackNote +
-            timer.render(),
+            timer.render() +
+            `\n\n${nextSteps}`,
         },
       ],
     };
