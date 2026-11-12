@@ -39,6 +39,19 @@ function compareIgnoreCase(a: string, b: string): number {
 }
 
 /**
+ * The pattern suggestMissingMethods compares a class against: the indexed
+ * pattern type, or one read from a Helper / Service / Controller name suffix.
+ * `undefined` when the class has neither, i.e. there are no similar classes.
+ */
+export function suggestionPatternType(className: string, patternType?: string): string | undefined {
+  if (patternType && patternType !== 'Unknown') return patternType;
+  if (className.endsWith('Helper')) return 'Helper';
+  if (className.endsWith('Service')) return 'Service';
+  if (className.endsWith('Controller')) return 'Controller';
+  return undefined;
+}
+
+/**
  * A multi-word query, split into the substrings a symbol name must ALL contain.
  *
  * `search(query="ProcessGuide AdjustIn")` means "a name carrying both words" —
@@ -4566,14 +4579,14 @@ export class XppSymbolIndex {
     const existingMethods = this.getClassMethods(className);
     const existingMethodNames = new Set(existingMethods.map(m => m.name));
     
-    // Detect pattern type
-    let patternType = classSymbol.patternType || 'Unknown';
-    if (!patternType || patternType === 'Unknown') {
-      if (className.endsWith('Helper')) patternType = 'Helper';
-      else if (className.endsWith('Service')) patternType = 'Service';
-      else if (className.endsWith('Controller')) patternType = 'Controller';
-    }
-    
+    // Detect pattern type. Without one there is no group of similar classes to
+    // compare against. The query below would then look for `parent_name LIKE
+    // '%Unknown'`: a scan of every method row (about a million on a production-size
+    // index) whose only hits are classes that happen to be NAMED "…Unknown", so
+    // the suggestions it produced came from unrelated classes.
+    const patternType = suggestionPatternType(className, classSymbol.patternType);
+    if (!patternType) return [];
+
     // Find similar classes with same pattern
     const sql = `
       SELECT DISTINCT parent_name
@@ -5421,6 +5434,30 @@ export class XppSymbolIndex {
     const nocaseParams: string[] = [labelFileId];
     if (model) { nocaseWhere.unshift('model = ?'); nocaseParams.unshift(model); }
     return run(`WHERE ${nocaseWhere.join(' AND ')}`, nocaseParams);
+  }
+
+  /**
+   * True when at least one label row carries exactly this label file id. A seek on
+   * idx_labels_file_id that stops at the first row — the cheap half of "does this
+   * label file exist?". Exact case only: the index is BINARY.
+   */
+  hasLabelFileId(labelFileId: string): boolean {
+    return this.labelsDb
+      .prepare('SELECT 1 FROM labels WHERE label_file_id = ? LIMIT 1')
+      .get(labelFileId) !== undefined;
+  }
+
+  /**
+   * The bare list of label file ids, one row each. For a caller that only needs to
+   * know which ids exist (for example a case-insensitive membership test) this
+   * replaces getLabelFileIds(), which also groups by model and concatenates the
+   * languages of every label row.
+   */
+  getDistinctLabelFileIds(): string[] {
+    const rows = this.labelsDb
+      .prepare('SELECT DISTINCT label_file_id AS labelFileId FROM labels')
+      .all() as Array<{ labelFileId: string }>;
+    return rows.map(r => r.labelFileId);
   }
 
   /**
