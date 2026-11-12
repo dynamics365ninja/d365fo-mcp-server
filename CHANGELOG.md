@@ -182,6 +182,16 @@ those are called out explicitly below.
   `openWorldHint: false`.
 
 ### Fixed
+- **`d365fo_file(action="generate")` previews the object `create` would write, under its
+  name and at its path.** Generate used `objectName` as passed and built the path as
+  `<packagePath>\<model>\<model>\…`. Under a configured prefix the preview said
+  `<Name>RentEquipmentJob</Name>` (and renamed the caller's `class ContosoRentEquipmentJob` back to
+  match) where `prepare` and `create` named the object ContosoRentEquipmentJob, and it
+  recommended the Microsoft PackagesLocalDirectory where `create` writes into the custom
+  write root (`customPackagesPath`), in the package the model's descriptor names. Generate
+  now names the object and resolves its file with the same code as `create`, says so when
+  the name differs from the one passed, refuses a name `create` would refuse, and takes
+  `packageName` / `packagePath` as `create` does.
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know
   neither property on a menu item, and a Staging or TempDB table kept Visual Studio's

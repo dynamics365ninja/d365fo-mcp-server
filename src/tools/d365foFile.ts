@@ -661,8 +661,8 @@ export async function d365foFileTool(request: CallToolRequest, context: XppServe
   if (action === 'delete') {
     return handleDeleteD365File(subRequest('delete_d365fo_file', rest), context);
   }
-  // generate: handler takes the request only (no context).
-  return handleGenerateD365Xml(subRequest('generate_d365fo_xml', rest));
+  // generate: the symbol index lets it infer an extension's base, as create does.
+  return handleGenerateD365Xml(subRequest('generate_d365fo_xml', rest), context);
 }
 
 // Tool registration (name, description, inputSchema) lives in

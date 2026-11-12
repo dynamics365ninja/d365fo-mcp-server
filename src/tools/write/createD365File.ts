@@ -12,20 +12,16 @@ import { fieldPropertiesFromSpecs, applyFieldPropertyPatches } from '../xml/tabl
 import * as path from 'path';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { getConfigManager, fallbackPackagePath } from '../../utils/configManager.js';
+import { getConfigManager } from '../../utils/configManager.js';
 import { describePackagesRootScan } from '../../utils/packagesRoot.js';
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
 import { ProjectFileManager, ProjectFileFinder, registerFileInActiveProject } from '../../workspace/projectFile.js';
 import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, renderBatchEditHint } from './inlineWriteVerification.js';
 import { validateWrittenXpp } from './inlineXppValidation.js';
 import { createPhaseTimer } from '../../utils/phaseTimer.js';
-import { isAsGivenNamingMode, registerCustomModel } from '../../utils/modelClassifier.js';
-import {
-  COC_BASE_SYMBOL_TYPES, asGivenNameProblem, formatNameProblemAsGiven, inferExtendedBase, normalizeObjectName,
-  resolveFormattedExtensionName,
-} from '../../utils/objectNaming.js';
-import { lookupSymbolsNocase } from '../../utils/symbolLookup.js';
-import { PackageResolver } from '../../utils/packageResolver.js';
+import { registerCustomModel } from '../../utils/modelClassifier.js';
+import { renameDisclosure, resolveCreateObjectName, applyRenameToContent } from './createObjectName.js';
+import { resolveWriteTarget } from './resolveWriteTarget.js';
 import { crossModelWriteRefusal, standDownNotice } from '../../utils/crossModelWriteGuard.js';
 import { resolveAnchorModel, resolveModelDependency } from './writeAnchorGuard.js';
 import { xppMethodSourceForXml } from '../../utils/xppFormat.js';
@@ -36,7 +32,6 @@ import { subscriberAccessLevelValue } from '../../utils/subscriberAccessLevel.js
 import {
   checkObjectIdentity,
   renderIdentityRefusal,
-  rewriteRootObjectName,
 } from './objectIdentityGate.js';
 import { enforceGrounding } from '../../utils/provenanceStore.js';
 import { gateOnFormPatternErrors, isFormPatternEnforceEnabled } from '../analysis/validateFormPattern.js';
@@ -51,7 +46,6 @@ import { resolveOrCreateLabelRef, type AutoLabelTarget } from './createLabel.js'
 import { isRawLabelText } from '../../utils/labelReference.js';
 import { sayOncePerSession } from '../../utils/repeatedNotes.js';
 import { ensureFormMetadataNamespace, FORM_METADATA_NAMESPACE } from '../../utils/formMetadataNamespace.js';
-import { parseExtensionOfAttribute } from '../../metadata/xppDeclaration.js';
 import {
   reconcileTableCreateProperties,
   renderTableCreateHonestyReport,
@@ -1041,61 +1035,19 @@ export async function handleCreateD365File(
     // Allowed, but possibly not into this model — see standDownNotice.
     const crossModelNotice = standDownNotice(crossModelCheck);
 
-    // Name normalisation lives in utils/objectNaming so that modify resolves the
-    // very same name from the very same arguments — the ninety lines that used to
-    // sit here inline were the reason it did not. See normalizeObjectName.
-    // The base an extension class names in [ExtensionOf] (or properties.baseClass)
-    // tells "SalesTable + Mcp + CreditHold" — a name that already carries the token —
-    // apart from a base that merely contains it. See ApplyObjectPrefixOptions.extendedBase.
-    const statedBaseClass = (args.properties as Record<string, unknown> | undefined)?.baseClass;
-    const extensionOf = parseExtensionOfAttribute(args.sourceCode ?? args.xmlContent ?? '');
-    // The extended object's TYPE selects the class name format (EXTENSION_CLASS_NAME_FORMAT_*):
-    // from the [ExtensionOf(<kind>Str(…))] the caller wrote, else as stated. Never from the name.
-    const statedBaseType = (args.properties as Record<string, unknown> | undefined)?.baseObjectType;
-    const extendedBaseType =
-      extensionOf?.baseKind ?? (typeof statedBaseType === 'string' && statedBaseType ? statedBaseType : undefined);
-    // With neither, the index stands in — the same inference prepare and
-    // validate_object_naming use, so the name they predict is the name written.
-    const extendedBase =
-      extensionOf?.baseObjectName ??
-      (typeof statedBaseClass === 'string' && statedBaseClass ? statedBaseClass : undefined) ??
-      inferExtendedBase(args.objectName, actualModelName, n => {
-        try {
-          const db = context?.symbolIndex?.getReadDb?.();
-          return !!db && lookupSymbolsNocase(db, n, { types: COC_BASE_SYMBOL_TYPES, limit: 1 }).length > 0;
-        } catch {
-          return false;
-        }
-      });
-    // naming.prefixSource=as-given: the name is final, so one that cannot be a
-    // valid AOT name is refused with the reason instead of repaired (#1134).
-    const formatOptions = { extendedBase, baseType: extendedBaseType };
-    const asGivenProblem = isAsGivenNamingMode()
-      ? asGivenNameProblem(args.objectName, args.objectType) ??
-        formatNameProblemAsGiven(args.objectName, args.objectType, formatOptions)
-      : null;
-    if (asGivenProblem) {
-      return {
-        content: [{ type: 'text', text: `❌ Not created: ${asGivenProblem}` }],
-        isError: true,
-      };
-    }
-    // A configured name format that cannot name this extension stops the write:
-    // no format for the case (the user is asked), or a format that is wrong.
-    const formatted = resolveFormattedExtensionName(args.objectName, args.objectType, formatOptions);
-    if (formatted.kind === 'ask' || formatted.kind === 'invalid') {
-      return {
-        content: [{ type: 'text', text: `❌ Not created: ${formatted.message}` }],
-        isError: true,
-      };
-    }
-    const finalObjectName = normalizeObjectName(
-      args.objectName,
-      args.objectType,
+    const naming = resolveCreateObjectName(
+      args,
       actualModelName,
+      context?.symbolIndex,
       (note: string) => console.error(`[create_d365fo_file] ${note}`),
-      formatOptions,
     );
+    if (naming.kind === 'refused') {
+      return {
+        content: [{ type: 'text', text: `❌ Not created: ${naming.message}` }],
+        isError: true,
+      };
+    }
+    const finalObjectName = naming.finalObjectName;
     if (finalObjectName !== args.objectName) {
       console.error(`[create_d365fo_file] Applied naming: ${args.objectName} → ${finalObjectName}`);
     }
@@ -1107,10 +1059,7 @@ export async function handleCreateD365File(
     // path says "prefixed from …"; the bridge path — every extension, class and
     // table — said nothing, so the object came back under a name the caller never
     // chose and could only infer from the file path.
-    const renameNote = finalObjectName !== args.objectName
-      ? `\n🔖 Named \`${finalObjectName}\`, not \`${args.objectName}\` as passed — the model's naming ` +
-        `style decides this. The declaration inside the file matches; use this name in later calls.`
-      : '';
+    const renameNote = renameDisclosure(finalObjectName, args.objectName);
 
     // ── Raw label text → a label reference, before anything is written ───────
     // Measured over 1,515 real MCP calls: `labels` was called 268 times against
@@ -1189,96 +1138,15 @@ export async function handleCreateD365File(
       throw new Error(`Unsupported object type: ${args.objectType}`);
     }
 
-    // Construct full path - resolve package name
-    // Package name can differ from model name in any environment (not just UDE).
-    const configManager = getConfigManager();
-    const configPackagePath = configManager.getPackagePath();
-    const envType = await configManager.getDevEnvironmentType();
-
-    let basePath: string;
-    let resolvedPackageName: string;
-
-    // Resolve the custom write root (D365FO_CUSTOM_PACKAGES_PATH).
-    // Applies in both UDE and traditional mode — it always points to the repo
-    // working tree where custom model XML lives, regardless of dev env type.
-    const customWritePath = await configManager.getCustomPackagesPath();
-
-    if (args.packageName) {
-      // Explicit packageName always wins, regardless of environment type
-      resolvedPackageName = args.packageName;
-      // Custom write root beats the MS PLD for explicit packageName calls too.
-      basePath = args.packagePath || customWritePath || configPackagePath || fallbackPackagePath();
-    } else if (envType === 'ude') {
-      // UDE mode: auto-resolve package name via descriptor scan across both roots
-      const msPath = await configManager.getMicrosoftPackagesPath();
-      const roots = [customWritePath, msPath].filter(Boolean) as string[];
-
-      const resolver = new PackageResolver(roots);
-      const resolved = await timer.time('package resolution', () => resolver.resolve(actualModelName));
-
-      if (resolved) {
-        resolvedPackageName = resolved.packageName;
-        basePath = resolved.rootPath;
-      } else {
-        // Fallback: assume package == model (common case)
-        resolvedPackageName = actualModelName;
-        basePath = customWritePath || args.packagePath || configPackagePath || fallbackPackagePath();
-      }
-    } else {
-      // Traditional mode: try descriptor-based resolution first so a package
-      // whose name differs from the model name (e.g. package "ISVPackage",
-      // model "ISV Package") resolves correctly without an explicit packageName
-      // arg. Scan both the custom write root and D365FO_PACKAGE_PATH for the
-      // matching descriptor; fall back to assuming package == model otherwise.
-      const roots = [customWritePath, configPackagePath].filter(Boolean) as string[];
-      const resolver = new PackageResolver(roots);
-      const resolved = roots.length
-        ? await timer.time('package resolution', () => resolver.resolve(actualModelName))
-        : null;
-
-      if (resolved) {
-        resolvedPackageName = resolved.packageName;
-        basePath = resolved.rootPath;
-      } else {
-        // Fallback: assume package == model.
-        // Prefer the custom write root over D365FO_PACKAGE_PATH so custom model
-        // XML lands in the repo working tree rather than the MS PackagesLocalDirectory.
-        resolvedPackageName = actualModelName;
-        basePath =
-          args.packagePath ||
-          customWritePath ||
-          configPackagePath ||
-          fallbackPackagePath();
-      }
-    }
-
-    console.error(
-      `[create_d365fo_file] Environment: ${envType}, Package: ${resolvedPackageName}, Model: ${actualModelName}, BasePath: ${basePath}`,
-    );
-
-    const modelPath = path.join(
-      basePath,
-      resolvedPackageName,
-      actualModelName,
+    const { basePath, modelPath, normalizedFullPath } = await resolveWriteTarget({
+      modelName: actualModelName,
       objectFolder,
-    );
-    const fileName = `${finalObjectName}.xml`;
-    const fullPath = path.join(modelPath, fileName);
-
-    // Security: prevent path traversal. path.join() resolves ".." segments,
-    // so a crafted modelName/objectName could escape basePath entirely.
-    // Resolve both paths and assert the target stays within basePath.
-    const resolvedBase = path.resolve(basePath);
-    const resolvedTarget = path.resolve(fullPath);
-    if (!resolvedTarget.startsWith(resolvedBase + path.sep) && resolvedTarget !== resolvedBase) {
-      throw new Error(
-        `❌ Security error: resolved path "${resolvedTarget}" is outside base directory "${resolvedBase}".\n` +
-        `Check modelName, packageName, objectName, and packagePath for path traversal sequences.`
-      );
-    }
-
-    // Normalize path to Windows format (backslashes) for consistency
-    const normalizedFullPath = fullPath.replace(/\//g, '\\');
+      objectName: finalObjectName,
+      packageName: args.packageName,
+      packagePath: args.packagePath,
+      time: (name, fn) => timer.time(name, fn),
+      logTag: 'create_d365fo_file',
+    });
     if (outcome) outcome.filePath = normalizedFullPath;
 
     // Ensure directory exists (create if needed)
@@ -1996,40 +1864,7 @@ export async function handleCreateD365File(
     // When xmlContent or sourceCode contains `class MyClass` but finalObjectName is `MyPrefixMyClass`,
     // the file would be named MyPrefixMyClass.xml but contain `class MyClass` — inconsistency!
     if (finalObjectName !== args.objectName && (args.xmlContent || args.sourceCode)) {
-      const orig = args.objectName;
-      const final = finalObjectName;
-      // Escape for use in RegExp (handles dots in extension names like "Foo.Extension")
-      const escapedOrig = orig.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-      // 1. `class OriginalName` / `public class OriginalName` etc.
-      const classPattern = new RegExp(
-        `\\b(public\\s+|private\\s+|protected\\s+|internal\\s+|final\\s+)?class\\s+${escapedOrig}\\b`,
-        'g',
-      );
-      let replaced = xmlContent.replace(classPattern, (match) => match.replace(orig, final));
-
-      // 2. classnum(OriginalName) — X++ intrinsic that refers to the class by name.
-      //    Callers often write classnum(OriginalName) in the source code before prefixing.
-      const classnumPattern = new RegExp(`\\bclassnum\\(\\s*${escapedOrig}\\s*\\)`, 'gi');
-      replaced = replaced.replace(classnumPattern, (m) => m.replace(new RegExp(escapedOrig, 'i'), final));
-
-      // 3. classStr(OriginalName) — used in [ExtensionOf(classStr(...))] and SysOperation attributes.
-      const classStrPattern = new RegExp(`\\bclassStr\\(\\s*${escapedOrig}\\s*\\)`, 'gi');
-      replaced = replaced.replace(classStrPattern, (m) => m.replace(new RegExp(escapedOrig, 'i'), final));
-
-      // 4. the metadata <Name> — the identity this block used to leave behind.
-      //    Rewriting the declaration alone produced a file whose name, whose X++
-      //    and whose <Name> disagreed, reported ✅, and killed the next build
-      //    ("must be named X instead of Y to be consistent with its file name").
-      replaced = rewriteRootObjectName(replaced, orig, final);
-
-      if (replaced !== xmlContent) {
-        console.error(
-          `[create_d365fo_file] ✅ Fixed name inconsistency: ` +
-          `replaced \`${orig}\` with \`${final}\` in XML content (<Name>, class decl, classnum, classStr)`,
-        );
-        xmlContent = replaced;
-      }
+      xmlContent = applyRenameToContent(xmlContent, args.objectName, finalObjectName);
     }
 
     // Sanitize AxReport XML structure — ensures required D365FO VS Designer elements

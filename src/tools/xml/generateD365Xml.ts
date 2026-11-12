@@ -9,7 +9,8 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 import { escapeXml } from '../../utils/xmlEscape.js';
 import { z } from 'zod';
 import { getConfigManager } from '../../utils/configManager.js';
-import { defaultPackagesRoot } from '../../utils/packagesRoot.js';
+import { resolveCreateObjectName, renameDisclosure, applyRenameToContent } from '../write/createObjectName.js';
+import { resolveWriteTarget } from '../write/resolveWriteTarget.js';
 
 const GenerateD365XmlArgsSchema = z.object({
   objectType: z
@@ -40,6 +41,14 @@ const GenerateD365XmlArgsSchema = z.object({
     .record(z.string(), z.any())
     .optional()
     .describe('Additional properties for the object (extends, implements, label, etc.)'),
+  packageName: z
+    .string()
+    .optional()
+    .describe('Package name, when it differs from the model name. Resolved from the descriptor if omitted.'),
+  packagePath: z
+    .string()
+    .optional()
+    .describe('Metadata root the package lives in. Resolved as for create if omitted.'),
 });
 
 /**
@@ -55,7 +64,8 @@ export { XmlTemplateGenerator };
  * Generate D365FO XML handler function
  */
 export async function handleGenerateD365Xml(
-  request: CallToolRequest
+  request: CallToolRequest,
+  context?: { symbolIndex?: { getReadDb?: () => unknown } },
 ): Promise<any> {
   try {
     const args = GenerateD365XmlArgsSchema.parse(request.params.arguments);
@@ -116,13 +126,33 @@ export async function handleGenerateD365Xml(
       throw new Error(`Unsupported object type: ${args.objectType}`);
     }
 
+    // The name create would write. A preview under any other name is a preview of
+    // a different object, and the caller's class declaration got renamed to match it.
+    const naming = resolveCreateObjectName(
+      args,
+      modelName,
+      context?.symbolIndex,
+      (note: string) => console.error(`[generate_d365fo_xml] ${note}`),
+    );
+    if (naming.kind === 'refused') {
+      return {
+        content: [{ type: 'text', text: `❌ Not generated: ${naming.message}` }],
+        isError: true,
+      };
+    }
+    const finalObjectName = naming.finalObjectName;
+
     // Generate XML content
     let xmlContent = XmlTemplateGenerator.generate(
       args.objectType,
-      args.objectName,
+      finalObjectName,
       args.sourceCode,
       args.properties
     );
+    // As in create: classnum()/classStr() of the name as passed follow the rename.
+    if (finalObjectName !== args.objectName && args.sourceCode) {
+      xmlContent = applyRenameToContent(xmlContent, args.objectName, finalObjectName, 'generate_d365fo_xml');
+    }
 
     // For reports: convert any remaining CDATA <Text> to entity-encoded form.
     // The generator now emits entity-encoded directly, but guard against xmlContent
@@ -138,14 +168,23 @@ export async function handleGenerateD365Xml(
       `[generate_d365fo_xml] Generated XML content: ${xmlContent.length} bytes`
     );
 
-    // Construct recommended file path under the CONFIGURED packages root —
-    // a hardcoded K:\ used to recommend paths on boxes where the AOT lives on C:.
+    // The file create would write: the custom write root, the package the
+    // descriptor names, explicit packageName/packagePath (see resolveWriteTarget).
+    // Building `<packagePath>\<model>\<model>` here recommended the Microsoft
+    // PackagesLocalDirectory where create wrote into the custom write root.
     await configManager.ensureLoaded();
-    const packagesRoot = configManager.getPackagePath() || defaultPackagesRoot();
-    const recommendedPath = `${packagesRoot}\\${modelName}\\${modelName}\\${objectFolder}\\${args.objectName}.xml`;
+    const target = await resolveWriteTarget({
+      modelName,
+      objectFolder,
+      objectName: finalObjectName,
+      packageName: args.packageName,
+      packagePath: args.packagePath,
+      logTag: 'generate_d365fo_xml',
+    });
+    const recommendedPath = target.normalizedFullPath;
 
     // Return XML content with instructions
-    const instructions = `✅ Generated D365FO ${args.objectType} XML for: ${args.objectName}
+    const instructions = `✅ Generated D365FO ${args.objectType} XML for: ${finalObjectName}${renameDisclosure(finalObjectName, args.objectName)}
 
 📋 Model: ${modelName}
 📁 Recommended path: ${recommendedPath}
