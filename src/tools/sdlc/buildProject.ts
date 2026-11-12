@@ -1592,10 +1592,27 @@ async function renderFinishedBuildResult(
       deploy: deploying,
     });
   }
-  const sync = workflow ? workflow.sync ?? { section: '', failed: false } : succeeded && !deploying
+  const sync: { section: string; failed: boolean; synced?: SyncedScope } = workflow
+    ? workflow.sync ?? { section: '', failed: false } : succeeded && !deploying
     ? await withHeartbeat(onProgress, `🗄️ ${targetModel} built; synchronizing the database`,
       () => runPostBuildDbSync(postParams, targetModel, context))
     : { section: '', failed: false };
+  // `dbSync: true` from the start wins the merge over this call's table list (mergeDbSync), and
+  // syncs the project's tables. A table this call named outside the project is synced now. This
+  // call's own `true` means the start's scope, as in mergeDbSync, so only a list is checked.
+  const askedTables = Array.isArray(params?.dbSync) ? syncScope(params.dbSync) : undefined;
+  if (askedTables && !workflow && succeeded && !deploying && !sync.failed) {
+    const left = remainingSync(askedTables, syncScope(postParams.dbSync), sync.synced);
+    if (left !== undefined) {
+      const extra = await withHeartbeat(onProgress, `🗄️ ${targetModel} built; synchronizing the database`,
+        () => runPostBuildDbSync({ ...postParams, dbSync: left }, targetModel, context));
+      sync.section += extra.section;
+      sync.failed = extra.failed;
+      sync.synced = extra.failed ? sync.synced : addSynced(sync.synced, extra.synced);
+    }
+  }
+  const ranRecord = finalState.jobId ? postBuildRanByJob.get(finalState.jobId) : undefined;
+  if (ranRecord) ranRecord.dbSynced = sync.synced;
   const deployment = deploying && succeeded
     ? await runPostBuildDeploy(postParams, targetModel, `${finalState.logFile}.deploy.log`, onProgress)
     : { section: '', failed: false };
@@ -1791,13 +1808,14 @@ async function runPostBuildBpCheck(
  *
  * `dbSync: true` lets dbSyncTool derive the partial-sync list from the project
  * (its ordinary behaviour when no `tables` are named); `dbSync: ["CustTable"]`
- * syncs exactly those.
+ * syncs exactly those. `synced` is what a successful sync covered, as dbSyncTool
+ * reports it: `true` asks for the project's tables, which is not every table.
  */
 async function runPostBuildDbSync(
   params: any,
   targetModel: string,
   context: any,
-): Promise<{ section: string; failed: boolean }> {
+): Promise<{ section: string; failed: boolean; synced?: SyncedScope }> {
   const requested = params?.dbSync;
   const tables = Array.isArray(requested)
     ? requested.filter((t: unknown) => typeof t === 'string' && t.trim().length > 0)
@@ -1838,7 +1856,8 @@ async function runPostBuildDbSync(
     const heading = failed
       ? '--- Database sync (dbSync) — FAILED, the build did not ---'
       : '--- Database sync (dbSync) ---';
-    return { section: `\n\n${heading}\n${text}`, failed };
+    const synced = failed ? undefined : syncedScope(result?.syncedScope);
+    return { section: `\n\n${heading}\n${text}`, failed, ...(synced ? { synced } : {}) };
   } catch (e: any) {
     return { section: `\n\n⚠️ dbSync requested but could not run: ${e?.message ?? e}`, failed: true };
   }
@@ -2044,11 +2063,31 @@ function syncScope(value: unknown): SyncScope {
   return undefined;
 }
 
-/** The part of `asked` that `ran` did not cover. */
-function remainingSync(asked: SyncScope, ran: SyncScope): SyncScope {
-  if (asked === undefined || ran === true) return undefined;
-  if (ran === undefined || asked === true) return asked;
-  const done = new Set(ran.map(t => t.toLowerCase()));
+/** What a sync covered, as dbSyncTool reports it: everything, or the objects it synced. */
+type SyncedScope = 'full' | string[];
+
+function syncedScope(value: unknown): SyncedScope | undefined {
+  if (value === 'full') return 'full';
+  if (Array.isArray(value)) return value.filter((t): t is string => typeof t === 'string');
+  return undefined;
+}
+
+function addSynced(a: SyncedScope | undefined, b: SyncedScope | undefined): SyncedScope | undefined {
+  if (a === 'full' || b === 'full') return 'full';
+  if (!a || !b) return a ?? b;
+  return [...new Set([...a, ...b])];
+}
+
+/**
+ * The part of `asked` that a run asked for `ran` did not cover. `synced` is what that run
+ * actually synced, when known. `true` is the project's tables, not every table: it covers a
+ * repeat of `true`, but a table list only through what it synced — without that record the
+ * list is not covered, since syncing a table again is harmless and leaving it unsynced is not.
+ */
+function remainingSync(asked: SyncScope, ran: SyncScope, synced?: SyncedScope): SyncScope {
+  if (asked === undefined || synced === 'full') return undefined;
+  if (asked === true) return ran === true ? undefined : asked;
+  const done = new Set((synced ?? (Array.isArray(ran) ? ran : [])).map(t => t.toLowerCase()));
   const left = asked.filter(t => !done.has(t.toLowerCase()));
   return left.length > 0 ? left : undefined;
 }
@@ -2061,6 +2100,8 @@ interface PostBuildRan {
   bpCheck: boolean;
   /** The sync scope — in the environment when `deploy`, else the local SyncEngine run. */
   dbSync: SyncScope;
+  /** What the local syncs of this build covered, once they finished (see remainingSync). */
+  dbSynced?: SyncedScope;
   deploy: boolean;
   /**
    * Steps that calls which attached to this build started after it (runRemainingPostBuild), by
@@ -2122,7 +2163,7 @@ async function runRemainingPostBuild(
     }
   } else {
     // A sync that ran in the environment, as part of a deployment, is not a local one.
-    const left = remainingSync(asked, ran.deploy ? undefined : ran.dbSync);
+    const left = ran.deploy ? remainingSync(asked, undefined) : remainingSync(asked, ran.dbSync, ran.dbSynced);
     if (left !== undefined) {
       await step('dbSync', [`dbSync:${JSON.stringify(left)}`], () =>
         withHeartbeat(onProgress, `🗄️ ${targetModel} built; synchronizing the database`,

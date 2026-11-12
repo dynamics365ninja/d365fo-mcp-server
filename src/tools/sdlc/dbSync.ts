@@ -434,6 +434,9 @@ export const dbSyncTool = async (params: any, context: any) => {
           `\n\n${output || '(no output)'}`
       }],
       isError: hasErrors,
+      // What was synced, for build_d365fo_project: `dbSync: true` names no tables, and only this
+      // run knows whether it became the project's list or a full sync.
+      ...(hasErrors ? {} : { syncedScope: isPartial ? syncTargets.map(t => t.name) : 'full' as const }),
     };
   } catch (error: any) {
     console.error('Error syncing DB:', error);
