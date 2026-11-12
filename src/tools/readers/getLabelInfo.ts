@@ -9,6 +9,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
 import { formatLabelReference } from '../../utils/labelReference.js';
 import { labelMissingOnDisk } from '../../utils/labelDiskCheck.js';
+import { existsSync } from 'fs';
 
 const GetLabelInfoArgsSchema = z.object({
   labelId: z
@@ -65,16 +66,56 @@ export async function getLabelInfoTool(request: CallToolRequest, context: XppSer
       for (const f of files) {
         lines.push(`  LabelFileId : ${f.labelFileId}`);
         lines.push(`  Model       : ${f.model}`);
-        lines.push(`  Languages   : ${f.languages}`);
 
         // Physical file paths per language (only when a specific file was asked for,
         // so the generic "list everything" view stays compact).
         if (labelFileId) {
-          const paths = symbolIndex.getLabelFilePaths(f.labelFileId, model);
+          // Without `model` the query spans every model that has this label file id;
+          // each listed file is judged by its own model's paths only.
+          const paths = symbolIndex
+            .getLabelFilePaths(f.labelFileId, model)
+            .filter(p => p.model === f.model);
+          // The index outlives the files: a language whose file was deleted (git clean,
+          // branch switch) keeps its rows until the next build, and reporting it as one
+          // of the file's languages invites a write that recreates it. Such rows are
+          // dropped here, so search and every other reader stop seeing them too.
+          //
+          // Only when another file of the same label file IS on disk: that proves the
+          // indexed paths are this machine's. With none present the index was built
+          // elsewhere (a downloaded database, a build VM's drive) or the drive is not
+          // mounted, and pruning would wipe the label file from the index.
+          const present = new Map(paths.map(p => [p.filePath, existsSync(p.filePath)]));
+          const live = new Set(paths.filter(p => present.get(p.filePath)).map(p => p.language));
+          const pathsAreLocal = live.size > 0;
+          const gone = pathsAreLocal ? paths.filter(p => !present.get(p.filePath)) : [];
+          const stale = [...new Set(gone.map(p => p.language))].filter(l => !live.has(l));
+          let pruned = gone.length > 0;
+          for (const p of gone) {
+            try {
+              symbolIndex.removeLabelsByFile(p.filePath);
+            } catch {
+              pruned = false; // read-only index: report the rows, leave them
+            }
+          }
+          const languages = f.languages.split(',').filter(l => !stale.includes(l));
+          lines.push(`  Languages   : ${languages.join(',')}`);
+          if (paths.length > 0 && !pathsAreLocal) {
+            lines.push(
+              `  On disk     : none of the indexed files exist on this machine — the index was built ` +
+              `elsewhere or the drive is unavailable; languages are as indexed.`,
+            );
+          }
+          if (stale.length > 0) {
+            lines.push(
+              `  Stale index : ${stale.join(',')} — the label file is no longer on disk; NOT a language of ` +
+              `this label file. ` +
+              (pruned ? 'Its rows were removed from the index.' : 'Re-run build-database to drop its rows.'),
+            );
+          }
           if (paths.length > 0) {
             lines.push(`  Files       :`);
             for (const p of paths) {
-              lines.push(`    [${p.language.padEnd(6)}] ${p.filePath}`);
+              lines.push(`    [${p.language.padEnd(6)}] ${p.filePath}${present.get(p.filePath) || !pathsAreLocal ? '' : '  (missing on disk)'}`);
             }
           } else {
             lines.push(
@@ -82,6 +123,8 @@ export async function getLabelInfoTool(request: CallToolRequest, context: XppSer
               `re-run build-database with INCLUDE_LABELS=true to populate file paths)`,
             );
           }
+        } else {
+          lines.push(`  Languages   : ${f.languages}`);
         }
         lines.push('');
       }

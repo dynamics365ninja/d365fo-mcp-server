@@ -761,8 +761,21 @@ function innerControlLines(spec: FormExtensionControlSpec, notes: string[]): str
     optional.push({ element, line: `<${element}>${escapeXmlText(value)}</${element}>` });
   };
 
-  add('dataField', 'DataField', spec.dataField);
+  // A reference group has no <DataField>: the foreign key field is its <ReferenceField>,
+  // and its <Controls /> stays empty — Visual Studio writes it so (all 46 of 46
+  // designer-saved ones) and generates the lookup fields at run time.
+  const referenceGroup = spec.typeValue === 'ReferenceGroup';
+  add('dataField', referenceGroup ? 'ReferenceField' : 'DataField', spec.dataField);
   add('dataSource', 'DataSource', spec.dataSource);
+  if (referenceGroup) {
+    optional.push({ element: 'Controls', line: '<Controls />' });
+    if (!spec.dataField) {
+      notes.push(
+        `the reference group is bound to no field: pass controlDataField, or set ReferenceField with ` +
+        `modify-property and controlName="${spec.controlName}".`,
+      );
+    }
+  }
   if (spec.label) {
     const captionElement = order ? CAPTION_ELEMENTS.find(e => order.includes(e)) : 'Label';
     if (captionElement) {
