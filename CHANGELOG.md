@@ -642,6 +642,26 @@ those are called out explicitly below.
   reference table is refused with a message that asks for the table. An EDT with more
   than one legacy relation or more than one table reference is refused too. EDT
   extensions are not covered (#1161).
+- **`modify-property` sets a menu item or menu property the file does not have yet.** The
+  bridge has a case for only a few menu item properties and none for a menu, and the XML
+  fallback could only replace an element that was already in the file. So
+  `d365fo_file(action="modify", operation="modify-property")` with `Parameters`,
+  `EnumParameter`, `EnumTypeParameter`, `ImageLocation`, `NeedsRecord` and others failed
+  with "Unknown AxMenuItem property" on every `menu-item-display`, `menu-item-action` and
+  `menu-item-output` that did not carry the element, and `SetCompany`, `FeatureClass` or
+  `ConfigurationKey` failed the same way on a `menu`. After the bridge declines, the
+  property is now written on the XML: an existing top-level element is replaced, a
+  missing one is inserted where the serialiser puts it (alphabetically after `Name`, and
+  ahead of `Elements` on a menu). The name is matched in any case and written in its
+  real casing. An empty value removes the element, because the default is expressed by
+  absence. A name that is not a property of the object is refused with the list of known
+  ones, and nothing is written. The known names are the metamodel's writable scalar
+  properties of `AxMenuItem` and `AxMenu` (so `ExtendedDataSecurity` on a menu item and
+  `NormalImage`, `IsObsolete` or `MenuItemName` on a menu, which standard objects carry,
+  are accepted), and the order was checked against the Microsoft standard menu items and
+  menus. `MenuItemName` on a menu sets the menu's own element, never the one of a menu
+  item below it. `ObjectType` and `OpenMode` stay with the bridge, which checks their
+  values. Menu item and menu extensions are not covered (#1161).
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no

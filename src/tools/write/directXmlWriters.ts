@@ -37,6 +37,7 @@ import { upsertAxFormDesignProperty } from '../../utils/axFormDesignProperties.j
 import { bpAccessPropertyOf, isBpAccessObjectType, setBpAccessProperty } from '../xml/bpAccessPropertyModify.js';
 import { setRelationOnDelete } from '../xml/tableBpDefaults.js';
 import { isEdtReferenceFieldProperty, setEdtTableReference } from '../xml/edtTableReferenceEdit.js';
+import { upsertMenuProperty } from '../xml/menuPropertyUpsert.js';
 import { upsertFormControlProperty } from '../../utils/formControlPropertyXml.js';
 import { resolveControlPropertyTarget } from '../../utils/formExtensionControlModifications.js';
 import { buildAxDataEntityViewFieldXml } from '../xml/dataEntityViewExtensionXml.js';
@@ -333,6 +334,22 @@ export const directXmlModifyProperty = serializedOnFile(async (
         message:
           `✅ Entity property '${tagName}'='${propertyValue}' set via direct XML (${edited.message}, ` +
           `in canonical AxDataEntityView element order). File: ${filePath}`,
+      };
+    }
+
+    // Menu items and menus: the bridge has a case for a handful of menu item properties
+    // and none for a menu, and the generic match below needs the element to be in the
+    // file already. A top-level property is replaced, or inserted where the serialiser
+    // puts it (tools/xml/menuPropertyUpsert.ts).
+    const menuEdit = upsertMenuProperty(content, propertyPath, String(propertyValue));
+    if (menuEdit) {
+      if (!menuEdit.ok) return { success: false, message: `❌ ${menuEdit.error} Nothing was written.` };
+      if (menuEdit.changed) await writeFileAtomic(filePath, withBomOf(rawContent, normalizeD365Xml(menuEdit.xml)));
+      return {
+        success: true,
+        message:
+          `${menuEdit.changed ? '✅' : 'ℹ️'} ${menuEdit.root} property ${menuEdit.written} via direct XML ` +
+          `(${menuEdit.detail}). File: ${filePath}`,
       };
     }
 
