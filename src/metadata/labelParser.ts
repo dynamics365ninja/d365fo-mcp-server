@@ -29,6 +29,29 @@ import type { XppSymbolIndex } from './symbolIndex.js';
  */
 const DEFAULT_LABEL_LANGUAGES = (settingByEnv('LABEL_LANGUAGES')!.default as string[]).join(',');
 
+/**
+ * Parse a LABEL_LANGUAGES value: the listed language codes in their configured
+ * spelling and order (`_` read as `-`, duplicates dropped ignoring case), or null
+ * for `all` / an empty list, meaning no restriction. The one parser of the
+ * setting, shared by the indexer and labels(action="create"). Matching against it
+ * is exact apart from case: `fi` and `fi-FI` are distinct label languages.
+ */
+export function parseLabelLanguages(value: string): string[] | null {
+  if (value.trim().toLowerCase() === 'all') return null;
+  const languages: string[] = [];
+  for (const raw of value.split(',')) {
+    const lang = raw.trim().replace(/_/g, '-');
+    if (lang && !languages.some(l => l.toLowerCase() === lang.toLowerCase())) languages.push(lang);
+  }
+  return languages.length > 0 ? languages : null;
+}
+
+/** True when `language` is one of the parsed `languages` (ignoring case and `_` vs `-`). */
+export function isListedLabelLanguage(languages: readonly string[], language: string): boolean {
+  const wanted = language.trim().replace(/_/g, '-').toLowerCase();
+  return languages.some(l => l.toLowerCase() === wanted);
+}
+
 export interface ParsedLabel {
   labelId: string;
   text: string;
@@ -127,10 +150,7 @@ export async function discoverLabelFiles(
   }
 
   // Restrict indexing to configured languages to keep the label table small; LABEL_LANGUAGES=all indexes everything.
-  const langConfig = process.env.LABEL_LANGUAGES || DEFAULT_LABEL_LANGUAGES;
-  const SUPPORTED_LANGUAGES = langConfig.toLowerCase() === 'all'
-    ? null  // null = index all languages
-    : new Set(langConfig.split(',').map(l => l.trim()));
+  const SUPPORTED_LANGUAGES = parseLabelLanguages(process.env.LABEL_LANGUAGES || DEFAULT_LABEL_LANGUAGES);
 
   let locales: string[];
   try {
@@ -142,11 +162,7 @@ export async function discoverLabelFiles(
   for (const locale of locales) {
     // Locale directory names may be lowercased on Linux, so compare case-insensitively.
     if (SUPPORTED_LANGUAGES) {
-      const normalizedLocale = locale.toLowerCase();
-      const isSupported = Array.from(SUPPORTED_LANGUAGES).some(
-        supported => supported.toLowerCase() === normalizedLocale
-      );
-      if (!isSupported) {
+      if (!isListedLabelLanguage(SUPPORTED_LANGUAGES, locale)) {
         continue;
       }
     }

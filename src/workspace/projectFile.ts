@@ -611,6 +611,43 @@ export class ProjectFileManager {
   }
 
   /**
+   * Remove the Content entry whose Include is exactly `include` (compared like every
+   * other include, see normalizeInclude). For entries that are not `<AOT folder>\<name>`
+   * — a label file's `AxLabelFile\<File>_<lang>` descriptor and its
+   * `<File>.<lang>.label.txt` resource — which removeFromProject cannot address.
+   * Folder entries are left alone. Returns true when an entry was removed.
+   */
+  async removeIncludeFromProject(projectPath: string, include: string): Promise<boolean> {
+    await this.assertWithinRoots(projectPath);
+    return withFileLock(projectPath, async () => {
+      const projectXml = await fs.readFile(projectPath, 'utf-8');
+      const hadBom = projectXml.charCodeAt(0) === 0xFEFF;
+      const body = hadBom ? projectXml.slice(1) : projectXml;
+      const project = await this.parser.parseStringPromise(body);
+      if (!project.Project?.ItemGroup) return false;
+      const itemGroups = Array.isArray(project.Project.ItemGroup)
+        ? project.Project.ItemGroup
+        : [project.Project.ItemGroup];
+      const wanted = normalizeInclude(include);
+      let removed = false;
+      for (const group of itemGroups) {
+        if (group.Content === undefined) continue;
+        const contents = Array.isArray(group.Content) ? group.Content : [group.Content];
+        const kept = contents.filter((c: any) => normalizedInclude(c) !== wanted);
+        if (kept.length !== contents.length) {
+          removed = true;
+          group.Content = kept;
+        }
+      }
+      if (!removed) return false;
+      const eolXml = withEol(this.builder.buildObject(project), detectEol(body));
+      await fs.writeFile(projectPath, hadBom ? '﻿' + eolXml : eolXml, 'utf-8');
+      console.error(`[ProjectFileManager] Removed '${include}' from project ${path.basename(projectPath)}`);
+      return true;
+    });
+  }
+
+  /**
    * Add label file entries to Visual Studio project.
    * Each language needs TWO entries:
    *   1. AxLabelFile descriptor:   Include="AxLabelFile\{id}_{lang}"  Link="Label Files\{id}_{lang}"

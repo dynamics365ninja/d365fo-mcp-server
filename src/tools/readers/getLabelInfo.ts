@@ -70,24 +70,40 @@ export async function getLabelInfoTool(request: CallToolRequest, context: XppSer
         // Physical file paths per language (only when a specific file was asked for,
         // so the generic "list everything" view stays compact).
         if (labelFileId) {
-          const paths = symbolIndex.getLabelFilePaths(f.labelFileId, model);
-          // The index outlives the files: a locale whose file was deleted (git clean,
-          // branch switch) keeps its rows until the next build. Reporting it as one of
-          // the file's languages invites a write that recreates the deleted locale.
-          const onDisk = new Set(paths.filter(p => existsSync(p.filePath)).map(p => p.language));
-          const stale = [...new Set(paths.map(p => p.language))].filter(l => !onDisk.has(l));
+          // Without `model` the query spans every model that has this label file id;
+          // each listed file is judged by its own model's paths only.
+          const paths = symbolIndex
+            .getLabelFilePaths(f.labelFileId, model)
+            .filter(p => p.model === f.model);
+          // The index outlives the files: a language whose file was deleted (git clean,
+          // branch switch) keeps its rows until the next build, and reporting it as one
+          // of the file's languages invites a write that recreates it. Such rows are
+          // dropped here, so search and every other reader stop seeing them too.
+          const present = new Map(paths.map(p => [p.filePath, existsSync(p.filePath)]));
+          const gone = paths.filter(p => !present.get(p.filePath));
+          const live = new Set(paths.filter(p => present.get(p.filePath)).map(p => p.language));
+          const stale = [...new Set(gone.map(p => p.language))].filter(l => !live.has(l));
+          let pruned = gone.length > 0;
+          for (const p of gone) {
+            try {
+              symbolIndex.removeLabelsByFile(p.filePath);
+            } catch {
+              pruned = false; // read-only index: report the rows, leave them
+            }
+          }
           const languages = f.languages.split(',').filter(l => !stale.includes(l));
           lines.push(`  Languages   : ${languages.join(',')}`);
           if (stale.length > 0) {
             lines.push(
-              `  Stale index : ${stale.join(',')} — indexed, but the label file is no longer on disk; ` +
-              `NOT a language of this label file. Re-run build-database to drop the rows.`,
+              `  Stale index : ${stale.join(',')} — the label file is no longer on disk; NOT a language of ` +
+              `this label file. ` +
+              (pruned ? 'Its rows were removed from the index.' : 'Re-run build-database to drop its rows.'),
             );
           }
           if (paths.length > 0) {
             lines.push(`  Files       :`);
             for (const p of paths) {
-              lines.push(`    [${p.language.padEnd(6)}] ${p.filePath}${onDisk.has(p.language) ? '' : '  (missing on disk)'}`);
+              lines.push(`    [${p.language.padEnd(6)}] ${p.filePath}${present.get(p.filePath) ? '' : '  (missing on disk)'}`);
             }
           } else {
             lines.push(

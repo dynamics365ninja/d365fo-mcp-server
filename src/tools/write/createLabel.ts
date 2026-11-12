@@ -29,7 +29,7 @@ import {
   deriveLabelIdFromText, formatLabelReference, isValidLabelFileId, labelIdSpellings,
   parseLabelReference, suggestLabelFileId,
 } from '../../utils/labelReference.js';
-import { isExtensionLabelFile } from '../../metadata/labelParser.js';
+import { isExtensionLabelFile, isListedLabelLanguage, parseLabelLanguages } from '../../metadata/labelParser.js';
 import { ProjectFileManager, ProjectFileFinder } from '../../workspace/projectFile.js';
 import { recordWriteSideEffect } from '../../utils/writeSideEffects.js';
 import { recordCreatedArtifact } from '../../workspace/createdArtifactLedger.js';
@@ -259,18 +259,15 @@ function serializeLabelMap(
 }
 
 /**
- * The label languages this server is configured for (LABEL_LANGUAGES), or null when
- * unset / `all` — null imposes no restriction. Matching is exact (case-insensitive),
- * as in the label indexer: `fi` and `fi-FI` are distinct D365FO label languages.
+ * The label languages create works with (LABEL_LANGUAGES), or null when it is unset
+ * or `all` — null imposes no restriction. Unlike the indexer, an unset setting does
+ * not fall back to the registry default: create keeps its unrestricted behaviour
+ * for a server nobody configured.
  */
-export function configuredLabelLanguageMatcher(
+export function configuredLabelLanguages(
   raw: string | undefined = process.env.LABEL_LANGUAGES,
-): ((lang: string) => boolean) | null {
-  const value = raw?.trim();
-  if (!value || value.toLowerCase() === 'all') return null;
-  const configured = new Set(value.split(',').map(l => l.trim().replace(/_/g, '-').toLowerCase()).filter(Boolean));
-  if (configured.size === 0) return null;
-  return (lang: string) => configured.has(lang.trim().replace(/_/g, '-').toLowerCase());
+): string[] | null {
+  return raw?.trim() ? parseLabelLanguages(raw) : null;
 }
 
 /** Write file with UTF-8 BOM signature */
@@ -1039,37 +1036,61 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
     const discoveredLanguages: string[] = [];
     for (const lang of modelFolders) if (await ownsLanguage(lang)) discoveredLanguages.push(lang);
 
-    // Without an explicit `languages` scope, a supplied translation adds a language the
-    // file lacks only when LABEL_LANGUAGES lists it — a caller translating into every
-    // language it has seen somewhere must not grow the file. When the file has no
-    // language yet and none of the supplied ones is configured, all of them are added:
-    // writing nothing at all is never the intent.
-    const isConfiguredLanguage = configuredLabelLanguageMatcher();
+    // LABEL_LANGUAGES, without an explicit `languages` scope:
+    // - a supplied translation adds a language the file lacks only when the setting
+    //   lists it — a caller translating into every language it has seen somewhere
+    //   must not grow the file;
+    // - a label file with no language of its own yet starts with EVERY configured
+    //   language, the untranslated ones carrying the fallback text, so a first label
+    //   supplied in English alone does not leave the file English-only for good;
+    // - when none of the supplied languages is configured, the supplied ones are
+    //   used as they are: filling configured languages with another language's text,
+    //   or writing nothing, is never the intent.
+    const configuredLanguages = configuredLabelLanguages();
     const suppliedLanguages = [...translationMap.keys()];
+    const anySuppliedConfigured = !!configuredLanguages &&
+      suppliedLanguages.some(l => isListedLabelLanguage(configuredLanguages, l));
     const mayAddLanguage = (lang: string) =>
-      !isConfiguredLanguage ||
-      isConfiguredLanguage(lang) ||
-      (discoveredLanguages.length === 0 && !suppliedLanguages.some(isConfiguredLanguage));
+      !configuredLanguages ||
+      isListedLabelLanguage(configuredLanguages, lang) ||
+      (discoveredLanguages.length === 0 && !anySuppliedConfigured);
+    const seedLanguages = configuredLanguages && discoveredLanguages.length === 0 && anySuppliedConfigured
+      ? configuredLanguages
+      : [];
     const notConfigured: string[] = [];
+    const skipNotConfigured = (lang: string) => {
+      if (!notConfigured.some(l => l.toLowerCase() === lang.toLowerCase())) notConfigured.push(lang);
+    };
 
-    // Helper: create directory structure + XML descriptor for a single new language.
-    // Every file it creates goes into the created-artifact ledger so undo can remove it.
+    // Files this call created (not merely rewrote), for undo: recorded in the
+    // created-artifact ledger at once, and again with their .rnrproj entry once
+    // step 5b has added it, so undo removes the project entry along with the file.
+    const createdLabelFiles: Array<{ filePath: string; language: string; include: string }> = [];
+    const recordNewLabelFile = (filePath: string, language: string, include: string) => {
+      createdLabelFiles.push({ filePath, language, include });
+      recordCreatedArtifact({ filePath });
+    };
+    // Only a missing file is a new one: an unreadable existing file (locked by VS,
+    // no permission) must never be recorded, or undo would delete it.
+    const isMissing = (err: unknown) => (err as NodeJS.ErrnoException)?.code === 'ENOENT';
+
+    // Helper: create directory structure + XML descriptor for a single new language
     const createLangDirectory = async (lang: string): Promise<void> => {
       const langDir = path.join(labelResourcesDir, lang);
       await fs.mkdir(langDir, { recursive: true });
 
       // Create the empty .label.txt with UTF-8 BOM (will be populated in step 4)
       const txtPath = path.join(langDir, `${labelFileId}.${lang}.label.txt`);
-      try { await fs.access(txtPath); } catch {
+      try { await fs.access(txtPath); } catch (err) {
         await writeFileWithBom(txtPath, '');
-        recordCreatedArtifact({ filePath: txtPath });
+        if (isMissing(err)) recordNewLabelFile(txtPath, lang, `${labelFileId}.${lang}.label.txt`);
       }
 
       // Create XML descriptor
       const xmlPath = path.join(axLabelDir, `${labelFileId}_${lang}.xml`);
-      try { await fs.access(xmlPath); } catch {
+      try { await fs.access(xmlPath); } catch (err) {
         await fs.writeFile(xmlPath, buildAxLabelFileXml(labelFileId, lang, resolvedPackageName, model), 'utf-8');
-        recordCreatedArtifact({ filePath: xmlPath });
+        if (isMissing(err)) recordNewLabelFile(xmlPath, lang, `AxLabelFile\\${labelFileId}_${lang}`);
       }
     };
 
@@ -1157,9 +1178,15 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
         if (seeded.has(lang.toLowerCase())) continue;
         seeded.add(lang.toLowerCase());
         if (!mayAddLanguage(lang)) {
-          notConfigured.push(lang);
+          skipNotConfigured(lang);
           continue;
         }
+        await createLangDirectory(onDisk(lang));
+        existingLanguages.push(onDisk(lang));
+      }
+      for (const lang of seedLanguages) {
+        if (seeded.has(lang.toLowerCase())) continue;
+        seeded.add(lang.toLowerCase());
         await createLangDirectory(onDisk(lang));
         existingLanguages.push(onDisk(lang));
       }
@@ -1181,12 +1208,19 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
         const key = lang.toLowerCase();
         if (existingSet.has(key) || consumedByRegional.has(key)) continue;
         if (!mayAddLanguage(lang)) {
-          notConfigured.push(lang);
+          skipNotConfigured(lang);
           continue;
         }
         await createLangDirectory(onDisk(lang));
         existingLanguages.push(onDisk(lang));
         existingSet.add(key);
+      }
+      // A label file that has no language yet (other label files of the model do).
+      for (const lang of seedLanguages) {
+        if (existingSet.has(lang.toLowerCase())) continue;
+        await createLangDirectory(onDisk(lang));
+        existingLanguages.push(onDisk(lang));
+        existingSet.add(lang.toLowerCase());
       }
     }
 
@@ -1234,9 +1268,9 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       let txtIsNew = false;
       try {
         content = await fs.readFile(txtPath, 'utf-8');
-      } catch {
+      } catch (err) {
         // File doesn't exist yet — start empty
-        txtIsNew = true;
+        txtIsNew = isMissing(err);
       }
 
       // Preserve the existing file's line endings so VCS diffs only show the new label.
@@ -1272,7 +1306,7 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       // Write updated file with UTF-8 BOM, preserving the original EOL style
       const newContent = serializeLabelMap(labelMap, shouldSort, eol);
       await writeFileWithBom(txtPath, newContent);
-      if (txtIsNew) recordCreatedArtifact({ filePath: txtPath });
+      if (txtIsNew) recordNewLabelFile(txtPath, lang, `${labelFileId}.${lang}.label.txt`);
       written.push(lang);
       writtenDetails.push(`  ✔ ${lang}  → ${entry.text}`);
       if (lastResort) {
@@ -1302,9 +1336,9 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       const xmlPath = path.join(axLabelDir, `${labelFileId}_${lang}.xml`);
       try {
         await fs.access(xmlPath);
-      } catch {
+      } catch (err) {
         await fs.writeFile(xmlPath, buildAxLabelFileXml(labelFileId, lang, resolvedPackageName, model), 'utf-8');
-        recordCreatedArtifact({ filePath: xmlPath });
+        if (isMissing(err)) recordNewLabelFile(xmlPath, lang, `AxLabelFile\\${labelFileId}_${lang}`);
       }
     }
 
@@ -1342,6 +1376,13 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
         try {
           const added = await pfm.addLabelToProject(projectPath, labelFileId, allLangs);
           addedToProject.push(...added);
+          // A language whose descriptor entry this call added had both its entries
+          // (descriptor and .label.txt) added here: undo may remove them with the file.
+          const addedKeys = new Set(added.map(n => n.toLowerCase()));
+          for (const f of createdLabelFiles) {
+            if (!addedKeys.has(`${labelFileId}_${f.language}`.toLowerCase())) continue;
+            recordCreatedArtifact({ filePath: f.filePath, projectPath, projectInclude: f.include });
+          }
           if (added.length === 0) {
             projectAlreadyOk = true;
             console.error(`[create_label] All label entries already in project — no write needed`);
@@ -1369,6 +1410,12 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
     }
 
     // 6. Build result summary
+    // Said in BOTH replies below: a translation dropped because LABEL_LANGUAGES does not
+    // list its language is news even when every other language already had the label.
+    const notConfiguredLine = notConfigured.length > 0
+      ? `  ⚠ Not written: ${notConfigured.join(', ')} — not a language of label file "${labelFileId}" and not in ` +
+        `LABEL_LANGUAGES. Pass languages=[…] to add a language to this label file on purpose.`
+      : '';
     if (written.length === 0 && skipped.length > 0) {
       // createIfMissing turns "it was already there" from a warning the caller has to
       // interpret into the answer it actually wanted: the reference to use. Without it
@@ -1403,6 +1450,7 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       } else if (projectAlreadyOk) {
         skipLines.push('\n✅ Label file entries already in VS project.');
       }
+      if (notConfiguredLine) skipLines.push(notConfiguredLine);
       if (projectWarning) skipLines.push(projectWarning);
       // Near the top would be better, but this branch's first line is the whole
       // verdict; keeping the notice adjacent to the location it names reads fine.
@@ -1437,10 +1485,7 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
       'Written to languages:',
       ...writtenDetails,
       ...translationWarnings,
-      ...(notConfigured.length > 0
-        ? [`  ⚠ Not written: ${notConfigured.join(', ')} — not a language of label file "${labelFileId}" and not in ` +
-           `LABEL_LANGUAGES. Pass languages=[…] to add a language to this label file on purpose.`]
-        : []),
+      ...(notConfiguredLine ? [notConfiguredLine] : []),
       ...[...lastResortGroups].map(([source, g]) =>
         `  ⚠ Translation fallback (${g.kind}): ${source} text written to ${g.targets.join(', ')} — no translation supplied for ${g.targets.length === 1 ? 'it' : 'them'}.`),
       ...(keptExisting.length > 0
