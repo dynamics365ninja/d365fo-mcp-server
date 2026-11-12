@@ -126,7 +126,7 @@ Transport, timeouts and logging of the MCP server process.
 | `server.toolTimeoutMs` | advanced | `MCP_TOOL_TIMEOUT_MS` | `120000` | Upper bound for a single tool call before the server returns a timeout error. |
 | `server.toolTimeoutFastMs` | advanced | `MCP_TOOL_TIMEOUT_FAST_MS` | `30000` | Timeout for lookups that should always be quick (minimum 5000). |
 | `server.toolTimeoutHeavyMs` | advanced | `MCP_TOOL_TIMEOUT_HEAVY_MS` | `600000` | Timeout for builds, DB sync and test runs (minimum 60000). Raise it on slow VMs. |
-| `server.readPoolSize` | advanced | `READ_POOL_SIZE` | `3` | Parallel read connections to the index (clamped 1–8). More helps concurrent searches on fast disks. |
+| `server.readPoolSize` | advanced | `READ_POOL_SIZE` | `1` | Read connections to the index (clamped 1–8). One is right for the server: reads run one at a time, and the 128 MB page cache is split across the connections. |
 | `server.operationLockTimeoutMs` | advanced | `OPERATION_LOCK_TIMEOUT_MS` | `900000` | How long a build/sync waits for another one to finish before failing. |
 | `server.operationLockPollMs` | advanced | `OPERATION_LOCK_POLL_MS` | `250` | How often the waiting process re-checks the lock. |
 | `server.operationLockStaleMs` | advanced | `OPERATION_LOCK_STALE_MS` | `1200000` | A lock older than this is treated as left behind by a crashed process and broken. |
@@ -263,7 +263,7 @@ Downloading a pre-built index from blob storage instead of building it locally.
     "toolTimeoutMs": 120000,
     "toolTimeoutFastMs": 30000,
     "toolTimeoutHeavyMs": 600000,
-    "readPoolSize": 3,
+    "readPoolSize": 1,
     "operationLockTimeoutMs": 900000,
     "operationLockPollMs": 250,
     "operationLockStaleMs": 1200000,
