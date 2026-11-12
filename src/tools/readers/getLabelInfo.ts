@@ -9,6 +9,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
 import { formatLabelReference } from '../../utils/labelReference.js';
 import { labelMissingOnDisk } from '../../utils/labelDiskCheck.js';
+import { existsSync } from 'fs';
 
 const GetLabelInfoArgsSchema = z.object({
   labelId: z
@@ -65,16 +66,28 @@ export async function getLabelInfoTool(request: CallToolRequest, context: XppSer
       for (const f of files) {
         lines.push(`  LabelFileId : ${f.labelFileId}`);
         lines.push(`  Model       : ${f.model}`);
-        lines.push(`  Languages   : ${f.languages}`);
 
         // Physical file paths per language (only when a specific file was asked for,
         // so the generic "list everything" view stays compact).
         if (labelFileId) {
           const paths = symbolIndex.getLabelFilePaths(f.labelFileId, model);
+          // The index outlives the files: a locale whose file was deleted (git clean,
+          // branch switch) keeps its rows until the next build. Reporting it as one of
+          // the file's languages invites a write that recreates the deleted locale.
+          const onDisk = new Set(paths.filter(p => existsSync(p.filePath)).map(p => p.language));
+          const stale = [...new Set(paths.map(p => p.language))].filter(l => !onDisk.has(l));
+          const languages = f.languages.split(',').filter(l => !stale.includes(l));
+          lines.push(`  Languages   : ${languages.join(',')}`);
+          if (stale.length > 0) {
+            lines.push(
+              `  Stale index : ${stale.join(',')} — indexed, but the label file is no longer on disk; ` +
+              `NOT a language of this label file. Re-run build-database to drop the rows.`,
+            );
+          }
           if (paths.length > 0) {
             lines.push(`  Files       :`);
             for (const p of paths) {
-              lines.push(`    [${p.language.padEnd(6)}] ${p.filePath}`);
+              lines.push(`    [${p.language.padEnd(6)}] ${p.filePath}${onDisk.has(p.language) ? '' : '  (missing on disk)'}`);
             }
           } else {
             lines.push(
@@ -82,6 +95,8 @@ export async function getLabelInfoTool(request: CallToolRequest, context: XppSer
               `re-run build-database with INCLUDE_LABELS=true to populate file paths)`,
             );
           }
+        } else {
+          lines.push(`  Languages   : ${f.languages}`);
         }
         lines.push('');
       }

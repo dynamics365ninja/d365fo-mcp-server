@@ -317,6 +317,23 @@ those are called out explicitly below.
   target file, so a sibling label file's `ja` added a `.ja.label.txt` and a
   descriptor to a file that never had Japanese. Supplied translations and an explicit
   `languages` scope still add a language.
+- **`labels(action="create")` adds a language to a label file only when `LABEL_LANGUAGES`
+  lists it.** Any supplied translation still added its language, so a caller that
+  translated into every language it had seen in the model (another label file's `lt`,
+  `nb-NO`) gave the target file new `.label.txt` files and descriptors anyway. Without
+  `languages`, a translation for a language the file lacks is now written only when
+  `LABEL_LANGUAGES` lists it, and otherwise skipped with a `Not written:` warning. The
+  match is exact apart from case: `fi` and `fi-FI` are different languages, so use the
+  codes of your locale folders. Languages the file already has are always written, an
+  explicit `languages=[…]` still adds any language, and with `LABEL_LANGUAGES` unset or
+  `all` nothing changes.
+- **`d365fo_file(action="undo")` can remove label files that `labels(action="create")`
+  created.** The labels tool never recorded the descriptors and `.label.txt` files it
+  wrote, so undo refused to delete them ("this session did not create it").
+- **`labels(action="info", labelFileId=…)` no longer lists a language whose label file is
+  gone.** The index keeps a deleted language's rows until the next build, and info
+  reported it as a language of the file, which invited a create that recreated it. Such
+  languages now show as `Stale index`, and their paths as `(missing on disk)`.
 - **X++ source round-trips exactly through `add-method`, `replace-code` and `create`.**
   Every XML entity in the source was decoded, so a doc comment's `P&amp;L` became a
   bare `&` (malformed XML documentation, BPXmlDocMalformed) and markup in string
