@@ -182,6 +182,22 @@ those are called out explicitly below.
   which `tests/validation/platformPatternMatcher.test.ts` holds the validator to in
   CI. `npm run oracle:form-sweep` validates every shipped form and fails on any
   error.
+- **`add-control` writes reference groups, and picks one for a surrogate foreign key as the
+  form designer does.** `controlType="ReferenceGroup"` was not supported: on a form
+  extension it came out as a String control (see Fixed). It now writes an
+  `AxFormReferenceGroupControl` bound the way Visual Studio saves one: `<DataSource>`, the
+  field from `controlDataField` as `<ReferenceField>` (a reference group has no
+  `DataField`), and an empty `<Controls />`. On a plain form the bridge creates the control
+  and `ReferenceField` is then written into the saved file. Without a `controlType`, a field
+  dropped onto a form in Visual Studio as a reference group now gets one too: an Int64 field
+  whose EDT derives from RefRecId and that relates to RecId of a table with a replacement key
+  (e.g. `SalesTable.WorkerSalesTaker` → `HcmWorker`), through a table relation (also one
+  in a table extension) or the EDT's `ReferenceTable`. The tables and EDTs are read from
+  every package folder when the index has no path to them, so this works on a write-only
+  companion too. The reply says why. When the related
+  table has no replacement key the field stays an Int64 control, and the reply says how to
+  ask for a reference group anyway. An explicit `controlType` always wins (`Int64` for a
+  plain control). Set `ReplacementFieldGroup` afterwards with `modify-property`.
 
 ### Changed
 - **The server opens one read connection to the index instead of three, with a 128 MB
@@ -662,6 +678,11 @@ those are called out explicitly below.
   menus. `MenuItemName` on a menu sets the menu's own element, never the one of a menu
   item below it. `ObjectType` and `OpenMode` stay with the bridge, which checks their
   values. Menu item and menu extensions are not covered (#1161).
+- **`add-control` on a form extension no longer writes a String control for a type it
+  does not know.** An unknown `controlType` fell back to `AxFormStringControl` and reported
+  success, so a requested reference group became a text box bound to nothing. A type the
+  caller names that the writer cannot produce is now refused, with the supported list, and
+  nothing is written. A type picked from the field's EDT still falls back to String.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no

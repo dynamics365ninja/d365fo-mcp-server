@@ -32,7 +32,7 @@ import {
   bridgeAddTableMapping, bridgeRemoveTableMapping,
   bridgeAddFieldGroup, bridgeRemoveFieldGroup, bridgeAddFieldToFieldGroup,
   bridgeAddEnumValue, bridgeModifyEnumValue, bridgeRemoveEnumValue,
-  bridgeAddControl, bridgeAddDataSource,
+  bridgeAddDataSource,
   bridgeAddFieldModification, bridgeAddMenuItemToMenu,
   bridgeRefreshProvider,
 } from '../../bridge/index.js';
@@ -50,6 +50,7 @@ import {
   entityAddDataSource, entityAddFieldBindingError, entityAddField, modifyFieldOp, ENTITY_AND_FIELD_ZOD_PARAMS,
 } from './dataEntityOps.js';
 import { formStructureOp, FORM_STRUCTURE_ZOD_PARAMS } from './formStructureOps.js';
+import { bridgeAddFormControl, pickAddControlType } from './referenceGroupControl.js';
 import {
   upsertFormExtensionControlProperty, resolveControlPropertyTarget,
 } from '../../utils/formExtensionControlModifications.js';
@@ -641,9 +642,9 @@ export const ModifyD365FileArgsSchema = z.object({
   ),
   controlType: z.string().optional().describe(
     'Form control type (default: String). Determines i:type and <Type> in the XML. ' +
-    'Supported values: String, Integer, Real, CheckBox, ComboBox, Date, DateTime, Int64, Group, Button, CommandButton, MenuFunctionButton. ' +
+    'Supported values: String, Integer, Real, CheckBox, ComboBox, Date, DateTime, Int64, Group, Button, CommandButton, MenuFunctionButton, ReferenceGroup. ' +
     'Use CheckBox for NoYes/boolean fields. Use ComboBox for enum fields. ' +
-    'If omitted the tool auto-picks based on the EDT base type if controlDataField is provided.'
+    'If omitted the tool auto-picks based on the EDT base type if controlDataField is provided, and ReferenceGroup for a surrogate foreign key.'
   ),
   controlLabel: z.string().optional().describe(
     'Caption of the new control (add-control); Label, Text or Caption by type.'
@@ -2915,14 +2916,13 @@ async function runModify(
       }
       case 'add-control': {
         if ((args as any).controlName && (args as any).parentControl) {
-          const resolvedControlType =
+          // A surrogate foreign key gets the designer's reference group (referenceGroupControl.ts).
+          const { controlType: resolvedControlType, note: controlTypeNote } = await pickAddControlType(
+            args as any, objectType, objectName, actualFilePath, symbolIndex,
             (args as any).controlType
-            ?? resolveControlTypeForField(
-                 (args as any).controlDataSource,
-                 (args as any).controlDataField,
-                 symbolIndex?.getReadDb?.(),
-               )
-            ?? 'String';
+              ?? resolveControlTypeForField((args as any).controlDataSource, (args as any).controlDataField, symbolIndex?.getReadDb?.())
+              ?? 'String');
+          addControlNote += controlTypeNote;
           // The bridge's AddControl resolves its target via _provider.Forms, which
           // never contains a form EXTENSION (keyed "Base.Suffix" in FormExtensions).
           // Calling it would always fail with 'Form "<ext>" not found' and log a
@@ -2932,16 +2932,8 @@ async function runModify(
 
           if (!isFormExtension) {
             // The bridge appends; addBaseFormControl moves the control to previousSibling/positionType.
-            bridgeResult = await addBaseFormControl(actualFilePath, args as any, () => bridgeAddControl(
-              context.bridge,
-              objectName,
-              (args as any).controlName,
-              (args as any).parentControl,
-              resolvedControlType,
-              (args as any).controlDataSource,
-              (args as any).controlDataField,
-              (args as any).controlLabel,
-            ));
+            bridgeResult = await addBaseFormControl(actualFilePath, args as any, () => bridgeAddFormControl(
+              context.bridge, actualFilePath, objectName, args as any, resolvedControlType));
           }
 
           if (isFormExtension && (!bridgeResult || !bridgeResult.success)) {
