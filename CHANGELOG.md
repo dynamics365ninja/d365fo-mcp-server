@@ -799,6 +799,14 @@ those are called out explicitly below.
   folder with AOT content that no descriptor of its package declares is no longer
   treated as a model when that package has descriptors. Nothing to configure.
 
+### Security
+- **A menu item or menu file that starts with a long run of XML comments can no longer
+  hang `modify-property`.** The pattern that skips leading comments to find the root
+  element matched a comment body lazily inside a repeated group, so input such as
+  `<!--` followed by many `--><!--` backtracked exponentially: 28 repetitions took about
+  48 seconds and blocked the server. The comment body is now matched with no ambiguity
+  and the same input returns at once. Real menu files are unaffected (CodeQL js/redos).
+
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
   native add-ons; with `@azure/msal-common` and `jsonwebtoken` (and their `jws`, `semver`

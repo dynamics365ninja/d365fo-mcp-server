@@ -147,6 +147,18 @@ describe('upsertMenuProperty on a menu item', () => {
     expect(menuPropertiesOf('AxMenuItemAction')).not.toContain('OperationalDomain');
     expect(menuPropertiesOf('AxMenuItemAction')).not.toContain('SubscriberAccessLevel');
   });
+
+  it('finds the root past leading comments, including dashes inside them', () => {
+    const xml = ITEM('AxMenuItemDisplay').replace('\n<AxMenuItemDisplay', '\n<!-- a -- b --->\n<!--c-->\n<AxMenuItemDisplay');
+    expect(ok(upsertMenuProperty(xml, 'Parameters', 'Posted')).xml).toContain('\t<Parameters>Posted</Parameters>\n');
+  });
+
+  it('does not backtrack exponentially on a run of empty comments (CodeQL js/redos)', () => {
+    // The old `(?:\s*<!--[\s\S]*?-->)*` took ~48 s on 28 repetitions of this input.
+    const start = Date.now();
+    expect(upsertMenuProperty('<!--' + '--><!--'.repeat(5000), 'Parameters', 'x')).toBeUndefined();
+    expect(Date.now() - start).toBeLessThan(1000);
+  });
 });
 
 describe('upsertMenuProperty on a menu', () => {
