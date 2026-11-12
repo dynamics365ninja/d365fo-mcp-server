@@ -473,6 +473,14 @@ those are called out explicitly below.
   when the pinned name matches none of the XPP configs on the machine, instead of falling back
   to the drive scan. This covers direct `npm run extract-metadata` runs and a pin that differs
   from the file name only in case. A machine with no XPP configs falls back as before.
+- **`build_d365fo_project` syncs a table a later call names when the build was started with
+  `dbSync: true`.** `dbSync: true` syncs the project's tables (a full sync only without a
+  project), but it was taken to cover any table list: a call that collected or waited on
+  that build with `dbSync: ["SomeTable"]`, for a table outside the project, got the result
+  with its sync section and the table was never synced. The table is now synced by that
+  call, and its result shows the sync. A full sync still covers every list, and a repeat of
+  `dbSync: true` still collects without syncing again. The sync tool now reports what it
+  synced to the build tool.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
