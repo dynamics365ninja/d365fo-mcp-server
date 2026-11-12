@@ -180,6 +180,14 @@ those are called out explicitly below.
   default, open-world. Clients that ask for confirmation or show a warning before
   open-world tools may now do so for these two. Every other tool keeps
   `openWorldHint: false`.
+- **A broad `search` without a type filter takes about half as long.** The lookup that
+  finds matches in custom models ran twice per call, once for the bridge answer and once
+  for the index answer, and for a common word it is the slowest query of the call (270 to
+  475 ms warm and seconds on a cold cache, against about 230 ms for the main query). When
+  the index answered, the first run and its file checks were thrown away. Both lookups
+  (exact name and custom models) now run once per call and feed whichever route answers.
+  The file checks for the bridge answer run only when the bridge is asked. Results are
+  unchanged on every route.
 
 ### Fixed
 - **First-start indexing waits for its worker to finish closing the index.** The server
