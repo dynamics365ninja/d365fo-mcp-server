@@ -156,7 +156,9 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
       'ClusteredIndex, PrimaryIndex, SaveDataPerCompany, Label, HelpText, Extends, SystemTable.\n' +
       '    table-extension (stored as <AxPropertyModification>): the table names above plus ' +
       'ModifiedDateTime, CreatedDateTime, ModifiedBy, CreatedBy (Yes/No), CountryRegionCodes ("CZ,SK").\n' +
-      '    edt: Extends, StringSize, Label, HelpText, ReferenceTable, ReferenceField.\n' +
+      '    edt: Extends, StringSize, Label, HelpText, ReferenceTable, ReferenceField (the related field ' +
+      'of the EDT\'s table reference: "AccountNum" once ReferenceTable is set, or "CustTable.AccountNum" ' +
+      'to set table and field in one call).\n' +
       '    class: Extends, Abstract, Final, Label.\n' +
       '    form: any single text element (Caption, Pattern) via XML fallback.\n' +
       '    Example: propertyPath="TableGroup" propertyValue="Group".',
@@ -188,8 +190,9 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
     type: 'string',
     description:
       'String (default), Integer, Real, CheckBox (NoYes/boolean), ComboBox (enums), Date, DateTime, ' +
-      'Int64, Group, Button, CommandButton, MenuFunctionButton. Auto-picked from the EDT base type ' +
-      'when controlDataField is provided.',
+      'Int64, Group, Button, CommandButton, MenuFunctionButton, ReferenceGroup (controlDataField becomes its ' +
+      'ReferenceField). Auto-picked from the EDT base type when controlDataField is provided, and ' +
+      'ReferenceGroup for a surrogate foreign key, as the form designer does. Any other type is refused.',
   },
   controlLabel: { type: 'string', description: 'Optional label for the new control.' },
   positionType: {
@@ -622,7 +625,8 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
     optional: ['methodModifiers', 'methodReturnType', 'methodParameters'],
     note:
       'Adds OR updates in place when the method name exists (position preserved). methodName is derived ' +
-      'from the source signature when omitted. sourceCode may carry several methods at once.',
+      'from the source signature when omitted. sourceCode may carry several methods at once. ' +
+      'Forms: methodName="DataSource.method", "DataSource.Field.method" or "Control.method" adds that override.',
   },
   'remove-method': { required: ['methodName'], optional: [] },
   'replace-code': {
@@ -831,7 +835,11 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       + 'extension-defined parent by its order among the children of the parent, under a base-form parent as '
       + '<PositionType>AfterItem</PositionType> + <PreviousSibling>. On a control the file ALREADY defines, '
       + 'add-control with previousSibling or positionType MOVES it there (same parent only; to change parent, '
-      + 'move-control) — the way to put a field next to another after creating it.',
+      + 'move-control) — the way to put a field next to another after creating it. '
+      + 'Without controlType, a surrogate foreign key (an Int64 field whose EDT derives from RefRecId, related '
+      + 'to RecId of a table that has a replacement key, e.g. SalesTable.WorkerSalesTaker) gets a reference group '
+      + 'bound by ReferenceField, the control the form designer adds; pass controlType="Int64" for a plain one. '
+      + 'Set a reference group\'s ReplacementFieldGroup afterwards with modify-property.',
   },
   'remove-control': {
     required: ['controlName'],
@@ -1042,8 +1050,15 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   },
   'modify-property': {
     required: ['propertyPath', 'propertyValue'],
-    optional: ['controlName'],
+    optional: ['controlName', 'dataSourceName'],
     note:
+      'dataSourceName targets a DATA SOURCE the form or form extension defines: propertyPath is ' +
+      'JoinSource (must name another data source of the form), LinkType (InnerJoin | OuterJoin | ' +
+      'ExistJoin | NotExistJoin | Delayed | Active | Passive), a Yes/No property (AllowCreate, ' +
+      'AllowDelete, AllowEdit, AllowCheck, AutoNotify, AutoQuery, AutoSearch, CrossCompanyAutoQuery, ' +
+      'DelayActive, OnlyFetchActive, InsertAtEnd, InsertIfEmpty), Index, MaxAccessRight or ' +
+      'StartPosition. Replaced in place, or inserted in the element order measured on Microsoft ' +
+      'standard forms; an empty value removes it. Other data source properties are refused. ' +
       'controlName (or a dotted propertyPath, "MyButton.NeedsRecord") targets a form CONTROL. On ' +
       'objectType="form", and for a control a form extension ADDS, the property is written on that ' +
       'control (e.g. MenuItemName, MenuItemType, MultiSelect, NeedsRecord, Visible, Label) in the ' +
@@ -1147,8 +1162,9 @@ export const D365FO_FILE_CREATE_PROPERTY_SPECS: Record<string, string> = {
     'primaryKeyFields?[], isPublic?, entityCategory? ' +
     '(Master|Configuration|Transaction|Reference|Document|Parameters — note the plural), ' +
     'dynamicFields?, allowRowVersionChangeTracking? (dual-write: set on the source ' +
-    'TABLES too), dataManagementEnabled? (writes the staging-table REFERENCE only — the staging table is NOT ' +
-    'created, so create it yourself or the full build fails; the reply says so), ' +
+    'TABLES too), dataManagementEnabled? (also creates the staging table <entity>Staging in the same model: DMF fields, ' +
+    'one field per public entity field, index StagingIdx, relation DataEntity. The reply names any field it ' +
+    'left out. An existing table is kept. autoCorrect=false skips it), ' +
     'isReadOnly?, tags?, configurationKey?, primaryCompanyContext? (e.g. "DataAreaId"), ' +
     'surrogateKey? (true: key EntityKey = a SourceKey field bound to RecId — instead of ' +
     'primaryKeyFields). Any other key is not read and is listed in the reply as NOT written. ' +

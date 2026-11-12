@@ -7,7 +7,8 @@ import * as fs from 'fs/promises';
 import { directXmlSetIndexValidTimeState, coerceNoYesFlag } from './directXmlWriters.js';
 import { writeFileAtomic } from '../../utils/atomicFileWrite.js';
 import { XmlTemplateGenerator } from '../xml/xmlTemplateGenerator.js';
-import { findIgnoredEntityProperties, stagingTableNote } from '../xml/dataEntityXml.js';
+import { findIgnoredEntityProperties } from '../xml/dataEntityXml.js';
+import { provisionStagingTable } from './stagingTableProvisioning.js';
 import { fieldPropertiesFromSpecs, applyFieldPropertyPatches } from '../xml/tableFieldPropertyEdit.js';
 import * as path from 'path';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
@@ -16,7 +17,7 @@ import { getConfigManager, fallbackPackagePath } from '../../utils/configManager
 import { describePackagesRootScan } from '../../utils/packagesRoot.js';
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
 import { ProjectFileManager, ProjectFileFinder, registerFileInActiveProject } from '../../workspace/projectFile.js';
-import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, renderBatchEditHint } from './inlineWriteVerification.js';
+import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, renderBatchEditHint, verifyWriteIntent, createIntentFor } from './inlineWriteVerification.js';
 import { validateWrittenXpp } from './inlineXppValidation.js';
 import { createPhaseTimer } from '../../utils/phaseTimer.js';
 import { isAsGivenNamingMode, registerCustomModel } from '../../utils/modelClassifier.js';
@@ -598,19 +599,15 @@ export function sourceAsWritten(sourceCode: string | undefined, finalObjectName:
   }
 }
 
-/** Notes for a data-entity create: `properties` keys it did not read, and the staging table it did not create. */
-function dataEntityCreateNotes(objectType: string, properties: unknown, entityName: string): string {
+/** Note for a data-entity create: the `properties` keys it did not read. The staging table has its own (provisionStagingTable). */
+function dataEntityCreateNotes(objectType: string, properties: unknown): string {
   if (objectType !== 'data-entity') return '';
-  const props = properties as Record<string, any> | undefined;
-  const ignored = findIgnoredEntityProperties(props);
-  return (
-    (ignored.length
-      ? `\n⚠️ ${ignored.length} property key(s) were NOT written — the data-entity generator does not read: ` +
-        `${ignored.join(', ')}. Anything else can be set afterwards with modify (modify-property / ` +
-        `add-data-source / add-field).`
-      : '') +
-    stagingTableNote(entityName, props)
-  );
+  const ignored = findIgnoredEntityProperties(properties as Record<string, any> | undefined);
+  return ignored.length
+    ? `\n⚠️ ${ignored.length} property key(s) were NOT written — the data-entity generator does not read: ` +
+      `${ignored.join(', ')}. Anything else can be set afterwards with modify (modify-property / ` +
+      `add-data-source / add-field).`
+    : '';
 }
 
 /**
@@ -1902,6 +1899,10 @@ export async function handleCreateD365File(
           const bpNote = await timer.time('inline BP check',
             () => runInlineBpCheck((args as any).bpCheck, args.objectType, finalObjectName, context));
           const xppRuleNote = validateWrittenXpp(sourceAsWritten(args.sourceCode, finalObjectName));
+          // The scalar properties the caller passed, against the file. A table has
+          // its own reconcile above, so createIntentFor returns nothing for one.
+          const readBackNote = await timer.time('read-back comparison',
+            () => verifyWriteIntent(bridgeResult.filePath, createIntentFor(args.objectType, args.properties)));
 
           return {
             content: [
@@ -1909,7 +1910,7 @@ export async function handleCreateD365File(
                 type: 'text',
                 text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create()${crossModelNotice}${renameNote}\n` +
                   `📁 ${bridgeResult.filePath}${projectMsg}\n` +
-                  `🔧 API: ${bridgeResult.message}${honestyReport}${rawLabelWarning}${labelAutoNote}${verifyNote}${indexNote}${bpNote}${xppRuleNote}${timer.render()}`,
+                  `🔧 API: ${bridgeResult.message}${honestyReport}${rawLabelWarning}${labelAutoNote}${verifyNote}${indexNote}${bpNote}${xppRuleNote}${readBackNote}${timer.render()}`,
               },
             ],
           };
@@ -2402,6 +2403,25 @@ export async function handleCreateD365File(
     // class, so the class-scoped rules (COC004, COC005) apply here — the cheap
     // moment to catch what xppbp does not and only a build would.
     const xppRuleNote = validateWrittenXpp(sourceAsWritten(args.sourceCode, finalObjectName));
+    // The scalar properties the caller passed, against the file (see the bridge
+    // path). Keys the data-entity note below already names are left to that note.
+    const readBackNote = await timer.time('read-back comparison', () =>
+      verifyWriteIntent(normalizedFullPath, createIntentFor(
+        args.objectType,
+        args.properties,
+        args.objectType === 'data-entity'
+          ? findIgnoredEntityProperties(args.properties as Record<string, any> | undefined)
+          : [],
+      )));
+    // An entity with data management enabled names a staging table: create it now,
+    // through this same handler, so the next build finds it (stagingTableProvisioning.ts).
+    const stagingNote = args.objectType === 'data-entity'
+      ? await timer.time('staging table', () => provisionStagingTable(
+          { entityName: finalObjectName, entityPath: normalizedFullPath, modelName: actualModelName!, args },
+          context,
+          handleCreateD365File,
+        ))
+      : '';
 
     // Return success message with file path
     return {
@@ -2424,12 +2444,14 @@ export async function handleCreateD365File(
             rawLabelBpWarning(args.properties, finalObjectName) +
             labelAutoNote +
             extensibleEnumOrderingWarning(args.objectType, args.properties, finalObjectName) +
-            dataEntityCreateNotes(args.objectType, args.properties, finalObjectName) +
+            dataEntityCreateNotes(args.objectType, args.properties) +
+            stagingNote +
             projectMessage +
             verifyNote +
             indexNote +
             bpNote +
             xppRuleNote +
+            readBackNote +
             timer.render() +
             `\n${nextSteps}`,
         },

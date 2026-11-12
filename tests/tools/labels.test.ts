@@ -770,7 +770,7 @@ describe('create_label', () => {
     // No language folders discovered (label file missing) …
     (fsMock.promises.readdir as any).mockImplementation(async () => []);
     // … and the model directory itself does not exist at the resolved path.
-    (fsMock.promises.access as any).mockImplementation(async () => { throw new Error('ENOENT'); });
+    (fsMock.promises.access as any).mockImplementation(async () => { throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }); });
 
     (ctx.symbolIndex.getLabelById as any).mockReturnValue([]);
     (ctx.symbolIndex.searchLabels as any).mockReturnValue([]);
@@ -1130,7 +1130,7 @@ describe('create_label', () => {
     (fsMock.promises.readdir as any).mockResolvedValue(['en-US']);
     (fsMock.promises.readFile as any).mockResolvedValue('﻿');
     // descriptor / new-file existence checks should report "missing" so they get created
-    (fsMock.promises.access as any).mockRejectedValue(new Error('ENOENT'));
+    (fsMock.promises.access as any).mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
 
     const result = await createLabelTool(
       req('create_label', {
