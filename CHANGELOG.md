@@ -180,18 +180,34 @@ those are called out explicitly below.
   default, open-world. Clients that ask for confirmation or show a warning before
   open-world tools may now do so for these two. Every other tool keeps
   `openWorldHint: false`.
+- **A broad `search` without a type filter takes about half as long.** The lookup that
+  finds matches in custom models ran twice per call, once for the bridge answer and once
+  for the index answer, and for a common word it is the slowest query of the call (270 to
+  475 ms warm and seconds on a cold cache, against about 230 ms for the main query). When
+  the index answered, the first run and its file checks were thrown away. Both lookups
+  (exact name and custom models) now run once per call and feed whichever route answers.
+  The file checks for the bridge answer run only when the bridge is asked. Results are
+  unchanged on every route.
+- **Looking up the event handlers of an object reads far fewer methods.**
+  `extension_info(mode="events")`, the event handler section of
+  `extension_info(mode="coc")` and the two subscriber scans in
+  `extension_info(mode="points")` first selected every method in the index that has
+  a `SubscribesTo` attribute (about 1,800 on a production-size index) and then read each
+  one's source to look for the object name. The object name is now part of the
+  full-text match, as a prefix so that longer names starting with it still match, and
+  only the candidates are read. Handlers found through `classStr(…)`, `tableStr(…)` and
+  `formStr(…)` are the same as before. In `mode="points"` a subscriber that has the
+  object name only inside a longer identifier (`MyFooHelper` for `Foo`) is no longer
+  counted, because it does not subscribe to that object. A name that starts with an
+  underscore is searched the old way.
 
 ### Fixed
-- **`analyze_code(mode="completeness")` no longer suggests methods from unrelated classes,
-  and no longer scans every method in the index, for a class with no known pattern.**
-  When a class had no pattern type in the index and its name did not end in Helper,
-  Service or Controller, the pattern stayed `Unknown` and the tool looked for classes
-  whose name ends in "Unknown". That read about a million method rows on a
-  production-size index, and what it found were classes that only happen to be named
-  that way, so their methods were offered as "missing". Such a class now gets no
-  suggestions and no query runs. The report says that the class has no known pattern
-  and nothing was compared, where it used to say the class "appears complete". Classes
-  with a known pattern get the same suggestions as before.
+- **First-start indexing waits for its worker to finish closing the index.** The server
+  terminated the indexing worker the moment it reported its result. The worker closes its
+  database after it reports (the step that folds the write-ahead log into the index file
+  the server then opens), so that close and the worker's last console lines could be cut
+  off. The worker is now left to exit on its own and the result is handed over when it
+  has. A worker that does not exit within a minute is terminated as before.
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know
   neither property on a menu item, and a Staging or TempDB table kept Visual Studio's
@@ -395,11 +411,48 @@ those are called out explicitly below.
   deserializer drops it), duplicate column names when a pattern has two grids, a
   QuickFilter aimed at the first grid of the form instead of its own, and an empty
   `<Controls />` on buttons and fields, which shipped forms never write.
+- **Large bridge replies are read in linear time and keep their non-ASCII characters.**
+  The client appended every stdout chunk to one string and searched it for the newline
+  from the start, so the work grew with the square of the reply size (measured on the
+  same loop: 208 ms for a 5 MB single-line reply and 2.7 s for 20 MB, against 22 and
+  122 ms when only the new chunk is searched). It also decoded each chunk on its own, so
+  a multi-byte character that fell on a chunk boundary became U+FFFD, which corrupted
+  labels, comments and source text with non-ASCII characters in large replies. Stdout is
+  now decoded as one stream and only the newly arrived text is searched. Nothing to
+  change on your side.
+- **Scanning the workspace no longer blocks the server for a second or more on a large
+  repo.** For every `.xml` file the scan resolved the real path of the file and of the
+  workspace root again, synchronously, and then read the file times one file at a time.
+  On a workspace of about 2,400 files that was over a second with the server unable to
+  answer anything else, and it repeated often because the scan result is kept for 15
+  seconds and every write drops it. `get_workspace_info`, the context snapshot and every
+  read that includes the workspace paid it. The root is now resolved once per scan, file
+  times are read 16 at a time, and a real path is resolved only for an entry that is a
+  link or sits below a linked directory. The same change makes the link check effective:
+  a file link inside the workspace whose target is outside the workspace root was meant
+  to be skipped but was listed, because the check also accepted the path as written. It
+  is now skipped with a warning. Links that stay inside the root, and a workspace root
+  that is itself a link or junction, work as before. Nothing to configure.
+- **`analyze_code(mode="completeness")` no longer suggests methods from unrelated classes,
+  and no longer scans every method in the index, for a class with no known pattern.**
+  When a class had no pattern type in the index and its name did not end in Helper,
+  Service or Controller, the pattern stayed `Unknown` and the tool looked for classes
+  whose name ends in "Unknown". That read about a million method rows on a
+  production-size index, and what it found were classes that only happen to be named
+  that way, so their methods were offered as "missing". Such a class now gets no
+  suggestions and no query runs. The report says that the class has no known pattern
+  and nothing was compared, where it used to say the class "appears complete". Classes
+  with a known pattern get the same suggestions as before.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
   native add-ons; with `@azure/msal-common` and `jsonwebtoken` (and their `jws`, `semver`
   and `lodash.*` helpers) it adds 16 packages to the lockfile and changes none.
+- **Lockfile refreshed with `npm update`.** Runtime: `@azure/msal-node` 7.2.1,
+  `@clack/prompts` 1.9.0, `@modelcontextprotocol/sdk` 1.32.2, `commander` 15.1.0, `dotenv`
+  18.0.10, `express` 5.3.0, `express-rate-limit` 8.7.4, `zod` 4.6.7. Dev: `@biomejs/biome`
+  2.6.6, `@types/node` 26.6.6, `vitest` and `@vitest/coverage-v8` 5.1.0. The ranges in
+  `package.json` are unchanged.
 
 ## [1.23.0] — 2026-11-05
 
