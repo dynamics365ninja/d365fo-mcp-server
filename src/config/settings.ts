@@ -625,6 +625,21 @@ export const SETTINGS: Setting[] = [
     default: './extracted-metadata',
   },
   {
+    path: 'index.storeObjectSource',
+    env: 'STORE_OBJECT_SOURCE',
+    section: 'index',
+    tier: 'advanced',
+    type: 'boolean',
+    label: 'Store object XML in the index',
+    description:
+      'Keeps a copy of every object\'s original XML in the extracted JSON and, gzipped, in the database ' +
+      '(object_source), so a server without the AOT files (a shared or Azure deployment) can still read objects. ' +
+      'A server that has the metadata folders on disk reads the files themselves and does not need the copy; ' +
+      'turning it off saves about 2 GB of extracted JSON and 0.4 GB of database per full standard + custom index. ' +
+      'Takes effect at the next index build; a full rebuild (extractMode "all") removes copies already stored.',
+    default: true,
+  },
+  {
     path: 'index.bpCatalogPath',
     env: 'BP_CATALOG_PATH',
     section: 'index',
@@ -843,8 +858,8 @@ export const SETTINGS: Setting[] = [
     tier: 'advanced',
     type: 'int',
     label: 'SQLite read connections',
-    description: 'Parallel read connections to the index (clamped 1–8). More helps concurrent searches on fast disks.',
-    default: 3,
+    description: 'Read connections to the index (clamped 1–8). One is right for the server: reads run one at a time, and the 128 MB page cache is split across the connections.',
+    default: 1,
   },
   {
     path: 'server.operationLockTimeoutMs',

@@ -365,7 +365,7 @@ export type SingleLabelRunner = (
 ) => Promise<any>;
 
 /**
- * Create many labels in one call. Each entry is merged over the shared top-level
+ * Create (or, with overwriteExisting, update) many labels in one call. Each entry is merged over the shared top-level
  * fields and routed through the single-label path (which keeps validation, file
  * creation and indexing identical), then results are aggregated into one report.
  * Continues past per-label failures so one bad entry doesn't abort the batch.
@@ -383,8 +383,13 @@ export async function createLabelsBulk(
   delete shared.labelId;
   delete shared.translations;
 
+  // labels(action="update") reaches this code with overwriteExisting forced true, so
+  // the header and the counts name the action that ran instead of always "create".
+  const isUpdate = (flag: unknown): boolean => flag === true || flag === 'true';
+  const action = isUpdate(shared.overwriteExisting) ? 'update' : 'create';
+
   const lines: string[] = [];
-  let created = 0;
+  const counts = { created: 0, updated: 0, reused: 0, unchanged: 0 };
   let failed = 0;
 
   for (let i = 0; i < entries.length; i++) {
@@ -403,7 +408,14 @@ export async function createLabelsBulk(
       failed++;
       lines.push(`🔴 ${labelId}: ${text.split('\n')[0]}`);
     } else {
-      created++;
+      // Count what the single-label reply says happened, not what was asked for: a
+      // label that was already there is reused or left alone, not created or updated.
+      // An update that had to create the label (upsert) still reads "updated" there.
+      if (/already exists — reusing it/.test(text)) counts.reused++;
+      else if (/left unchanged —|already exists in all languages/.test(text)) counts.unchanged++;
+      else if (/" updated successfully/.test(text)) counts.updated++;
+      else if (/" created successfully/.test(text)) counts.created++;
+      else counts[isUpdate(mergedArgs.overwriteExisting) ? 'updated' : 'created']++;
       lines.push(`🟢 ${labelId}: ${text.split('\n')[0]}`);
       // The summary keeps one line per label; a fallback is the part of the
       // detail that must not be dropped with the rest.
@@ -411,9 +423,15 @@ export async function createLabelsBulk(
     }
   }
 
+  // The action's own verb is always stated, even at 0. The others only when they occurred.
+  const main = action === 'update' ? 'updated' : 'created';
+  const parts = (['created', 'updated', 'reused', 'unchanged'] as const)
+    .filter(k => k === main || counts[k] > 0)
+    .sort((a, b) => Number(b === main) - Number(a === main))
+    .map(k => `${counts[k]} ${k}`);
   const header =
-    `${failed === 0 ? '✅' : '⚠️'} labels(action="create", labels=[…]): ` +
-    `${created} created, ${failed} failed (of ${entries.length}).`;
+    `${failed === 0 ? '✅' : '⚠️'} labels(action="${action}", labels=[…]): ` +
+    `${parts.join(', ')}, ${failed} failed (of ${entries.length}).`;
   return {
     content: [{ type: 'text', text: [header, '', ...lines].join('\n') }],
     isError: failed > 0,

@@ -1796,8 +1796,8 @@ public class ${formName} extends FormRun
 \t\t\t<Fields />
 \t\t\t<ReferencedDataSources />
 \t\t\t<AllowCreate>No</AllowCreate>
-\t\t\t<AllowEdit>No</AllowEdit>
 \t\t\t<AllowDelete>No</AllowDelete>
+\t\t\t<AllowEdit>No</AllowEdit>
 \t\t\t<InsertIfEmpty>No</InsertIfEmpty>
 \t\t\t<DataSourceLinks />
 \t\t\t<DerivedDataSources />
@@ -2012,8 +2012,8 @@ public class ${formName} extends FormRun
 \t\t\t<Fields />
 \t\t\t<ReferencedDataSources />
 \t\t\t<AllowCreate>No</AllowCreate>
-\t\t\t<AllowEdit>No</AllowEdit>
 \t\t\t<AllowDelete>No</AllowDelete>
+\t\t\t<AllowEdit>No</AllowEdit>
 \t\t\t<InsertIfEmpty>No</InsertIfEmpty>
 \t\t\t<DataSourceLinks />
 \t\t\t<DerivedDataSources />
