@@ -1138,7 +1138,7 @@ export async function handleCreateD365File(
       throw new Error(`Unsupported object type: ${args.objectType}`);
     }
 
-    const { basePath, modelPath, normalizedFullPath } = await resolveWriteTarget({
+    const target = await resolveWriteTarget({
       modelName: actualModelName,
       objectFolder,
       objectName: finalObjectName,
@@ -1147,6 +1147,11 @@ export async function handleCreateD365File(
       time: (name, fn) => timer.time(name, fn),
       logTag: 'create_d365fo_file',
     });
+    const { basePath, modelPath, normalizedFullPath } = target;
+    // A package name passed as modelName resolves to the package's one model:
+    // every step from here (bridge, project, index) works on that model.
+    actualModelName = target.modelName;
+    const targetNote = target.notes.map(n => `\n${n}`).join('');
     if (outcome) outcome.filePath = normalizedFullPath;
 
     // Ensure directory exists (create if needed)
@@ -1662,7 +1667,7 @@ export async function handleCreateD365File(
                 content: [
                   {
                     type: 'text',
-                    text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create() (Smart)${crossModelNotice}${renameNote}\n` +
+                    text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create() (Smart)${crossModelNotice}${renameNote}${targetNote}\n` +
                       `📁 ${smartResult.filePath}${projectMsg}\n` +
                       `🔧 API: ${smartResult.api ?? 'IMetaTableProvider.Create (Smart)'}${bpSummary}${honestyReport}${rawLabelWarning}${labelAutoNote}${verifyNote}${indexNote}${bpNote}` +
                       validateWrittenXpp(sourceAsWritten(args.sourceCode, finalObjectName)),
@@ -1775,7 +1780,7 @@ export async function handleCreateD365File(
             content: [
               {
                 type: 'text',
-                text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create()${crossModelNotice}${renameNote}\n` +
+                text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create()${crossModelNotice}${renameNote}${targetNote}\n` +
                   `📁 ${bridgeResult.filePath}${projectMsg}\n` +
                   `🔧 API: ${bridgeResult.message}${honestyReport}${rawLabelWarning}${labelAutoNote}${verifyNote}${indexNote}${bpNote}${xppRuleNote}${timer.render()}`,
               },
@@ -2250,7 +2255,7 @@ export async function handleCreateD365File(
           // the part kept — see createRenameDisclosure.test.ts for why it must be.
           text: `✅ Created ${args.objectType} ${finalObjectName}` +
             `${finalObjectName !== args.objectName ? ` (prefixed from "${args.objectName}")` : ''}` +
-            `${crossModelNotice}\n📁 ${normalizedFullPath}\n` +
+            `${crossModelNotice}${targetNote}\n📁 ${normalizedFullPath}\n` +
             bridgeValidation +
             namespaceNote +
             formPatternWarnings +

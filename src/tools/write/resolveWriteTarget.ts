@@ -10,7 +10,7 @@
 
 import * as path from 'path';
 import { getConfigManager, fallbackPackagePath } from '../../utils/configManager.js';
-import { PackageResolver } from '../../utils/packageResolver.js';
+import { PackageResolver, type ResolvedPackage } from '../../utils/packageResolver.js';
 
 export interface WriteTargetRequest {
   /** The resolved model name (the folder under the package). */
@@ -31,6 +31,13 @@ export interface WriteTargetRequest {
 
 export interface WriteTarget {
   envType: string;
+  /**
+   * The model folder the file goes in. The name passed, unless that was a
+   * package name whose descriptor declares exactly one model: then that model.
+   */
+  modelName: string;
+  /** Lines for the reply: a model taken from the package's descriptor, or no descriptor at all. */
+  notes: string[];
   /** The metadata root the package sits in. */
   basePath: string;
   packageName: string;
@@ -49,7 +56,8 @@ export interface WriteTarget {
  * root (path traversal).
  */
 export async function resolveWriteTarget(request: WriteTargetRequest): Promise<WriteTarget> {
-  const { modelName: actualModelName, objectFolder } = request;
+  const { objectFolder } = request;
+  let actualModelName = request.modelName;
   const time = request.time ?? (<T>(_name: string, fn: () => Promise<T>) => fn());
   const logTag = request.logTag ?? 'create_d365fo_file';
 
@@ -61,6 +69,7 @@ export async function resolveWriteTarget(request: WriteTargetRequest): Promise<W
 
   let basePath: string;
   let resolvedPackageName: string;
+  const notes: string[] = [];
 
   // Resolve the custom write root (D365FO_CUSTOM_PACKAGES_PATH).
   // Applies in both UDE and traditional mode — it always points to the repo
@@ -80,13 +89,21 @@ export async function resolveWriteTarget(request: WriteTargetRequest): Promise<W
     const resolver = new PackageResolver(roots);
     const resolved = await time('package resolution', () => resolver.resolve(actualModelName));
 
+    const packageModels = resolved ? [] : await resolver.modelsOfPackage(actualModelName);
+    const byPackage = packageModels.length === 1 ? packageModels[0] : null;
     if (resolved) {
       resolvedPackageName = resolved.packageName;
       basePath = resolved.rootPath;
+    } else if (byPackage) {
+      resolvedPackageName = byPackage.packageName;
+      basePath = byPackage.rootPath;
+      notes.push(packageNameNote(actualModelName, byPackage));
+      actualModelName = byPackage.modelName;
     } else {
       // Fallback: assume package == model (common case)
       resolvedPackageName = actualModelName;
       basePath = customWritePath || request.packagePath || configPackagePath || fallbackPackagePath();
+      notes.push(fallbackNote(actualModelName, packageModels, basePath, roots));
     }
   } else {
     // Traditional mode: try descriptor-based resolution first so a package
@@ -100,9 +117,16 @@ export async function resolveWriteTarget(request: WriteTargetRequest): Promise<W
       ? await time('package resolution', () => resolver.resolve(actualModelName))
       : null;
 
+    const packageModels = resolved || !roots.length ? [] : await resolver.modelsOfPackage(actualModelName);
+    const byPackage = packageModels.length === 1 ? packageModels[0] : null;
     if (resolved) {
       resolvedPackageName = resolved.packageName;
       basePath = resolved.rootPath;
+    } else if (byPackage) {
+      resolvedPackageName = byPackage.packageName;
+      basePath = byPackage.rootPath;
+      notes.push(packageNameNote(actualModelName, byPackage));
+      actualModelName = byPackage.modelName;
     } else {
       // Fallback: assume package == model.
       // Prefer the custom write root over D365FO_PACKAGE_PATH so custom model
@@ -113,6 +137,7 @@ export async function resolveWriteTarget(request: WriteTargetRequest): Promise<W
         customWritePath ||
         configPackagePath ||
         fallbackPackagePath();
+      notes.push(fallbackNote(actualModelName, packageModels, basePath, roots));
     }
   }
 
@@ -146,6 +171,8 @@ export async function resolveWriteTarget(request: WriteTargetRequest): Promise<W
 
   return {
     envType,
+    modelName: actualModelName,
+    notes,
     basePath,
     packageName: resolvedPackageName,
     modelPath,
@@ -153,3 +180,39 @@ export async function resolveWriteTarget(request: WriteTargetRequest): Promise<W
     normalizedFullPath,
   };
 }
+
+/**
+ * `name` matched no descriptor's model <Name> but is the package of exactly one
+ * model, which the write now goes to. Said in the reply, so later calls pass the
+ * model's name and not the package's.
+ */
+function packageNameNote(name: string, model: ResolvedPackage): string {
+  return (
+    `ℹ️ "${name}" is a package name. Its descriptor declares the model "${model.modelName}", ` +
+    `so the file goes in ${path.join(model.rootPath, model.packageName, model.modelName)}. ` +
+    `Pass modelName "${model.modelName}" in later calls.`
+  );
+}
+
+/**
+ * The fallback `<root>/<name>/<name>` is a folder no descriptor declares: a new
+ * one, beside the model's real folder when `name` was meant to be an existing
+ * model. Said in the reply rather than created silently.
+ */
+function fallbackNote(name: string, packageModels: ResolvedPackage[], basePath: string, roots: string[]): string {
+  const folder = path.join(basePath, name, name);
+  if (packageModels.length > 1) {
+    const models = packageModels.map(m => m.modelName).sort().map(m => `"${m}"`).join(', ');
+    return (
+      `⚠️ "${name}" is a package name that holds several models (${models}). As passed, the file ` +
+      `goes in a new model folder ${folder}. Pass one of the models as modelName.`
+    );
+  }
+  const searched = roots.length ? roots.join(', ') : 'no metadata root configured';
+  return (
+    `⚠️ No descriptor declares a model or package named "${name}" (searched: ${searched}). ` +
+    `The file goes in a new model folder ${folder}, which no model owns until a descriptor ` +
+    `exists. Check modelName if the model already exists.`
+  );
+}
+

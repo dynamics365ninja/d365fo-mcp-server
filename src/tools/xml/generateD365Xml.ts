@@ -182,11 +182,12 @@ export async function handleGenerateD365Xml(
       logTag: 'generate_d365fo_xml',
     });
     const recommendedPath = target.normalizedFullPath;
+    const targetNote = target.notes.map(n => `\n${n}`).join('');
 
     // Return XML content with instructions
-    const instructions = `✅ Generated D365FO ${args.objectType} XML for: ${finalObjectName}${renameDisclosure(finalObjectName, args.objectName)}
+    const instructions = `✅ Generated D365FO ${args.objectType} XML for: ${finalObjectName}${renameDisclosure(finalObjectName, args.objectName)}${targetNote}
 
-📋 Model: ${modelName}
+📋 Model: ${target.modelName}
 📁 Recommended path: ${recommendedPath}
 
 ⚠️ CRITICAL NEXT STEPS (GitHub Copilot MUST do this):

@@ -192,6 +192,15 @@ those are called out explicitly below.
   now names the object and resolves its file with the same code as `create`, says so when
   the name differs from the one passed, refuses a name `create` would refuse, and takes
   `packageName` / `packagePath` as `create` does.
+- **`create` and `generate` find the model when `modelName` is its package's name, and warn
+  before they make a new model folder.** Descriptors are matched by the model's `<Name>`, so
+  `modelName: "ContosoCore"` for package ContosoCore holding model "Contoso Core" matched
+  nothing and the write fell back to `<root>\ContosoCore\ContosoCore`, a new folder beside
+  the model's own, without a word. A name that is the `<ModelModule>` of exactly one model
+  now resolves to that model (`…\ContosoCore\Contoso Core\…`) and the reply says so and
+  names the model to pass next time. A package with several models, or a name no
+  descriptor knows, keeps the old fallback folder, and the reply now warns that it is a new
+  model folder.
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know
   neither property on a menu item, and a Staging or TempDB table kept Visual Studio's

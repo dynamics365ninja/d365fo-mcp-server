@@ -201,3 +201,110 @@ describe('generate recommends the file create writes', () => {
     expect(preview).toContain('<Name>CtsoRentEquipmentJob</Name>');
   });
 });
+
+/**
+ * modelName given as the PACKAGE name: package "ContosoCore" holds the model
+ * "Contoso Core". Descriptors are keyed by the model's <Name>, so the resolver
+ * matched nothing and both tools fell back to `<root>/ContosoCore/ContosoCore` —
+ * a new folder beside the model's real one, created without a word.
+ */
+describe('a package name passed as modelName', () => {
+  const corePackage = async (models: string[]): Promise<string> => {
+    const custom = path.join(root, 'Metadata');
+    await fs.mkdir(path.join(custom, 'ContosoCore', 'Descriptor'), { recursive: true });
+    for (const model of models) {
+      await fs.writeFile(
+        path.join(custom, 'ContosoCore', 'Descriptor', `${model}.xml`),
+        descriptor(model, 'ContosoCore'),
+      );
+      await fs.mkdir(path.join(custom, 'ContosoCore', model, 'AxClass'), { recursive: true });
+    }
+    cfg.customPackagesPath = custom;
+    cfg.model = 'ContosoCore';
+    registerCustomModel('ContosoCore');
+    return custom;
+  };
+  const args = {
+    objectType: 'class',
+    objectName: 'CtsoRentEquipmentJob',
+    modelName: 'ContosoCore',
+    sourceCode: 'class CtsoRentEquipmentJob\n{\n}',
+  };
+
+  it('generate resolves the package\'s one model and says so', async () => {
+    const custom = await corePackage(['Contoso Core']);
+
+    const text = await generate(args);
+
+    expect(recommendedPath(text)).toBe(
+      path.join(custom, 'ContosoCore', 'Contoso Core', 'AxClass', 'CtsoRentEquipmentJob.xml').replace(/\//g, '\\'),
+    );
+    expect(text).toMatch(/"ContosoCore" is a package name\. Its descriptor declares the model "Contoso Core"/);
+    expect(text).toContain('📋 Model: Contoso Core');
+  });
+
+  it('create writes into that model\'s folder, the file generate recommended, and says so', async () => {
+    const custom = await corePackage(['Contoso Core']);
+
+    const preview = await generate(args);
+    const outcome: CreateOutcome = {};
+    const created = await handleCreateD365File(req('create_d365fo_file', { ...args, addToProject: false }), undefined, outcome);
+
+    const text = created.content[0].text;
+    expect(created.isError, text).toBeFalsy();
+    expect(outcome.filePath).toBe(
+      path.join(custom, 'ContosoCore', 'Contoso Core', 'AxClass', 'CtsoRentEquipmentJob.xml').replace(/\//g, '\\'),
+    );
+    expect(recommendedPath(preview)).toBe(outcome.filePath);
+    expect(text).toMatch(/"ContosoCore" is a package name/);
+    // No `<package>\<package>` folder was made on the side.
+    await expect(fs.access(path.join(custom, 'ContosoCore', 'ContosoCore'))).rejects.toThrow();
+  });
+
+  it('a package with several models is not guessed: the reply names them', async () => {
+    await corePackage(['Contoso Core', 'Contoso Core Tests']);
+
+    const text = await generate(args);
+
+    expect(recommendedPath(text)).toMatch(/\\ContosoCore\\ContosoCore\\AxClass\\/);
+    expect(text).toMatch(/holds several models \("Contoso Core", "Contoso Core Tests"\)/);
+  });
+});
+
+describe('a model no descriptor knows', () => {
+  it('keeps the fallback folder, and generate and create both warn that it is new', async () => {
+    const custom = path.join(root, 'Metadata');
+    await fs.mkdir(custom, { recursive: true });
+    cfg.customPackagesPath = custom;
+    const args = {
+      objectType: 'class',
+      objectName: 'CtsoRentEquipmentJob',
+      modelName: 'ContosoExt',
+      sourceCode: 'class CtsoRentEquipmentJob\n{\n}',
+    };
+
+    const preview = await generate(args);
+    const outcome: CreateOutcome = {};
+    const created = await handleCreateD365File(req('create_d365fo_file', { ...args, addToProject: false }), undefined, outcome);
+
+    const fallback = path.join(custom, 'ContosoExt', 'ContosoExt', 'AxClass', 'CtsoRentEquipmentJob.xml').replace(/\//g, '\\');
+    expect(recommendedPath(preview)).toBe(fallback);
+    expect(outcome.filePath).toBe(fallback);
+    for (const text of [preview, created.content[0].text]) {
+      expect(text).toMatch(/No descriptor declares a model or package named "ContosoExt"/);
+      expect(text).toMatch(/new model folder/);
+    }
+  });
+
+  it('says nothing when the descriptor names the model', async () => {
+    const custom = path.join(root, 'Metadata');
+    await fs.mkdir(path.join(custom, 'ContosoExt', 'Descriptor'), { recursive: true });
+    await fs.writeFile(path.join(custom, 'ContosoExt', 'Descriptor', 'ContosoExt.xml'), descriptor('ContosoExt', 'ContosoExt'));
+    cfg.customPackagesPath = custom;
+
+    const text = await generate({ objectName: 'CtsoRentEquipmentJob', modelName: 'ContosoExt' });
+
+    expect(text).not.toMatch(/No descriptor/);
+    expect(text).not.toMatch(/is a package name/);
+  });
+});
