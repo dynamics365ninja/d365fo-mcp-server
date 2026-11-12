@@ -568,7 +568,9 @@ export const SETTINGS: Setting[] = [
     description:
       'Comma-separated language codes, or `all` for every language shipped with the model. Each extra language ' +
       'multiplies the label table (~125 MB apiece) — indexing only the languages you actually ship keeps the ' +
-      'database small.',
+      'database small. `labels(action="create")` follows the same list: a translation for a language the label ' +
+      'file does not have yet is written only when it is listed here (or passed in `languages`), and a new label ' +
+      'file starts with every listed language.',
     // src/metadata/labelParser.ts reads this default straight off the registry:
     // it used to carry its own 'en-US,cs,sk,de' literal, so an unconfigured
     // build silently indexed four languages while this table promised one.

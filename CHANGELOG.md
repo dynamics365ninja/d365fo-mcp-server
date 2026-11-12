@@ -265,6 +265,13 @@ those are called out explicitly below.
   that was never built, dependency models and builds with no such change stay as they
   were. Passing `fullBuild: true` on every build as a workaround is no longer needed.
   (#1161)
+- **A new label file starts with every `LABEL_LANGUAGES` language.** A file's first
+  label created all its languages, and only the supplied ones, so a first label given
+  in English alone left the file English-only for good. When at least one supplied
+  language is configured, a label file that has no language yet now gets every
+  configured one, the untranslated ones with the English text (or the first supplied
+  translation) as a placeholder, reported as a translation fallback. When none of the
+  supplied languages is configured, the supplied ones are used as before.
 
 ### Fixed
 - **First-start indexing waits for its worker to finish closing the index.** The server
@@ -559,6 +566,44 @@ those are called out explicitly below.
   `object_patterns(domain="form", action="validate")`). Errors give
   `❌ Compiled; form pattern errors a pipeline build rejects` and list each form, control and
   property. `FORM_PATTERN_ENFORCE=false` keeps them as a warning.
+- **`labels(action="create")` adds a language to a label file only when `LABEL_LANGUAGES`
+  lists it.** Any supplied translation still added its language, so a caller that
+  translated into every language it had seen in the model (another label file's `lt`,
+  `nb-NO`) gave the target file new `.label.txt` files and descriptors anyway. Without
+  `languages`, a translation for a language the file lacks is now written only when
+  `LABEL_LANGUAGES` lists it, and otherwise skipped with a `Not written:` warning. The
+  match is exact apart from case: `fi` and `fi-FI` are different languages, so use the
+  codes of your locale folders. Languages the file already has are always written, an
+  explicit `languages=[…]` still adds any language, and with `LABEL_LANGUAGES` unset or
+  `all` nothing changes. The warning is also given when every other language already
+  had the label. The tool description, the op-spec and the `index.labelLanguages`
+  description in `docs/CONFIGURATION.md` now say so. The indexer and create
+  read the setting through one parser, so the indexer also accepts `en_US` for `en-US`,
+  and a value with no usable code (`" , "`) indexes no language instead of every one.
+- **`labels(action="create")` no longer replaces a label file it cannot read.** A
+  `.label.txt` that existed but could not be read (locked, no permission) was treated as
+  empty and rewritten with only the new label, losing every other label in that
+  language. The call now fails with the read error and writes nothing to that file.
+- **`labels(action="create", createLabelFileIfMissing=false)` refuses a new label file
+  even when the model has other label files.** The guard only fired for a model with
+  no label folder at all, so a mistyped `labelFileId` in a model with other label files
+  quietly became a new label file.
+- **`d365fo_file(action="undo")` can remove label files that `labels(action="create")`
+  created, with their project entries.** The labels tool never recorded the descriptors
+  and `.label.txt` files it wrote, so undo refused to delete them ("this session did not
+  create it"). They are now recorded, and undo also removes the `.rnrproj` entry of the
+  file it deletes when the create added that entry, retrying while Visual Studio holds
+  the project. Once a later call adds a label to such a file, undo refuses it, because
+  deleting the file would also delete the labels added since.
+- **`labels(action="info", labelFileId=…)` no longer lists a language whose label file is
+  gone, and drops its stale index rows.** The index keeps a deleted language's rows
+  until the next build, and info reported it as a language of the file, which invited a
+  create that recreated it. Such languages now show as `Stale index`, each missing path
+  as `(missing on disk)`, and their rows are removed from the label index, so search
+  stops returning them too. Rows are removed only while another file of the same label
+  file is on disk: when none is (an index built on another machine, a drive that is not
+  mounted), info says so and changes nothing. Without `model`, each model's file is
+  judged by its own paths.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
