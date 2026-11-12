@@ -29,6 +29,41 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`validate_code(mode="references")` checks what a Chain of Command wrapper, an event
+  handler or a call binds to, not only that the name exists** (#1225). After an ISV or
+  platform update, a wrapper or handler written against the old version broke only at the
+  next build, and an agent writing a wrapper from memory got the same failures. The check
+  now reads the indexed declaration and reports three new kinds:
+  `coc-target` (the wrapped method is on no type in the `extends` chain and is not a kernel
+  method, or it is private, `final` without `[Wrappable]`, public with
+  `[Wrappable(false)]` or `[Hookable(false)]`, or the wrapper differs in parameter count,
+  `static` or an inconvertible parameter or return type), `handler-target` (a
+  `[SubscribesTo]` delegate that does not exist, is an ordinary method, is static but
+  named with `delegateStr`, or whose parameters the handler does not repeat, and a pre- or
+  post-handler on a `[Hookable(false)]` method or on a private one without
+  `[Hookable(true)]`) and `obsolete-method` (a call to a method marked `[SysObsolete]`: an
+  error when its isError argument is true, a warning otherwise or when the calling code is
+  obsolete itself). Each error is a case the compiler rejects, confirmed by compiling it;
+  what the compiler accepts is at most a warning (a parameter typed with another EDT, a
+  protected method with `[Wrappable(false)]`). Run over every wrapper and handler Microsoft
+  ships (5,758 files), the checks raise no error. They stay silent when the index cannot
+  answer: a form's delegates, an owner whose base class is not indexed, or a method an
+  extension adds. The same checks run in the `GROUNDING_ENFORCE` write gate, so an error
+  there blocks the write.
+- **`validate_code(mode="references")` checks the member of `methodStr`, `staticMethodStr`,
+  `tableMethodStr`, `tableStaticMethodStr`, `delegateStr` and `staticDelegateStr` the way
+  the compiler does** (#1270). Only `methodStr`/`staticMethodStr` were checked, and they
+  accepted a method found on any base class, on a table or on a form. The compiler wants the
+  member declared on the named type itself (an extension class's methods count, inherited
+  ones and kernel table methods the table does not override do not), of the matching kind,
+  and `methodStr` only takes a class. A member nobody declares, or only a base class
+  declares, is now an `unknown-method` error that names the declaring type. The new
+  `wrong-member-kind` error covers a static member through `methodStr`, `tableMethodStr` or
+  `delegateStr`, an instance member through their `static…` twins, an ordinary method
+  through `delegateStr`, and a table or form in `methodStr`, and names the intrinsic to use.
+  Form members, views, maps and data entities, field groups and indexes are not checked:
+  the index does not hold them. Over the 38,060 uses in shipped code the check raises no
+  error.
 - **`index.storeObjectSource` turns off the copy of every object's XML in the index.** Since
   1.23.0 the extraction writes each object's original XML into its JSON as `raw`, and the
   build stores it gzipped in `object_source`, so a server without the AOT files (a shared or

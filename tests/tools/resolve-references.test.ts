@@ -504,7 +504,8 @@ describe('resolveXppReferences — case-insensitive identifiers', () => {
   it('verifies differently-cased intrinsic targets and members', () => {
     expect(errorsOf('tableStr(custtable);')).toEqual([]);
     expect(errorsOf('fieldStr(CUSTTABLE, accountnum);')).toEqual([]);
-    expect(errorsOf('methodStr(custtable, VALIDATEWRITE);')).toEqual([]);
+    // tableMethodStr, not methodStr: xppc rejects a table in methodStr (#1270 probes).
+    expect(errorsOf('tableMethodStr(custtable, VALIDATEWRITE);')).toEqual([]);
   });
 
   it('verifies a static call through the inheritance chain, any casing', () => {
