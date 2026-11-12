@@ -66,7 +66,7 @@ import {
 import { validateEdtExtensionChange } from '../../utils/edtExtensionValidator.js';
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
 import { applySecurityReferenceOperation, securityReferenceTypeRefusal } from './securityReferences.js';
-import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, renderBatchEditHint, verifyFormElementOrder } from './inlineWriteVerification.js';
+import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, renderBatchEditHint, verifyFormElementOrder, readBackAfterModify } from './inlineWriteVerification.js';
 import { lintXppSelect } from '../../utils/xppSelectLint.js';
 import { validateWrittenXpp } from './inlineXppValidation.js';
 import { createPhaseTimer } from '../../utils/phaseTimer.js';
@@ -3614,6 +3614,9 @@ async function runModify(
     // silence. Only checkable after the operation has applied (#989).
     const formOrderNote = await timer.time('form element order',
       () => verifyFormElementOrder(actualFilePath, objectType));
+    // Is what this operation asked for in the file? No bridge round trip, every object type (#1161).
+    const readBackNote = wasSkipped ? '' : await timer.time('read-back comparison', () => readBackAfterModify(actualFilePath, operation, objectType,
+      args as unknown as Record<string, unknown>, preservationNote, s => countTopLevelMethodBodies(s) > 1 ? splitTopLevelMethodBodies(s).map(extractMethodNameFromSource) : null));
 
     return {
       content: [
@@ -3630,7 +3633,7 @@ async function runModify(
                   ? "this server's XML writer (no bridge path for this operation)"
                   : 'IMetadataProvider.Update()'}${crossModelNotice}${autoCorrectNote}\n\n`) +
             `**File:** ${actualFilePath}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}\n` +
-            `🔧 API: ${bridgeResult.message}${preservationNote}${changedLinesNote}${xppLintNote}${xppRuleNote}${addFieldBpNote}${fieldGroupRenderNote}${dataSourceTableNote}${backupNote}${verifyNote}${indexNote}${bpNote}${formOrderNote}${timer.render()}` +
+            `🔧 API: ${bridgeResult.message}${preservationNote}${changedLinesNote}${xppLintNote}${xppRuleNote}${addFieldBpNote}${fieldGroupRenderNote}${dataSourceTableNote}${backupNote}${verifyNote}${indexNote}${bpNote}${formOrderNote}${readBackNote}${timer.render()}` +
             // "Review changes in Visual Studio" is not something the caller can act
             // on, and it rode along on every write.
             (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') +
