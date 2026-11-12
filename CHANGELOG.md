@@ -481,6 +481,19 @@ those are called out explicitly below.
   call, and its result shows the sync. A full sync still covers every list, and a repeat of
   `dbSync: true` still collects without syncing again. The sync tool now reports what it
   synced to the build tool.
+- **A bulk label update now says "updated", and the schema names update for `labels[]`.**
+  `labels(action="update", labels=[…])` already worked, because update runs the create code
+  with overwrite on. The reply header was hard-coded, so a bulk update answered
+  `labels(action="create", labels=[…]): N created`, and the schema tagged `labels[]` as
+  `[create]` only, so an agent had no reason to try it and fixed labels one call at a time.
+  The header now names the action that ran and counts what each entry reports:
+  `N updated, N failed (of N)` for update, `N created, N failed (of N)` for create. An entry
+  that was left alone is counted apart as `unchanged` (update with no translation that
+  applies, or create of a label that already exists) or `reused` (create with
+  createIfMissing). Before, each of these was counted as created. Those two counts appear
+  only when they are not zero. An update that has to create a missing label still counts as
+  updated. The `labels[]` schema tag is now `[create|update]`, and the labels op-spec says
+  the same. Nothing to do. (#1161)
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
