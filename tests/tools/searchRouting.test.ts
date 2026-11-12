@@ -147,6 +147,92 @@ describe('search routing', () => {
     expect(typeof opts.resolveMeta).toBe('function');
   });
 
+  describe('index probes run once per call', () => {
+    // The custom-model probe is the most expensive query of a broad search. It
+    // used to run once for the bridge splice and again for the index answer, so
+    // every route that built an index answer paid for it twice.
+    const customHit = {
+      name: 'ContosoSalesLineHelper', type: 'class', model: 'ContosoExt',
+      filePath: 'K:\\PackagesLocalDirectory\\ContosoExt\\ContosoExt\\AxClass\\ContosoSalesLineHelper.xml',
+    };
+    const bridgeAnswer = { content: [{ type: 'text', text: '# Search: live' }] } as any;
+
+    function probeCounts(context: XppServerContext) {
+      const index = context.symbolIndex as any;
+      return {
+        custom: index.searchCustomModelSymbols.mock.calls.length,
+        // The exact-name probe is the only reader of the DB handle here: the
+        // bridge is mocked, so the model resolver it would call never runs.
+        exact: index.getReadDb.mock.calls.length,
+      };
+    }
+
+    function buildProbeContext(rows: any[]) {
+      const built = buildContext(rows);
+      (built.context.symbolIndex as any).searchCustomModelSymbols = vi.fn(() => [customHit]);
+      return built;
+    }
+
+    it('untyped, answered from the index', async () => {
+      const { context } = buildProbeContext([row('SalesLine'), row('SalesLineDelete')]);
+
+      const text = (await searchTool(req({ query: 'SalesLine' }), context)).content[0].text as string;
+
+      expect(probeCounts(context)).toEqual({ custom: 1, exact: 1 });
+      expect(mockTryBridgeSearch).not.toHaveBeenCalled();
+      expect(text).toContain('ContosoSalesLineHelper');
+      // One file check per row of the answer, and none for a bridge splice that
+      // this route never builds.
+      expect(mockIndexedPathIsMissing).toHaveBeenCalledTimes(3);
+    });
+
+    it('untyped, confirmed by the bridge', async () => {
+      const { context } = buildProbeContext([]);
+      (context.symbolIndex as any).searchCustomModelSymbols = vi.fn(() => []);
+      mockTryBridgeSearch.mockResolvedValue(bridgeAnswer);
+
+      await searchTool(req({ query: 'BrandNewTbl' }), context);
+
+      expect(probeCounts(context)).toEqual({ custom: 1, exact: 1 });
+      expect(mockTryBridgeSearch).toHaveBeenCalledTimes(1);
+    });
+
+    it('untyped, index rows after the bridge had nothing', async () => {
+      const { context } = buildProbeContext([]);
+      mockIndexedPathIsMissing.mockResolvedValue(true);
+
+      const text = (await searchTool(req({ query: 'SalesLine' }), context)).content[0].text as string;
+
+      expect(probeCounts(context)).toEqual({ custom: 1, exact: 1 });
+      expect(mockTryBridgeSearch).toHaveBeenCalledTimes(1);
+      // The same probe rows serve both consumers, each with its own stale-row
+      // handling: dropped from the bridge splice, kept and listed in the index answer.
+      expect((mockTryBridgeSearch.mock.calls[0][4] as any).customMatches).toEqual([]);
+      expect(text).toContain('ContosoSalesLineHelper');
+    });
+
+    it('typed, answered by the bridge', async () => {
+      const { context, searchSymbols } = buildProbeContext([row('CustTable')]);
+      mockTryBridgeSearch.mockResolvedValue(bridgeAnswer);
+
+      await searchTool(req({ query: 'CustTable', type: 'table' }), context);
+
+      expect(probeCounts(context)).toEqual({ custom: 1, exact: 1 });
+      expect(searchSymbols).not.toHaveBeenCalled();
+      expect((mockTryBridgeSearch.mock.calls[0][4] as any).customMatches)
+        .toEqual([expect.objectContaining({ name: 'ContosoSalesLineHelper', model: 'ContosoExt' })]);
+    });
+
+    it('typed, bridge unavailable', async () => {
+      const { context } = buildProbeContext([row('CustTable')]);
+
+      const text = (await searchTool(req({ query: 'CustTable', type: 'table' }), context)).content[0].text as string;
+
+      expect(probeCounts(context)).toEqual({ custom: 1, exact: 1 });
+      expect(text).toContain('ContosoSalesLineHelper');
+    });
+  });
+
   it('logs the route it took, so an audit can read it instead of timing it', async () => {
     const { context } = buildContext([row('SalesLine')]);
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});

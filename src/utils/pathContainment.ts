@@ -423,6 +423,39 @@ export function isFileUnderRoot(filePath: string, rootDir: string): boolean {
   return isUnder(filePath, rootDir);
 }
 
+/** A scan root in both comparison forms, resolved once — see resolveScanRoot. */
+export interface ResolvedScanRoot {
+  /** Absolute, POSIX-separated, as given (no symlink resolution). */
+  lexical: string;
+  /** Absolute, POSIX-separated, symlinks resolved. Equals `lexical` when it cannot be resolved. */
+  real: string;
+}
+
+/**
+ * Resolve a scan root ONCE, for a caller that then checks many glob results
+ * against it with isLinkedFileUnderRoot. isFileUnderRoot re-resolves the root on
+ * every call, which is one synchronous realpath per file for a root that cannot
+ * change during the scan.
+ */
+export function resolveScanRoot(rootDir: string): ResolvedScanRoot {
+  const lexical = lexicalNorm(rootDir);
+  return { lexical, real: realNorm(rootDir) || lexical };
+}
+
+/**
+ * Containment check for a glob result that IS a link, or sits below a linked
+ * directory: true only when its symlink-resolved path lands under the root.
+ *
+ * Deliberately stricter than isFileUnderRoot, which also accepts a lexical match.
+ * A glob result is lexically under its root by construction, so for a link the
+ * lexical form says nothing and only the resolved form can tell an escape.
+ */
+export function isLinkedFileUnderRoot(filePath: string, root: ResolvedScanRoot): boolean {
+  const real = realNorm(filePath);
+  if (!real) return false;
+  return startsUnder(real, root.real) || startsUnder(real, root.lexical);
+}
+
 /**
  * Roots a Visual Studio project or solution may be written or deleted under.
  *

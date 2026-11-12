@@ -156,7 +156,9 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
       'ClusteredIndex, PrimaryIndex, SaveDataPerCompany, Label, HelpText, Extends, SystemTable.\n' +
       '    table-extension (stored as <AxPropertyModification>): the table names above plus ' +
       'ModifiedDateTime, CreatedDateTime, ModifiedBy, CreatedBy (Yes/No), CountryRegionCodes ("CZ,SK").\n' +
-      '    edt: Extends, StringSize, Label, HelpText, ReferenceTable, ReferenceField.\n' +
+      '    edt: Extends, StringSize, Label, HelpText, ReferenceTable, ReferenceField (the related field ' +
+      'of the EDT\'s table reference: "AccountNum" once ReferenceTable is set, or "CustTable.AccountNum" ' +
+      'to set table and field in one call).\n' +
       '    class: Extends, Abstract, Final, Label.\n' +
       '    form: any single text element (Caption, Pattern) via XML fallback.\n' +
       '    Example: propertyPath="TableGroup" propertyValue="Group".',
@@ -188,8 +190,9 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
     type: 'string',
     description:
       'String (default), Integer, Real, CheckBox (NoYes/boolean), ComboBox (enums), Date, DateTime, ' +
-      'Int64, Group, Button, CommandButton, MenuFunctionButton. Auto-picked from the EDT base type ' +
-      'when controlDataField is provided.',
+      'Int64, Group, Button, CommandButton, MenuFunctionButton, ReferenceGroup (controlDataField becomes its ' +
+      'ReferenceField). Auto-picked from the EDT base type when controlDataField is provided, and ' +
+      'ReferenceGroup for a surrogate foreign key, as the form designer does. Any other type is refused.',
   },
   controlLabel: { type: 'string', description: 'Optional label for the new control.' },
   positionType: {
@@ -831,7 +834,11 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       + 'extension-defined parent by its order among the children of the parent, under a base-form parent as '
       + '<PositionType>AfterItem</PositionType> + <PreviousSibling>. On a control the file ALREADY defines, '
       + 'add-control with previousSibling or positionType MOVES it there (same parent only; to change parent, '
-      + 'move-control) — the way to put a field next to another after creating it.',
+      + 'move-control) — the way to put a field next to another after creating it. '
+      + 'Without controlType, a surrogate foreign key (an Int64 field whose EDT derives from RefRecId, related '
+      + 'to RecId of a table that has a replacement key, e.g. SalesTable.WorkerSalesTaker) gets a reference group '
+      + 'bound by ReferenceField, the control the form designer adds; pass controlType="Int64" for a plain one. '
+      + 'Set a reference group\'s ReplacementFieldGroup afterwards with modify-property.',
   },
   'remove-control': {
     required: ['controlName'],

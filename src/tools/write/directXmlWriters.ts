@@ -36,6 +36,8 @@ import { describeSubscriberAccessLevel, subscriberAccessLevelValue } from '../..
 import { upsertAxFormDesignProperty } from '../../utils/axFormDesignProperties.js';
 import { bpAccessPropertyOf, isBpAccessObjectType, setBpAccessProperty } from '../xml/bpAccessPropertyModify.js';
 import { setRelationOnDelete } from '../xml/tableBpDefaults.js';
+import { isEdtReferenceFieldProperty, setEdtTableReference } from '../xml/edtTableReferenceEdit.js';
+import { upsertMenuProperty } from '../xml/menuPropertyUpsert.js';
 import { upsertFormControlProperty } from '../../utils/formControlPropertyXml.js';
 import {
   FORM_DATA_SOURCE_AFTER_INSERT_IF_EMPTY as AFTER_INSERT_IF_EMPTY, upsertFormDataSourceProperty,
@@ -49,6 +51,7 @@ import {
 import { escapeXml } from '../../utils/xmlEscape.js';
 import { methodSourceSpans, occurrencesInSpans } from '../../utils/methodSourceSpans.js';
 import { upsertTableFieldProperty } from '../xml/tableFieldPropertyEdit.js';
+import { cleanRemovedFieldReferences, renderRemovedFieldCleanup } from '../xml/tableFieldRemoval.js';
 import type { RestructureResult } from '../xml/formRestructure.js';
 import { convertEntityFieldToComputed, type ComputedFieldType } from '../xml/entityComputedField.js';
 import {
@@ -211,6 +214,39 @@ export const directXmlSetBpAccessProperty = serializedOnFile(async (
 });
 
 /**
+ * modify-property ReferenceField on an EDT: the related field of the EDT's table
+ * reference, a child of <TableReferences> that no scalar property setter can
+ * write. See tools/xml/edtTableReferenceEdit.ts. Null when the request is not
+ * this one, so the dispatcher carries on; a failure result means nothing was
+ * written.
+ */
+export const directXmlSetEdtTableReference = serializedOnFile(async (
+  filePath: string,
+  objectType: string,
+  objectName: string,
+  propertyPath: string,
+  propertyValue: unknown,
+): Promise<{ success: boolean; message: string } | null> => {
+  if (objectType !== 'edt' || !isEdtReferenceFieldProperty(propertyPath)) return null;
+  const before = (await fs.readFile(filePath, 'utf-8')).replace(/^﻿/, '');
+  const outcome = setEdtTableReference(before, propertyValue);
+  if (!outcome) return null;
+  if (!outcome.ok) {
+    return { success: false, message: `❌ Could not set ReferenceField on ${objectName}: ${outcome.error} Nothing was written.` };
+  }
+  if (outcome.changed) await writeFileAtomic(filePath, normalizeD365Xml(outcome.xml));
+  return {
+    success: true,
+    message: outcome.changed
+      ? `✅ Table reference of ${objectName} set to ${outcome.table}.${outcome.relatedField} via direct XML ` +
+        `(<TableReferences>${outcome.wroteReferenceTable ? ' and <ReferenceTable>' : ''}). ` +
+        (outcome.syncedLegacyRelation ? `The EDT's legacy relation (<Relations><AxEdtRelation>) was updated to the same table and field. ` : '') +
+        `File: ${filePath}`
+      : `ℹ️ ${objectName} already references ${outcome.table}.${outcome.relatedField}, nothing written. File: ${filePath}`,
+  };
+});
+
+/**
  * Direct XML fallback for modify-property, used when the bridge rejects
  * modify-property for an object type (e.g. AxForm) even though the property
  * is a plain text element (e.g. <Caption>) editable by string replacement.
@@ -301,6 +337,22 @@ export const directXmlModifyProperty = serializedOnFile(async (
         message:
           `✅ Entity property '${tagName}'='${propertyValue}' set via direct XML (${edited.message}, ` +
           `in canonical AxDataEntityView element order). File: ${filePath}`,
+      };
+    }
+
+    // Menu items and menus: the bridge has a case for a handful of menu item properties
+    // and none for a menu, and the generic match below needs the element to be in the
+    // file already. A top-level property is replaced, or inserted where the serialiser
+    // puts it (tools/xml/menuPropertyUpsert.ts).
+    const menuEdit = upsertMenuProperty(content, propertyPath, String(propertyValue));
+    if (menuEdit) {
+      if (!menuEdit.ok) return { success: false, message: `❌ ${menuEdit.error} Nothing was written.` };
+      if (menuEdit.changed) await writeFileAtomic(filePath, withBomOf(rawContent, normalizeD365Xml(menuEdit.xml)));
+      return {
+        success: true,
+        message:
+          `${menuEdit.changed ? '✅' : 'ℹ️'} ${menuEdit.root} property ${menuEdit.written} via direct XML ` +
+          `(${menuEdit.detail}). File: ${filePath}`,
       };
     }
 
@@ -696,7 +748,8 @@ export const directXmlAddSubmenu = serializedOnFile(async (
  * a form-extension's <FormControl>, together with its <Type> value. Verified against
  * shipped standard form extensions (e.g. InventItemSampling.AdvancedQualityManagement).
  * NOTE: an integer control is `AxFormIntegerControl` (Type=Integer) — NOT
- * `AxFormIntControl`. Unknown types fall back to String, which is always valid.
+ * `AxFormIntControl`. A type the CALLER named that is not here is refused; one
+ * resolved from the field's EDT falls back to String, which is always valid.
  */
 const CONTROL_TYPE_TO_FORM_CONTROL: Record<string, { iType: string; typeValue: string }> = {
   string:      { iType: 'AxFormStringControl',   typeValue: 'String' },
@@ -721,6 +774,8 @@ const CONTROL_TYPE_TO_FORM_CONTROL: Record<string, { iType: string; typeValue: s
   commandbutton:      { iType: 'AxFormCommandButtonControl',      typeValue: 'CommandButton' },
   menufunctionbutton: { iType: 'AxFormMenuFunctionButtonControl', typeValue: 'MenuFunctionButton' },
   group:       { iType: 'AxFormGroupControl',    typeValue: 'Group' },
+  // Bound by <ReferenceField>, not <DataField>: see innerControlLines.
+  referencegroup: { iType: 'AxFormReferenceGroupControl', typeValue: 'ReferenceGroup' },
 };
 const DEFAULT_FORM_CONTROL = { iType: 'AxFormStringControl', typeValue: 'String' };
 
@@ -780,7 +835,18 @@ export const directXmlAddControl = serializedOnFile(async (
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
 
-    const { iType, typeValue } = CONTROL_TYPE_TO_FORM_CONTROL[(controlType || 'String').toLowerCase()] ?? DEFAULT_FORM_CONTROL;
+    const mapped = CONTROL_TYPE_TO_FORM_CONTROL[(controlType || 'String').toLowerCase()];
+    // A ReferenceGroup used to come out as a String control under a ✅: an unknown type
+    // the caller asked for is refused, not swapped.
+    if (!mapped && asked?.controlType) {
+      const known = [...new Set(Object.values(CONTROL_TYPE_TO_FORM_CONTROL).map(c => c.typeValue))].join(', ');
+      return {
+        success: false,
+        message: `controlType "${asked.controlType}" cannot be written into a form extension — nothing was written. ` +
+          `Supported: ${known}.`,
+      };
+    }
+    const { iType, typeValue } = mapped ?? DEFAULT_FORM_CONTROL;
 
     const outcome = insertFormExtensionControl(content, {
       controlName, parentControl, iType, typeValue,
@@ -3233,6 +3299,52 @@ export const directXmlSetTableFieldProperties = serializedOnFile(async (
     return null;
   }
 });
+
+/**
+ * After remove-field: takes the removed field out of the file's field groups and
+ * says what else in the file still names it (tools/xml/tableFieldRemoval.ts). The
+ * bridge's RemoveField removes the field alone. Null when there is nothing to
+ * say, when the file still defines the field, or when it cannot be read: the
+ * removal itself already succeeded and this must not turn it into a failure.
+ */
+export const directXmlCleanRemovedFieldReferences = serializedOnFile(async (
+  filePath: string,
+  fieldName: string,
+): Promise<{ message: string; removedFromGroups: string[] } | null> => {
+  try {
+    const raw = await fs.readFile(filePath, 'utf-8');
+    const content = raw.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+    const cleanup = cleanRemovedFieldReferences(content, fieldName);
+    if (!cleanup) return null;
+    if (cleanup.removedFromGroups.length > 0) {
+      await writeFileAtomic(filePath, normalizeD365Xml(cleanup.xml));
+      console.error(
+        `[modify_d365fo_file] ✅ directXmlCleanRemovedFieldReferences: '${fieldName}' out of ` +
+        `${cleanup.removedFromGroups.join(', ')} in ${filePath}`,
+      );
+    }
+    const message = renderRemovedFieldCleanup(fieldName, cleanup);
+    return message ? { message, removedFromGroups: cleanup.removedFromGroups } : null;
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlCleanRemovedFieldReferences failed: ${err}`);
+    return null;
+  }
+});
+
+/**
+ * A remove-field result with the cleanup above appended to its message. Runs only
+ * after a removal that succeeded and was not skipped: a failed or skipped removal
+ * left the field where it was, so nothing in the file is dangling.
+ */
+export async function withRemovedFieldCleanup<T extends { success: boolean; message: string; skipped?: boolean } | null>(
+  result: T,
+  filePath: string,
+  fieldName: string,
+): Promise<T> {
+  if (!result?.success || result.skipped) return result;
+  const cleaned = await directXmlCleanRemovedFieldReferences(filePath, fieldName);
+  return cleaned ? { ...result, message: `${result.message}\n${cleaned.message}` } : result;
+}
 
 /**
  * move-control / wrap-controls on an AxForm (formRestructure.ts). XML only: the bridge
