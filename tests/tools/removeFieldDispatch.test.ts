@@ -181,7 +181,7 @@ describe('remove-field through the dispatcher', () => {
     const text = textOf(result);
 
     expect(result.isError).toBeFalsy();
-    expect(text).toContain("✅ Field 'colour' removed via IMetaTableProvider.Update");
+    expect(text).toMatch(/^✅ remove-field on table /);
     expect(text).toContain("Also removed 'colour' from field groups AutoReport, Appearance");
     expect(text).toContain("index 'ColourIdx' has it as a field");
     expect(text).toContain('operation="remove-index"');
@@ -194,7 +194,7 @@ describe('remove-field through the dispatcher', () => {
 
   it('a field in no group gets the reply it always got and no second write', async () => {
     const text = textOf(await removeField('Weight'));
-    expect(text).toContain("✅ Field 'Weight' removed via IMetaTableProvider.Update");
+    expect(text).toMatch(/^✅ remove-field on table /);
     expect(text).not.toContain('Also removed');
     expect(text).not.toContain('still references it');
     expect(disk.writes).toBe(0);

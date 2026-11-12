@@ -66,7 +66,7 @@ import {
 import { validateEdtExtensionChange } from '../../utils/edtExtensionValidator.js';
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
 import { applySecurityReferenceOperation, securityReferenceTypeRefusal } from './securityReferences.js';
-import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, renderBatchEditHint, verifyFormElementOrder, readBackAfterModify } from './inlineWriteVerification.js';
+import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, bridgeMessageNote, renderBatchEditHint, verifyFormElementOrder, readBackAfterModify } from './inlineWriteVerification.js';
 import { lintXppSelect } from '../../utils/xppSelectLint.js';
 import { validateWrittenXpp } from './inlineXppValidation.js';
 import { createPhaseTimer } from '../../utils/phaseTimer.js';
@@ -3623,29 +3623,27 @@ async function runModify(
         {
           type: 'text',
           text:
-            // A skip is not an application. Saying "✅ … applied via
-            // IMetadataProvider.Update()" over a write the provider declined is
-            // how three dropped data sources read as three successes; the 🔧 API
-            // line below carries the bridge's own reason.
+            // A skip is not an application. Saying "✅ … applied" over a write the
+            // provider declined is how three dropped data sources read as three
+            // successes; a skip keeps the bridge's own message, which carries the
+            // reason.
+            //
+            // An applied write says only what varies with the call, plus the one
+            // fixed tail below. Gone: "— applied via IMetadataProvider.Update()"
+            // (or "via this server's XML writer") and a `🔧 API: ✅ <thing> added
+            // via <Api>` line restating the headline.
             (bridgeResult.skipped
-              ? `⏭️ ${operation} on ${objectType} "${objectName}" — SKIPPED, nothing was written${crossModelNotice}${autoCorrectNote}\n\n`
-              : `✅ ${operation} on ${objectType} "${objectName}" — applied via ${bridgeResult.viaXmlFallback
-                  ? "this server's XML writer (no bridge path for this operation)"
-                  : 'IMetadataProvider.Update()'}${crossModelNotice}${autoCorrectNote}\n\n`) +
-            `**File:** ${actualFilePath}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}\n` +
-            `🔧 API: ${bridgeResult.message}${preservationNote}${changedLinesNote}${xppLintNote}${xppRuleNote}${addFieldBpNote}${fieldGroupRenderNote}${dataSourceTableNote}${backupNote}${verifyNote}${indexNote}${bpNote}${formOrderNote}${readBackNote}${timer.render()}` +
+              ? `⏭️ ${operation} on ${objectType} "${objectName}" — SKIPPED, nothing was written${crossModelNotice}${autoCorrectNote}\n`
+              : `✅ ${operation} on ${objectType} "${objectName}"${crossModelNotice}${autoCorrectNote}\n`) +
+            `**File:** ${actualFilePath}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}` +
+            (bridgeResult.skipped ? `\n${bridgeResult.message}` : bridgeMessageNote(bridgeResult.message, actualFilePath)) +
+            `${preservationNote}${changedLinesNote}${xppLintNote}${xppRuleNote}${addFieldBpNote}${fieldGroupRenderNote}${dataSourceTableNote}${backupNote}${verifyNote}${indexNote}${bpNote}${formOrderNote}${readBackNote}${timer.render()}` +
             // "Review changes in Visual Studio" is not something the caller can act
             // on, and it rode along on every write.
             (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') +
-            // One tool that builds AND runs the best-practice check. The old line
-            // named build_d365fo_project alone, and the sampled sessions then spent
-            // 35 verify_d365fo_project and 39 run_bp_check calls, largely right
-            // after writes that had already verified themselves.
-            //
-            // Suppressed inside a batch, along with the batch-edit hint:
-            // runModifyBatch emits one of each for the whole call, and telling an
-            // operation that is already batched to batch itself reads as a defect.
-            (inBatch
+            // Fixed, but measured: see the create tail in createD365File.ts. Not in a
+            // batch (runModifyBatch emits one for the call) or after a skip.
+            (inBatch || bridgeResult.skipped
               ? ''
               : `\n\nNext: build_d365fo_project(bpCheck:true) — builds and runs the best-practice check in one call.` +
                 renderBatchEditHint(objectType, objectName)),

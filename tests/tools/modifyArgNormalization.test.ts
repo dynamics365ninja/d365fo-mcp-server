@@ -367,7 +367,10 @@ describe('inside a batch, the per-operation trailers stay quiet', () => {
     expect(t).not.toContain('Send them together');
   });
 
-  it('still emits all of them for a single-operation call', async () => {
+  it('a single-operation call keeps the Next and batch-edit lines, not the clean-verification ones', async () => {
+    // The verification and index notes only speak up when something is wrong.
+    // "Next: build…(bpCheck:true)" and "Send them together" stay: each was added
+    // against a measured round-trip pattern (see createD365File's tail).
     const t = textOf(await modifyD365FileTool(
       req({
         objectType: 'table', objectName: 'ConProbeTable', operation: 'add-index',
@@ -375,10 +378,12 @@ describe('inside a batch, the per-operation trailers stay quiet', () => {
       }),
       ctx(),
     ));
-    expect(t).toContain('Verified:');
+    expect(t).toMatch(/^✅ add-index on table "ConProbeTable"/);
+    expect(t).not.toContain('Verified:');
     // One call that builds AND runs the best-practice check, rather than sending
     // the agent to verify_d365fo_project / run_bp_check separately.
     expect(t).toContain('Next: build_d365fo_project(bpCheck:true)');
+    expect(t).toContain('Send them together');
     expect(t).not.toContain('verify_d365fo_project');
   });
 
