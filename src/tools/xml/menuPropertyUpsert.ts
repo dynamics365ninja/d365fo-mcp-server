@@ -25,10 +25,13 @@
 import { findTopLevel, insertAlphabetically, topIndent } from './menuItemBpDefaults.js';
 
 /**
- * Scalar properties of AxMenuItem, shared by the three kinds: the top-level elements
- * the Microsoft standard menu items carry (FormViewOption on Display items only).
- * OperationalDomain and SubscriberAccessLevel are missing on purpose:
- * bpAccessPropertyModify.ts writes them ahead of the bridge.
+ * Scalar properties of AxMenuItem, shared by the three kinds: the writable scalar
+ * properties of the metamodel's AxMenuItem class (Microsoft.Dynamics.AX.Metadata,
+ * read by reflection), which is a superset of the top-level elements the Microsoft
+ * standard menu items carry. FormViewOption is used on Display items only, the
+ * StateMachine* trio on Action items only. OperationalDomain and
+ * SubscriberAccessLevel are missing on purpose: bpAccessPropertyModify.ts writes
+ * them ahead of the bridge. Conflicts and Tags are not properties an agent sets.
  */
 const MENU_ITEM_PROPERTIES = [
   'AllowRootNavigation',
@@ -39,10 +42,12 @@ const MENU_ITEM_PROPERTIES = [
   'CountryRegionCodes',
   'CreatePermissions',
   'DeletePermissions',
+  'DisabledImage',
   'DisabledImageLocation',
   'DisabledResource',
   'EnumParameter',
   'EnumTypeParameter',
+  'ExtendedDataSecurity',
   'FeatureClass',
   'FormViewOption',
   'HelpText',
@@ -73,15 +78,29 @@ const MENU_ITEM_PROPERTIES = [
 ] as const;
 
 /**
- * Scalar properties of the AxMenu root: the only top-level elements the Microsoft
- * standard menus carry besides Name and Elements.
+ * Scalar properties of the AxMenu root: the writable scalar properties of the
+ * metamodel's AxMenu class besides Name and Elements (Conflicts and Tags left
+ * out, as on menu items). Standard menus carry ConfigurationKey,
+ * CountryRegionCodes, FeatureClass, IsObsolete, Label, MenuItemName, NormalImage
+ * and SetCompany at the top level, all of them in alphabetical order before
+ * <Elements>.
  */
 const MENU_PROPERTIES = [
   'ConfigurationKey',
   'CountryRegionCodes',
+  'DisabledImage',
+  'DisabledImageLocation',
   'FeatureClass',
+  'ImageLocation',
+  'IsObsolete',
   'Label',
+  'MenuItemName',
+  'MenuItemType',
+  'NormalImage',
+  'Parameters',
   'SetCompany',
+  'ShortCut',
+  'Visibility',
 ] as const;
 
 /**

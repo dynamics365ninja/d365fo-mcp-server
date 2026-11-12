@@ -195,9 +195,13 @@ those are called out explicitly below.
   ahead of `Elements` on a menu). The name is matched in any case and written in its
   real casing. An empty value removes the element, because the default is expressed by
   absence. A name that is not a property of the object is refused with the list of known
-  ones, and nothing is written. The lists and the order were checked against the
-  Microsoft standard menu items and menus. `ObjectType` and `OpenMode` stay with the bridge, which
-  checks their values. Menu item and menu extensions are not covered (#1161).
+  ones, and nothing is written. The known names are the metamodel's writable scalar
+  properties of `AxMenuItem` and `AxMenu` (so `ExtendedDataSecurity` on a menu item and
+  `NormalImage`, `IsObsolete` or `MenuItemName` on a menu, which standard objects carry,
+  are accepted), and the order was checked against the Microsoft standard menu items and
+  menus. `MenuItemName` on a menu sets the menu's own element, never the one of a menu
+  item below it. `ObjectType` and `OpenMode` stay with the bridge, which checks their
+  values. Menu item and menu extensions are not covered (#1161).
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know
   neither property on a menu item, and a Staging or TempDB table kept Visual Studio's

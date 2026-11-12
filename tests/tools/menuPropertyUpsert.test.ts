@@ -130,11 +130,13 @@ describe('upsertMenuProperty on a menu item', () => {
     expect(upsertMenuProperty(ITEM('AxMenuItemDisplay', '\t<Tags>Claims</Tags>\n'), 'Tags', 'x')).toBeUndefined();
   });
 
-  it('adds the properties standard menu items carry, and not the unconfirmed ones', () => {
-    for (const p of ['NormalResource', 'DisabledResource', 'FeatureClass', 'IsObsolete', 'CountryConfigurationKey', 'Visibility', 'StateMachine']) {
+  it('adds the metamodel properties of a menu item, and not the ones it does not have', () => {
+    // ExtendedDataSecurity is carried by standard menu items; DisabledImage is a
+    // metamodel property of AxMenuItem (both used to be refused).
+    for (const p of ['NormalResource', 'DisabledResource', 'FeatureClass', 'IsObsolete', 'CountryConfigurationKey', 'Visibility', 'StateMachine', 'ExtendedDataSecurity', 'DisabledImage']) {
       expect(ok(upsertMenuProperty(ITEM('AxMenuItemDisplay'), p.toLowerCase(), 'x')).xml).toContain(`\t<${p}>x</${p}>\n`);
     }
-    for (const p of ['DisabledImage', 'ExtendedDataSecurity']) {
+    for (const p of ['SetCompany', 'ShortCut', 'MenuItemName']) {
       expect(upsertMenuProperty(ITEM('AxMenuItemDisplay'), p, 'x')).toMatchObject({ ok: false });
     }
     const xml = ok(upsertMenuProperty(ITEM('AxMenuItemAction', '\t<StateMachineDataSource>Claim</StateMachineDataSource>\n'), 'StateMachine', 'ContosoClaimState')).xml;
@@ -156,9 +158,17 @@ describe('upsertMenuProperty on a menu', () => {
     expect(xml).toContain('\t<SetCompany>Yes</SetCompany>\n\t<Elements>');
   });
 
-  it('knows exactly the five properties standard menus carry', () => {
-    expect([...menuPropertiesOf('AxMenu')]).toEqual(['ConfigurationKey', 'CountryRegionCodes', 'FeatureClass', 'Label', 'SetCompany']);
-    for (const p of ['HelpText', 'ShortCut', 'NormalImage']) {
+  it('knows the metamodel properties of a menu, including the ones standard menus carry beyond the first five', () => {
+    expect([...menuPropertiesOf('AxMenu')]).toEqual([
+      'ConfigurationKey', 'CountryRegionCodes', 'DisabledImage', 'DisabledImageLocation', 'FeatureClass',
+      'ImageLocation', 'IsObsolete', 'Label', 'MenuItemName', 'MenuItemType', 'NormalImage', 'Parameters',
+      'SetCompany', 'ShortCut', 'Visibility',
+    ]);
+    // Standard menus carry these three at the top level (DMF, FinTagRuleCopy, …); they used to be refused.
+    let xml = ok(upsertMenuProperty(MENU(), 'NormalImage', 'Copy')).xml;
+    xml = ok(upsertMenuProperty(xml, 'IsObsolete', 'Yes')).xml;
+    expect(topLevel(xml)).toEqual(['Name', 'IsObsolete', 'Label', 'NormalImage', 'SetCompany', 'Elements']);
+    for (const p of ['HelpText', 'EnumParameter']) {
       expect(upsertMenuProperty(MENU(), p, 'x')).toMatchObject({ ok: false });
     }
   });
@@ -193,8 +203,16 @@ describe('upsertMenuProperty on a menu', () => {
     expect((r as { error: string }).error).toContain('SetCompany');
   });
 
-  it('leaves an element property the file carries to the generic replacement', () => {
-    expect(upsertMenuProperty(MENU(), 'MenuItemName', 'ContosoOther')).toBeUndefined();
+  it('sets the menu\'s own MenuItemName, never the one of a menu item element below it', () => {
+    // The generic replacement used to rewrite the first <MenuItemName> in the file,
+    // which is the nested element's.
+    const r = ok(upsertMenuProperty(MENU(), 'MenuItemName', 'ContosoOther'));
+    expect(topLevel(r.xml)).toEqual(['Name', 'Label', 'MenuItemName', 'SetCompany', 'Elements']);
+    expect(r.xml).toContain('\t\t\t\t\t<MenuItemName>ContosoParameters</MenuItemName>');
+  });
+
+  it('leaves a name the metamodel does not have, but the file carries below the top level, to the generic replacement', () => {
+    expect(upsertMenuProperty(MENU(), 'Name', 'ContosoOther')).toBeUndefined();
   });
 });
 
