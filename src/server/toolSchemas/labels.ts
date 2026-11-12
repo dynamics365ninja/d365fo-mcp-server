@@ -67,7 +67,7 @@ export const labelsTool = {
         labels: {
           type: 'array',
           description:
-            '[create] Bulk mode — shared fields stay at the top level (top-level labelId/translations are then ignored); a failed entry does not abort the batch.',
+            '[create|update] Bulk mode — shared fields stay at the top level (top-level labelId/translations are then ignored); a failed entry does not abort the batch.',
           items: {
             type: 'object',
             properties: {
