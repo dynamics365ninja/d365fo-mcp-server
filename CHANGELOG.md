@@ -182,6 +182,68 @@ those are called out explicitly below.
   which `tests/validation/platformPatternMatcher.test.ts` holds the validator to in
   CI. `npm run oracle:form-sweep` validates every shipped form and fails on any
   error.
+- **`add-control` writes reference groups, and picks one for a surrogate foreign key as the
+  form designer does.** `controlType="ReferenceGroup"` was not supported: on a form
+  extension it came out as a String control (see Fixed). It now writes an
+  `AxFormReferenceGroupControl` bound the way Visual Studio saves one: `<DataSource>`, the
+  field from `controlDataField` as `<ReferenceField>` (a reference group has no
+  `DataField`), and an empty `<Controls />`. On a plain form the bridge creates the control
+  and `ReferenceField` is then written into the saved file. Without a `controlType`, a field
+  dropped onto a form in Visual Studio as a reference group now gets one too: an Int64 field
+  whose EDT derives from RefRecId and that relates to RecId of a table with a replacement key
+  (e.g. `SalesTable.WorkerSalesTaker` → `HcmWorker`), through a table relation (also one
+  in a table extension) or the EDT's `ReferenceTable`. The tables and EDTs are read from
+  every package folder when the index has no path to them, so this works on a write-only
+  companion too. The reply says why. When the related
+  table has no replacement key the field stays an Int64 control, and the reply says how to
+  ask for a reference group anyway. An explicit `controlType` always wins (`Int64` for a
+  plain control). Set `ReplacementFieldGroup` afterwards with `modify-property`.
+- **`modify-property` with `dataSourceName` sets JoinSource, LinkType, AllowEdit and the
+  other properties of a form data source that already exists.** Join properties could be
+  given only while a data source was added with `add-data-source`, and the others not at
+  all, so an existing data source was edited in the form XML by hand. On `form` and
+  `form-extension`, pass `dataSourceName` with `propertyPath` = `JoinSource`, `LinkType`,
+  a Yes/No property (`AllowCreate`, `AllowDelete`, `AllowEdit`, `AllowCheck`,
+  `AutoNotify`, `AutoQuery`, `AutoSearch`, `CrossCompanyAutoQuery`, `DelayActive`,
+  `OnlyFetchActive`, `InsertAtEnd`, `InsertIfEmpty`), `Index`, `MaxAccessRight` or
+  `StartPosition`. An existing element is replaced where it stands, a missing one is
+  inserted in the platform's element order, and an empty value removes it. That order is
+  not alphabetical. It was measured on Microsoft standard forms (13,234 data sources, no
+  pair of elements in both orders), because the platform drops an element written out of
+  order. A JoinSource that is not a data source of the form is refused, and so is a
+  LinkType outside InnerJoin, OuterJoin, ExistJoin, NotExistJoin, Delayed, Active and
+  Passive. Yes/No properties take Yes or No. InsertIfEmpty=Yes removes the element, as
+  Yes is its default. On a form extension a JoinSource that is not in the extension is
+  written with a note, because it must be a data source of the base form. CounterField,
+  ValidTimeStateAutoQuery, ValidTimeStateUpdate, OptionalRecordMode and MaxRecordsToLoad
+  are too rare to place with certainty and are refused with the supported list (#1161).
+- **`add-method` with `methodName="Control.method"` adds an override on a form control.**
+  On `objectType="form"` a dotted name worked for data sources (`DS.method`,
+  `DS.Field.method`) and for a control override that already existed, but a new one such
+  as `OkButton.clicked` became a form method literally named "OkButton.clicked", which
+  does not compile. A new control override is now written by this server into the
+  control's holder under `<SourceCode><DataControls>`, typed like the design control,
+  where the designer keeps it and where `replace-code` already looks for it. The source
+  gets the same doc comment and indentation pass as every other `add-method`. Data source
+  names and overrides that already exist go to the bridge as before. A first segment that
+  is neither a data source nor a control of the form is refused with the close control
+  names, and nothing is written (#1161).
+- **`d365fo_file` create and modify now warn when something you asked for is not in the
+  saved file.** A write could answer ✅ while the platform or a writer dropped part of the
+  request, for example a field or method the reply said was added, or a data entity's
+  staging table. That surfaced much later as a build or data-management error naming
+  something else. After a successful write the tool now reads the file back and compares
+  it with the request, with no bridge round trip and for every object type, including data
+  entities and their extensions, which had no read-back before. Modify checks
+  `add-field`, `add-method`, `add-index`, `add-field-group`, `add-relation` and
+  `add-enum-value` (the named child must be there), their `remove-` counterparts (it must
+  be gone) and `modify-property` (a top-level property must hold the value). Create checks
+  the scalar `properties` you passed on every type except tables, which keep their own
+  reconciliation. A miss is listed in one `⚠️ Read-back` block at the end of the reply. The
+  write is not rolled back and the call is still a success, so re-read the object and
+  apply the listed item again. The check only reports what is certain: a property the
+  serializer may omit as a default, a label given as text, a form control property and a
+  control or data source method are not compared. Nothing to configure. (#1161)
 
 ### Changed
 - **The server opens one read connection to the index instead of three, with a 128 MB
@@ -268,6 +330,39 @@ those are called out explicitly below.
   database the index is built once in the background after the next start, and until it
   is there the lookup runs as before. The fallback also ran its method-body search twice
   with the same arguments and now runs it once.
+- **An incremental `build_d365fo_project` build runs as a full build when a table, EDT or
+  enum of the model changed since its last build.** An incremental xppc build recompiles
+  only the elements whose own source changed, so after a table field moved to an EDT of
+  another base type it reported 0 errors and the next full build failed in the code that
+  uses the field. The build now checks the target model's tables, table extensions, EDTs,
+  EDT extensions, enums and enum extensions first. A table counts as changed when its
+  source is newer than its compiler-metadata copy or has none. The other types have no
+  such copy and count as changed when they are newer than the newest compiler-metadata
+  file of the package, which is the last time a build wrote metadata back. The result says
+  `full build, switched from incremental` and why, for example "2 tables, 1 EDT changed
+  since the last build: ..." with up to five names. As with the existing switch for OData
+  actions, `fullBuild: false` is the same as leaving it out and does not opt out. A model
+  that was never built, dependency models and builds with no such change stay as they
+  were. Passing `fullBuild: true` on every build as a workaround is no longer needed.
+  (#1161)
+- **A new label file starts with every `LABEL_LANGUAGES` language.** A file's first
+  label created all its languages, and only the supplied ones, so a first label given
+  in English alone left the file English-only for good. When at least one supplied
+  language is configured, a label file that has no language yet now gets every
+  configured one, the untranslated ones with the English text (or the first supplied
+  translation) as a placeholder, reported as a translation fallback. When none of the
+  supplied languages is configured, the supplied ones are used as before.
+- **A change to the custom models list applies without a server restart.** The list
+  (`environment.customModels` in `d365fo-mcp.json`, or `CUSTOM_MODELS` in `.env`) was read
+  once at startup, so a model added while the server ran, for example a new test model,
+  stayed a Microsoft standard, read-only model until the restart. The server now re-reads
+  this one setting when the file it came from has a newer modification time, checked at
+  most once a second. A model added to the list is custom on the next tool call, and a
+  model removed from it stops being custom, unless the server also detected it on its own
+  (the workspace, the active project, a model it wrote into). A value set in the real
+  environment (the shell, the `env` block of `.mcp.json`, App Settings) still wins and is
+  never replaced from a file. Nothing is indexed by this: a newly listed model that is not
+  in the index yet still needs `update_symbol_index(model=…)`. (#1161)
 
 ### Fixed
 - **First-start indexing waits for its worker to finish closing the index.** The server
@@ -553,6 +648,105 @@ those are called out explicitly below.
   only when they are not zero. An update that has to create a missing label still counts as
   updated. The `labels[]` schema tag is now `[create|update]`, and the labels op-spec says
   the same. Nothing to do. (#1161)
+- **`build_d365fo_project` fails a build whose forms break their pattern, as a pipeline build
+  does.** A pipeline build (MSBuild and Microsoft's BuildTask) compiles the whole package and
+  rejected a form whose `FieldsFieldGroups` header had no `ColumnsMode` `Fill`, while an
+  incremental build here had passed it with 0 errors: xppc does not report pattern errors for
+  forms it does not recompile. After a successful xppc build the tool now validates every form
+  of the package against the platform's pattern definitions (the rules of
+  `object_patterns(domain="form", action="validate")`). Errors give
+  `❌ Compiled; form pattern errors a pipeline build rejects` and list each form, control and
+  property. `FORM_PATTERN_ENFORCE=false` keeps them as a warning.
+- **`labels(action="create")` adds a language to a label file only when `LABEL_LANGUAGES`
+  lists it.** Any supplied translation still added its language, so a caller that
+  translated into every language it had seen in the model (another label file's `lt`,
+  `nb-NO`) gave the target file new `.label.txt` files and descriptors anyway. Without
+  `languages`, a translation for a language the file lacks is now written only when
+  `LABEL_LANGUAGES` lists it, and otherwise skipped with a `Not written:` warning. The
+  match is exact apart from case: `fi` and `fi-FI` are different languages, so use the
+  codes of your locale folders. Languages the file already has are always written, an
+  explicit `languages=[…]` still adds any language, and with `LABEL_LANGUAGES` unset or
+  `all` nothing changes. The warning is also given when every other language already
+  had the label. The tool description, the op-spec and the `index.labelLanguages`
+  description in `docs/CONFIGURATION.md` now say so. The indexer and create
+  read the setting through one parser, so the indexer also accepts `en_US` for `en-US`,
+  and a value with no usable code (`" , "`) indexes no language instead of every one.
+- **`labels(action="create")` no longer replaces a label file it cannot read.** A
+  `.label.txt` that existed but could not be read (locked, no permission) was treated as
+  empty and rewritten with only the new label, losing every other label in that
+  language. The call now fails with the read error and writes nothing to that file.
+- **`labels(action="create", createLabelFileIfMissing=false)` refuses a new label file
+  even when the model has other label files.** The guard only fired for a model with
+  no label folder at all, so a mistyped `labelFileId` in a model with other label files
+  quietly became a new label file.
+- **`d365fo_file(action="undo")` can remove label files that `labels(action="create")`
+  created, with their project entries.** The labels tool never recorded the descriptors
+  and `.label.txt` files it wrote, so undo refused to delete them ("this session did not
+  create it"). They are now recorded, and undo also removes the `.rnrproj` entry of the
+  file it deletes when the create added that entry, retrying while Visual Studio holds
+  the project. Once a later call adds a label to such a file, undo refuses it, because
+  deleting the file would also delete the labels added since.
+- **`labels(action="info", labelFileId=…)` no longer lists a language whose label file is
+  gone, and drops its stale index rows.** The index keeps a deleted language's rows
+  until the next build, and info reported it as a language of the file, which invited a
+  create that recreated it. Such languages now show as `Stale index`, each missing path
+  as `(missing on disk)`, and their rows are removed from the label index, so search
+  stops returning them too. Rows are removed only while another file of the same label
+  file is on disk: when none is (an index built on another machine, a drive that is not
+  mounted), info says so and changes nothing. Without `model`, each model's file is
+  judged by its own paths.
+- **`d365fo_file(action="modify", operation="remove-field")` no longer leaves the table's
+  field groups naming the removed field.** The bridge removes the field from `<Fields>`
+  and nothing else, so every `<AxTableFieldGroupField>` that listed it stayed in the file
+  and the next build failed on a field group that references an unknown field. After a
+  successful removal the server now takes the field out of the field groups of the same
+  file: the `<FieldGroups>` of a table, and on a table extension both its own
+  `<FieldGroups>` and its `<FieldGroupExtensions>`. Names match in any letter case and
+  the reply lists the groups. Indexes, full-text indexes, relations, mappings,
+  `TitleField1` / `TitleField2` and field properties that still name the field are not
+  changed, because removing them changes what the table does. The reply lists each one
+  in a warning with the operation that fixes it (for an index it also says when it is the
+  table's `PrimaryIndex`, `ClusteredIndex` or `ReplacementKey`). Nothing to do for
+  callers. A field that was in no group gets the same reply as before.
+- **`d365fo_file(action="modify", operation="modify-property")` with `ReferenceField` gives
+  an existing EDT its table reference.** The property was listed for EDTs but refused with
+  "Unknown AxEdt property 'ReferenceField'", because the related field is not a scalar
+  property. It is a child of `<TableReferences>`, which no property setter writes. So an
+  EDT could not be pointed at a table and field without hand-written XML. The value is now
+  written on the XML as the EDT's single `<AxEdtTableReference>` (`<RelatedField>` and
+  `<Table>`). Pass `propertyValue="AccountNum"` when the EDT already has a ReferenceTable,
+  or `propertyValue="CustTable.AccountNum"` to set `<ReferenceTable>` and the reference in
+  one call. An existing reference is updated in place. When the EDT also carries one
+  legacy `<Relations>` entry (`AxEdtRelation`), as many shipped EDTs do, that entry gets
+  the same table and field and the reply says so. A bare field on an EDT with no
+  reference table is refused with a message that asks for the table. An EDT with more
+  than one legacy relation or more than one table reference is refused too. EDT
+  extensions are not covered (#1161).
+- **`modify-property` sets a menu item or menu property the file does not have yet.** The
+  bridge has a case for only a few menu item properties and none for a menu, and the XML
+  fallback could only replace an element that was already in the file. So
+  `d365fo_file(action="modify", operation="modify-property")` with `Parameters`,
+  `EnumParameter`, `EnumTypeParameter`, `ImageLocation`, `NeedsRecord` and others failed
+  with "Unknown AxMenuItem property" on every `menu-item-display`, `menu-item-action` and
+  `menu-item-output` that did not carry the element, and `SetCompany`, `FeatureClass` or
+  `ConfigurationKey` failed the same way on a `menu`. After the bridge declines, the
+  property is now written on the XML: an existing top-level element is replaced, a
+  missing one is inserted where the serialiser puts it (alphabetically after `Name`, and
+  ahead of `Elements` on a menu). The name is matched in any case and written in its
+  real casing. An empty value removes the element, because the default is expressed by
+  absence. A name that is not a property of the object is refused with the list of known
+  ones, and nothing is written. The known names are the metamodel's writable scalar
+  properties of `AxMenuItem` and `AxMenu` (so `ExtendedDataSecurity` on a menu item and
+  `NormalImage`, `IsObsolete` or `MenuItemName` on a menu, which standard objects carry,
+  are accepted), and the order was checked against the Microsoft standard menu items and
+  menus. `MenuItemName` on a menu sets the menu's own element, never the one of a menu
+  item below it. `ObjectType` and `OpenMode` stay with the bridge, which checks their
+  values. Menu item and menu extensions are not covered (#1161).
+- **`add-control` on a form extension no longer writes a String control for a type it
+  does not know.** An unknown `controlType` fell back to `AxFormStringControl` and reported
+  success, so a requested reference group became a text box bound to nothing. A type the
+  caller names that the writer cannot produce is now refused, with the supported list, and
+  nothing is written. A type picked from the field's EDT still falls back to String.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no

@@ -14,6 +14,9 @@ import { generateRuntimeMetadata } from '../xml/generateMetadata.js';
 import { compileModelLabels, type CompileLabelsResult } from '../write/compileLabels.js';
 import { pruneStaleCompilerMetadata } from './compilerMetadataPrune.js';
 import { describeMissingODataActions, scanODataActions, type MissingODataActions } from './odataActionGuard.js';
+import { describeSchemaChanges, scanSchemaChanges } from './schemaChangeGuard.js';
+import { describeFormPatternErrors, scanFormPatternErrors, type FormPatternBuildError } from './formPatternGuard.js';
+import { isFormPatternEnforceEnabled } from '../analysis/validateFormPattern.js';
 import { recordBuild } from '../../utils/buildMarker.js';
 import { monotonicProgress, type ProgressReporter, startProgressHeartbeat } from '../../utils/progressReporter.js';
 import { restartAosRuntime, type RuntimeRestartResult } from './aosRuntime.js';
@@ -281,10 +284,13 @@ interface BuildJobState {
   // and dbSync asked for at the start were dropped without a word.
   postBuildRequest?: PostBuildRequest;
   // Why a build asked for as incremental ran as a full one: an incremental compile drops
-  // OData actions (see odataActionGuard.ts). Absent when fullBuild was requested.
+  // OData actions (see odataActionGuard.ts) and does not recompile the users of a changed
+  // table, EDT or enum (see schemaChangeGuard.ts). Absent when fullBuild was requested.
   autoFullBuild?: AutoFullBuildReason;
   // Declared OData actions that ODataExtends.runtime still lacks after this build.
   odataActionsMissing?: MissingODataActions[];
+  // Forms of the package that break their pattern: a pipeline build rejects them (formPatternGuard.ts).
+  formPatternErrors?: FormPatternBuildError[];
 }
 
 interface AutoFullBuildReason {
@@ -292,6 +298,8 @@ interface AutoFullBuildReason {
   recompiled: string[];
   /** Entities whose ODataExtends.runtime entry had already lost actions. */
   missing: MissingODataActions[];
+  /** `<AxType>/<Name>` of the tables, EDTs, enums and their extensions changed since the last build. */
+  schemaChanged?: string[];
 }
 
 const asksFor = (v: unknown): boolean => v === true || v === 'true';
@@ -1023,20 +1031,56 @@ async function pruneModelCompilerMetadata(
  * that fails leaves the build incremental, and the check after it still reports lost actions.
  */
 async function odataActionsNeedFullBuild(ctx: XppcBuildContext, modelName: string): Promise<AutoFullBuildReason | null> {
-  const started = Date.now();
   try {
     const r = await scanODataActions(ctx.compilerMetadataPath, ctx.customPackagesPath, modelName);
     if (r.errors.length > 0) {
       await buildLog('WARN', `OData action check of ${modelName} could not read ${r.errors.length} file(s): ${r.errors.slice(0, 5).join('; ')}`);
     }
     if (r.recompiled.length === 0 && r.missing.length === 0) return null;
-    const reason = { recompiled: r.recompiled, missing: r.missing };
-    await buildLog('INFO', `Incremental build of ${modelName} switched to a full build (${Date.now() - started}ms): ${describeAutoFullBuild(reason)}`);
-    return reason;
+    return { recompiled: r.recompiled, missing: r.missing };
   } catch (err: any) {
     await buildLog('WARN', `OData action check of ${modelName} failed (${err?.message ?? err}) — building incrementally`);
     return null;
   }
+}
+
+/**
+ * The tables, EDTs, enums and their extensions of the target model changed since its last build —
+ * see schemaChangeGuard.ts for why they make the build a full one. [] when none, when the model
+ * was never built, or when the scan fails: like the OData check, it never fails the build.
+ */
+async function schemaChangesNeedingFullBuild(ctx: XppcBuildContext, modelName: string): Promise<string[]> {
+  try {
+    const r = await scanSchemaChanges(ctx.compilerMetadataPath, ctx.customPackagesPath, modelName);
+    if (r.errors.length > 0) {
+      await buildLog('WARN', `Table, EDT and enum change check of ${modelName} could not read ${r.errors.length} file(s): ${r.errors.slice(0, 5).join('; ')}`);
+    }
+    return r.changed;
+  } catch (err: any) {
+    await buildLog('WARN', `Table, EDT and enum change check of ${modelName} failed (${err?.message ?? err}) — building incrementally`);
+    return [];
+  }
+}
+
+/**
+ * Every reason a requested incremental build of the target model has to run as a full one: its
+ * OData actions (odataActionsNeedFullBuild) and its changed tables, EDTs and enums
+ * (schemaChangesNeedingFullBuild). Null when incremental is safe.
+ */
+async function incrementalNeedsFullBuild(ctx: XppcBuildContext, modelName: string): Promise<AutoFullBuildReason | null> {
+  const started = Date.now();
+  const [odata, schemaChanged] = await Promise.all([
+    odataActionsNeedFullBuild(ctx, modelName),
+    schemaChangesNeedingFullBuild(ctx, modelName),
+  ]);
+  if (!odata && schemaChanged.length === 0) return null;
+  const reason: AutoFullBuildReason = {
+    recompiled: odata?.recompiled ?? [],
+    missing: odata?.missing ?? [],
+    ...(schemaChanged.length > 0 ? { schemaChanged } : {}),
+  };
+  await buildLog('INFO', `Incremental build of ${modelName} switched to a full build (${Date.now() - started}ms): ${describeAutoFullBuild(reason)}`);
+  return reason;
 }
 
 /** Declared actions ODataExtends.runtime lacks after a successful build; [] when none or unknown. */
@@ -1051,6 +1095,32 @@ async function odataActionsMissingAfterBuild(ctx: XppcBuildContext, modelName: s
     await buildLog('WARN', `OData action check of ${modelName} after the build failed: ${err?.message ?? err}`);
     return [];
   }
+}
+
+/** Error-severity pattern findings in the package's forms after a successful build; [] when none or unknown. */
+async function formPatternErrorsAfterBuild(ctx: XppcBuildContext, modelName: string): Promise<FormPatternBuildError[]> {
+  const started = Date.now();
+  try {
+    const r = await scanFormPatternErrors(ctx.customPackagesPath, modelName);
+    if (r.unreadable.length > 0) {
+      await buildLog('WARN', `Form pattern check of ${modelName} could not read ${r.unreadable.length} item(s): ${r.unreadable.slice(0, 5).join('; ')}`);
+    }
+    await buildLog(r.errors.length > 0 ? 'WARN' : 'INFO',
+      `Form pattern check of ${modelName}: ${r.formsChecked} form(s), ${r.errors.length} error(s) (${Date.now() - started}ms)`);
+    return r.errors;
+  } catch (err: any) {
+    await buildLog('WARN', `Form pattern check of ${modelName} after the build failed: ${err?.message ?? err}`);
+    return [];
+  }
+}
+
+function describeFormPatternSection(errors: FormPatternBuildError[], blocking: boolean): string {
+  return `\n${blocking ? '❌' : '⚠️'} ${errors.length} form pattern error(s). xppc compiled these forms, but a build in ` +
+    'Visual Studio or in a pipeline (MSBuild BuildTask) checks every form against its pattern and rejects them:\n' +
+    `${describeFormPatternErrors(errors)}\n` +
+    'Fix each property or control on the form (object_patterns(domain="form", action="validate") shows the full report ' +
+    'and the fix), then build again.' +
+    (blocking ? '' : ' FORM_PATTERN_ENFORCE is off, so this result is not an error.') + '\n';
 }
 
 function describeOdataActionsMissing(missing: MissingODataActions[], fullBuild: boolean): string {
@@ -1070,9 +1140,18 @@ function describeAutoFullBuild(reason: AutoFullBuildReason): string {
   if (reason.missing.length > 0) {
     parts.push(`actions already missing from ODataExtends.runtime: ${describeMissingODataActions(reason.missing)}`);
   }
-  return `ℹ️ Full build instead of incremental — ${parts.join('; ')}. ` +
-    'An incremental xppc build rewrites a recompiled entity\'s ODataExtends.runtime entry without its OData actions, ' +
-    'so they would disappear from OData at the next AOS restart.';
+  const odata = parts.length > 0;
+  const schemaChanged = reason.schemaChanged ?? [];
+  if (schemaChanged.length > 0) parts.push(describeSchemaChanges(schemaChanged));
+  return `ℹ️ Full build instead of incremental — ${parts.join('; ')}.` +
+    (odata
+      ? ' An incremental xppc build rewrites a recompiled entity\'s ODataExtends.runtime entry without its OData actions, ' +
+        'so they would disappear from OData at the next AOS restart.'
+      : '') +
+    (schemaChanged.length > 0
+      ? ' An incremental xppc build does not recompile the code that uses a changed table, EDT or enum, ' +
+        'so it can report 0 errors where a full build fails.'
+      : '');
 }
 
 /**
@@ -1155,7 +1234,7 @@ async function spawnXppcForState(ctx: XppcBuildContext, state: BuildJobState): P
   // Before the prune below, which deletes the metadata this compares against. Recorded on the
   // state itself — the caller's initState too — so everything that reads it reports a full build.
   if (!useFullBuild && modelName === targetModel) {
-    const reason = await odataActionsNeedFullBuild(ctx, modelName);
+    const reason = await incrementalNeedsFullBuild(ctx, modelName);
     if (reason) {
       useFullBuild = true;
       state.fullBuild = true;
@@ -1356,12 +1435,20 @@ async function spawnXppcForState(ctx: XppcBuildContext, state: BuildJobState): P
         await appendFile(state.logFile, `\n⚠️ OData actions missing from ODataExtends.runtime: ${describeMissingODataActions(odataActionsMissing)}\n`, 'utf-8').catch(() => {});
       }
 
+      // The pattern check a pipeline build makes of every form of the package.
+      const formPatternErrors = modelName === liveState.targetModel ? await formPatternErrorsAfterBuild(ctx, modelName) : [];
+      if (!(await ownsBuild(liveState, customPackagesPath))) return;
+      if (formPatternErrors.length > 0) {
+        await appendFile(state.logFile, `\n⚠️ Form pattern errors (a pipeline build rejects these forms):\n${describeFormPatternErrors(formPatternErrors)}\n`, 'utf-8').catch(() => {});
+      }
+
       const final: BuildJobState = {
         ...liveState,
         status: 'succeeded',
         exitCode,
         endTime: new Date().toISOString(),
         ...(odataActionsMissing.length > 0 ? { odataActionsMissing } : {}),
+        ...(formPatternErrors.length > 0 ? { formPatternErrors } : {}),
       };
       if (final.restartWorkflow) {
         // The build verdict stays the one every build gets; a log that still
@@ -1490,11 +1577,18 @@ async function renderFinishedBuildResult(
   const logTail       = await readLogTail(finalState.logFile);
   const hasWarnings   = succeeded && logTail.split(/\r?\n/).some(l => /Warning:\s/.test(l) && DIAG_LINE_TEST.test(l.trim()));
   const odataMissing  = succeeded ? finalState.odataActionsMissing ?? [] : [];
+  const patternErrors = succeeded ? finalState.formPatternErrors ?? [] : [];
+  // A pipeline build fails on these, so the local build does too, unless the gate is off.
+  const patternsBlock = patternErrors.length > 0 && isFormPatternEnforceEnabled();
   const statusIcon    = !succeeded ? '❌ Build FAILED' : runtimeWarning ? '⚠️ Build succeeded; AOS requires attention' :
-    odataMissing.length > 0 ? '⚠️ Build succeeded; OData actions missing' : hasWarnings ? '⚠️ Build succeeded with warnings' : '✅ Build succeeded';
+    patternsBlock ? '❌ Compiled; form pattern errors a pipeline build rejects' :
+    odataMissing.length > 0 ? '⚠️ Build succeeded; OData actions missing' :
+    patternErrors.length > 0 ? '⚠️ Build succeeded; form pattern errors' :
+    hasWarnings ? '⚠️ Build succeeded with warnings' : '✅ Build succeeded';
   const buildMode     = finalState.autoFullBuild ? 'full build, switched from incremental' : finalState.fullBuild ? 'full build' : 'incremental';
   const odataSection  = (finalState.autoFullBuild ? `\n${describeAutoFullBuild(finalState.autoFullBuild)}\n` : '') +
-    (odataMissing.length > 0 ? `\n${describeOdataActionsMissing(odataMissing, !!finalState.fullBuild)}\n` : '');
+    (odataMissing.length > 0 ? `\n${describeOdataActionsMissing(odataMissing, !!finalState.fullBuild)}\n` : '') +
+    (patternErrors.length > 0 ? describeFormPatternSection(patternErrors, patternsBlock) : '');
   const duration      = finalState.endTime
     ? Math.round((new Date(finalState.endTime).getTime() - new Date(finalState.startTime).getTime()) / 1000)
     : '?';
@@ -1581,7 +1675,7 @@ async function renderFinishedBuildResult(
     }],
     // A failed sync is an error even though the compile passed: the caller asked
     // for "build and sync", and half of that did not happen.
-    ...((!succeeded || sync.failed || deployment.failed || runtimeWarning) ? { isError: true } : {}),
+    ...((!succeeded || sync.failed || deployment.failed || runtimeWarning || patternsBlock) ? { isError: true } : {}),
   };
 }
 

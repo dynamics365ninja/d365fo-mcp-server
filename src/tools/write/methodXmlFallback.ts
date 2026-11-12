@@ -14,7 +14,9 @@ import type { BridgeClient } from '../../bridge/bridgeClient.js';
 import { bridgeAddMethod, bridgeRemoveMethod } from '../../bridge/index.js';
 import { xppMethodSourceForXml } from '../../utils/xppFormat.js';
 import { ensureXppDocComment } from '../../utils/xppDocGen.js';
-import { directXmlAddMethod, directXmlRemoveMethod, viaXmlFallback } from './directXmlWriters.js';
+import {
+  directXmlAddFormControlMethod, directXmlAddMethod, directXmlRemoveMethod, viaXmlFallback,
+} from './directXmlWriters.js';
 
 type WriteResult = { success: boolean; message: string; viaXmlFallback?: boolean } | null;
 
@@ -33,6 +35,15 @@ export async function addMethodWithXmlFallback(
   methodName: string,
   source: string,
 ): Promise<WriteResult> {
+  // "Control.method" on a form: a NEW control override is written to the XML. The bridge
+  // has no arm for it and would add a form method with a dot in its name. Null means the
+  // name is a data source's, or the override exists already: both stay with the bridge.
+  if (objectType === 'form' && methodName.includes('.')) {
+    const controlOverride = await directXmlAddFormControlMethod(
+      filePath, objectName, methodName, xppMethodSourceForXml(ensureXppDocComment(source)),
+    );
+    if (controlOverride) return viaXmlFallback(controlOverride);
+  }
   const viaBridge = await bridgeAddMethod(bridge, objectType, objectName, methodName, source);
   if (!isBridgeUnsupportedTypeDecline(viaBridge)) return viaBridge;
   // Same doc comment + indentation pass bridgeAddMethod applies, so both paths write alike.
