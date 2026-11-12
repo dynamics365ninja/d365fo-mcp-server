@@ -180,16 +180,43 @@ those are called out explicitly below.
   default, open-world. Clients that ask for confirmation or show a warning before
   open-world tools may now do so for these two. Every other tool keeps
   `openWorldHint: false`.
+- **A broad `search` without a type filter takes about half as long.** The lookup that
+  finds matches in custom models ran twice per call, once for the bridge answer and once
+  for the index answer, and for a common word it is the slowest query of the call (270 to
+  475 ms warm and seconds on a cold cache, against about 230 ms for the main query). When
+  the index answered, the first run and its file checks were thrown away. Both lookups
+  (exact name and custom models) now run once per call and feed whichever route answers.
+  The file checks for the bridge answer run only when the bridge is asked. Results are
+  unchanged on every route.
+- **Looking up the event handlers of an object reads far fewer methods.**
+  `extension_info(mode="events")`, the event handler section of
+  `extension_info(mode="coc")` and the two subscriber scans in
+  `extension_info(mode="points")` first selected every method in the index that has
+  a `SubscribesTo` attribute (about 1,800 on a production-size index) and then read each
+  one's source to look for the object name. The object name is now part of the
+  full-text match, as a prefix so that longer names starting with it still match, and
+  only the candidates are read. Handlers found through `classStr(…)`, `tableStr(…)` and
+  `formStr(…)` are the same as before. In `mode="points"` a subscriber that has the
+  object name only inside a longer identifier (`MyFooHelper` for `Foo`) is no longer
+  counted, because it does not subscribe to that object. A name that starts with an
+  underscore is searched the old way.
+- **`validate_code(mode="references")` and the grounding gate in create and modify no
+  longer stall on a label whose id or label file is not in the index.** For every
+  `@File:Id` literal that did not resolve, the check asked for the full list of label
+  files, which groups the whole labels table by file and model and collects the
+  languages. On an index with about a million labels that took about 2 seconds per
+  literal, so a class with ten such labels waited about 20 seconds. The check now asks
+  only whether the file id exists: an index seek for the exact spelling, and for a
+  different letter case one read of the bare id list (a few milliseconds), done at most
+  once per validation. The errors and warnings reported are the same as before.
 
 ### Fixed
-- **`build_d365fo_project` syncs a table a later call names when the build was started with
-  `dbSync: true`.** `dbSync: true` syncs the project's tables (a full sync only without a
-  project), but it was taken to cover any table list: a call that collected or waited on
-  that build with `dbSync: ["SomeTable"]`, for a table outside the project, got the result
-  with its sync section and the table was never synced. The table is now synced by that
-  call, and its result shows the sync. A full sync still covers every list, and a repeat of
-  `dbSync: true` still collects without syncing again. The sync tool now reports what it
-  synced to the build tool.
+- **First-start indexing waits for its worker to finish closing the index.** The server
+  terminated the indexing worker the moment it reported its result. The worker closes its
+  database after it reports (the step that folds the write-ahead log into the index file
+  the server then opens), so that close and the worker's last console lines could be cut
+  off. The worker is now left to exit on its own and the result is handed over when it
+  has. A worker that does not exit within a minute is terminated as before.
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know
   neither property on a menu item, and a Staging or TempDB table kept Visual Studio's
@@ -393,6 +420,67 @@ those are called out explicitly below.
   deserializer drops it), duplicate column names when a pattern has two grids, a
   QuickFilter aimed at the first grid of the form instead of its own, and an empty
   `<Controls />` on buttons and fields, which shipped forms never write.
+- **Large bridge replies are read in linear time and keep their non-ASCII characters.**
+  The client appended every stdout chunk to one string and searched it for the newline
+  from the start, so the work grew with the square of the reply size (measured on the
+  same loop: 208 ms for a 5 MB single-line reply and 2.7 s for 20 MB, against 22 and
+  122 ms when only the new chunk is searched). It also decoded each chunk on its own, so
+  a multi-byte character that fell on a chunk boundary became U+FFFD, which corrupted
+  labels, comments and source text with non-ASCII characters in large replies. Stdout is
+  now decoded as one stream and only the newly arrived text is searched. Nothing to
+  change on your side.
+- **Scanning the workspace no longer blocks the server for a second or more on a large
+  repo.** For every `.xml` file the scan resolved the real path of the file and of the
+  workspace root again, synchronously, and then read the file times one file at a time.
+  On a workspace of about 2,400 files that was over a second with the server unable to
+  answer anything else, and it repeated often because the scan result is kept for 15
+  seconds and every write drops it. `get_workspace_info`, the context snapshot and every
+  read that includes the workspace paid it. The root is now resolved once per scan, file
+  times are read 16 at a time, and a real path is resolved only for an entry that is a
+  link or sits below a linked directory. The same change makes the link check effective:
+  a file link inside the workspace whose target is outside the workspace root was meant
+  to be skipped but was listed, because the check also accepted the path as written. It
+  is now skipped with a warning. Links that stay inside the root, and a workspace root
+  that is itself a link or junction, work as before. Nothing to configure.
+- **`analyze_code(mode="completeness")` no longer suggests methods from unrelated classes,
+  and no longer scans every method in the index, for a class with no known pattern.**
+  When a class had no pattern type in the index and its name did not end in Helper,
+  Service or Controller, the pattern stayed `Unknown` and the tool looked for classes
+  whose name ends in "Unknown". That read about a million method rows on a
+  production-size index, and what it found were classes that only happen to be named
+  that way, so their methods were offered as "missing". Such a class now gets no
+  suggestions and no query runs. The report says that the class has no known pattern
+  and nothing was compared, where it used to say the class "appears complete". Classes
+  with a known pattern get the same suggestions as before.
+- **Generated ListPage and Workspace forms write AllowCreate, AllowDelete, AllowEdit on
+  their data source in the platform's element order.** The templates wrote AllowCreate,
+  AllowEdit, AllowDelete. The order inside a form data source, measured on Microsoft
+  standard forms (13,234 data sources, no pair of elements in both orders), is
+  AllowCreate, AllowDelete, AllowEdit, and the platform drops an element it reads out of
+  order, so the read-only data source of a generated form could lose AllowDelete=No. The
+  same order is fixed in the smart XML builder. Forms generated earlier keep the old
+  order: swap the two lines in the form XML, or recreate the form.
+- **`d365fo-mcp index` no longer replaces a working index with an empty one when the pinned
+  XPP config file is gone.** Visual Studio keeps the old XPP config after a UDE update, but a
+  cleanup that deletes it, or a removed environment, leaves `environment.xppConfigName`
+  naming a file that no longer exists. `start` and `doctor` warned about that pin, but `index`
+  (and `rebuild-instance.ps1`, which runs it) did not check it. The extraction then found no
+  UDE config and read the packages folder found by scanning the drives, which on many UDE
+  machines is an empty leftover `C:\AosService\PackagesLocalDirectory`. It extracted no
+  models, exited 0, and the full rebuild cleared the database. Now `index` refuses such a
+  target before extracting, keeps the existing index, and names the fix
+  (`d365fo-mcp instance upgrade <name>`). `extract-metadata` itself also stops with an error
+  when the pinned name matches none of the XPP configs on the machine, instead of falling back
+  to the drive scan. This covers direct `npm run extract-metadata` runs and a pin that differs
+  from the file name only in case. A machine with no XPP configs falls back as before.
+- **`build_d365fo_project` syncs a table a later call names when the build was started with
+  `dbSync: true`.** `dbSync: true` syncs the project's tables (a full sync only without a
+  project), but it was taken to cover any table list: a call that collected or waited on
+  that build with `dbSync: ["SomeTable"]`, for a table outside the project, got the result
+  with its sync section and the table was never synced. The table is now synced by that
+  call, and its result shows the sync. A full sync still covers every list, and a repeat of
+  `dbSync: true` still collects without syncing again. The sync tool now reports what it
+  synced to the build tool.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no

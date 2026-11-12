@@ -14,7 +14,7 @@ import type { XppClassInfo } from '../src/metadata/types.js';
 import { isCustomModel as checkIsCustomModel, getCustomModels } from '../src/utils/modelClassifier.js';
 import { writeExtractManifest } from '../src/utils/extractManifest.js';
 import { readBlobDownloadMarker } from '../src/utils/blobDownloadMarker.js';
-import { XppConfigProvider } from '../src/utils/xppConfigProvider.js';
+import { XppConfigProvider, type XppEnvironmentConfig } from '../src/utils/xppConfigProvider.js';
 import { defaultPackagesRoot } from '../src/utils/packagesRoot.js';
 import { box, kv, sectionTitle, statusLine, spread, c, glyph, log, shortPath, supportsUnicode, sanitize } from '../src/utils/terminalUi.js';
 
@@ -472,6 +472,34 @@ export const EXTRACTED_AOT_DIRS: string[] = AOT_EXTRACTORS.flatMap(e => e.dirs);
 const MODEL_MARKER_DIRS = ['AxClass', 'AxTable', 'AxEnum', 'AxEdt', 'AxView', 'AxDataEntityView'];
 
 /**
+ * The XPP config to extract from, or null when this box has none (a traditional
+ * VM, which falls back to PACKAGES_PATH).
+ *
+ * A pinned name that matches none of the configs on a box that has some is an
+ * error, not a fallback. getActiveConfig() deliberately returns null for it
+ * rather than another environment's config, but treating that null as "no
+ * UDE" sent the extraction to the drive-scanned packages root: often an empty
+ * leftover `C:\AosService\PackagesLocalDirectory` on UDE boxes, so 0 models
+ * were extracted with exit code 0, and the full rebuild that followed cleared
+ * the database. Failing here leaves the existing index as it is.
+ */
+export async function resolveExtractXppConfig(
+  provider: Pick<XppConfigProvider, 'getActiveConfig' | 'listConfigs'>,
+  configName: string | undefined,
+): Promise<XppEnvironmentConfig | null> {
+  const config = await provider.getActiveConfig(configName);
+  if (config || !configName) return config;
+  const available = await provider.listConfigs();
+  if (available.length === 0) return null;
+  throw new Error(
+    `Pinned XPP config '${configName}' matches none of the XPP configs on this machine ` +
+    `(${available.map(c => c.fullFilename).join(', ')}). Nothing was extracted. ` +
+    'Point environment.xppConfigName (XPP_CONFIG_NAME) at an existing config, for an instance with ' +
+    '`d365fo-mcp instance upgrade <name>`, then run the extraction again.',
+  );
+}
+
+/**
  * Map a model's real subdirectory names by their lowercased form, so callers can look
  * up a canonical 'AxClass' regardless of the casing on disk (the AOT ships PascalCase,
  * but Linux checkouts may be lowercased).
@@ -534,9 +562,7 @@ async function extractMetadata() {
   let customRoot: string | null = null; // UDE: path whose models are all "custom"
   const devEnvType = process.env.DEV_ENVIRONMENT_TYPE || 'auto';
   if (devEnvType !== 'traditional') {
-    const xppProvider = new XppConfigProvider();
-    const configName = process.env.XPP_CONFIG_NAME || undefined;
-    const xppConfig = await xppProvider.getActiveConfig(configName);
+    const xppConfig = await resolveExtractXppConfig(new XppConfigProvider(), process.env.XPP_CONFIG_NAME || undefined);
     if (xppConfig) {
       log.info(`UDE config: ${xppConfig.configName} v${xppConfig.version}`);
       customRoot = xppConfig.customPackagesPath;
