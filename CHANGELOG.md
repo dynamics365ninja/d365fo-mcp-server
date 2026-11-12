@@ -230,6 +230,16 @@ those are called out explicitly below.
   rest. Nothing to do: an existing database drops the three indexes on the next start, in
   the background when it is large. The freed pages are reused by later writes, and the
   file itself only shrinks after a rebuild or a `VACUUM`.
+- **`find_references` on a class is faster when it falls back to the index (no
+  cross-reference database).** The fallback asks which classes implement the target with
+  a `LIKE` over `implements_interfaces`, and for a target nobody implements (every
+  ordinary class) that read every class row of the index: 0.6 to 0.9 s warm and several
+  seconds cold on an index with 1.2 million symbols. A new partial index,
+  `idx_symbols_implements`, holds only the classes that implement something, and the
+  lookup now reads that instead. Results are unchanged. Nothing to do: on an existing
+  database the index is built once in the background after the next start, and until it
+  is there the lookup runs as before. The fallback also ran its method-body search twice
+  with the same arguments and now runs it once.
 
 ### Fixed
 - **First-start indexing waits for its worker to finish closing the index.** The server

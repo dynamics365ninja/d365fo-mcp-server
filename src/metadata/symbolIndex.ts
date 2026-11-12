@@ -1312,6 +1312,15 @@ export class XppSymbolIndex {
    *    carried as the fourth column nothing touches the table at all: 152 ms to
    *    0.2 ms on a 480k-row fixture, with the temp B-tree gone from the plan.
    *
+   *  • `idx_symbols_implements` holds only the rows that implement an interface
+   *    (about one class in six). find_references' name-based fallback asks
+   *    "which classes implement X" with `LIKE '%X%'`, which no index can seek, so
+   *    without this it reads every class row whenever fewer matches exist than the
+   *    limit — and for a class, which nobody implements, that is every time:
+   *    0.6 to 0.9 s warm and several seconds cold on a 1.2 M-symbol index. With it
+   *    the same LIKE walks the small partial index instead. The query names the
+   *    index (INDEXED BY) and falls back to its old form while it is absent.
+   *
    * It also DROPS the indexes in RETIRED_SYMBOL_INDEXES from a database that
    * still carries them, on the same terms: inline when small, on the worker when
    * large, because DROP INDEX walks every page of the index it frees.
@@ -1356,6 +1365,16 @@ export class XppSymbolIndex {
         // the sample filters on it (`+parent_name IS NULL`) but never orders or
         // seeks by it, so it earns nothing as a leading column.
         sql: 'CREATE INDEX IF NOT EXISTS idx_model_type_name ON symbols(model, type, name, parent_name);',
+      });
+    }
+    if (missing(this.db, 'idx_symbols_implements')) {
+      work.push({
+        db: this.db,
+        dbFile: this.dbPath,
+        name: 'idx_symbols_implements',
+        // Partial: only the rows that implement something are in it. The value is
+        // stored as NULL, never '', when a class implements nothing (addSymbol).
+        sql: 'CREATE INDEX IF NOT EXISTS idx_symbols_implements ON symbols(implements_interfaces) WHERE implements_interfaces IS NOT NULL;',
       });
     }
     if (missing(this.labelsDb, 'idx_labels_file_path_id')) {
