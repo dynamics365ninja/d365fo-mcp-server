@@ -738,7 +738,7 @@ describe('create_d365fo_file', () => {
     // tableGroup/tableType/label must NOT be duplicated into extraProperties.
     expect(sentParams.extraProperties).toBeUndefined();
 
-    expect(result.content[0].text).toMatch(/Smart/);
+    // The BP defaults the smart path chose are the part of its reply that varies.
     expect(result.content[0].text).toMatch(/BP defaults/);
   });
 
@@ -1914,7 +1914,7 @@ describe('modify_d365fo_file', () => {
 
     expect(result.isError).toBeFalsy();
     expect(addMenuItemToMenu).not.toHaveBeenCalled();
-    expect(result.content[0].text).toContain("applied via this server's XML writer");
+    expect(result.content[0].text).not.toContain('IMetadataProvider');
     const written = (fsMod.writeFile as any).mock.calls.find((c: any[]) =>
       c[0].includes('ContosoMain.ContosoExtension.xml'),
     );
@@ -1957,7 +1957,7 @@ describe('modify_d365fo_file', () => {
       ctx,
     );
     expect(sub.isError).toBeFalsy();
-    expect(sub.content[0].text).toContain("applied via this server's XML writer");
+    expect(sub.content[0].text).not.toContain('IMetadataProvider');
     const writtenExt = (fsMod.writeFile as any).mock.calls.find((c: any[]) => c[0].includes('ContosoMain.ContosoExtension.xml'));
     expect(writtenExt[1]).toContain('i:type="AxMenuElementSubMenu"');
 

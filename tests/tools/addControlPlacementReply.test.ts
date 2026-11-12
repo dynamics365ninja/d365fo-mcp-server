@@ -183,12 +183,11 @@ describe('add-control with a position on a plain form — the reply', () => {
     expect(order(store.xml)).toEqual(['Body', 'Subject']);
   });
 
-  it('credits the XML writer, not the bridge, for moving an existing control', async () => {
+  it('does not credit the bridge for moving an existing control', async () => {
     store.xml = form(['Subject', 'Body']);
     const r = await modifyD365FileTool(addControl({ controlName: 'Body', positionType: 'Begin' }), ctx);
     expect(mockBridgeAddControl).not.toHaveBeenCalled();
-    expect(text(r)).toContain("applied via this server's XML writer");
-    expect(text(r)).not.toContain('IMetadataProvider.Update()');
+    expect(text(r)).not.toContain('IMetadataProvider');
   });
 
   it('says SKIPPED when the control is already where it was asked', async () => {

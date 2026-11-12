@@ -214,7 +214,7 @@ describe('add-field on a view', () => {
     // field group's nested one, which comes first in the file.
     expect(xml.indexOf('<Name>ItemId</Name>')).toBeLessThan(xml.indexOf('<Name>ProductName</Name>'));
     expect(xml).toMatch(/<AxTableFieldGroup>\s*<Name>AutoReport<\/Name>\s*<Fields \/>/);
-    expect(textOf(r)).toContain("this server's XML writer");
+    expect(textOf(r)).not.toContain('IMetadataProvider');
   });
 
   it('puts a label between Name and the binding, as shipped views do', async () => {

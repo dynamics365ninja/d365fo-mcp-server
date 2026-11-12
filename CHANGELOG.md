@@ -174,6 +174,24 @@ those are called out explicitly below.
   error.
 
 ### Changed
+- **A successful `d365fo_file` create or modify replies in two lines instead of six to
+  ten.** The reply now holds the headline, the path and only what varies with the call
+  (warnings, refusals, a skip and its reason, a project the object is missing from, BP
+  defaults the bridge chose, an unapplied property, a failed index update). Removed from
+  every success, because they were the same on every call: `✅ Verified: on disk (N
+  bytes), referenced by the .rnrproj.`, `🔎 Symbol index updated in place — no
+  update_symbol_index call needed.`, the `🔧 API: ✅ … via <Api>` line and the `via
+  IMetadataProvider.Create()` / `applied via IMetadataProvider.Update()` / `applied via
+  this server's XML writer` tail of the headline, and the closing `Next:
+  build_d365fo_project(bpCheck:true)…`, `Further edits … go in ONE call…` / `More edits
+  …? Send them together…` and `It exists now — do not create it again.` lines, which
+  restated the `build_d365fo_project` and `operations[]` descriptions. A `File: <path>`
+  inside a writer message is dropped when the reply already prints that path. Measured
+  on mocked calls: create enum 555 → 95 chars, create class 405 → 112 (bridge) and
+  582 → 109 (XML writer), modify add-data-source 569 → 124, and modify add-field with
+  its field-group BP warning 914 → 471. A batch (`operations[]`) loses the same
+  trailer. Nothing to change on the caller's side: a write that needs attention still
+  says so.
 - **`build_d365fo_project` and `run_systest_class` are no longer marked as closed-world
   tools.** Both reach the UDE environment's cloud runtime (a deployment, tests in the
   cloud), so their annotations drop `openWorldHint: false` and fall back to MCP's

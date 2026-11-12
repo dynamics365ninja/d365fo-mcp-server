@@ -26,7 +26,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { verifyWrittenFile, renderWriteVerification } from '../../src/tools/write/inlineWriteVerification';
+import { verifyWrittenFile, renderWriteVerification, bridgeMessageNote } from '../../src/tools/write/inlineWriteVerification';
 import type { Membership } from '../../src/workspace/projectMembership';
 
 let base: string;
@@ -178,17 +178,51 @@ describe('renderWriteVerification', () => {
     expect(text).not.toMatch(/will not compile/i);
   });
 
-  it('stays to one line when the active project has it', () => {
-    const text = renderWriteVerification({
+  // A clean write is silent: "✅ Verified: on disk (N bytes), referenced by the
+  // .rnrproj." restated the ✅ headline on every write.
+  it('says nothing when the file is on disk and the active project has it', () => {
+    expect(renderWriteVerification({
       onDisk: true, bytes: 120, membership: m('active', ['p.rnrproj']),
-    });
-    expect(text.trim().split('\n')).toHaveLength(1);
-    expect(text).toContain('Verified');
+    })).toBe('');
   });
 
-  it('does not claim anything about the project when it could not tell', () => {
-    const text = renderWriteVerification({ onDisk: true, bytes: 120, membership: m('unknown') });
-    expect(text).not.toMatch(/rnrproj/i);
-    expect(text).toContain('Verified');
+  it('says nothing when it could not tell about the project', () => {
+    expect(renderWriteVerification({ onDisk: true, bytes: 120, membership: m('unknown') })).toBe('');
+    expect(renderWriteVerification({ onDisk: true, bytes: 120 })).toBe('');
+  });
+});
+
+describe('bridgeMessageNote', () => {
+  const FILE = 'K:\\PackagesLocalDirectory\\ContosoExt\\ContosoExt\\AxTable\\ContosoRentTable.xml';
+
+  it('drops a bare "✅ … via <Api>" confirmation that restates the headline', () => {
+    expect(bridgeMessageNote("✅ Field 'RentAmount' added via IMetaTableProvider.Update", FILE)).toBe('');
+    expect(bridgeMessageNote(`✅ Created via IMetaClassProvider.Create — file: ${FILE}`, FILE)).toBe('');
+  });
+
+  it('keeps what the message adds beyond the confirmation', () => {
+    // An unapplied-property suffix on an otherwise bare confirmation.
+    expect(bridgeMessageNote(
+      `✅ Created via IMetaClassProvider.Create — file: ${FILE}\n⚠️ NOT applied — this object type has nowhere to store them: Label`,
+      FILE,
+    )).toBe('\n⚠️ NOT applied — this object type has nowhere to store them: Label');
+    // Defaults the bridge chose are information, not a restatement.
+    expect(bridgeMessageNote(
+      "✅ Relation 'CustTable' added via IMetaTableProvider.Update (Cardinality=ZeroMore, RelatedTableCardinality=ZeroOne, RelationshipType=Association)",
+      FILE,
+    )).toContain('Cardinality=ZeroMore');
+    // An idempotent no-op is something the agent must know.
+    expect(bridgeMessageNote("ℹ️ 'ContosoRentDuty' is already in <Duties> — nothing written (idempotent).", FILE))
+      .toContain('already in <Duties>');
+  });
+
+  it('drops a "File: <path>" the reply already prints, and keeps the rest of the line', () => {
+    expect(bridgeMessageNote(`✅ Property 'Label' set via direct XML fallback (no bridge path). File: ${FILE}`, FILE))
+      .toBe("\n✅ Property 'Label' set via direct XML fallback (no bridge path).");
+  });
+
+  it('says nothing for an empty message', () => {
+    expect(bridgeMessageNote(undefined)).toBe('');
+    expect(bridgeMessageNote('')).toBe('');
   });
 });

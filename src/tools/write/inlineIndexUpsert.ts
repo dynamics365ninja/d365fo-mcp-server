@@ -44,7 +44,10 @@ export async function upsertWrittenFileIntoIndex(
     // a claim about a symbol that does not exist, on a path where the old
     // behaviour really did invent one.
     if (result.skipped) return '';
-    return '\n🔎 Symbol index updated in place — no update_symbol_index call needed.';
+    // Success is silent. "🔎 Symbol index updated in place — no
+    // update_symbol_index call needed." rode on every write: the agent only
+    // needs telling when it DOES have to call update_symbol_index (below).
+    return '';
   } catch (e: any) {
     return `\n⚠️ Written, but the symbol index could not be updated: ${e?.message ?? e}\n` +
            `   Run update_symbol_index(filePath="${filePath}") before searching for it.`;

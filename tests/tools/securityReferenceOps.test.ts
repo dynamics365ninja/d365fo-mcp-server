@@ -204,7 +204,7 @@ describe('add-duty and add-privilege', () => {
     }), ctx);
 
     expect(r.isError).toBeFalsy();
-    expect(text(r)).toContain("this server's XML writer");
+    expect(text(r)).not.toContain('IMetadataProvider');
     expect(written('AxSecurityRole')).toContain('<Name>ContosoRentDuty</Name>');
   });
 

@@ -154,39 +154,49 @@ export async function runInlineBpCheck(
 }
 
 /**
- * "Send the rest of the edits together" — the line that turns the dominant waste
- * pattern into one call.
+ * What a bridge or XML-writer result message adds to a write reply, or '' when
+ * it only restates the headline.
  *
- * 45 of 273 sampled tool calls were consecutive single-op modifies, and 40 of 49
- * modifies were single-op even though operations[] already existed: the gap is
- * discovery, not capability, so the hint names the concrete call.
- *
- * `objectName` MUST be the name the object actually carries after prefix
- * normalization. Passing the requested name instead hands back a follow-up call
- * aimed at an object that does not exist.
+ * Every successful write used to carry a `🔧 API: ✅ Field 'X' added via
+ * IMetaTableProvider.Update` line under a headline that already said the field
+ * was added, and the create path's `✅ Created via … — file: <path>` repeated the
+ * path printed one line above it. The API name is the same for every call of an
+ * operation, so the agent learns nothing from it. Dropped: a first line that is a
+ * bare `✅ … via <Api>` confirmation, and a `File: <path>` the reply already
+ * prints. Kept: everything else — a reason, defaults the bridge chose
+ * (`(Cardinality=…)`), a `⚠️ NOT applied` suffix, an idempotent `already present`.
  */
-export function renderBatchEditHint(objectType: string, objectName: string, opts?: { afterCreate?: boolean }): string {
-  if (!objectName) return '';
-  return opts?.afterCreate
-    ? `Further edits to "${objectName}" go in ONE call: d365fo_file(action="modify", ` +
-      `objectType="${objectType}", objectName="${objectName}", operations:[…]) — not one call per edit.\n`
-    : `\nMore edits to "${objectName}"? Send them together: operations:[{operation:"…"}, …] in ONE modify call.`;
+export function bridgeMessageNote(message: string | undefined, filePath?: string): string {
+  if (!message) return '';
+  const lines = message.split('\n');
+  if (/^✅ .* via [\w.()]+$/.test(lines[0]) || /^✅ Created via \S+ — file: .*$/.test(lines[0])) lines.shift();
+  let rest = lines.join('\n');
+  if (filePath) {
+    rest = rest.split(`. File: ${filePath}`).join('.').split(` File: ${filePath}`).join('');
+  }
+  rest = rest.replace(/^\n+/, '').trimEnd();
+  return rest ? `\n${rest}` : '';
 }
 
-/** One-line summary for a write response, or '' when there is nothing worth saying. */
+/**
+ * The verification's verdict for a write reply, or '' when there is nothing
+ * worth saying.
+ *
+ * A clean result is silent. `✅ Verified: on disk (N bytes), referenced by the
+ * .rnrproj.` rode on every successful write and said only what the ✅ headline
+ * already claims; the byte count changes nothing the agent does next. What the
+ * agent must act on is still said: the file missing after a reported success,
+ * and a .rnrproj that does not reference the object.
+ */
 export function renderWriteVerification(v: WriteVerification): string {
   if (!v.onDisk) {
     return `\n❌ Verification: the file is NOT on disk after a reported success — treat this write as failed.`;
   }
-  const parts = [`on disk (${v.bytes} bytes)`];
-  if (v.membership?.status === 'active') parts.push('referenced by the .rnrproj');
-  const verified = `\n✅ Verified: ${parts.join(', ')}`;
   // Only 'other' and 'missing' have something to add; 'active' and 'unknown'
   // are the quiet cases, and quiet is what makes the loud ones mean anything.
-  const note = v.membership
+  return v.membership
     ? renderMembership(v.membership, v.axFolder ?? '', v.objectName ?? '')
     : '';
-  return note ? verified + note : `${verified}.`;
 }
 
 /**

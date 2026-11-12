@@ -521,17 +521,16 @@ async function runModifyBatch(
         ),
       ),
     );
-    trailerLines.push(
-      (written.size > 1 ? `\n${target.objectName ?? target.filePath}:` : '') + verifyNote + indexNote,
-    );
+    // Both notes are '' for a clean write, so a file only gets a line when
+    // something about it needs the agent's attention.
+    const note = verifyNote + indexNote;
+    if (note) {
+      trailerLines.push((written.size > 1 ? `\n${target.objectName ?? target.filePath}:` : '') + note);
+    }
   }
-  // No batch-edit hint here: this call already IS the batch, and telling a caller
-  // that just sent operations[] to send operations[] is the same defect the
-  // per-operation suppression exists to avoid.
-  const trailer = trailerLines.length
-    ? `\n${trailerLines.join('')}` +
-      `\n\nNext: build_d365fo_project(bpCheck:true) — builds and runs the best-practice check in one call.`
-    : '';
+  // No fixed "Next: build_d365fo_project(bpCheck:true)…" line: it restated the
+  // build_d365fo_project description on every batch.
+  const trailer = trailerLines.length ? `\n${trailerLines.join('')}` : '';
 
   return {
     content: [{ type: 'text', text: head + body + tail + trailer }],

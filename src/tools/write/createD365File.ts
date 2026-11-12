@@ -16,7 +16,7 @@ import { getConfigManager, fallbackPackagePath } from '../../utils/configManager
 import { describePackagesRootScan } from '../../utils/packagesRoot.js';
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
 import { ProjectFileManager, ProjectFileFinder, registerFileInActiveProject } from '../../workspace/projectFile.js';
-import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, renderBatchEditHint } from './inlineWriteVerification.js';
+import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, bridgeMessageNote } from './inlineWriteVerification.js';
 import { validateWrittenXpp } from './inlineXppValidation.js';
 import { createPhaseTimer } from '../../utils/phaseTimer.js';
 import { isAsGivenNamingMode, registerCustomModel } from '../../utils/modelClassifier.js';
@@ -1794,9 +1794,11 @@ export async function handleCreateD365File(
                 content: [
                   {
                     type: 'text',
-                    text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create() (Smart)${crossModelNotice}${renameNote}\n` +
-                      `📁 ${smartResult.filePath}${projectMsg}\n` +
-                      `🔧 API: ${smartResult.api ?? 'IMetaTableProvider.Create (Smart)'}${bpSummary}${honestyReport}${rawLabelWarning}${labelAutoNote}${verifyNote}${indexNote}${bpNote}` +
+                    // No `🔧 API:` line and no "via IMetadataProvider.Create()": the
+                    // same text on every table create, nothing the agent acts on.
+                    text: `✅ Created ${args.objectType} '${finalObjectName}'${crossModelNotice}${renameNote}\n` +
+                      `📁 ${smartResult.filePath}${projectMsg}` +
+                      `${bpSummary}${honestyReport}${rawLabelWarning}${labelAutoNote}${verifyNote}${indexNote}${bpNote}` +
                       validateWrittenXpp(sourceAsWritten(args.sourceCode, finalObjectName)),
                   },
                 ],
@@ -1907,9 +1909,12 @@ export async function handleCreateD365File(
             content: [
               {
                 type: 'text',
-                text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create()${crossModelNotice}${renameNote}\n` +
-                  `📁 ${bridgeResult.filePath}${projectMsg}\n` +
-                  `🔧 API: ${bridgeResult.message}${honestyReport}${rawLabelWarning}${labelAutoNote}${verifyNote}${indexNote}${bpNote}${xppRuleNote}${timer.render()}`,
+                // bridgeMessageNote keeps only what the bridge message adds (a
+                // `⚠️ NOT applied` suffix); its `✅ Created via … — file:` line
+                // restated this headline and the path below it.
+                text: `✅ Created ${args.objectType} '${finalObjectName}'${crossModelNotice}${renameNote}\n` +
+                  `📁 ${bridgeResult.filePath}${projectMsg}` +
+                  `${bridgeMessageNote(bridgeResult.message, bridgeResult.filePath)}${honestyReport}${rawLabelWarning}${labelAutoNote}${verifyNote}${indexNote}${bpNote}${xppRuleNote}${timer.render()}`,
               },
             ],
           };
@@ -2355,24 +2360,13 @@ export async function handleCreateD365File(
       }
     }
 
-    // Only the step the AGENT can take, and only ONE of them.
-    //
-    // `bpCheck:true` makes the build run the best-practice checker too, so this
-    // is one follow-up call rather than the build → run_bp_check →
-    // verify_d365fo_project chain the logs actually show (39 run_bp_check and 35
-    // verify_d365fo_project calls in 1,400, largely right after writes that had
-    // already verified themselves inline — see verifyNote/indexNote above).
-    //
-    // The old tail also carried a `⛔ TASK COMPLETE — do NOT call generate,
-    // generate, or d365fo_file(action="create") again` banner: 133 chars that
-    // named the same tool twice (a copy/paste defect) to say what the one clause
-    // appended to the batch-edit hint below says in 47.
-    const nextSteps = (args.addToProject
-      ? `Next: build_d365fo_project(bpCheck:true) — builds AND best-practice-checks in one call.\n`
-      : `Next: add the file to your .rnrproj, then build_d365fo_project(bpCheck:true) — builds AND best-practice-checks in one call.\n`) +
-      // finalObjectName, not args.objectName — see renderBatchEditHint.
-      renderBatchEditHint(args.objectType, finalObjectName, { afterCreate: true }) +
-      `It exists now — do not create it again.\n`;
+    // No fixed "Next: build_d365fo_project(bpCheck:true)…", "Further edits … go
+    // in ONE call…" or "It exists now — do not create it again." tail. The same
+    // ~330 chars on every create through this path (the bridge paths never had
+    // them), and each one restates a tool description: build_d365fo_project's
+    // bpCheck and d365fo_file's operations[] ("PREFERRED for 2+ edits to the SAME
+    // object"). A project the object is missing from is still reported, by the
+    // membership check in verifyNote.
 
     // Record the freshly-created file for non-git undo (see the bridge paths above).
     if (!fileExisted) {
@@ -2430,8 +2424,7 @@ export async function handleCreateD365File(
             indexNote +
             bpNote +
             xppRuleNote +
-            timer.render() +
-            `\n${nextSteps}`,
+            timer.render(),
         },
       ],
     };

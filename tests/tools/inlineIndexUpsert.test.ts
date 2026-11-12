@@ -29,12 +29,12 @@ describe('upsertWrittenFileIntoIndex', () => {
     mockIndexOneFile.mockResolvedValue({ text: 'indexed', isError: false });
   });
 
-  it('indexes the written file and says so', async () => {
+  it('indexes the written file and says nothing when that worked', async () => {
     const note = await upsertWrittenFileIntoIndex('K:/PLD/Pkg/Model/AxTable/Foo.xml', ctx);
 
     expect(mockIndexOneFile).toHaveBeenCalledWith('K:/PLD/Pkg/Model/AxTable/Foo.xml', ctx);
-    expect(note).toContain('Symbol index updated in place');
-    expect(note).toContain('no update_symbol_index call needed');
+    // Success is silent; only a failure tells the agent to call update_symbol_index.
+    expect(note).toBe('');
   });
 
   it('degrades to the old instruction when indexing fails, without failing the write', async () => {
