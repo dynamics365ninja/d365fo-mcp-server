@@ -7,21 +7,19 @@
  * Studio's Power Platform Tools and `pac` do — so the calls run with the developer's own
  * Dataverse permissions and need no secret in the configuration.
  *
- * Tokens are cached in memory only, so a server process asks for one sign-in and renews it
- * silently after that. At most one browser sign-in per client is in progress at a time.
- * Tokens are never logged or returned to the caller's transcript.
+ * A server process asks for one sign-in and renews it silently after that. At most one browser
+ * sign-in per client is in progress at a time. Tokens are never logged or returned to the
+ * caller's transcript.
  *
- * Because nothing is written to disk, the first call in every new server process (typically
- * every new MCP client session) opens the browser. When the developer is still signed in to
- * Microsoft, the page completes on its own and only says "Signed in", leaving a tab to close.
- * Avoiding it would need a persistent token cache: an msal-node ICachePlugin that keeps the
- * cache in a file encrypted for the current user (DPAPI on Windows, as az CLI and `pac` do),
- * so that a new process would renew silently from the stored refresh token. msal-node's own
- * persistence (@azure/msal-node-extensions) brings native add-ons this server does not
- * otherwise need.
+ * On Windows the token cache is also kept in a file encrypted for the current user (DPAPI, as
+ * az CLI and `pac` do, see dataverseTokenCache.ts), so a new server process renews silently from
+ * the stored refresh token and the browser opens only for the very first sign-in, or when the
+ * refresh token has expired. This is what lets an unattended agent run tests: it has nobody to
+ * complete a browser page. D365FO_DATAVERSE_TOKEN_CACHE=off keeps the cache in memory only.
  */
 import { spawn } from 'node:child_process';
 import { type AccountInfo, type AuthenticationResult, PublicClientApplication } from '@azure/msal-node';
+import { createFileTokenCachePlugin, dataverseTokenCachePath } from './dataverseTokenCache.js';
 
 /**
  * Microsoft's sample public client id for Dataverse, the one the Dataverse SDK samples use for
@@ -41,6 +39,8 @@ export interface DataverseAuthSettings {
   url: string;
   clientId: string;
   tenant: string;
+  /** File for the persistent token cache. Undefined: memory only. */
+  tokenCachePath?: string;
 }
 
 /** Normalise a Dataverse URL to its origin; undefined when it is not an https URL. */
@@ -64,6 +64,7 @@ export function readDataverseSettings(env: NodeJS.ProcessEnv = process.env): Dat
     url,
     clientId: env.D365FO_DATAVERSE_CLIENT_ID?.trim() || DEFAULT_DATAVERSE_CLIENT_ID,
     tenant: env.D365FO_DATAVERSE_TENANT?.trim() || DEFAULT_DATAVERSE_TENANT,
+    tokenCachePath: dataverseTokenCachePath(env),
   };
 }
 
@@ -126,9 +127,21 @@ export async function getDataverseAccessToken(
           clientId: settings.clientId,
           authority: `https://login.microsoftonline.com/${settings.tenant}`,
         },
+        ...(settings.tokenCachePath
+          ? { cache: { cachePlugin: createFileTokenCachePlugin(settings.tokenCachePath) } }
+          : {}),
       }),
     };
     clients.set(key, entry);
+    if (settings.tokenCachePath) {
+      // A new process starts with the account a previous one stored, so the silent path below can renew it.
+      try {
+        const accounts = await entry.app.getTokenCache().getAllAccounts();
+        entry.account = accounts[0];
+      } catch {
+        /* unreadable cache: sign in as without it */
+      }
+    }
   }
   const scopes = [`${settings.url}/.default`];
 

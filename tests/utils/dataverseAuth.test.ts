@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { interactiveMock, silentMock, constructed } = vi.hoisted(() => ({
+const { interactiveMock, silentMock, accountsMock, constructed } = vi.hoisted(() => ({
   interactiveMock: vi.fn(),
   silentMock: vi.fn(),
+  accountsMock: vi.fn(),
   constructed: [] as unknown[],
 }));
 vi.mock('@azure/msal-node', () => ({
@@ -10,6 +11,7 @@ vi.mock('@azure/msal-node', () => ({
     constructor(config: unknown) { constructed.push(config); }
     acquireTokenInteractive = interactiveMock;
     acquireTokenSilent = silentMock;
+    getTokenCache = () => ({ getAllAccounts: accountsMock });
   },
 }));
 
@@ -90,6 +92,20 @@ describe('getDataverseAccessToken', () => {
     await getDataverseAccessToken(SETTINGS, vi.fn());
     expect(await getDataverseAccessToken(SETTINGS, vi.fn())).toBe('again');
     expect(interactiveMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('renews silently in a new process from the account a stored cache holds, without a browser', async () => {
+    accountsMock.mockResolvedValue([ACCOUNT]);
+    silentMock.mockResolvedValue({ accessToken: 'from-cache' });
+    const opener = vi.fn();
+
+    const settings = { ...SETTINGS, tokenCachePath: 'C:\cache\dataverse-token-cache.bin' };
+    expect(await getDataverseAccessToken(settings, opener)).toBe('from-cache');
+
+    expect(interactiveMock).not.toHaveBeenCalled();
+    expect(opener).not.toHaveBeenCalled();
+    expect(silentMock).toHaveBeenCalledWith({ account: ACCOUNT, scopes: ['https://contoso-dev.crm.dynamics.com/.default'] });
+    expect((constructed[0] as { cache?: { cachePlugin?: unknown } }).cache?.cachePlugin).toBeDefined();
   });
 
   it('starts a new sign-in after one that failed', async () => {
