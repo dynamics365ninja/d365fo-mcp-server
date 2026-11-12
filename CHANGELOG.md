@@ -433,6 +433,16 @@ those are called out explicitly below.
   to be skipped but was listed, because the check also accepted the path as written. It
   is now skipped with a warning. Links that stay inside the root, and a workspace root
   that is itself a link or junction, work as before. Nothing to configure.
+- **`analyze_code(mode="completeness")` no longer suggests methods from unrelated classes,
+  and no longer scans every method in the index, for a class with no known pattern.**
+  When a class had no pattern type in the index and its name did not end in Helper,
+  Service or Controller, the pattern stayed `Unknown` and the tool looked for classes
+  whose name ends in "Unknown". That read about a million method rows on a
+  production-size index, and what it found were classes that only happen to be named
+  that way, so their methods were offered as "missing". Such a class now gets no
+  suggestions and no query runs. The report says that the class has no known pattern
+  and nothing was compared, where it used to say the class "appears complete". Classes
+  with a known pattern get the same suggestions as before.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
