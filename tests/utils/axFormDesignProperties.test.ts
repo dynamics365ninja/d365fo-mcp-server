@@ -89,7 +89,6 @@ describe('upsertAxFormDesignProperty (#37 forms half)', () => {
   // CRLF file it never matched: modify-property appended a SECOND <Pattern> beside the
   // old one, and the deserializer kept the old one (the write verified as missing).
   const CRLF = FORM
-    .replace('\t\t<DataSource xmlns="">', '\t\t<DataSource xmlns="">')
     .replace('<TitleDataSource', '<Pattern xmlns="">Custom</Pattern>\n\t\t<Style xmlns="">SimpleList</Style>\n\t\t<TitleDataSource')
     .replace(/\n/g, '\r\n');
 

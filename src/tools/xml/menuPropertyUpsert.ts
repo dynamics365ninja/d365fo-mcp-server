@@ -132,7 +132,9 @@ const escapeText = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
 
 /** The document's root element when it is a menu item or a menu (never one of their extensions). */
 function menuRootOf(xml: string): MenuPropertyRoot | undefined {
-  const root = /^(?:\s*<\?xml[^>]*\?>)?(?:\s*<!--[\s\S]*?-->)*\s*<(\w+)[\s>]/.exec(xml)?.[1];
+  // A comment body is `(?:[^-]|-(?!->))*`, not `[\s\S]*?`: the lazy form inside the
+  // repeated group can split "--><!--" either way and backtracks exponentially.
+  const root = /^(?:\s*<\?xml[^>]*\?>)?(?:\s*<!--(?:[^-]|-(?!->))*-->)*\s*<(\w+)[\s>]/.exec(xml)?.[1];
   return root === 'AxMenuItemDisplay' || root === 'AxMenuItemAction' || root === 'AxMenuItemOutput' || root === 'AxMenu'
     ? root
     : undefined;
