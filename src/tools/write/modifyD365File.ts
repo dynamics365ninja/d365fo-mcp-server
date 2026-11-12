@@ -118,7 +118,7 @@ import {
   directXmlAddDiagnosticSuppression,
   directXmlAddModuleReference,
   directXmlRemoveModuleReference,
-  directXmlEnsureRelationProperties, directXmlModifyControlProperty, directXmlAddViewField, directXmlSetFormDataSourceInsertIfEmpty,
+  directXmlEnsureRelationProperties, directXmlModifyControlProperty, directXmlAddViewField, directXmlSetFormDataSourceInsertIfEmpty, directXmlModifyFormDataSourceProperty,
 } from './directXmlWriters.js';
 import { addMethodWithXmlFallback, removeMethodWithXmlFallback } from './methodXmlFallback.js';
 import { addReportParameter, refreshReportDataset } from './reportDesignXml.js';
@@ -2689,6 +2689,9 @@ async function runModify(
           // ReferenceField on an EDT: a child of <TableReferences>, XML only as well.
           const edtRef = await directXmlSetEdtTableReference(actualFilePath, objectType, objectName, args.propertyPath, args.propertyValue);
           if (edtRef) { if (!edtRef.success) return { content: [{ type: 'text', text: edtRef.message }], isError: true }; bridgeResult = viaXmlFallback(edtRef); break; }
+          // dataSourceName: a property of a data source the form itself defines (JoinSource, LinkType, …).
+          const dsName = (args as { dataSourceName?: string }).dataSourceName;
+          if (dsName) { bridgeResult = viaXmlFallback(await directXmlModifyFormDataSourceProperty(actualFilePath, objectType, objectName, dsName, args.propertyPath, String(args.propertyValue))); break; }
           const own = await directXmlModifyControlProperty(actualFilePath, objectType, objectName, args.propertyPath, String(args.propertyValue), (args as { controlName?: string }).controlName);
           if (own) { bridgeResult = viaXmlFallback(own); break; } // a control this file defines (own form, or one an extension adds)
           // ── Form extension targeting a BASE-FORM control ─────────────────────

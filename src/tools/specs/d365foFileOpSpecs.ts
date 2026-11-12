@@ -1049,8 +1049,15 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   },
   'modify-property': {
     required: ['propertyPath', 'propertyValue'],
-    optional: ['controlName'],
+    optional: ['controlName', 'dataSourceName'],
     note:
+      'dataSourceName targets a DATA SOURCE the form or form extension defines: propertyPath is ' +
+      'JoinSource (must name another data source of the form), LinkType (InnerJoin | OuterJoin | ' +
+      'ExistJoin | NotExistJoin | Delayed | Active | Passive), a Yes/No property (AllowCreate, ' +
+      'AllowDelete, AllowEdit, AllowCheck, AutoNotify, AutoQuery, AutoSearch, CrossCompanyAutoQuery, ' +
+      'DelayActive, OnlyFetchActive, InsertAtEnd, InsertIfEmpty), Index, MaxAccessRight or ' +
+      'StartPosition. Replaced in place, or inserted in the element order measured on Microsoft ' +
+      'standard forms; an empty value removes it. Other data source properties are refused. ' +
       'controlName (or a dotted propertyPath, "MyButton.NeedsRecord") targets a form CONTROL. On ' +
       'objectType="form", and for a control a form extension ADDS, the property is written on that ' +
       'control (e.g. MenuItemName, MenuItemType, MultiSelect, NeedsRecord, Visible, Label) in the ' +
