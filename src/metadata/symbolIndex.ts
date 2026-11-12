@@ -5437,6 +5437,30 @@ export class XppSymbolIndex {
   }
 
   /**
+   * True when at least one label row carries exactly this label file id. A seek on
+   * idx_labels_file_id that stops at the first row — the cheap half of "does this
+   * label file exist?". Exact case only: the index is BINARY.
+   */
+  hasLabelFileId(labelFileId: string): boolean {
+    return this.labelsDb
+      .prepare('SELECT 1 FROM labels WHERE label_file_id = ? LIMIT 1')
+      .get(labelFileId) !== undefined;
+  }
+
+  /**
+   * The bare list of label file ids, one row each. For a caller that only needs to
+   * know which ids exist (for example a case-insensitive membership test) this
+   * replaces getLabelFileIds(), which also groups by model and concatenates the
+   * languages of every label row.
+   */
+  getDistinctLabelFileIds(): string[] {
+    const rows = this.labelsDb
+      .prepare('SELECT DISTINCT label_file_id AS labelFileId FROM labels')
+      .all() as Array<{ labelFileId: string }>;
+    return rows.map(r => r.labelFileId);
+  }
+
+  /**
    * Get the physical .label.txt file path for each language of a label file.
    * Used by labels(action="info", labelFileId=…) so callers get the on-disk
    * location per language instead of having to shell out to find it.
