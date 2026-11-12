@@ -615,6 +615,19 @@ those are called out explicitly below.
   file is on disk: when none is (an index built on another machine, a drive that is not
   mounted), info says so and changes nothing. Without `model`, each model's file is
   judged by its own paths.
+- **`d365fo_file(action="modify", operation="remove-field")` no longer leaves the table's
+  field groups naming the removed field.** The bridge removes the field from `<Fields>`
+  and nothing else, so every `<AxTableFieldGroupField>` that listed it stayed in the file
+  and the next build failed on a field group that references an unknown field. After a
+  successful removal the server now takes the field out of the field groups of the same
+  file: the `<FieldGroups>` of a table, and on a table extension both its own
+  `<FieldGroups>` and its `<FieldGroupExtensions>`. Names match in any letter case and
+  the reply lists the groups. Indexes, full-text indexes, relations, mappings,
+  `TitleField1` / `TitleField2` and field properties that still name the field are not
+  changed, because removing them changes what the table does. The reply lists each one
+  in a warning with the operation that fixes it (for an index it also says when it is the
+  table's `PrimaryIndex`, `ClusteredIndex` or `ReplacementKey`). Nothing to do for
+  callers. A field that was in no group gets the same reply as before.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
