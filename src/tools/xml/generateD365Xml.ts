@@ -10,7 +10,7 @@ import { escapeXml } from '../../utils/xmlEscape.js';
 import { z } from 'zod';
 import { getConfigManager } from '../../utils/configManager.js';
 import { resolveCreateObjectName, renameDisclosure, applyRenameToContent } from '../write/createObjectName.js';
-import { resolveWriteTarget } from '../write/resolveWriteTarget.js';
+import { resolvePackageNameAsModel, resolveWriteTarget } from '../write/resolveWriteTarget.js';
 
 const GenerateD365XmlArgsSchema = z.object({
   objectType: z
@@ -72,8 +72,10 @@ export async function handleGenerateD365Xml(
 
     // Resolve model name: arg → mcp.json modelName → workspacePath segment
     const configManager = getConfigManager();
-    const modelName = args.modelName || configManager.getModelName();
-    if (!modelName) {
+    // Loaded before anything reads it: the model, the naming and the write target.
+    await configManager.ensureLoaded();
+    const requestedModel = args.modelName || configManager.getModelName();
+    if (!requestedModel) {
       const errorMsg =
         '❌ ERROR: modelName could not be resolved.\n\n' +
         'Provide it in one of these ways:\n' +
@@ -82,6 +84,11 @@ export async function handleGenerateD365Xml(
         '  3. Add workspacePath ending with the package/model name: { "context": { "workspacePath": "K:\\\\...\\\\YourModel" } }';
       return { content: [{ type: 'text', text: errorMsg }], isError: true };
     }
+    // A package name means the package's one model, before the name is derived
+    // from it: create resolves it at the same point (see resolvePackageNameAsModel).
+    const alias = args.packageName ? { modelName: requestedModel } : await resolvePackageNameAsModel(requestedModel);
+    const modelName = alias.modelName;
+    const aliasNote = alias.note ? `\n${alias.note}` : '';
 
     console.error(
       `[generate_d365fo_xml] Generating XML for ${args.objectType}: ${args.objectName}, model: ${modelName}`
@@ -151,7 +158,7 @@ export async function handleGenerateD365Xml(
     );
     // As in create: classnum()/classStr() of the name as passed follow the rename.
     if (finalObjectName !== args.objectName && args.sourceCode) {
-      xmlContent = applyRenameToContent(xmlContent, args.objectName, finalObjectName, 'generate_d365fo_xml');
+      xmlContent = applyRenameToContent(xmlContent, args.objectName, finalObjectName, '[generate_d365fo_xml]');
     }
 
     // For reports: convert any remaining CDATA <Text> to entity-encoded form.
@@ -172,17 +179,16 @@ export async function handleGenerateD365Xml(
     // descriptor names, explicit packageName/packagePath (see resolveWriteTarget).
     // Building `<packagePath>\<model>\<model>` here recommended the Microsoft
     // PackagesLocalDirectory where create wrote into the custom write root.
-    await configManager.ensureLoaded();
     const target = await resolveWriteTarget({
       modelName,
       objectFolder,
       objectName: finalObjectName,
       packageName: args.packageName,
       packagePath: args.packagePath,
-      logTag: 'generate_d365fo_xml',
+      logPrefix: '[generate_d365fo_xml]',
     });
     const recommendedPath = target.normalizedFullPath;
-    const targetNote = target.notes.map(n => `\n${n}`).join('');
+    const targetNote = aliasNote + target.notes.map(n => `\n${n}`).join('');
 
     // Return XML content with instructions
     const instructions = `✅ Generated D365FO ${args.objectType} XML for: ${finalObjectName}${renameDisclosure(finalObjectName, args.objectName)}${targetNote}

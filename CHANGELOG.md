@@ -452,7 +452,10 @@ those are called out explicitly below.
   nothing and the write fell back to `<root>\ContosoCore\ContosoCore`, a new folder beside
   the model's own, without a word. A name that is the `<ModelModule>` of exactly one model
   now resolves to that model (`…\ContosoCore\Contoso Core\…`) and the reply says so and
-  names the model to pass next time. A package with several models, or a name no
+  names the model to pass next time. It is resolved before `create` checks the model, so
+  the cross-model guard, the Microsoft-model check and the naming all see "Contoso Core",
+  and a workspace that targets "Contoso Core" no longer refuses the write as one into
+  another model. A package with several models, or a name no
   descriptor knows, keeps the old fallback folder, and the reply now warns that it is a new
   model folder.
 - **First-start indexing waits for its worker to finish closing the index.** The server

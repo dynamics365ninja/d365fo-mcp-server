@@ -25,8 +25,8 @@ export interface WriteTargetRequest {
   packagePath?: string;
   /** Phase timer of the calling tool, so the resolver sweep is measured. */
   time?: <T>(name: string, fn: () => Promise<T>) => Promise<T>;
-  /** Prefix of the stderr log line, e.g. `create_d365fo_file`. */
-  logTag?: string;
+  /** Prefix of the stderr log line, e.g. `[create_d365fo_file]`. */
+  logPrefix?: string;
 }
 
 export interface WriteTarget {
@@ -50,6 +50,52 @@ export interface WriteTarget {
 }
 
 /**
+ * The metadata roots whose descriptors say which package holds a model: the
+ * custom write root, then the Microsoft packages root (UDE) or D365FO_PACKAGE_PATH.
+ */
+async function descriptorRoots(
+  envType: string,
+  customWritePath: string | null | undefined,
+  configPackagePath: string | null | undefined,
+): Promise<string[]> {
+  const second = envType === 'ude'
+    ? await getConfigManager().getMicrosoftPackagesPath()
+    : configPackagePath;
+  return [customWritePath, second].filter(Boolean) as string[];
+}
+
+/**
+ * The model meant by `modelName`, when that is a package name.
+ *
+ * A name no descriptor declares as a model, but that is the <ModelModule> of
+ * exactly one model, means that model; the note says so for the reply. Any other
+ * name comes back as passed, with no note.
+ *
+ * Create calls this as soon as it knows the model, before anything compares the
+ * model with something else: the cross-model guard checked "ContosoCore" against
+ * the workspace's "Contoso Core" and refused the write, the Microsoft-model check
+ * and the naming ran on the package name, and only the write target, which comes
+ * last, resolved it to the model.
+ */
+export async function resolvePackageNameAsModel(
+  modelName: string,
+): Promise<{ modelName: string; note?: string }> {
+  const configManager = getConfigManager();
+  const envType = await configManager.getDevEnvironmentType();
+  const roots = await descriptorRoots(
+    envType,
+    await configManager.getCustomPackagesPath(),
+    configManager.getPackagePath(),
+  );
+  if (!roots.length) return { modelName };
+  const resolver = new PackageResolver(roots);
+  if (await resolver.resolve(modelName)) return { modelName };
+  const models = await resolver.modelsOfPackage(modelName);
+  if (models.length !== 1) return { modelName };
+  return { modelName: models[0].modelName, note: packageNameNote(modelName, models[0]) };
+}
+
+/**
  * Resolve the file a create of `objectName` writes.
  *
  * Throws when the model or object name would take the path outside the metadata
@@ -59,7 +105,7 @@ export async function resolveWriteTarget(request: WriteTargetRequest): Promise<W
   const { objectFolder } = request;
   let actualModelName = request.modelName;
   const time = request.time ?? (<T>(_name: string, fn: () => Promise<T>) => fn());
-  const logTag = request.logTag ?? 'create_d365fo_file';
+  const logPrefix = request.logPrefix ?? '[create_d365fo_file]';
 
   // Construct full path - resolve package name
   // Package name can differ from model name in any environment (not just UDE).
@@ -83,8 +129,7 @@ export async function resolveWriteTarget(request: WriteTargetRequest): Promise<W
     basePath = request.packagePath || customWritePath || configPackagePath || fallbackPackagePath();
   } else if (envType === 'ude') {
     // UDE mode: auto-resolve package name via descriptor scan across both roots
-    const msPath = await configManager.getMicrosoftPackagesPath();
-    const roots = [customWritePath, msPath].filter(Boolean) as string[];
+    const roots = await descriptorRoots(envType, customWritePath, configPackagePath);
 
     const resolver = new PackageResolver(roots);
     const resolved = await time('package resolution', () => resolver.resolve(actualModelName));
@@ -111,7 +156,7 @@ export async function resolveWriteTarget(request: WriteTargetRequest): Promise<W
     // model "ISV Package") resolves correctly without an explicit packageName
     // arg. Scan both the custom write root and D365FO_PACKAGE_PATH for the
     // matching descriptor; fall back to assuming package == model otherwise.
-    const roots = [customWritePath, configPackagePath].filter(Boolean) as string[];
+    const roots = await descriptorRoots(envType, customWritePath, configPackagePath);
     const resolver = new PackageResolver(roots);
     const resolved = roots.length
       ? await time('package resolution', () => resolver.resolve(actualModelName))
@@ -142,7 +187,7 @@ export async function resolveWriteTarget(request: WriteTargetRequest): Promise<W
   }
 
   console.error(
-    `[${logTag}] Environment: ${envType}, Package: ${resolvedPackageName}, Model: ${actualModelName}, BasePath: ${basePath}`,
+    `${logPrefix} Environment: ${envType}, Package: ${resolvedPackageName}, Model: ${actualModelName}, BasePath: ${basePath}`,
   );
 
   const modelPath = path.join(

@@ -118,7 +118,7 @@ export function applyRenameToContent(
   xmlContent: string,
   orig: string,
   final: string,
-  logTag = 'create_d365fo_file',
+  logPrefix = '[create_d365fo_file]',
 ): string {
   // Escape for use in RegExp (handles dots in extension names like "Foo.Extension")
   const escapedOrig = orig.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -147,7 +147,7 @@ export function applyRenameToContent(
 
   if (replaced !== xmlContent) {
     console.error(
-      `[${logTag}] ✅ Fixed name inconsistency: ` +
+      `${logPrefix} ✅ Fixed name inconsistency: ` +
       `replaced \`${orig}\` with \`${final}\` in XML content (<Name>, class decl, classnum, classStr)`,
     );
   }

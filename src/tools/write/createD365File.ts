@@ -22,7 +22,7 @@ import { validateWrittenXpp } from './inlineXppValidation.js';
 import { createPhaseTimer } from '../../utils/phaseTimer.js';
 import { registerCustomModel } from '../../utils/modelClassifier.js';
 import { renameDisclosure, resolveCreateObjectName, applyRenameToContent } from './createObjectName.js';
-import { resolveWriteTarget } from './resolveWriteTarget.js';
+import { resolvePackageNameAsModel, resolveWriteTarget } from './resolveWriteTarget.js';
 import { crossModelWriteRefusal, standDownNotice } from '../../utils/crossModelWriteGuard.js';
 import { resolveAnchorModel, resolveModelDependency } from './writeAnchorGuard.js';
 import { xppMethodSourceForXml } from '../../utils/xppFormat.js';
@@ -891,6 +891,22 @@ export async function handleCreateD365File(
       return { content: [{ type: 'text', text: errorMsg }], isError: true };
     }
 
+    // A package name passed as modelName means the package's one model. Resolved
+    // here, before the Microsoft-model check, the cross-model guard and the naming
+    // compare or use it: resolving it only with the write target (last) let the
+    // guard refuse "ContosoCore" against the workspace's "Contoso Core".
+    let packageAliasNote = '';
+    let aliasedPackage: string | undefined;
+    if (!args.packageName) {
+      const alias = await timer.time('package-name check', () => resolvePackageNameAsModel(actualModelName!));
+      if (alias.note) {
+        console.error(`[create_d365fo_file] modelName "${actualModelName}" is a package; using its model "${alias.modelName}"`);
+        aliasedPackage = actualModelName;
+        actualModelName = alias.modelName;
+        packageAliasNote = `\n${alias.note}`;
+      }
+    }
+
     // ⚠️ CRITICAL WARNING: If no project/solution path available anywhere
     if (!projectPathToUse && !solutionPathToUse) {
       console.error(
@@ -1017,6 +1033,8 @@ export async function handleCreateD365File(
       objectName: args.objectName,
       objectType: args.objectType,
       owningModel: actualModelName,
+      // A workspace anchored by package (workspacePath) still owns the package's model.
+      owningPackage: aliasedPackage,
       activeModel: anchorModel,
       toolSwitchedModel: getConfigManager().getToolProjectSwitch()?.forcedModel ?? null,
       action: 'create' as const,
@@ -1142,13 +1160,13 @@ export async function handleCreateD365File(
       packageName: args.packageName,
       packagePath: args.packagePath,
       time: (name, fn) => timer.time(name, fn),
-      logTag: 'create_d365fo_file',
+      logPrefix: '[create_d365fo_file]',
     });
     const { basePath, modelPath, normalizedFullPath } = target;
     // A package name passed as modelName resolves to the package's one model:
     // every step from here (bridge, project, index) works on that model.
     actualModelName = target.modelName;
-    const targetNote = target.notes.map(n => `\n${n}`).join('');
+    const targetNote = packageAliasNote + target.notes.map(n => `\n${n}`).join('');
     if (outcome) outcome.filePath = normalizedFullPath;
 
     // Ensure directory exists (create if needed)

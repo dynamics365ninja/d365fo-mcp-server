@@ -261,6 +261,28 @@ describe('a package name passed as modelName', () => {
     await expect(fs.access(path.join(custom, 'ContosoCore', 'ContosoCore'))).rejects.toThrow();
   });
 
+  // The workspace names the MODEL ("Contoso Core", as a .rnrproj or .mcp.json does);
+  // only the caller passed the package. The cross-model guard, the Microsoft-model
+  // check and the naming all ran on the package name before the write target
+  // swapped it for the model, so create refused "ContosoCore" as a model other
+  // than the workspace's and never got to resolve it.
+  it('create resolves it before the cross-model guard compares it with the workspace\'s model', async () => {
+    const custom = await corePackage(['Contoso Core']);
+    cfg.model = 'Contoso Core';
+    registerCustomModel('Contoso Core');
+
+    const outcome: CreateOutcome = {};
+    const created = await handleCreateD365File(req('create_d365fo_file', { ...args, addToProject: false }), undefined, outcome);
+
+    const text = created.content[0].text;
+    expect(created.isError, text).toBeFalsy();
+    expect(text).not.toMatch(/Refusing to create/);
+    expect(outcome.filePath).toBe(
+      path.join(custom, 'ContosoCore', 'Contoso Core', 'AxClass', 'CtsoRentEquipmentJob.xml').replace(/\//g, '\\'),
+    );
+    expect(text.match(/is a package name/g)).toHaveLength(1);
+  });
+
   it('a package with several models is not guessed: the reply names them', async () => {
     await corePackage(['Contoso Core', 'Contoso Core Tests']);
 
