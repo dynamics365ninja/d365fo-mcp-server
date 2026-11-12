@@ -57,6 +57,7 @@ import type {
 import { packagesRoots } from '../utils/packagesRoot.js';
 import type { AxDbConfig } from '../config/axdbSql.js';
 import type { AxDbMethod } from './bridgeTypes.js';
+import { BridgeLineReader } from './lineReader.js';
 
 // Re-export types for convenience
 export type { BridgeReadyPayload, BridgeInfoPayload } from './bridgeTypes.js';
@@ -229,7 +230,7 @@ interface PendingRequest {
 
 export class BridgeClient extends EventEmitter {
   private process: ChildProcess | null = null;
-  private buffer = '';
+  private lineReader = new BridgeLineReader();
   private requestId = 0;
   private pending = new Map<string, PendingRequest>();
   private readyPayload: BridgeReadyPayload | null = null;
@@ -348,11 +349,14 @@ export class BridgeClient extends EventEmitter {
       // Handle stdout — newline-delimited JSON
       child.stdout!.on('data', (chunk: Buffer) => {
         if (this.process !== child) return;
-        this.buffer += chunk.toString('utf8');
-        let newlineIdx: number;
-        while ((newlineIdx = this.buffer.indexOf('\n')) !== -1) {
-          const line = this.buffer.substring(0, newlineIdx).trim();
-          this.buffer = this.buffer.substring(newlineIdx + 1);
+        // The reader searches only the new chunk for the newline and decodes
+        // across chunk boundaries (see lineReader.ts). Lines it has not handed
+        // out yet stay in it, as they stayed in the old string buffer, so the
+        // early return on "ready" below still leaves the rest for the next chunk.
+        this.lineReader.push(chunk);
+        let rawLine: string | undefined;
+        while ((rawLine = this.lineReader.next()) !== undefined) {
+          const line = rawLine.trim();
           if (!line) continue;
 
           try {
@@ -580,7 +584,7 @@ export class BridgeClient extends EventEmitter {
       await this.killChild();
       this._isReady = false;
       this.readyPayload = null;
-      this.buffer = '';
+      this.lineReader.reset();
       await this.spawnAndWaitReady();
       console.error('[BridgeClient] Bridge child restarted successfully');
     })();
