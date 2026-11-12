@@ -334,7 +334,8 @@ those are called out explicitly below.
   codes of your locale folders. Languages the file already has are always written, an
   explicit `languages=[…]` still adds any language, and with `LABEL_LANGUAGES` unset or
   `all` nothing changes. The warning is also given when every other language already
-  had the label. The tool description and op-spec now say so. The indexer and create
+  had the label. The tool description, the op-spec and the `index.labelLanguages`
+  description in `docs/CONFIGURATION.md` now say so. The indexer and create
   read the setting through one parser, so the indexer also accepts `en_US` for `en-US`,
   and a value with no usable code (`" , "`) indexes no language instead of every one.
 - **`labels(action="create")` no longer replaces a label file it cannot read.** A
