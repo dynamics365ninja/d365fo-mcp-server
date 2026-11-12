@@ -391,6 +391,15 @@ those are called out explicitly below.
   deserializer drops it), duplicate column names when a pattern has two grids, a
   QuickFilter aimed at the first grid of the form instead of its own, and an empty
   `<Controls />` on buttons and fields, which shipped forms never write.
+- **Large bridge replies are read in linear time and keep their non-ASCII characters.**
+  The client appended every stdout chunk to one string and searched it for the newline
+  from the start, so the work grew with the square of the reply size (measured on the
+  same loop: 208 ms for a 5 MB single-line reply and 2.7 s for 20 MB, against 22 and
+  122 ms when only the new chunk is searched). It also decoded each chunk on its own, so
+  a multi-byte character that fell on a chunk boundary became U+FFFD, which corrupted
+  labels, comments and source text with non-ASCII characters in large replies. Stdout is
+  now decoded as one stream and only the newly arrived text is searched. Nothing to
+  change on your side.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
