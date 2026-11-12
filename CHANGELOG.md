@@ -182,15 +182,12 @@ those are called out explicitly below.
   `openWorldHint: false`.
 
 ### Fixed
-- **Large bridge replies are read in linear time and keep their non-ASCII characters.**
-  The client appended every stdout chunk to one string and searched it for the newline
-  from the start, so the work grew with the square of the reply size (measured on the
-  same loop: 208 ms for a 5 MB single-line reply and 2.7 s for 20 MB, against 22 and
-  122 ms when only the new chunk is searched). It also decoded each chunk on its own, so
-  a multi-byte character that fell on a chunk boundary became U+FFFD, which corrupted
-  labels, comments and source text with non-ASCII characters in large replies. Stdout is
-  now decoded as one stream and only the newly arrived text is searched. Nothing to
-  change on your side.
+- **First-start indexing waits for its worker to finish closing the index.** The server
+  terminated the indexing worker the moment it reported its result. The worker closes its
+  database after it reports (the step that folds the write-ahead log into the index file
+  the server then opens), so that close and the worker's last console lines could be cut
+  off. The worker is now left to exit on its own and the result is handed over when it
+  has. A worker that does not exit within a minute is terminated as before.
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know
   neither property on a menu item, and a Staging or TempDB table kept Visual Studio's
@@ -394,11 +391,25 @@ those are called out explicitly below.
   deserializer drops it), duplicate column names when a pattern has two grids, a
   QuickFilter aimed at the first grid of the form instead of its own, and an empty
   `<Controls />` on buttons and fields, which shipped forms never write.
+- **Large bridge replies are read in linear time and keep their non-ASCII characters.**
+  The client appended every stdout chunk to one string and searched it for the newline
+  from the start, so the work grew with the square of the reply size (measured on the
+  same loop: 208 ms for a 5 MB single-line reply and 2.7 s for 20 MB, against 22 and
+  122 ms when only the new chunk is searched). It also decoded each chunk on its own, so
+  a multi-byte character that fell on a chunk boundary became U+FFFD, which corrupted
+  labels, comments and source text with non-ASCII characters in large replies. Stdout is
+  now decoded as one stream and only the newly arrived text is searched. Nothing to
+  change on your side.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
   native add-ons; with `@azure/msal-common` and `jsonwebtoken` (and their `jws`, `semver`
   and `lodash.*` helpers) it adds 16 packages to the lockfile and changes none.
+- **Lockfile refreshed with `npm update`.** Runtime: `@azure/msal-node` 7.2.1,
+  `@clack/prompts` 1.9.0, `@modelcontextprotocol/sdk` 1.32.2, `commander` 15.1.0, `dotenv`
+  18.0.10, `express` 5.3.0, `express-rate-limit` 8.7.4, `zod` 4.6.7. Dev: `@biomejs/biome`
+  2.6.6, `@types/node` 26.6.6, `vitest` and `@vitest/coverage-v8` 5.1.0. The ranges in
+  `package.json` are unchanged.
 
 ## [1.23.0] — 2026-11-05
 
