@@ -28,6 +28,8 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+## [1.24.0] — 2026-11-12
+
 ### Added
 - **`validate_code(mode="references")` checks what a Chain of Command wrapper, an event
   handler or a call binds to, not only that the name exists** (#1225). After an ISV or
