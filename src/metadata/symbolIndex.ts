@@ -40,6 +40,19 @@ function compareIgnoreCase(a: string, b: string): number {
 }
 
 /**
+ * The pattern suggestMissingMethods compares a class against: the indexed
+ * pattern type, or one read from a Helper / Service / Controller name suffix.
+ * `undefined` when the class has neither, i.e. there are no similar classes.
+ */
+export function suggestionPatternType(className: string, patternType?: string): string | undefined {
+  if (patternType && patternType !== 'Unknown') return patternType;
+  if (className.endsWith('Helper')) return 'Helper';
+  if (className.endsWith('Service')) return 'Service';
+  if (className.endsWith('Controller')) return 'Controller';
+  return undefined;
+}
+
+/**
  * A multi-word query, split into the substrings a symbol name must ALL contain.
  *
  * `search(query="ProcessGuide AdjustIn")` means "a name carrying both words" —
@@ -78,6 +91,50 @@ export interface ExtensionMetadataRecord {
   cocMethods?: string[];
   eventSubscriptions?: string[];
   model: string;
+}
+
+/**
+ * How many read-only connections the index opens when READ_POOL_SIZE is not set.
+ *
+ * One. The SQLite driver is synchronous and every tool runs on the main thread,
+ * so there is never more than one read in flight: a second and third connection
+ * add no concurrency, only a second and third page cache, statement cache and
+ * FTS state for the same work, each warmed a third as often.
+ *
+ * It stays a connection of its own rather than the writer, because a separate
+ * connection reads the last committed snapshot while the writer has a
+ * transaction open.
+ */
+export const DEFAULT_READ_POOL_SIZE = 1;
+
+/**
+ * Page-cache budget for the read connections together, in KiB (128 MB).
+ *
+ * The symbols file is larger than the 1 GiB mmap window, so a scan outside the
+ * window lives on this cache. Three connections at 32 MB each ran the same
+ * scan in 630 to 910 ms where one connection with 256 MB took 100 to 130 ms.
+ * 128 MB on one connection is slightly more than the old three pools together
+ * (96 MB), and the six labels connections that went with them are gone.
+ */
+export const READ_CACHE_BUDGET_KIB = 128_000;
+
+/** The per-connection page cache before this budget existed. Never go below it. */
+const MIN_READ_CACHE_KIB = 32_000;
+
+/** READ_POOL_SIZE, clamped to 1-8. Unset, empty or not a number means the default. */
+export function readPoolSizeFromEnv(env: NodeJS.ProcessEnv = process.env): number {
+  const parsed = parseInt(env.READ_POOL_SIZE || '', 10);
+  const wanted = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_READ_POOL_SIZE;
+  return Math.min(8, Math.max(1, wanted));
+}
+
+/**
+ * The budget split across the pool, so asking for more connections does not
+ * multiply the memory. Floored at the old 32 MB so an override is never worse
+ * off per connection than it was.
+ */
+export function readCacheKibPerConnection(poolSize: number): number {
+  return Math.max(MIN_READ_CACHE_KIB, Math.floor(READ_CACHE_BUDGET_KIB / Math.max(1, poolSize)));
 }
 
 /**
@@ -330,11 +387,11 @@ export class XppSymbolIndex {
   // answer is constant per model within a run. Cleared by setNonMicrosoftModels().
   private mineableModelCache: Map<string, boolean> = new Map();
 
-  // Read-only connection pool: WAL mode allows N readers + 1 writer without
-  // blocking each other. Pool size: READ_POOL_SIZE env var (default 3, clamped 1-8).
+  // Read-only connections to the symbols database. One by default — see
+  // DEFAULT_READ_POOL_SIZE. READ_POOL_SIZE overrides the count (clamped 1-8).
   // Not used for :memory: databases (each connection would be a separate empty DB).
+  // There is no labels counterpart: every label query runs on labelsDb.
   private readPool: Database[] = [];
-  private labelsReadPool: Database[] = [];
   private readPoolRR = 0;
   // Symbol-count scans are expensive (full index scan of 1M+ rows, 30-60 s
   // cold) — memoize the result and compute it off-thread (see getSymbolCounts).
@@ -433,36 +490,27 @@ export class XppSymbolIndex {
 
     // Skip pool for :memory: — each new connection would be a separate empty DB.
     if (dbPath !== ':memory:') {
-      const poolSize = Math.min(8, Math.max(1,
-        parseInt(process.env.READ_POOL_SIZE || '3', 10) || 3
-      ));
+      const poolSize = readPoolSizeFromEnv();
+      const cacheKib = readCacheKibPerConnection(poolSize);
       for (let i = 0; i < poolSize; i++) {
         const rConn = new Database(dbPath, { readonly: true });
         rConn.pragma('busy_timeout = 5000');
-        rConn.pragma('cache_size = -32000'); // 32 MB page cache per connection
+        rConn.pragma(`cache_size = -${cacheKib}`);
         rConn.pragma('temp_store = MEMORY');
         rConn.pragma('mmap_size = 1073741824');
         this.readPool.push(rConn);
-
-        if (labelPath !== ':memory:') {
-          const rLabels = new Database(labelPath, { readonly: true });
-          rLabels.pragma('busy_timeout = 5000');
-          rLabels.pragma('cache_size = -16000'); // 16 MB per labels connection
-          rLabels.pragma('temp_store = MEMORY');
-          rLabels.pragma('mmap_size = 536870912');
-          this.labelsReadPool.push(rLabels);
-        }
       }
     }
   }
 
   /**
-   * Returns the next read-only connection from the pool (round-robin).
-   * Falls back to the main writer connection when the pool is empty
-   * (e.g. :memory: databases used in write-only mode).
+   * Returns the read-only connection (round-robin when READ_POOL_SIZE asked for
+   * more than one). Falls back to the main writer connection when the pool is
+   * empty (e.g. :memory: databases used in write-only mode).
    *
-   * Tool handlers should use this instead of accessing `db` directly
-   * to benefit from read-pool parallelism and per-connection stmt caching.
+   * Tool handlers should use this instead of accessing `db` directly: a separate
+   * connection reads the last committed snapshot while the writer has a
+   * transaction open, and keeps its own page cache and prepared statements.
    */
   getReadDb(): Database {
     if (this.readPool.length === 0) return this.db;
@@ -499,10 +547,6 @@ export class XppSymbolIndex {
       try { conn.close(); } catch { /* ignore */ }
     }
     this.readPool = [];
-    for (const conn of this.labelsReadPool) {
-      try { conn.close(); } catch { /* ignore */ }
-    }
-    this.labelsReadPool = [];
     this.readPoolRR = 0;
   }
 
@@ -692,14 +736,12 @@ export class XppSymbolIndex {
       CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
       CREATE INDEX IF NOT EXISTS idx_symbols_type ON symbols(type);
       CREATE INDEX IF NOT EXISTS idx_symbols_model ON symbols(model);
-      CREATE INDEX IF NOT EXISTS idx_symbols_pattern_type ON symbols(pattern_type);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_symbols_unique
         ON symbols(name, type, COALESCE(parent_name, ''), model);
       
       -- Composite indexes for common query patterns (major speed boost)
       CREATE INDEX IF NOT EXISTS idx_type_parent ON symbols(type, parent_name) WHERE parent_name IS NOT NULL;
       CREATE INDEX IF NOT EXISTS idx_type_name ON symbols(type, name);
-      CREATE INDEX IF NOT EXISTS idx_parent_type ON symbols(parent_name, type) WHERE parent_name IS NOT NULL;
       CREATE INDEX IF NOT EXISTS idx_name_type ON symbols(name, type);
       -- Covering index for field/method lookups by parent (avoids table access)
       CREATE INDEX IF NOT EXISTS idx_parent_type_name ON symbols(parent_name, type, name) WHERE parent_name IS NOT NULL;
@@ -1226,6 +1268,28 @@ export class XppSymbolIndex {
   }
 
   /**
+   * Indexes on `symbols` that earlier versions created and no query uses.
+   * Measured with dbstat on a 3.3 GB index (1.2 M symbols) they were 284 MB,
+   * 8.6 % of the file, and three more B-trees to maintain on every insert:
+   *
+   *  • `idx_symbols_file_path` (223 MB) — BINARY collation. Every comparison of
+   *    file_path is COLLATE NOCASE and uses idx_symbols_file_path_nocase; an
+   *    index of another collation cannot serve those.
+   *  • `idx_parent_type` (49 MB) — (parent_name, type), a strict prefix of
+   *    idx_parent_type_name (parent_name, type, name) under the same partial
+   *    predicate, so anything it could answer the longer one answers too.
+   *  • `idx_symbols_pattern_type` (12 MB) — nothing filters or orders on
+   *    symbols.pattern_type (code_patterns has its own index).
+   *
+   * No longer created, and dropped by ensureDeferredIndexes() where they exist.
+   */
+  static readonly RETIRED_SYMBOL_INDEXES: readonly string[] = [
+    'idx_symbols_file_path',
+    'idx_parent_type',
+    'idx_symbols_pattern_type',
+  ];
+
+  /**
    * The indexes built AFTER the schema exists rather than with it.
    *
    * Deliberately not part of the CREATE INDEX block above, and all for one
@@ -1239,7 +1303,7 @@ export class XppSymbolIndex {
    *
    * What is deferred, and why each earns its bytes:
    *
-   *  • `symbols.file_path` / `labels.file_path` (+ their NOCASE twins) are the
+   *  • `symbols.file_path COLLATE NOCASE` / `labels.file_path_id` are the
    *    lookup key of removeSymbolsByFile()/removeLabelsByFile(), which every
    *    update_symbol_index, undo_last_modification and resync runs first.
    *    Unindexed, each of those scans the entire table — measured on the 2 GB
@@ -1256,6 +1320,19 @@ export class XppSymbolIndex {
    *    walks in the order asked for and stops at the limit, and with parent_name
    *    carried as the fourth column nothing touches the table at all: 152 ms to
    *    0.2 ms on a 480k-row fixture, with the temp B-tree gone from the plan.
+   *
+   *  • `idx_symbols_implements` holds only the rows that implement an interface
+   *    (about one class in six). find_references' name-based fallback asks
+   *    "which classes implement X" with `LIKE '%X%'`, which no index can seek, so
+   *    without this it reads every class row whenever fewer matches exist than the
+   *    limit — and for a class, which nobody implements, that is every time:
+   *    0.6 to 0.9 s warm and several seconds cold on a 1.2 M-symbol index. With it
+   *    the same LIKE walks the small partial index instead. The query names the
+   *    index (INDEXED BY) and falls back to its old form while it is absent.
+   *
+   * It also DROPS the indexes in RETIRED_SYMBOL_INDEXES from a database that
+   * still carries them, on the same terms: inline when small, on the worker when
+   * large, because DROP INDEX walks every page of the index it frees.
    *
    * Public because build scripts defer it (see XppSymbolIndexOptions) and run it
    * themselves after their bulk load, with the worker dispatch turned off.
@@ -1276,14 +1353,17 @@ export class XppSymbolIndex {
     };
 
     const labelsPath = this.labelsDbPath;
-    const work: Array<{ db: Database; dbFile: string; sql: string; name: string }> = [];
-    if (missing(this.db, 'idx_symbols_file_path')) {
-      work.push({
-        db: this.db,
-        dbFile: this.dbPath,
-        name: 'idx_symbols_file_path',
-        sql: 'CREATE INDEX IF NOT EXISTS idx_symbols_file_path ON symbols(file_path);',
-      });
+    const work: Array<{ db: Database; dbFile: string; sql: string; name: string; drop?: boolean }> = [];
+    for (const name of XppSymbolIndex.RETIRED_SYMBOL_INDEXES) {
+      if (!missing(this.db, name)) {
+        work.push({
+          db: this.db,
+          dbFile: this.dbPath,
+          name,
+          sql: `DROP INDEX IF EXISTS ${name};`,
+          drop: true,
+        });
+      }
     }
     if (missing(this.db, 'idx_model_type_name')) {
       work.push({
@@ -1296,6 +1376,16 @@ export class XppSymbolIndex {
         sql: 'CREATE INDEX IF NOT EXISTS idx_model_type_name ON symbols(model, type, name, parent_name);',
       });
     }
+    if (missing(this.db, 'idx_symbols_implements')) {
+      work.push({
+        db: this.db,
+        dbFile: this.dbPath,
+        name: 'idx_symbols_implements',
+        // Partial: only the rows that implement something are in it. The value is
+        // stored as NULL, never '', when a class implements nothing (addSymbol).
+        sql: 'CREATE INDEX IF NOT EXISTS idx_symbols_implements ON symbols(implements_interfaces) WHERE implements_interfaces IS NOT NULL;',
+      });
+    }
     if (missing(this.labelsDb, 'idx_labels_file_path_id')) {
       work.push({
         db: this.labelsDb,
@@ -1304,11 +1394,10 @@ export class XppSymbolIndex {
         sql: 'CREATE INDEX IF NOT EXISTS idx_labels_file_path_id ON labels(file_path_id);',
       });
     }
-    // NOCASE twins. removeSymbolsByFile/removeLabelsByFile compare COLLATE NOCASE
-    // (Windows paths differ only in case between the indexer and a tool argument),
-    // and SQLite will only use an index whose collation matches the comparison —
-    // without these the case-insensitive delete falls back to the full-table scan
-    // the BINARY indexes above exist to avoid.
+    // NOCASE, and only NOCASE. Every comparison of symbols.file_path is COLLATE
+    // NOCASE (Windows paths differ only in case between the indexer and a tool
+    // argument), and SQLite will only use an index whose collation matches the
+    // comparison — so a BINARY index on the same column serves no query at all.
     if (missing(this.db, 'idx_symbols_file_path_nocase')) {
       work.push({
         db: this.db,
@@ -1329,7 +1418,7 @@ export class XppSymbolIndex {
       // checked here rather than assumed — off WAL the only safe build is inline.
       const inWal = (item.db.pragma('journal_mode', { simple: true }) as string) === 'wal';
       if (isLarge(item.dbFile) && this.backgroundIndexBuilds && inWal) {
-        this.buildIndexInWorker(item.dbFile, item.sql, item.name);
+        this.buildIndexInWorker(item.dbFile, item.sql, item.name, item.drop === true);
       } else {
         item.db.exec(item.sql);
       }
@@ -1347,7 +1436,7 @@ export class XppSymbolIndex {
    * Best-effort: a failure leaves the index absent, which is exactly the state
    * the server ran in before, so it is logged and never thrown.
    */
-  private buildIndexInWorker(dbPath: string, sql: string, indexName: string): void {
+  private buildIndexInWorker(dbPath: string, sql: string, indexName: string, drop = false): void {
     try {
       const worker = new Worker(new URL('./buildIndexWorker.js', import.meta.url), {
         workerData: { dbPath, sql, indexName },
@@ -1357,9 +1446,9 @@ export class XppSymbolIndex {
       worker.unref();
       worker.once('message', (msg: { ok: boolean; elapsedMs?: number; error?: string }) => {
         if (msg.ok) {
-          console.error(`[SymbolIndex] Built ${indexName} in background (${msg.elapsedMs}ms)`);
+          console.error(`[SymbolIndex] ${drop ? 'Dropped' : 'Built'} ${indexName} in background (${msg.elapsedMs}ms)`);
         } else {
-          console.error(`[SymbolIndex] Background build of ${indexName} failed: ${msg.error}`);
+          console.error(`[SymbolIndex] Background ${drop ? 'drop' : 'build'} of ${indexName} failed: ${msg.error}`);
         }
         this.pendingIndexWorkers.delete(worker);
         void worker.terminate();
@@ -4576,14 +4665,14 @@ export class XppSymbolIndex {
     const existingMethods = this.getClassMethods(className);
     const existingMethodNames = new Set(existingMethods.map(m => m.name));
     
-    // Detect pattern type
-    let patternType = classSymbol.patternType || 'Unknown';
-    if (!patternType || patternType === 'Unknown') {
-      if (className.endsWith('Helper')) patternType = 'Helper';
-      else if (className.endsWith('Service')) patternType = 'Service';
-      else if (className.endsWith('Controller')) patternType = 'Controller';
-    }
-    
+    // Detect pattern type. Without one there is no group of similar classes to
+    // compare against. The query below would then look for `parent_name LIKE
+    // '%Unknown'`: a scan of every method row (about a million on a production-size
+    // index) whose only hits are classes that happen to be NAMED "…Unknown", so
+    // the suggestions it produced came from unrelated classes.
+    const patternType = suggestionPatternType(className, classSymbol.patternType);
+    if (!patternType) return [];
+
     // Find similar classes with same pattern
     const sql = `
       SELECT DISTINCT parent_name
@@ -5431,6 +5520,30 @@ export class XppSymbolIndex {
     const nocaseParams: string[] = [labelFileId];
     if (model) { nocaseWhere.unshift('model = ?'); nocaseParams.unshift(model); }
     return run(`WHERE ${nocaseWhere.join(' AND ')}`, nocaseParams);
+  }
+
+  /**
+   * True when at least one label row carries exactly this label file id. A seek on
+   * idx_labels_file_id that stops at the first row — the cheap half of "does this
+   * label file exist?". Exact case only: the index is BINARY.
+   */
+  hasLabelFileId(labelFileId: string): boolean {
+    return this.labelsDb
+      .prepare('SELECT 1 FROM labels WHERE label_file_id = ? LIMIT 1')
+      .get(labelFileId) !== undefined;
+  }
+
+  /**
+   * The bare list of label file ids, one row each. For a caller that only needs to
+   * know which ids exist (for example a case-insensitive membership test) this
+   * replaces getLabelFileIds(), which also groups by model and concatenates the
+   * languages of every label row.
+   */
+  getDistinctLabelFileIds(): string[] {
+    const rows = this.labelsDb
+      .prepare('SELECT DISTINCT label_file_id AS labelFileId FROM labels')
+      .all() as Array<{ labelFileId: string }>;
+    return rows.map(r => r.labelFileId);
   }
 
   /**
