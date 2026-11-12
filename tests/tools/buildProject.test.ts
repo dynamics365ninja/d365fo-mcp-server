@@ -92,6 +92,16 @@ vi.mock('../../src/tools/sdlc/odataActionGuard.js', async () => ({
   ...(await vi.importActual<any>('../../src/tools/sdlc/odataActionGuard.js')),
   scanODataActions: scanMock,
 }));
+const { schemaScanMock } = vi.hoisted(() => ({ schemaScanMock: vi.fn() }));
+vi.mock('../../src/tools/sdlc/schemaChangeGuard.js', async () => ({
+  ...(await vi.importActual<any>('../../src/tools/sdlc/schemaChangeGuard.js')),
+  scanSchemaChanges: schemaScanMock,
+}));
+const { patternScanMock } = vi.hoisted(() => ({ patternScanMock: vi.fn() }));
+vi.mock('../../src/tools/sdlc/formPatternGuard.js', async () => ({
+  ...(await vi.importActual<any>('../../src/tools/sdlc/formPatternGuard.js')),
+  scanFormPatternErrors: patternScanMock,
+}));
 
 import path from 'path';
 import { buildProjectTool, readFullLog, renderFailureLog, trimSucceededLog } from '../../src/tools/sdlc/buildProject';
@@ -194,6 +204,8 @@ describe('build_d365fo_project', () => {
     statMock.mockResolvedValue({ mtimeMs: 0 });
     pruneMock.mockResolvedValue({ stale: [], phantoms: [], skippedModels: [], errors: [], scanned: 0 });
     scanMock.mockResolvedValue(NO_ODATA_FINDINGS);
+    schemaScanMock.mockResolvedValue({ changed: [], errors: [] });
+    patternScanMock.mockResolvedValue({ errors: [], formsChecked: 0, unreadable: [] });
     cfgGetProjectPath.mockResolvedValue(PROJECT_PATH);
     cfgGetPackagePath.mockReturnValue(null);
     cfgGetContext.mockReturnValue({});
@@ -738,13 +750,59 @@ describe('build_d365fo_project', () => {
       expect(args).toContain('-incremental');
       // Once before xppc (recompile + deployed file), once after it (deployed file only).
       expect(scanMock.mock.calls.map(c => c[3])).toEqual([undefined, { checkRecompile: false }]);
+      expect(schemaScanMock).toHaveBeenCalledTimes(1);
       expect(text).toContain('✅ Build succeeded (xppc.exe, incremental');
+    });
+
+    it('runs a full build when a table or an EDT changed since the last build', async () => {
+      const changed = ['AxTable/ContosoRentEquipmentTable', 'AxTable/ContosoRentOrderTable', 'AxEdt/ContosoRentEquipmentId'];
+      schemaScanMock.mockResolvedValueOnce({ changed, errors: [] });
+      const { started, state, args, text } = await build();
+      expect(args).not.toContain('-incremental');
+      expect(pruneMock).not.toHaveBeenCalled();
+      expect(schemaScanMock).toHaveBeenCalledTimes(1);
+      expect(schemaScanMock.mock.calls[0][2]).toBe(MODEL_NAME);
+      expect(started.content[0].text).toContain('Full build started');
+      expect(state).toMatchObject({ fullBuild: true, autoFullBuild: { recompiled: [], missing: [], schemaChanged: changed } });
+      expect(text).toContain('✅ Build succeeded (xppc.exe, full build, switched from incremental');
+      expect(text).toContain(
+        '2 tables, 1 EDT changed since the last build: ContosoRentEquipmentTable, ContosoRentOrderTable, ContosoRentEquipmentId.',
+      );
+      expect(text).toContain('can report 0 errors where a full build fails');
+      // The OData explanation belongs to the OData reason only.
+      expect(text).not.toContain('ODataExtends.runtime');
+    });
+
+    it('gives both reasons when an entity with actions and an enum changed', async () => {
+      scanMock.mockResolvedValueOnce({ ...NO_ODATA_FINDINGS, recompiled: ['AxDataEntityView/ProbeEntity'] });
+      schemaScanMock.mockResolvedValueOnce({ changed: ['AxEnum/ContosoRentStatus'], errors: [] });
+      const { args, text } = await build();
+      expect(args).not.toContain('-incremental');
+      expect(text).toContain(
+        'changed elements with OData actions: AxDataEntityView/ProbeEntity; 1 enum changed since the last build: ContosoRentStatus.',
+      );
+      expect(text).toContain('ODataExtends.runtime');
+    });
+
+    it('does not treat fullBuild: false as an opt-out, like the OData switch', async () => {
+      schemaScanMock.mockResolvedValueOnce({ changed: ['AxTable/ContosoRentEquipmentTable'], errors: [] });
+      const { args, state } = await build({ fullBuild: false });
+      expect(args).not.toContain('-incremental');
+      expect(state.autoFullBuild.schemaChanged).toEqual(['AxTable/ContosoRentEquipmentTable']);
+    });
+
+    it('stays incremental when the table, EDT and enum scan fails', async () => {
+      schemaScanMock.mockRejectedValueOnce(new Error('boom'));
+      const { args, state } = await build();
+      expect(args).toContain('-incremental');
+      expect(state.autoFullBuild).toBeUndefined();
     });
 
     it('does not run the pre-build scan for a requested full build', async () => {
       const { args, state } = await build({ fullBuild: true });
       expect(args).not.toContain('-incremental');
       expect(scanMock.mock.calls.map(c => c[3])).toEqual([{ checkRecompile: false }]);
+      expect(schemaScanMock).not.toHaveBeenCalled();
       expect(state.autoFullBuild).toBeUndefined();
     });
 
@@ -757,6 +815,73 @@ describe('build_d365fo_project', () => {
       expect(text).not.toContain('✅ Build succeeded');
       expect(text).toContain('ProbeEntity (NewAction)');
       expect(text).toContain('fullBuild: true');
+    });
+  });
+
+  describe('form patterns, which a pipeline build checks on every form of the package', () => {
+    const lastState = () => writeFileMock.mock.calls.filter((c: any[]) => c[0].includes('d365build_state')).at(-1)![1];
+    const build = async (params: Record<string, unknown> = {}) => {
+      let closeCallback: ((code: number | null) => Promise<void>) | undefined;
+      spawnMock.mockReturnValue({
+        pid: 42,
+        unref: vi.fn(),
+        on: vi.fn().mockImplementation((event: string, cb: any) => { if (event === 'close') closeCallback = cb; }),
+      });
+      allowPaths([XPPC, PKG]);
+      await buildProjectTool({ modelName: MODEL_NAME, wait: false, ...params }, {});
+      readFileMock.mockImplementation(async (p: string) => {
+        if (p.includes('d365build_state')) return lastState();
+        if (p.includes('d365build_log')) return 'Build complete.';
+        throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+      });
+      await closeCallback!(0);
+      const state = JSON.parse(lastState());
+      readdirMock.mockResolvedValue([]);
+      const collected = await buildProjectTool({ modelName: MODEL_NAME }, {});
+      return { state, collected, text: collected.content[0].text };
+    };
+    const COLUMNS_MODE = {
+      form: 'ContosoRentEquipment', rule: 'FP011', path: 'Design/Group[HeaderGroup]',
+      excerpt: 'sub-pattern FieldsFieldGroups 1.1: ColumnsMode must be "Fill", is "Fixed" (default)',
+    };
+
+    it('fails a compiled build whose forms break their pattern, naming form, control and property', async () => {
+      patternScanMock.mockResolvedValue({ errors: [COLUMNS_MODE], formsChecked: 3, unreadable: [] });
+      const { state, collected, text } = await build();
+      expect(patternScanMock).toHaveBeenCalledWith(PKG, MODEL_NAME);
+      expect(state.formPatternErrors).toEqual([COLUMNS_MODE]);
+      expect(collected.isError).toBe(true);
+      expect(text).toContain('❌ Compiled; form pattern errors a pipeline build rejects');
+      expect(text).not.toContain('✅ Build succeeded');
+      expect(text).toContain('AxForm/ContosoRentEquipment: Design/Group[HeaderGroup]: sub-pattern FieldsFieldGroups 1.1: ColumnsMode must be "Fill"');
+    });
+
+    it('stays green when every form follows its pattern', async () => {
+      const { state, collected, text } = await build();
+      expect(patternScanMock).toHaveBeenCalledTimes(1);
+      expect(state.formPatternErrors).toBeUndefined();
+      expect(collected.isError).toBeFalsy();
+      expect(text).toContain('✅ Build succeeded');
+    });
+
+    it('reports without failing the build when FORM_PATTERN_ENFORCE is off', async () => {
+      vi.stubEnv('FORM_PATTERN_ENFORCE', 'false');
+      try {
+        patternScanMock.mockResolvedValue({ errors: [COLUMNS_MODE], formsChecked: 1, unreadable: [] });
+        const { collected, text } = await build();
+        expect(collected.isError).toBeFalsy();
+        expect(text).toContain('⚠️ Build succeeded; form pattern errors');
+        expect(text).toContain('FORM_PATTERN_ENFORCE is off');
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it('keeps the build green when the check itself fails', async () => {
+      patternScanMock.mockRejectedValue(new Error('disk gone'));
+      const { collected, text } = await build();
+      expect(collected.isError).toBeFalsy();
+      expect(text).toContain('✅ Build succeeded');
     });
   });
 
