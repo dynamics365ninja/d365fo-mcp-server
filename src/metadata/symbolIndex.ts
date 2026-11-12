@@ -10,6 +10,7 @@ import * as path from 'path';
 import { gzipSync } from 'node:zlib';
 import type { XppSymbol } from './types.js';
 import { renderMethodSignature } from './xppDeclaration.js';
+import { storeObjectSourceEnabled } from './objectSourceSetting.js';
 import { isStandardModel } from '../utils/modelClassifier.js';
 import { labelIdSpellings, parseLabelReference } from '../utils/labelReference.js';
 import { normalizeLabelText } from '../utils/labelText.js';
@@ -164,6 +165,12 @@ export interface XppSymbolIndexOptions {
   deferFilePathIndexes?: boolean;
   /** Byte size at which a DB is "large" enough to hand its index build to a worker. */
   largeDbThresholdBytes?: number;
+  /**
+   * Store objects' original XML in object_source (default: the index.storeObjectSource
+   * setting, i.e. STORE_OBJECT_SOURCE, which defaults to true). When false,
+   * writeObjectSource() stores nothing, in the build and in update_symbol_index alike.
+   */
+  storeObjectSource?: boolean;
 }
 
 /**
@@ -407,6 +414,7 @@ export class XppSymbolIndex {
   // same answer whether it runs from the constructor or from a build script later.
   private backgroundIndexBuilds: boolean;
   private deferFilePathIndexes: boolean;
+  private readonly storeObjectSource: boolean;
   private largeDbThresholdBytes: number;
   // Index-build workers still running. closeReadPool() cannot drain these (it only
   // owns the read pool), so track them to warn about the EXCLUSIVE-lock race and to
@@ -426,6 +434,7 @@ export class XppSymbolIndex {
     this.backgroundIndexBuilds = options.backgroundIndexBuilds !== false;
     this.deferFilePathIndexes = options.deferFilePathIndexes === true;
     this.largeDbThresholdBytes = options.largeDbThresholdBytes ?? 200 * 1024 * 1024;
+    this.storeObjectSource = options.storeObjectSource ?? storeObjectSourceEnabled();
     // Ensure database directory exists
     const dbDir = path.dirname(dbPath);
     if (!fs.existsSync(dbDir)) {
@@ -3264,10 +3273,11 @@ export class XppSymbolIndex {
 
   /**
    * Store an object's original XML (object_source). A no-op without XML (JSON from older
-   * extracts) and for a type outside STORED_SOURCE_TYPES, so the build and
-   * update_symbol_index store the same set.
+   * extracts), for a type outside STORED_SOURCE_TYPES, and when index.storeObjectSource is
+   * off, so the build and update_symbol_index store the same set.
    */
   writeObjectSource(objectType: string, name: string, model: string, xml: unknown): void {
+    if (!this.storeObjectSource) return;
     if (typeof xml !== 'string' || xml.length === 0 || !STORED_SOURCE_TYPES.has(objectType)) return;
     let stmt = this.stmtCache.get('writeObjectSource');
     if (!stmt) {

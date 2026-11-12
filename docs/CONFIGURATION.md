@@ -101,6 +101,7 @@ What gets extracted into the SQLite index and where it is stored.
 | `index.labelsDbPath` | advanced | `LABELS_DB_PATH` | `./data/xpp-metadata-labels.db` | Second SQLite file for labels (dual-database architecture keeps label writes from locking metadata reads). Defaults to <dbPath>-labels.db. |
 | `index.xrefSqlitePath` | advanced | `D365FO_XREF_SQLITE_PATH` | — | A SQLite export of DYNAMICSXREFDB (tables Modules, Names, References; meta.schema 1) for a server without the C# bridge, e.g. a shared read-only server. find_references and the extension/event/API-usage lookups then answer from it instead of a name-based search; the bridge still takes precedence when it has the database. Opened read-only and immutable on first use: replace the file by rename, never in place (on Windows an open file cannot be renamed over: stop the server, replace the file, start it again). A missing or invalid file is logged and ignored. get_workspace_info shows its export date. |
 | `index.metadataPath` | advanced | `METADATA_PATH` | `./extracted-metadata` | Working folder for the XML dumped during extraction, before it is loaded into the database. |
+| `index.storeObjectSource` | advanced | `STORE_OBJECT_SOURCE` | `true` | Keeps a copy of every object's original XML in the extracted JSON and, gzipped, in the database (object_source), so a server without the AOT files (a shared or Azure deployment) can still read objects. A server that has the metadata folders on disk reads the files themselves and does not need the copy; turning it off saves about 2 GB of extracted JSON and 0.4 GB of database per full standard + custom index. Takes effect at the next index build; a full rebuild (extractMode "all") removes copies already stored. |
 | `index.bpCatalogPath` | advanced | `BP_CATALOG_PATH` | — | Per-instance JSON catalog of real BP-check monikers, extracted from this instance's own D365FO version (scripts/extract-bp-catalog.ps1). Falls back to the compiled-in snapshot when absent — this setting is only written once an instance has regenerated its own catalog. |
 | `index.labelSortOrder` | advanced | `LABEL_SORT_ORDER` | `alphabetical` | Alphabetical keeps .label.txt files sorted (smaller diffs, matches most teams); append adds new labels at the end of the file (preserves manual grouping). Values: `alphabetical` — insert in sorted position; `append` — add at the end of the file. |
 | `index.computeStats` | advanced | `COMPUTE_STATS` | `false` | Adds per-object usage counts used for ranking. Noticeably slows down large builds. |
@@ -244,6 +245,7 @@ Downloading a pre-built index from blob storage instead of building it locally.
     "labelsDbPath": "./data/xpp-metadata-labels.db",
     "xrefSqlitePath": "",
     "metadataPath": "./extracted-metadata",
+    "storeObjectSource": true,
     "bpCatalogPath": "",
     "labelSortOrder": "alphabetical",
     "computeStats": false,

@@ -623,6 +623,21 @@ export const SETTINGS: Setting[] = [
     default: './extracted-metadata',
   },
   {
+    path: 'index.storeObjectSource',
+    env: 'STORE_OBJECT_SOURCE',
+    section: 'index',
+    tier: 'advanced',
+    type: 'boolean',
+    label: 'Store object XML in the index',
+    description:
+      'Keeps a copy of every object\'s original XML in the extracted JSON and, gzipped, in the database ' +
+      '(object_source), so a server without the AOT files (a shared or Azure deployment) can still read objects. ' +
+      'A server that has the metadata folders on disk reads the files themselves and does not need the copy; ' +
+      'turning it off saves about 2 GB of extracted JSON and 0.4 GB of database per full standard + custom index. ' +
+      'Takes effect at the next index build; a full rebuild (extractMode "all") removes copies already stored.',
+    default: true,
+  },
+  {
     path: 'index.bpCatalogPath',
     env: 'BP_CATALOG_PATH',
     section: 'index',
