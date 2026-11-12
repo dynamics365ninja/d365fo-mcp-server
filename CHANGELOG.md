@@ -748,6 +748,21 @@ those are called out explicitly below.
   success, so a requested reference group became a text box bound to nothing. A type the
   caller names that the writer cannot produce is now refused, with the supported list, and
   nothing is written. A type picked from the field's EDT still falls back to String.
+- **Writes and lookups for a model whose package has another name no longer take half a
+  minute each.** When the package folder is not named after the model (a package holding
+  several models, a model in a package of another name, or a mistyped model name), the
+  server reads every package to build a model-to-package map. That map was thrown away
+  after each use, so every create, modify, label write and project check built it again.
+  The build also opened every subfolder of every package, although the comment called
+  that the fallback for a package without descriptors. On a machine with 178 packages
+  one build took over 30 seconds, under 2 of them for reading the descriptors. The map
+  is now built once per set of package roots and shared, and subfolders are opened only
+  in a package whose descriptors name no model. A model the map does not know triggers
+  one rebuild when the map is older than 5 seconds, so a model created in Visual Studio
+  is found without a restart and a mistyped name cannot cause a rebuild on every call.
+  Changing a model descriptor through the server drops the map. One behaviour change: a
+  folder with AOT content that no descriptor of its package declares is no longer
+  treated as a model when that package has descriptors. Nothing to configure.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
