@@ -92,6 +92,58 @@ export function reloadWritePolicy(): void {
 }
 
 /**
+ * Where the custom-models list may be edited while the server runs: the .env
+ * and the JSON config loadEnv() read, and which of the two outranks the other
+ * (see the precedence list at the top of this file). Null until loadEnv() has
+ * run, and null when the real environment owns CUSTOM_MODELS — that value keeps
+ * outranking both files, exactly as at boot.
+ */
+let customModelsSource: { envPath: string; envDir: string; configPath: string; envFileWins: boolean } | null = null;
+
+/** mtimes of both files as of the last read, so unchanged files cost two stats. */
+let customModelsStamp = '';
+
+function mtimeOf(file: string): string {
+  try { return String(statSync(file).mtimeMs); } catch { return '-'; }
+}
+
+/**
+ * Re-read ONLY the custom-models list from the files loadEnv() used.
+ *
+ * A developer who adds a model (a new test model, say) to the list used to see
+ * it treated as a Microsoft standard, read-only model until the server was
+ * restarted, because the list was projected onto process.env once at boot. The
+ * model classifier now calls this, so the edit applies to the next tool call,
+ * and a model taken off the list stops being custom again.
+ *
+ * Same rules as reloadWritePolicy(): gated on the files' mtime, a value the
+ * real environment owns is never touched, and nothing else is re-read. It does
+ * not index anything — a newly listed model that is not in the symbol index yet
+ * still needs update_symbol_index(model=…).
+ */
+export function reloadCustomModels(): void {
+  const src = customModelsSource;
+  if (!src) return;
+
+  const stamp = `${mtimeOf(src.envPath)}|${mtimeOf(src.configPath)}`;
+  if (stamp === customModelsStamp) return;
+  customModelsStamp = stamp;
+
+  let fromEnvFile: string | undefined;
+  try { fromEnvFile = dotenv.parse(readFileSync(src.envPath, 'utf-8')).CUSTOM_MODELS; } catch { /* no file */ }
+
+  const files = resolveConfigFiles(src.envDir);
+  // A config file caught half-saved does not parse. Keep the current list
+  // rather than dropping every model until the next save.
+  if (files.config === null && existsSync(files.configPath)) return;
+  const fromConfig = toEnvRecord(files).CUSTOM_MODELS;
+
+  const value = src.envFileWins ? fromEnvFile ?? fromConfig : fromConfig ?? fromEnvFile;
+  if (value === undefined) delete process.env.CUSTOM_MODELS;
+  else process.env.CUSTOM_MODELS = value;
+}
+
+/**
  * The installation directory a module should read its configuration from.
  *
  * Callers sit at different depths: the server is `dist/index.js` and the index
@@ -181,6 +233,22 @@ export function loadEnv(callerImportMetaUrl: string): void {
     : new Set<string>();
 
   const files = resolveConfigFiles(envDir);
+
+  // Remember where the custom-models list may be edited while the server runs.
+  // See reloadCustomModels(). When dotenv fell back to the working directory's
+  // .env above, that is the file to watch.
+  customModelsSource = fromRealEnv.has('CUSTOM_MODELS') ? null : {
+    envPath: result.error && !process.env.ENV_FILE ? resolve(process.cwd(), '.env') : envPath,
+    envDir,
+    configPath: files.configPath,
+    // Same rule as pinnedByEnvFile, kept as a rule rather than a snapshot so a
+    // line added to that .env later ranks the way it would after a restart.
+    envFileWins: Boolean(process.env.ENV_FILE && !process.env.D365FO_CONFIG),
+  };
+  customModelsStamp = customModelsSource
+    ? `${mtimeOf(customModelsSource.envPath)}|${mtimeOf(customModelsSource.configPath)}`
+    : '';
+
   // SQL must not borrow another installation's database when an explicit config
   // selects a different instance. Deliberate shell/ENV_FILE overrides still
   // apply; only the other installation's ambient fallback is dropped.

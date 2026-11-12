@@ -936,3 +936,50 @@ describe('caption element follows the control type (#1047)', () => {
     expect(r.notes.join('\n')).toMatch(/dataSource "PurchTable" was not written/);
   });
 });
+
+// ─── Reference groups ────────────────────────────────────────────────────────
+
+describe('a reference group', () => {
+  const referenceGroup = (over: Partial<FormExtensionControlSpec> = {}) => spec({
+    controlName: 'ContosoWorkerSalesTaker',
+    iType: 'AxFormReferenceGroupControl',
+    typeValue: 'ReferenceGroup',
+    dataSource: 'SalesTable',
+    dataField: 'WorkerSalesTaker',
+    ...over,
+  });
+
+  it('binds the field as <ReferenceField>, with an empty <Controls />, in the shipped order', () => {
+    const r = inserted(insertFormExtensionControl(FLAT_EXT, referenceGroup({ parentControl: 'Grid' })));
+    // The shape of a designer-saved reference group: Name, Type, FormControlExtension,
+    // Controls, DataSource, ReferenceField — and never a DataField.
+    expect(r.xml).toMatch(new RegExp([
+      '<FormControl xmlns="" i:type="AxFormReferenceGroupControl">',
+      '<Name>ContosoWorkerSalesTaker</Name>',
+      '<Type>ReferenceGroup</Type>',
+      '<FormControlExtension i:nil="true" />',
+      '<Controls />',
+      '<DataSource>SalesTable</DataSource>',
+      '<ReferenceField>WorkerSalesTaker</ReferenceField>',
+      '</FormControl>',
+    ].join('\\s*')));
+    expect(r.xml).not.toContain('<DataField>WorkerSalesTaker</DataField>');
+    expect(r.notes).toEqual([]);
+    expect(findControlElementOrderViolations(r.xml)).toEqual([]);
+  });
+
+  it('has the same shape nested under a group the extension defines', () => {
+    const r = inserted(insertFormExtensionControl(nestedExt(), referenceGroup()));
+    expect(r.representation).toBe('nested');
+    expect(nestedControlsBody(r.xml)).toMatch(
+      /i:type="AxFormReferenceGroupControl">\s*<Name>ContosoWorkerSalesTaker<\/Name>\s*<Type>ReferenceGroup<\/Type>\s*<FormControlExtension i:nil="true" \/>\s*<Controls \/>\s*<DataSource>SalesTable<\/DataSource>\s*<ReferenceField>WorkerSalesTaker<\/ReferenceField>/,
+    );
+    expect(findControlElementOrderViolations(r.xml)).toEqual([]);
+  });
+
+  it('says so when it is bound to no field', () => {
+    const r = inserted(insertFormExtensionControl(FLAT_EXT, referenceGroup({ parentControl: 'Grid', dataField: undefined })));
+    expect(r.xml).not.toContain('<ReferenceField>');
+    expect(r.notes.join('\n')).toMatch(/bound to no field.*ReferenceField with modify-property/);
+  });
+});

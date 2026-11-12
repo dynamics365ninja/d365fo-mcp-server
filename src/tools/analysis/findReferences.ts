@@ -1009,6 +1009,51 @@ function findMethodReferences(symbolIndex: any, methodName: string, _scope: stri
   return references;
 }
 
+/**
+ * "Which classes implement this interface", for the name-based fallback.
+ *
+ * `LIKE '%X%'` cannot seek, and LIMIT only ends the scan once enough rows matched —
+ * so for a class, which nothing implements, the plain form reads every class row
+ * on every call. The partial index idx_symbols_implements holds only the rows that
+ * implement anything, and `implements_interfaces IS NOT NULL` (which changes no
+ * result: NULL never matches LIKE) is the term that makes it usable.
+ *
+ * INDEXED BY rather than left to the planner: with `type = 'class'` in the query
+ * it prefers the idx_type_name seek, which is exactly the walk over every class
+ * row this exists to avoid.
+ *
+ * Exported so the plan can be pinned by a test.
+ */
+export const CLASS_IMPLEMENTS_SQL = `
+    SELECT name, file_path, model, implements_interfaces
+    FROM symbols INDEXED BY idx_symbols_implements
+    WHERE type = 'class'
+      AND implements_interfaces IS NOT NULL
+      AND implements_interfaces LIKE ?
+    LIMIT ?
+  `;
+
+/**
+ * The same lookup for a database that does not have the index yet. It is built in
+ * the background on an existing database, and INDEXED BY fails to prepare until
+ * it lands — so this is the statement the server ran before, and as fast.
+ */
+export const CLASS_IMPLEMENTS_SQL_NO_INDEX = `
+    SELECT name, file_path, model, implements_interfaces
+    FROM symbols
+    WHERE type = 'class'
+      AND implements_interfaces LIKE ?
+    LIMIT ?
+  `;
+
+function prepareClassImplements(rdb: any): any {
+  try {
+    return rdb.prepare(CLASS_IMPLEMENTS_SQL);
+  } catch {
+    return rdb.prepare(CLASS_IMPLEMENTS_SQL_NO_INDEX);
+  }
+}
+
 /** Find class references (extends, implements, instantiations) */
 function findClassReferences(symbolIndex: any, className: string, _scope: string, limit: number): Reference[] {
   const references: Reference[] = [];
@@ -1035,13 +1080,7 @@ function findClassReferences(symbolIndex: any, className: string, _scope: string
   }
 
   // 2. Find classes that implement this interface
-  const implementsStmt = rdb.prepare(`
-    SELECT name, file_path, model, implements_interfaces
-    FROM symbols
-    WHERE type = 'class'
-      AND implements_interfaces LIKE ?
-    LIMIT ?
-  `);
+  const implementsStmt = prepareClassImplements(rdb);
 
   const implRows = implementsStmt.all(`%${className}%`, limit);
   for (const row of implRows) {
@@ -1074,7 +1113,8 @@ function findClassReferences(symbolIndex: any, className: string, _scope: string
 
   // 4. Find general type references (classStr(), variable declarations, static calls)
   // FTS5: a single indexed lookup replaces three LIKE full-table scans
-  const typeRefRows = ftsMethodSearch(rdb, className, limit);
+  // Same rows as step 3 — the search is identical, only the filter differs.
+  const typeRefRows = instRows;
   const existingCallers = new Set(references.map(r => r.caller));
   for (const row of typeRefRows) {
     const caller = row.parent_name ? `${row.parent_name}.${row.name}` : row.name;
