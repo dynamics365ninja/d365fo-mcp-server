@@ -54,12 +54,12 @@ function findKey(properties: Record<string, unknown> | undefined, key: string): 
 }
 
 /** The menu item's top-level indent (that of <Name>), or a tab. */
-function topIndent(xml: string): string {
+export function topIndent(xml: string): string {
   return /^([ \t]+)<Name>/m.exec(xml)?.[1] ?? '\t';
 }
 
 /** The top-level element `name` with its line(s), or null. */
-function findTopLevel(xml: string, indent: string, name: string): RegExpExecArray | null {
+export function findTopLevel(xml: string, indent: string, name: string): RegExpExecArray | null {
   const i = escapeRegExp(indent);
   return new RegExp(
     `^${i}<${name}\\s*/>[ \\t]*\\r?\\n|^${i}<${name}>[^\\n]*?</${name}>[ \\t]*\\r?\\n|^${i}<${name}>\\r?\\n[\\s\\S]*?^${i}</${name}>[ \\t]*\\r?\\n`,
@@ -67,16 +67,26 @@ function findTopLevel(xml: string, indent: string, name: string): RegExpExecArra
   ).exec(xml);
 }
 
-/** Insert `block` (complete lines) before the first top-level sibling that sorts after `name`. */
-function insertAlphabetically(xml: string, indent: string, name: string, block: string): string | null {
+/**
+ * Insert `block` (complete lines) before the first top-level sibling that sorts after `name`.
+ * `trailing` names the siblings that close the document whatever their name (the
+ * <Elements> of an AxMenu): the block goes before the first of them at the latest.
+ */
+export function insertAlphabetically(
+  xml: string,
+  indent: string,
+  name: string,
+  block: string,
+  trailing: readonly string[] = [],
+): string | null {
   const i = escapeRegExp(indent);
   for (const m of xml.matchAll(new RegExp(`^${i}<(\\w+)[\\s/>]`, 'gm'))) {
     if (m[1] === 'Name') continue;
-    if (m[1].localeCompare(name, 'en', { sensitivity: 'base' }) > 0) {
+    if (trailing.includes(m[1]) || m[1].localeCompare(name, 'en', { sensitivity: 'base' }) > 0) {
       return xml.slice(0, m.index) + block + xml.slice(m.index);
     }
   }
-  const close = /^<\/AxMenuItem(?:Action|Display|Output)>/m.exec(xml);
+  const close = /^<\/(?:AxMenuItem(?:Action|Display|Output)|AxMenu)>/m.exec(xml);
   if (!close) return null;
   return xml.slice(0, close.index) + block + xml.slice(close.index);
 }

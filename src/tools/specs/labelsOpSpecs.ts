@@ -48,7 +48,10 @@ export const LABELS_OVERRIDE_PARAMS: Record<string, string> = {
     'false = append at end).',
   languages:
     '[create] string[] — restrict which language .label.txt files are written (e.g. ["en-US"]). ' +
-    'Omitted = every language the label file already has, plus the supplied translations.',
+    'Omitted = every language the label file already has; a supplied translation adds a language ' +
+    'only when LABEL_LANGUAGES lists it (exact code, fi is not fi-FI), else it is reported as "Not ' +
+    'written"; a label file with no language yet starts with every LABEL_LANGUAGES language. Pass ' +
+    'it only to add a language to a label file on purpose.',
   defaultComment:
     '[create] Developer comment for languages without an explicit comment. On update, an existing ' +
     'comment is replaced only by a comment, defaultComment or description the call states.',
@@ -108,6 +111,9 @@ export function renderLabelsOpSpec(): string {
     '    reuses when present, so the create IS the search.',
     '  • labels=[{labelId, translations}, …] — every label of an object in ONE',
     '    call, shared labelFileId/model at the top level.',
+    '  • labels[] works the same under action="update": every entry overwrites',
+    '    its label\'s text, a failed entry does not stop the rest, and the reply',
+    '    header counts updated / unchanged / failed.',
     '  • query=["…","…","…"] on search — several phrasings in ONE call.',
     '  • best of all, no `labels` call at all: d365fo_file create/modify resolve a',
     '    raw-text label / fieldLabel to an existing or new @Ref by themselves and',

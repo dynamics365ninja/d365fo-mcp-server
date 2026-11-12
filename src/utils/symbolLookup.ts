@@ -39,6 +39,38 @@ function ftsPhrase(name: string): string {
   return `"${name.replace(/"/g, '')}"`;
 }
 
+/**
+ * FTS5 MATCH expression for "methods carrying a SubscribesTo attribute that
+ * mention `target`". Matching `source_snippet:SubscribesTo` alone returns every
+ * subscriber method in the index (thousands), and the caller's LIKE then has to
+ * read each snippet. Adding the target as a second term lets FTS narrow first.
+ *
+ * The term is the target's leading run of ASCII letters and digits, as a PREFIX
+ * (`"Lead"*`). symbols_fts uses the default unicode61 tokenizer, which folds case
+ * and splits on everything that is not a letter or digit, so `classStr(Foo_Bar)`
+ * is the tokens `classstr`, `foo`, `bar`. A caller's `LIKE '%classStr(Foo%'` also
+ * accepts `classStr(FooBar)` and `classStr(Foo_Bar)`, and both have a token that
+ * starts with `foo`, which only the prefix form matches. Stopping at the first
+ * non-alphanumeric character keeps that true for a target containing `_` (also a
+ * LIKE wildcard), a dot or any other separator. The run holds no quote, so there
+ * is nothing left to escape.
+ *
+ * A target with no such leading run (empty, or starting with `_`) cannot be
+ * expressed as one prefix term and gets the old unfiltered expression. Callers
+ * keep their LIKE as the exact post-filter, so this can only narrow.
+ *
+ * For a LIKE anchored on `classStr(` / `tableStr(` / `formStr(` the rows are the
+ * same as before. For a bare `LIKE '%target%'` one kind of row goes: a snippet
+ * that has the target only INSIDE a longer identifier (`MyFooHelper` for `Foo`),
+ * which is not a subscription to the target.
+ */
+export function subscribesToFtsMatch(target: string): string {
+  const lead = /^[A-Za-z0-9]+/.exec(target)?.[0];
+  return lead
+    ? `{source_snippet} : (SubscribesTo AND "${lead}"*)`
+    : 'source_snippet:SubscribesTo';
+}
+
 const HIT_COLS = 's.name, s.type, s.model, s.extends_class, s.file_path';
 
 function typeFilter(types?: readonly string[]): { sql: string; params: string[] } {

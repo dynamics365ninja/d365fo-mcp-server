@@ -95,7 +95,7 @@ export const undoLastModificationTool = async (params: any, context: XppServerCo
       // Not inside a git repository — e.g. the D365FO sandbox
       // K:\AosService\PackagesLocalDirectory. The git-based revert/delete cannot
       // help here. Fall back to the create-artifact ledger: undo may delete a file
-      // ONLY when d365fo_file(action="create") recorded creating it (genuinely new)
+      // ONLY when a create tool recorded creating it (genuinely new)
       // in THIS server session. Anything not in the ledger keeps the original
       // "not inside a git repository" error — the non-git path never deletes an
       // arbitrary or pre-existing file.
@@ -207,8 +207,8 @@ export const undoLastModificationTool = async (params: any, context: XppServerCo
 };
 
 /**
- * Non-git undo path. Safe by construction: it acts ONLY on a file that
- * d365fo_file(action="create") recorded creating (genuinely new) in this session.
+ * Non-git undo path. Safe by construction: it acts ONLY on a file that a
+ * create tool recorded creating (genuinely new) in this session.
  * Returns null when the path is not in the ledger, so the caller can fall back to
  * the original "not inside a git repository" error. Deletes the created file and
  * cleans its .rnrproj entry (when the create recorded a project) plus the index.
@@ -272,10 +272,13 @@ async function removeFromProjectAndForget(absolutePath: string): Promise<string>
  * Uses a dynamic import to avoid a static dependency cycle with createD365File.ts.
  */
 async function removeFromProjectSafe(entry: CreatedArtifact): Promise<void> {
-  if (!entry.projectPath || !entry.objectType || !entry.objectName) return;
+  if (!entry.projectPath) return;
+  if (!entry.projectInclude && (!entry.objectType || !entry.objectName)) return;
   try {
     const { ProjectFileManager } = await import('../../workspace/projectFile.js');
-    await new ProjectFileManager().removeFromProject(entry.projectPath, entry.objectType, entry.objectName);
+    const pfm = new ProjectFileManager();
+    if (entry.projectInclude) await pfm.removeIncludeFromProject(entry.projectPath, entry.projectInclude);
+    else await pfm.removeFromProject(entry.projectPath, entry.objectType!, entry.objectName!);
   } catch (e) {
     console.error(`[undo] Non-git project cleanup failed (non-fatal): ${e}`);
   }
