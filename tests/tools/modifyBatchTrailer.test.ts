@@ -23,7 +23,8 @@ import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
 
 const { mockModify, mockUpsert, mockVerify } = vi.hoisted(() => ({
   mockModify: vi.fn(),
-  mockUpsert: vi.fn(async () => '\n🔎 Symbol index updated in place — no update_symbol_index call needed.'),
+  // A clean index upsert returns '' — only a failure has something to say.
+  mockUpsert: vi.fn(async () => ''),
   mockVerify: vi.fn(async () => ({ onDisk: true, bytes: 1969 })),
 }));
 
@@ -87,18 +88,24 @@ describe('one trailer for the whole batch', () => {
     expect(mockUpsert).toHaveBeenCalledTimes(1);
   });
 
-  it('prints exactly one verification, one index line and one Next:', async () => {
+  it('says nothing about a clean file but the one Next: line — no Verified, no index line', async () => {
     const t = text(await twoOps());
-    expect(t.match(/✅ Verified:/g) ?? []).toHaveLength(1);
-    expect(t.match(/Symbol index updated in place/g) ?? []).toHaveLength(1);
-    expect(t.match(/^Next: /gm) ?? []).toHaveLength(1);
-  });
-
-  it('names build_d365fo_project(bpCheck:true) — one call, not verify + run_bp_check', async () => {
-    const t = text(await twoOps());
-    expect(t).toContain('build_d365fo_project(bpCheck:true)');
+    expect(t).not.toContain('Verified');
+    expect(t).not.toContain('Symbol index updated');
+    // One call that builds AND best-practice-checks, once for the whole batch.
+    expect(t.match(/^Next: build_d365fo_project\(bpCheck:true\)/gm) ?? []).toHaveLength(1);
     expect(t).not.toContain('verify_d365fo_project');
     expect(t).not.toContain('run_bp_check');
+  });
+
+  it('prints what the agent must act on once for the file, not once per operation', async () => {
+    mockVerify.mockResolvedValueOnce({
+      onDisk: true, bytes: 1969, membership: { status: 'missing', owners: [] }, axFolder: 'AxTable', objectName: 'ConProbeTbl',
+    } as any);
+    mockUpsert.mockResolvedValueOnce('\n⚠️ Written, but the symbol index could not be updated: locked');
+    const t = text(await twoOps());
+    expect(t.match(/No \.rnrproj of this model references/g) ?? []).toHaveLength(1);
+    expect(t.match(/symbol index could not be updated/g) ?? []).toHaveLength(1);
   });
 
   it('does not tell a batch to send its edits as a batch', async () => {

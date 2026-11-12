@@ -220,6 +220,10 @@ const CHARS_PER_TOKEN = 4;
 // remove-privilege (+60). Paid for in `properties`, whose description listed example
 // properties the op-spec it points to returns, and said "creation" under a [create]
 // tag (-68). Measured payload after: 45_070, with `deploy` above. The ceiling holds.
+//
+// get_object_info's objectType enum gained menu and menu-extension. Paid for in its
+// description, which spelled out the six *-extension types its own enum already
+// lists. Measured payload after: 45_020 (was 45_072). The ceiling holds.
 const TOTAL_BUDGET = 45_100;
 // axdb_sql is published only once SQL is configured, so TOTAL_BUDGET above —
 // the payload every default install sends — does not carry it. A configured

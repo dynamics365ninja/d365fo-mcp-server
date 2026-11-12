@@ -46,6 +46,8 @@ import {
   indexedEnumValueNames,
   type EnumValueSet,
 } from './enumValueNames.js';
+import { checkExtensionTargets, obsoleteCallViolation } from './extensionTargets.js';
+import { checkIntrinsicMember, isMemberIntrinsic } from './intrinsicMembers.js';
 
 export const resolveReferencesArgsSchema = z.object({
   code: z.string().describe(
@@ -80,7 +82,15 @@ export interface ReferenceViolation {
     | 'label-placeholder-mismatch'
     | 'unknown-intrinsic-target'
     | 'arity-mismatch'
-    | 'not-visible-from-model';
+    | 'not-visible-from-model'
+    /** A Chain of Command wrapper whose target is missing, unwrappable or declared differently. */
+    | 'coc-target'
+    /** An event handler whose delegate or pre/post target is missing, of the wrong kind or not hookable. */
+    | 'handler-target'
+    /** A call to a method marked [SysObsolete] (an error when its isError argument is true). */
+    | 'obsolete-method'
+    /** An intrinsic member of the wrong kind: static vs instance, method vs delegate, a table in methodStr. */
+    | 'wrong-member-kind';
   severity: 'error' | 'warning';
   line: number;
   identifier: string;
@@ -106,6 +116,16 @@ export interface ResolverDeps {
     labelFileId?: string,
   ): Array<{ labelId: string; labelFileId: string; language?: string; text?: string }>;
   getLabelFileIds(): Array<{ labelFileId: string }>;
+  /**
+   * Optional narrow answers to "is this label file id indexed?". `getLabelFileIds()`
+   * groups the whole labels table (about 2 s on a production-size index) and the
+   * resolver asked it once per unknown `@File:Id` literal. `hasLabelFileId` is an
+   * exact-case index seek, `getDistinctLabelFileIds` the bare id list for the
+   * case-insensitive comparison. Absent, the resolver falls back to
+   * `getLabelFileIds()`.
+   */
+  hasLabelFileId?(labelFileId: string): boolean;
+  getDistinctLabelFileIds?(): string[];
   /**
    * Optional Descriptor-backed answer to "may the target model see this type?".
    * Presence in the index is not visibility. Absent, the check is not run.
@@ -180,7 +200,7 @@ const KERNEL_TYPES = new Set([
 ]);
 
 /** Methods available on every table buffer via the kernel xRecord/Common base. */
-const TABLE_BUILTIN_METHODS = new Set([
+export const TABLE_BUILTIN_METHODS = new Set([
   'insert', 'doinsert', 'update', 'doupdate', 'delete', 'dodelete', 'write',
   'validatewrite', 'validatedelete', 'validatefield', 'validatefieldvalue',
   'initvalue', 'modifiedfield', 'modifiedfieldvalue', 'clear', 'selectforupdate',
@@ -202,7 +222,7 @@ const TABLE_SYSTEM_FIELDS = new Set([
 ]);
 
 /** Methods available on every class instance via the kernel Object base. */
-const OBJECT_BUILTIN_METHODS = new Set([
+export const OBJECT_BUILTIN_METHODS = new Set([
   'new', 'finalize', 'tostring', 'handle', 'notify', 'wait', 'objectonserver',
   'usagecount', 'owner', 'gettimeouttimerhandle', 'cancurrenttimeout',
   'setrefcountzero', 'equal',
@@ -792,6 +812,8 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
   const selfDeclared = new Set<string>(
     [...cleaned.matchAll(/\b(?:class|interface)\s+([A-Za-z_]\w*)/g)].map(d => d[1].toLowerCase()),
   );
+  // Obsolete code may call obsolete code: the compiler stays silent (see obsoleteCallViolation).
+  const callerObsolete = /\bSysObsolete/i.test(cleaned);
 
   const typeExistsCache = new Map<string, string[]>();
   const lookupTypes = (name: string): string[] => {
@@ -838,6 +860,10 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
     return verdict !== null;
   };
 
+  // Built at most once per call, and only when an exact seek misses: a missing
+  // label file is the common case and each literal used to pay for the full list.
+  const labelFileLookup: LabelFileLookup = { known: new Map() };
+
   // 1. Label references (from original string literals)
   for (const s of strings) {
     const modern = s.value.match(/^@([A-Za-z][A-Za-z0-9_]*):([A-Za-z0-9_]+)$/);
@@ -851,7 +877,7 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
         if (v) violations.push(v);
       } else {
         // Known label file with missing id is an error; unknown file is a warning.
-        const fileKnown = labelFileExists(deps, fileId);
+        const fileKnown = labelFileExists(deps, fileId, labelFileLookup);
         violations.push({
           kind: 'unknown-label',
           severity: fileKnown ? 'error' : 'warning',
@@ -929,17 +955,16 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
         } else {
           violations.push(unknownFieldViolation(verdict, target, member, line));
         }
-      } else if (fn === 'methodstr' || fn === 'staticmethodstr') {
-        if (findMethod(deps, target, member)) {
-          verifiedCount++;
+      } else if (isMemberIntrinsic(fn)) {
+        // Declared on the named type itself, of the right kind: see intrinsicMembers.ts.
+        const finding = checkIntrinsicMember(deps.db, fn, target, member, line, {
+          table: TABLE_BUILTIN_METHODS,
+          object: OBJECT_BUILTIN_METHODS,
+        });
+        if (finding) {
+          violations.push(finding);
         } else {
-          violations.push({
-            kind: 'unknown-method',
-            severity: 'error',
-            line,
-            identifier: `${target}.${member}`,
-            detail: `Method "${member}" not found on ${target} (checked inheritance chain and extensions). Use get_object_info(objectType="class", name="${target}").`,
-          });
+          verifiedCount++;
         }
       } else {
         verifiedCount++;
@@ -1020,6 +1045,10 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
       continue;
     }
     verifiedCount++;
+    {
+      const obsolete = obsoleteCallViolation(method.source, `${typeName}::${member}`, line, callerObsolete);
+      if (obsolete) violations.push(obsolete);
+    }
 
     // Arity check when the call site and the declaration are both parseable
     {
@@ -1090,8 +1119,13 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
         const builtin = isTableLike
           ? TABLE_BUILTIN_METHODS.has(member.toLowerCase())
           : OBJECT_BUILTIN_METHODS.has(member.toLowerCase());
-        if (builtin || findMethod(deps, typeName, member)) {
+        const method = builtin ? undefined : findMethod(deps, typeName, member);
+        if (builtin || method) {
           verifiedCount++;
+          const obsolete = method
+            ? obsoleteCallViolation(method.source, `${typeName}.${member}()`, line, callerObsolete)
+            : undefined;
+          if (obsolete) violations.push(obsolete);
         } else {
           violations.push({
             kind: 'unknown-method',
@@ -1111,6 +1145,12 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
       }
     }
   }
+
+  // 6. What extensions bind to: CoC wrappers and event handlers (#1225)
+  violations.push(...checkExtensionTargets(code, deps.db, {
+    table: TABLE_BUILTIN_METHODS,
+    object: OBJECT_BUILTIN_METHODS,
+  }));
 
   return { violations, verifiedCount };
 }
@@ -1236,14 +1276,39 @@ function strFmtArgs(cleaned: string, index: number): number | null {
   return args;
 }
 
-/** True when the label file id is present in the labels index. */
-function labelFileExists(deps: ResolverDeps, fileId: string): boolean {
+/** Per-call memo for labelFileExists: verdict per id, and the lowercased id set. */
+interface LabelFileLookup {
+  known: Map<string, boolean>;
+  lowerIds?: Set<string>;
+}
+
+/**
+ * True when the label file id is present in the labels index, compared
+ * case-insensitively. An exact-case seek answers the hit; the miss falls to the
+ * lowercased id set, which is built at most once per resolver call.
+ */
+function labelFileExists(deps: ResolverDeps, fileId: string, lookup: LabelFileLookup): boolean {
+  const target = fileId.toLowerCase();
+  const memo = lookup.known.get(target);
+  if (memo !== undefined) return memo;
+  let exists: boolean;
   try {
-    const target = fileId.toLowerCase();
-    return deps.getLabelFileIds().some(f => f.labelFileId.toLowerCase() === target);
+    if (deps.hasLabelFileId?.(fileId)) {
+      exists = true;
+    } else {
+      if (!lookup.lowerIds) {
+        const ids = deps.getDistinctLabelFileIds
+          ? deps.getDistinctLabelFileIds()
+          : deps.getLabelFileIds().map(f => f.labelFileId);
+        lookup.lowerIds = new Set(ids.map(id => id.toLowerCase()));
+      }
+      exists = lookup.lowerIds.has(target);
+    }
   } catch {
-    return false;
+    exists = false;
   }
+  lookup.known.set(target, exists);
+  return exists;
 }
 
 /**
@@ -1257,6 +1322,8 @@ export function gateOnReferenceErrors(
     getReadDb(): ResolverDeps['db'];
     getLabelById: ResolverDeps['getLabelById'];
     getLabelFileIds: ResolverDeps['getLabelFileIds'];
+    hasLabelFileId?: ResolverDeps['hasLabelFileId'];
+    getDistinctLabelFileIds?: ResolverDeps['getDistinctLabelFileIds'];
   } | undefined,
   operationDescription: string,
 ): { isError: true; content: [{ type: 'text'; text: string }] } | null {
@@ -1268,6 +1335,8 @@ export function gateOnReferenceErrors(
       db: symbolIndex.getReadDb(),
       getLabelById: symbolIndex.getLabelById.bind(symbolIndex),
       getLabelFileIds: symbolIndex.getLabelFileIds.bind(symbolIndex),
+      hasLabelFileId: symbolIndex.hasLabelFileId?.bind(symbolIndex),
+      getDistinctLabelFileIds: symbolIndex.getDistinctLabelFileIds?.bind(symbolIndex),
       visibility: resolverModelVisibility(),
     });
   } catch {
@@ -1317,6 +1386,8 @@ export async function resolveReferencesTool(
       db: context.symbolIndex.getReadDb(),
       getLabelById: context.symbolIndex.getLabelById.bind(context.symbolIndex),
       getLabelFileIds: context.symbolIndex.getLabelFileIds.bind(context.symbolIndex),
+      hasLabelFileId: context.symbolIndex.hasLabelFileId?.bind(context.symbolIndex),
+      getDistinctLabelFileIds: context.symbolIndex.getDistinctLabelFileIds?.bind(context.symbolIndex),
       visibility: resolverModelVisibility(),
     });
   } catch (error) {
@@ -1365,7 +1436,8 @@ export async function resolveReferencesTool(
     lines.push(
       '**Fix all errors before writing** — these identifiers could not be resolved against the ' +
       'indexed codebase (`not-visible-from-model` means the name exists but its package is not ' +
-      'referenced by the target model).',
+      'referenced by the target model; `coc-target`, `handler-target` and `obsolete-method` mean the ' +
+      'name exists but its indexed declaration rejects this use).',
     );
   } else {
     lines.push('Warnings are informational (kernel classes and new labels are not indexable). Review, then proceed.');

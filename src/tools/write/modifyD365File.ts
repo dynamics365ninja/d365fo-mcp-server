@@ -32,7 +32,7 @@ import {
   bridgeAddTableMapping, bridgeRemoveTableMapping,
   bridgeAddFieldGroup, bridgeRemoveFieldGroup, bridgeAddFieldToFieldGroup,
   bridgeAddEnumValue, bridgeModifyEnumValue, bridgeRemoveEnumValue,
-  bridgeAddControl, bridgeAddDataSource,
+  bridgeAddDataSource,
   bridgeAddFieldModification, bridgeAddMenuItemToMenu,
   bridgeRefreshProvider,
 } from '../../bridge/index.js';
@@ -50,6 +50,7 @@ import {
   entityAddDataSource, entityAddFieldBindingError, entityAddField, modifyFieldOp, ENTITY_AND_FIELD_ZOD_PARAMS,
 } from './dataEntityOps.js';
 import { formStructureOp, FORM_STRUCTURE_ZOD_PARAMS } from './formStructureOps.js';
+import { bridgeAddFormControl, pickAddControlType } from './referenceGroupControl.js';
 import {
   upsertFormExtensionControlProperty, resolveControlPropertyTarget,
 } from '../../utils/formExtensionControlModifications.js';
@@ -65,7 +66,7 @@ import {
 import { validateEdtExtensionChange } from '../../utils/edtExtensionValidator.js';
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
 import { applySecurityReferenceOperation, securityReferenceTypeRefusal } from './securityReferences.js';
-import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, renderBatchEditHint, verifyFormElementOrder } from './inlineWriteVerification.js';
+import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, bridgeMessageNote, renderBatchEditHint, verifyFormElementOrder, readBackAfterModify } from './inlineWriteVerification.js';
 import { lintXppSelect } from '../../utils/xppSelectLint.js';
 import { validateWrittenXpp } from './inlineXppValidation.js';
 import { createPhaseTimer } from '../../utils/phaseTimer.js';
@@ -93,7 +94,7 @@ import { nextEnumValue } from '../../utils/axEnumProperties.js';
 // The direct-XML writers moved to their own module; this file dispatches to them.
 import {
   directXmlReplaceCode,
-  directXmlModifyProperty, directXmlSetBpAccessProperty, directXmlSetRelationOnDelete,
+  directXmlModifyProperty, directXmlSetBpAccessProperty, directXmlSetEdtTableReference,directXmlSetRelationOnDelete,
   directXmlAddMenuItemToMenu,
   directXmlAddMenuItemToMenuExtension,
   directXmlAddSubmenu,
@@ -101,7 +102,7 @@ import {
   directXmlAddControl,
   coerceNoYesFlag,
   directXmlAddIndex,
-  directXmlSetIndexValidTimeState,
+  directXmlSetIndexValidTimeState, withRemovedFieldCleanup,
   directXmlClearEmptyProperty,
   directXmlAddQueryRange,
   directXmlRemoveQueryRange,
@@ -117,7 +118,7 @@ import {
   directXmlAddDiagnosticSuppression,
   directXmlAddModuleReference,
   directXmlRemoveModuleReference,
-  directXmlEnsureRelationProperties, directXmlModifyControlProperty, directXmlAddViewField, directXmlSetFormDataSourceInsertIfEmpty,
+  directXmlEnsureRelationProperties, directXmlModifyControlProperty, directXmlAddViewField, directXmlSetFormDataSourceInsertIfEmpty, directXmlModifyFormDataSourceProperty,
 } from './directXmlWriters.js';
 import { addMethodWithXmlFallback, removeMethodWithXmlFallback } from './methodXmlFallback.js';
 import { addReportParameter, refreshReportDataset } from './reportDesignXml.js';
@@ -641,9 +642,9 @@ export const ModifyD365FileArgsSchema = z.object({
   ),
   controlType: z.string().optional().describe(
     'Form control type (default: String). Determines i:type and <Type> in the XML. ' +
-    'Supported values: String, Integer, Real, CheckBox, ComboBox, Date, DateTime, Int64, Group, Button, CommandButton, MenuFunctionButton. ' +
+    'Supported values: String, Integer, Real, CheckBox, ComboBox, Date, DateTime, Int64, Group, Button, CommandButton, MenuFunctionButton, ReferenceGroup. ' +
     'Use CheckBox for NoYes/boolean fields. Use ComboBox for enum fields. ' +
-    'If omitted the tool auto-picks based on the EDT base type if controlDataField is provided.'
+    'If omitted the tool auto-picks based on the EDT base type if controlDataField is provided, and ReferenceGroup for a surrogate foreign key.'
   ),
   controlLabel: z.string().optional().describe(
     'Caption of the new control (add-control); Label, Text or Caption by type.'
@@ -2376,11 +2377,11 @@ async function runModify(
       }
       case 'remove-field': {
         if (args.fieldName) {
-          bridgeResult = await bridgeRemoveField(
+          bridgeResult = await withRemovedFieldCleanup(await bridgeRemoveField(
             context.bridge,
             objectName,
             args.fieldName,
-          );
+          ), actualFilePath, args.fieldName);
         }
         break;
       }
@@ -2685,6 +2686,12 @@ async function runModify(
           // OperationalDomain / SubscriberAccessLevel on a table or menu item: XML only, never the bridge.
           const bpWrite = await directXmlSetBpAccessProperty(actualFilePath, objectType, objectName, args.propertyPath, args.propertyValue);
           if (bpWrite) { if (!bpWrite.success) return { content: [{ type: 'text', text: bpWrite.message }], isError: true }; bridgeResult = viaXmlFallback(bpWrite); break; }
+          // ReferenceField on an EDT: a child of <TableReferences>, XML only as well.
+          const edtRef = await directXmlSetEdtTableReference(actualFilePath, objectType, objectName, args.propertyPath, args.propertyValue);
+          if (edtRef) { if (!edtRef.success) return { content: [{ type: 'text', text: edtRef.message }], isError: true }; bridgeResult = viaXmlFallback(edtRef); break; }
+          // dataSourceName: a property of a data source the form itself defines (JoinSource, LinkType, …).
+          const dsName = (args as { dataSourceName?: string }).dataSourceName;
+          if (dsName) { bridgeResult = viaXmlFallback(await directXmlModifyFormDataSourceProperty(actualFilePath, objectType, objectName, dsName, args.propertyPath, String(args.propertyValue))); break; }
           const own = await directXmlModifyControlProperty(actualFilePath, objectType, objectName, args.propertyPath, String(args.propertyValue), (args as { controlName?: string }).controlName);
           if (own) { bridgeResult = viaXmlFallback(own); break; } // a control this file defines (own form, or one an extension adds)
           // ── Form extension targeting a BASE-FORM control ─────────────────────
@@ -2912,14 +2919,13 @@ async function runModify(
       }
       case 'add-control': {
         if ((args as any).controlName && (args as any).parentControl) {
-          const resolvedControlType =
+          // A surrogate foreign key gets the designer's reference group (referenceGroupControl.ts).
+          const { controlType: resolvedControlType, note: controlTypeNote } = await pickAddControlType(
+            args as any, objectType, objectName, actualFilePath, symbolIndex,
             (args as any).controlType
-            ?? resolveControlTypeForField(
-                 (args as any).controlDataSource,
-                 (args as any).controlDataField,
-                 symbolIndex?.getReadDb?.(),
-               )
-            ?? 'String';
+              ?? resolveControlTypeForField((args as any).controlDataSource, (args as any).controlDataField, symbolIndex?.getReadDb?.())
+              ?? 'String');
+          addControlNote += controlTypeNote;
           // The bridge's AddControl resolves its target via _provider.Forms, which
           // never contains a form EXTENSION (keyed "Base.Suffix" in FormExtensions).
           // Calling it would always fail with 'Form "<ext>" not found' and log a
@@ -2929,16 +2935,8 @@ async function runModify(
 
           if (!isFormExtension) {
             // The bridge appends; addBaseFormControl moves the control to previousSibling/positionType.
-            bridgeResult = await addBaseFormControl(actualFilePath, args as any, () => bridgeAddControl(
-              context.bridge,
-              objectName,
-              (args as any).controlName,
-              (args as any).parentControl,
-              resolvedControlType,
-              (args as any).controlDataSource,
-              (args as any).controlDataField,
-              (args as any).controlLabel,
-            ));
+            bridgeResult = await addBaseFormControl(actualFilePath, args as any, () => bridgeAddFormControl(
+              context.bridge, actualFilePath, objectName, args as any, resolvedControlType));
           }
 
           if (isFormExtension && (!bridgeResult || !bridgeResult.success)) {
@@ -3616,35 +3614,36 @@ async function runModify(
     // silence. Only checkable after the operation has applied (#989).
     const formOrderNote = await timer.time('form element order',
       () => verifyFormElementOrder(actualFilePath, objectType));
+    // Is what this operation asked for in the file? No bridge round trip, every object type (#1161).
+    const readBackNote = wasSkipped ? '' : await timer.time('read-back comparison', () => readBackAfterModify(actualFilePath, operation, objectType,
+      args as unknown as Record<string, unknown>, preservationNote, s => countTopLevelMethodBodies(s) > 1 ? splitTopLevelMethodBodies(s).map(extractMethodNameFromSource) : null));
 
     return {
       content: [
         {
           type: 'text',
           text:
-            // A skip is not an application. Saying "✅ … applied via
-            // IMetadataProvider.Update()" over a write the provider declined is
-            // how three dropped data sources read as three successes; the 🔧 API
-            // line below carries the bridge's own reason.
+            // A skip is not an application. Saying "✅ … applied" over a write the
+            // provider declined is how three dropped data sources read as three
+            // successes; a skip keeps the bridge's own message, which carries the
+            // reason.
+            //
+            // An applied write says only what varies with the call, plus the one
+            // fixed tail below. Gone: "— applied via IMetadataProvider.Update()"
+            // (or "via this server's XML writer") and a `🔧 API: ✅ <thing> added
+            // via <Api>` line restating the headline.
             (bridgeResult.skipped
-              ? `⏭️ ${operation} on ${objectType} "${objectName}" — SKIPPED, nothing was written${crossModelNotice}${autoCorrectNote}\n\n`
-              : `✅ ${operation} on ${objectType} "${objectName}" — applied via ${bridgeResult.viaXmlFallback
-                  ? "this server's XML writer (no bridge path for this operation)"
-                  : 'IMetadataProvider.Update()'}${crossModelNotice}${autoCorrectNote}\n\n`) +
-            `**File:** ${actualFilePath}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}\n` +
-            `🔧 API: ${bridgeResult.message}${preservationNote}${changedLinesNote}${xppLintNote}${xppRuleNote}${addFieldBpNote}${fieldGroupRenderNote}${dataSourceTableNote}${backupNote}${verifyNote}${indexNote}${bpNote}${formOrderNote}${timer.render()}` +
+              ? `⏭️ ${operation} on ${objectType} "${objectName}" — SKIPPED, nothing was written${crossModelNotice}${autoCorrectNote}\n`
+              : `✅ ${operation} on ${objectType} "${objectName}"${crossModelNotice}${autoCorrectNote}\n`) +
+            `**File:** ${actualFilePath}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}` +
+            (bridgeResult.skipped ? `\n${bridgeResult.message}` : bridgeMessageNote(bridgeResult.message, actualFilePath)) +
+            `${preservationNote}${changedLinesNote}${xppLintNote}${xppRuleNote}${addFieldBpNote}${fieldGroupRenderNote}${dataSourceTableNote}${backupNote}${verifyNote}${indexNote}${bpNote}${formOrderNote}${readBackNote}${timer.render()}` +
             // "Review changes in Visual Studio" is not something the caller can act
             // on, and it rode along on every write.
             (ignoredParamsWarning ? `\n\n${ignoredParamsWarning}` : '') +
-            // One tool that builds AND runs the best-practice check. The old line
-            // named build_d365fo_project alone, and the sampled sessions then spent
-            // 35 verify_d365fo_project and 39 run_bp_check calls, largely right
-            // after writes that had already verified themselves.
-            //
-            // Suppressed inside a batch, along with the batch-edit hint:
-            // runModifyBatch emits one of each for the whole call, and telling an
-            // operation that is already batched to batch itself reads as a defect.
-            (inBatch
+            // Fixed, but measured: see the create tail in createD365File.ts. Not in a
+            // batch (runModifyBatch emits one for the call) or after a skip.
+            (inBatch || bridgeResult.skipped
               ? ''
               : `\n\nNext: build_d365fo_project(bpCheck:true) — builds and runs the best-practice check in one call.` +
                 renderBatchEditHint(objectType, objectName)),

@@ -1,6 +1,8 @@
 /**
- * Session-scoped ledger of files that d365fo_file(action="create") wrote to disk
- * for the FIRST time in this MCP server process.
+ * Session-scoped ledger of files that a create tool wrote to disk for the FIRST
+ * time in this MCP server process: d365fo_file(action="create"), the smart
+ * generators, and labels(action="create") for the label descriptors and
+ * .label.txt files it adds.
  *
  * Why this exists: undo_last_modification is git-based. It reverts tracked files
  * with `git checkout` and deletes git-untracked files after proving they are
@@ -29,6 +31,13 @@ export interface CreatedArtifact {
   objectName?: string;
   /** Absolute path of the .rnrproj the file was added to, when known. */
   projectPath?: string;
+  /**
+   * The exact `<Content Include>` this file has in `projectPath`, for files that are
+   * not `<AOT folder>\<objectName>` (a label file's `AxLabelFile\<File>_<lang>`
+   * descriptor or `<File>.<lang>.label.txt`). Set only when the create added that
+   * entry itself, so undo never removes one that was already in the project.
+   */
+  projectInclude?: string;
 }
 
 /**

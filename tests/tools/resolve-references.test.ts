@@ -5,7 +5,7 @@
  * invalid columns or a broken FTS query shape).
  */
 
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { XppSymbolIndex } from '../../src/metadata/symbolIndex';
 import {
   resolveXppReferences,
@@ -504,7 +504,8 @@ describe('resolveXppReferences — case-insensitive identifiers', () => {
   it('verifies differently-cased intrinsic targets and members', () => {
     expect(errorsOf('tableStr(custtable);')).toEqual([]);
     expect(errorsOf('fieldStr(CUSTTABLE, accountnum);')).toEqual([]);
-    expect(errorsOf('methodStr(custtable, VALIDATEWRITE);')).toEqual([]);
+    // tableMethodStr, not methodStr: xppc rejects a table in methodStr (#1270 probes).
+    expect(errorsOf('tableMethodStr(custtable, VALIDATEWRITE);')).toEqual([]);
   });
 
   it('verifies a static call through the inheritance chain, any casing', () => {
@@ -1013,5 +1014,128 @@ public class ConDemoLookupBinder
 }`;
     expect(errorsOf(code).map(e => e.identifier))
       .toContain('methodStr(ConDemoNoSuchClassAnywhere, onLookup)');
+  });
+});
+
+// ── label file existence: narrow lookups instead of the grouped list ─────────
+
+describe('resolveXppReferences — label file existence lookup', () => {
+  const FILES = ['ContosoExt', 'ContosoCore'];
+
+  /** Deps that count how each "does this label file exist?" route is used. */
+  function countingDeps(opts: { narrow: boolean }) {
+    const wide = vi.fn(() => FILES.map(labelFileId => ({ labelFileId })));
+    const has = vi.fn((id: string) => FILES.includes(id));
+    const distinct = vi.fn(() => [...FILES]);
+    const d: ResolverDeps = {
+      db: { prepare: () => ({ get: () => undefined, all: () => [] }) },
+      getLabelById: () => [],
+      getLabelFileIds: wide,
+      ...(opts.narrow ? { hasLabelFileId: has, getDistinctLabelFileIds: distinct } : {}),
+    };
+    return { d, wide, has, distinct };
+  }
+
+  const labelViolations = (code: string, d: ResolverDeps) =>
+    resolveXppReferences(code, d).violations
+      .filter(v => v.kind === 'unknown-label')
+      .map(v => [v.identifier, v.severity]);
+
+  it('does not call the wide grouping method for an unknown label file', () => {
+    const { d, wide, distinct } = countingDeps({ narrow: true });
+    expect(labelViolations('info("@ContosoNoSuchFile:Anything");', d))
+      .toEqual([['@ContosoNoSuchFile:Anything', 'warning']]);
+    expect(wide).not.toHaveBeenCalled();
+    expect(distinct).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers a known file in the exact case with the seek alone', () => {
+    const { d, wide, has, distinct } = countingDeps({ narrow: true });
+    expect(labelViolations('info("@ContosoExt:NoSuchId");', d))
+      .toEqual([['@ContosoExt:NoSuchId', 'error']]);
+    expect(has).toHaveBeenCalledWith('ContosoExt');
+    expect(distinct).not.toHaveBeenCalled();
+    expect(wide).not.toHaveBeenCalled();
+  });
+
+  it('builds the id set at most once for many unknown literals', () => {
+    const { d, wide, has, distinct } = countingDeps({ narrow: true });
+    const code = [
+      'info("@ContosoNoSuchFile:A");',
+      'info("@ContosoNoSuchFile:B");',
+      'info("@ContosoNoSuchFile:C");',
+      'info("@ContosoOtherMissing:D");',
+      'info("@contosoext:E");',
+    ].join('\n');
+    const found = labelViolations(code, d);
+    expect(found).toHaveLength(5);
+    expect(distinct).toHaveBeenCalledTimes(1);
+    expect(wide).not.toHaveBeenCalled();
+    // One seek per distinct file id, not one per literal.
+    expect(has).toHaveBeenCalledTimes(3);
+  });
+
+  it('gives the same verdicts with and without the narrow methods, in any letter case', () => {
+    const code = [
+      'info("@ContosoExt:Missing");',     // known, exact case
+      'info("@CONTOSOEXT:Missing");',     // known, upper case
+      'info("@contosocore:Missing");',    // known, lower case
+      'info("@ContosoNoSuchFile:Missing");',
+    ].join('\n');
+    const narrow = labelViolations(code, countingDeps({ narrow: true }).d);
+    const legacy = labelViolations(code, countingDeps({ narrow: false }).d);
+    expect(narrow).toEqual(legacy);
+    expect(narrow.map(v => v[1])).toEqual(['error', 'error', 'error', 'warning']);
+  });
+
+  it('falls back to getLabelFileIds when the deps object has no narrow methods', () => {
+    const { d, wide } = countingDeps({ narrow: false });
+    expect(labelViolations('info("@ContosoNoSuchFile:A");\ninfo("@ContosoNoSuchFile:B");', d))
+      .toHaveLength(2);
+    expect(wide).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats a failing lookup as an unknown file, as before', () => {
+    const { d } = countingDeps({ narrow: true });
+    d.hasLabelFileId = () => { throw new Error('labels db closed'); };
+    expect(labelViolations('info("@ContosoExt:Missing");', d))
+      .toEqual([['@ContosoExt:Missing', 'warning']]);
+  });
+
+  describe('against a real labels index', () => {
+    let labelIndex: XppSymbolIndex;
+
+    beforeAll(() => {
+      labelIndex = new XppSymbolIndex(':memory:', ':memory:');
+      for (const [labelFileId, language] of [
+        ['ContosoExt', 'en-US'], ['ContosoExt', 'cs'], ['ContosoCore', 'en-US'],
+      ]) {
+        labelIndex.addLabel({
+          labelId: 'EquipmentName', labelFileId, model: labelFileId, language,
+          text: 'Equipment name', filePath: `/${labelFileId}.${language}.label.txt`,
+        });
+      }
+    });
+    afterAll(() => labelIndex.close());
+
+    it('hasLabelFileId is exact-case and getDistinctLabelFileIds lists each id once', () => {
+      expect(labelIndex.hasLabelFileId('ContosoExt')).toBe(true);
+      expect(labelIndex.hasLabelFileId('contosoext')).toBe(false);
+      expect(labelIndex.hasLabelFileId('ContosoNoSuchFile')).toBe(false);
+      expect(labelIndex.getDistinctLabelFileIds().sort()).toEqual(['ContosoCore', 'ContosoExt']);
+    });
+
+    it('the tool path never runs the grouped query for a missing id or file', async () => {
+      const wide = vi.spyOn(labelIndex, 'getLabelFileIds');
+      const res = await resolveReferencesTool(
+        { params: { arguments: { code: 'info("@contosoext:NoSuchId");\ninfo("@ContosoNoSuchFile:X");' } } },
+        { symbolIndex: labelIndex } as any,
+      );
+      const text = res.content[0].text;
+      expect(text).toContain('Label id "NoSuchId" not found in label file "contosoext"');
+      expect(text).toContain('Label file "ContosoNoSuchFile" not found in the index');
+      expect(wide).not.toHaveBeenCalled();
+      wide.mockRestore();
+    });
   });
 });

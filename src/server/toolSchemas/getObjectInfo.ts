@@ -7,7 +7,7 @@ import { OBJECT_INFO_TYPES } from '../../tools/readers/objectInfoRegistry.js';
 
 export const getObjectInfoTool = {
     name: 'get_object_info',
-    description: 'Read D365FO object metadata. For 2+ objects pass objects:[{objectType,objectName},…] (max 10) — ONE call, run in parallel, per-object sections back; never loop single calls. One object: {objectType, name}. Pick the kind via objectType: class, table, form, query, view, enum, edt, report, data-entity, menu-item, service, map, config-key, security-policy, macro. Extension types (table-extension, form-extension, enum-extension, edt-extension, data-entity-extension) list all extensions of a base object — pass the base object name or a full extension name (the dot suffix is stripped automatically). Type-specific flags go in options. For CLASSES, {"members":"names"} (optional {"prefix":...}) returns a fast IntelliSense-style member-name list instead of full metadata.',
+    description: 'Read D365FO object metadata. For 2+ objects pass objects:[{objectType,objectName},…] (max 10) — ONE call, run in parallel, per-object sections back; never loop single calls. One object: {objectType, name}. Pick the kind via objectType: class, table, form, query, view, enum, edt, report, data-entity, menu-item, menu, service, map, config-key, security-policy, macro. The *-extension types list all extensions of a base object — pass the base object name or a full extension name (the dot suffix is stripped automatically). Type-specific flags go in options. For CLASSES, {"members":"names"} (optional {"prefix":...}) returns a fast IntelliSense-style member-name list instead of full metadata.',
     inputSchema: {
       type: 'object',
       properties: {

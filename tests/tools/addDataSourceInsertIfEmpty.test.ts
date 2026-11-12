@@ -206,11 +206,11 @@ describe('add-data-source — insertIfEmpty', () => {
     expect(writtenXml()).toContain('<InsertIfEmpty>No</InsertIfEmpty>');
   });
 
-  it('a skipped add credits the XML writer, not IMetadataProvider, for what it wrote', async () => {
+  it('a skipped add does not credit IMetadataProvider for what the XML writer wrote', async () => {
     mockBridgeAddDataSource.mockResolvedValue({ success: true, skipped: true, message: 'already exists' });
     const r = await modifyD365FileTool(addDataSource({ insertIfEmpty: false }), buildContext());
-    expect(textOf(r)).toContain("applied via this server's XML writer");
-    expect(textOf(r)).not.toContain('IMetadataProvider.Update()');
+    expect(textOf(r)).toMatch(/^✅ add-data-source on /);
+    expect(textOf(r)).not.toContain('IMetadataProvider');
   });
 
   it('a skipped add finds the data source when the call spells its name in another case', async () => {

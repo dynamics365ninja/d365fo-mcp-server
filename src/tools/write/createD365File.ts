@@ -7,7 +7,8 @@ import * as fs from 'fs/promises';
 import { directXmlSetIndexValidTimeState, coerceNoYesFlag } from './directXmlWriters.js';
 import { writeFileAtomic } from '../../utils/atomicFileWrite.js';
 import { XmlTemplateGenerator } from '../xml/xmlTemplateGenerator.js';
-import { findIgnoredEntityProperties, stagingTableNote } from '../xml/dataEntityXml.js';
+import { findIgnoredEntityProperties } from '../xml/dataEntityXml.js';
+import { provisionStagingTable } from './stagingTableProvisioning.js';
 import { fieldPropertiesFromSpecs, applyFieldPropertyPatches } from '../xml/tableFieldPropertyEdit.js';
 import * as path from 'path';
 import type { CallToolRequest } from '@modelcontextprotocol/sdk/types.js';
@@ -16,7 +17,7 @@ import { getConfigManager } from '../../utils/configManager.js';
 import { describePackagesRootScan } from '../../utils/packagesRoot.js';
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
 import { ProjectFileManager, ProjectFileFinder, registerFileInActiveProject } from '../../workspace/projectFile.js';
-import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, renderBatchEditHint } from './inlineWriteVerification.js';
+import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, bridgeMessageNote, renderBatchEditHint, verifyWriteIntent, createIntentFor } from './inlineWriteVerification.js';
 import { validateWrittenXpp } from './inlineXppValidation.js';
 import { createPhaseTimer } from '../../utils/phaseTimer.js';
 import { registerCustomModel } from '../../utils/modelClassifier.js';
@@ -592,19 +593,15 @@ export function sourceAsWritten(sourceCode: string | undefined, finalObjectName:
   }
 }
 
-/** Notes for a data-entity create: `properties` keys it did not read, and the staging table it did not create. */
-function dataEntityCreateNotes(objectType: string, properties: unknown, entityName: string): string {
+/** Note for a data-entity create: the `properties` keys it did not read. The staging table has its own (provisionStagingTable). */
+function dataEntityCreateNotes(objectType: string, properties: unknown): string {
   if (objectType !== 'data-entity') return '';
-  const props = properties as Record<string, any> | undefined;
-  const ignored = findIgnoredEntityProperties(props);
-  return (
-    (ignored.length
-      ? `\n⚠️ ${ignored.length} property key(s) were NOT written — the data-entity generator does not read: ` +
-        `${ignored.join(', ')}. Anything else can be set afterwards with modify (modify-property / ` +
-        `add-data-source / add-field).`
-      : '') +
-    stagingTableNote(entityName, props)
-  );
+  const ignored = findIgnoredEntityProperties(properties as Record<string, any> | undefined);
+  return ignored.length
+    ? `\n⚠️ ${ignored.length} property key(s) were NOT written — the data-entity generator does not read: ` +
+      `${ignored.join(', ')}. Anything else can be set afterwards with modify (modify-property / ` +
+      `add-data-source / add-field).`
+    : '';
 }
 
 /**
@@ -1667,9 +1664,11 @@ export async function handleCreateD365File(
                 content: [
                   {
                     type: 'text',
-                    text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create() (Smart)${crossModelNotice}${renameNote}${targetNote}\n` +
-                      `📁 ${smartResult.filePath}${projectMsg}\n` +
-                      `🔧 API: ${smartResult.api ?? 'IMetaTableProvider.Create (Smart)'}${bpSummary}${honestyReport}${rawLabelWarning}${labelAutoNote}${verifyNote}${indexNote}${bpNote}` +
+                    // No `🔧 API:` line and no "via IMetadataProvider.Create()": the
+                    // same text on every table create, nothing the agent acts on.
+                    text: `✅ Created ${args.objectType} '${finalObjectName}'${crossModelNotice}${renameNote}${targetNote}\n` +
+                      `📁 ${smartResult.filePath}${projectMsg}` +
+                      `${bpSummary}${honestyReport}${rawLabelWarning}${labelAutoNote}${verifyNote}${indexNote}${bpNote}` +
                       validateWrittenXpp(sourceAsWritten(args.sourceCode, finalObjectName)),
                   },
                 ],
@@ -1775,14 +1774,21 @@ export async function handleCreateD365File(
           const bpNote = await timer.time('inline BP check',
             () => runInlineBpCheck((args as any).bpCheck, args.objectType, finalObjectName, context));
           const xppRuleNote = validateWrittenXpp(sourceAsWritten(args.sourceCode, finalObjectName));
+          // The scalar properties the caller passed, against the file. A table has
+          // its own reconcile above, so createIntentFor returns nothing for one.
+          const readBackNote = await timer.time('read-back comparison',
+            () => verifyWriteIntent(bridgeResult.filePath, createIntentFor(args.objectType, args.properties)));
 
           return {
             content: [
               {
                 type: 'text',
-                text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create()${crossModelNotice}${renameNote}${targetNote}\n` +
-                  `📁 ${bridgeResult.filePath}${projectMsg}\n` +
-                  `🔧 API: ${bridgeResult.message}${honestyReport}${rawLabelWarning}${labelAutoNote}${verifyNote}${indexNote}${bpNote}${xppRuleNote}${timer.render()}`,
+                // bridgeMessageNote keeps only what the bridge message adds (a
+                // `⚠️ NOT applied` suffix); its `✅ Created via … — file:` line
+                // restated this headline and the path below it.
+                text: `✅ Created ${args.objectType} '${finalObjectName}'${crossModelNotice}${renameNote}${targetNote}\n` +
+                  `📁 ${bridgeResult.filePath}${projectMsg}` +
+                  `${bridgeMessageNote(bridgeResult.message, bridgeResult.filePath)}${honestyReport}${rawLabelWarning}${labelAutoNote}${verifyNote}${indexNote}${bpNote}${xppRuleNote}${readBackNote}${timer.render()}`,
               },
             ],
           };
@@ -2195,18 +2201,22 @@ export async function handleCreateD365File(
       }
     }
 
-    // Only the step the AGENT can take, and only ONE of them.
+    // Only the step the AGENT can take, and only ONE of them. Kept although it is
+    // the same text on every create: unlike the confirmations trimmed above, each
+    // line was added against a measured round-trip pattern, and the tool
+    // descriptions it seems to restate were already there when that was measured.
     //
     // `bpCheck:true` makes the build run the best-practice checker too, so this
     // is one follow-up call rather than the build → run_bp_check →
     // verify_d365fo_project chain the logs actually show (39 run_bp_check and 35
     // verify_d365fo_project calls in 1,400, largely right after writes that had
-    // already verified themselves inline — see verifyNote/indexNote above).
+    // already verified themselves inline).
     //
-    // The old tail also carried a `⛔ TASK COMPLETE — do NOT call generate,
-    // generate, or d365fo_file(action="create") again` banner: 133 chars that
-    // named the same tool twice (a copy/paste defect) to say what the one clause
-    // appended to the batch-edit hint below says in 47.
+    // The batch-edit hint answers the dominant waste pattern (40 of 49 modifies
+    // were single-op although operations[] existed: a discovery gap, not a
+    // capability gap — see renderBatchEditHint). The old tail also carried a
+    // `⛔ TASK COMPLETE — do NOT call … again` banner; the last clause says the
+    // same in 47 chars.
     const nextSteps = (args.addToProject
       ? `Next: build_d365fo_project(bpCheck:true) — builds AND best-practice-checks in one call.\n`
       : `Next: add the file to your .rnrproj, then build_d365fo_project(bpCheck:true) — builds AND best-practice-checks in one call.\n`) +
@@ -2242,6 +2252,25 @@ export async function handleCreateD365File(
     // class, so the class-scoped rules (COC004, COC005) apply here — the cheap
     // moment to catch what xppbp does not and only a build would.
     const xppRuleNote = validateWrittenXpp(sourceAsWritten(args.sourceCode, finalObjectName));
+    // The scalar properties the caller passed, against the file (see the bridge
+    // path). Keys the data-entity note below already names are left to that note.
+    const readBackNote = await timer.time('read-back comparison', () =>
+      verifyWriteIntent(normalizedFullPath, createIntentFor(
+        args.objectType,
+        args.properties,
+        args.objectType === 'data-entity'
+          ? findIgnoredEntityProperties(args.properties as Record<string, any> | undefined)
+          : [],
+      )));
+    // An entity with data management enabled names a staging table: create it now,
+    // through this same handler, so the next build finds it (stagingTableProvisioning.ts).
+    const stagingNote = args.objectType === 'data-entity'
+      ? await timer.time('staging table', () => provisionStagingTable(
+          { entityName: finalObjectName, entityPath: normalizedFullPath, modelName: actualModelName!, args },
+          context,
+          handleCreateD365File,
+        ))
+      : '';
 
     // Return success message with file path
     return {
@@ -2264,14 +2293,16 @@ export async function handleCreateD365File(
             rawLabelBpWarning(args.properties, finalObjectName) +
             labelAutoNote +
             extensibleEnumOrderingWarning(args.objectType, args.properties, finalObjectName) +
-            dataEntityCreateNotes(args.objectType, args.properties, finalObjectName) +
+            dataEntityCreateNotes(args.objectType, args.properties) +
+            stagingNote +
             projectMessage +
             verifyNote +
             indexNote +
             bpNote +
             xppRuleNote +
+            readBackNote +
             timer.render() +
-            `\n${nextSteps}`,
+            `\n\n${nextSteps}`,
         },
       ],
     };

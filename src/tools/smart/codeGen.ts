@@ -2003,25 +2003,31 @@ public class ${name}Controller extends MenuFunction
 function dataEntityStagingTemplate(name: string): string {
   return `// ══════════════════════════════════════════════════════════════════════════
 // Data Entity with Staging Table: ${name}
-// 3 objects required (use d365fo_file(action="create") for each):
-//   1. ${name}StagingTable  — TempDB staging table
-//   2. ${name}Entity        — Data entity (AxDataEntityView)
-//   3. ${name}EntityService — Optional: AIF service class
+// 3 objects:
+//   1. ${name}Entity        — Data entity (AxDataEntityView)
+//   2. ${name}EntityStaging — Staging table, created WITH the entity (see Object 2)
+//   3. ${name}EntityClass   — Optional: class with custom staging-to-target logic
 // ══════════════════════════════════════════════════════════════════════════
 
-// ── Object 1: Staging table ${name}Staging ─────────────────────────────────
-// d365fo_file(action="create", objectType="table", objectName="${name}Staging", xmlContent=...)
-// Set: TableType=TempDB (NOT RegularTable), TableGroup=Main
-// Fields mirror the entity's public fields exactly (same names, same EDTs)
-
-// ── Object 2: Data entity ${name}Entity ──────────────────────────────────
+// ── Object 1: Data entity ${name}Entity ──────────────────────────────────
+// d365fo_file(action="create", objectType="data-entity", objectName="${name}Entity",
+//   properties={ primaryTable, fields, dataManagementEnabled: true })
 // AxDataEntityView XML — key properties:
 //   <IsPublic>Yes</IsPublic>
 //   <PublicEntityName>${name}</PublicEntityName>
 //   <PublicCollectionName>${name}s</PublicCollectionName>
-//   <StagingTable>${name}Staging</StagingTable>
 //   <DataManagementEnabled>Yes</DataManagementEnabled>
-//   <DataManagementStagingTable>${name}Staging</DataManagementStagingTable>
+//   <DataManagementStagingTable>${name}EntityStaging</DataManagementStagingTable>
+
+// ── Object 2: Staging table ${name}EntityStaging ───────────────────────────
+// Do NOT create it yourself: the data-entity create above writes it when
+// dataManagementEnabled is true, and its reply lists any field it left out.
+// Its shape (as on shipped staging tables such as CustCustomerGroupEntityStaging):
+//   a REGULAR table (no TableType, never TempDB), TableGroup=Staging, SaveDataPerCompany=No,
+//   the DMF fields DefinitionGroup, ExecutionId, IsSelected and TransferStatus,
+//   one field per public entity field (same name, same EDT or enum),
+//   the alternate-key index StagingIdx on DefinitionGroup, ExecutionId and the entity key fields,
+//   and the relation DataEntity to the entity.
 
 // ── Object 3: Entity class (copyCustomStagingToTarget override) ───────────
 /// <summary>
@@ -2035,7 +2041,7 @@ public class ${name}EntityClass extends DMFEntityBase
     /// </summary>
     public boolean copyCustomStagingToTarget(DMFDefinitionGroupExecution _dmfDefinitionGroupExecution)
     {
-        ${name}Staging  staging;
+        ${name}EntityStaging  staging;
         ${name}          target;
         boolean          ret = true;
 

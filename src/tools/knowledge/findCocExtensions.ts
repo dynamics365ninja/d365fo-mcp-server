@@ -10,7 +10,7 @@ import { getConfigManager } from '../../utils/configManager.js';
 import { scanFsExtensions } from '../../utils/fsExtensionScanner.js';
 import { tryBridgeCocExtensions } from '../../bridge/index.js';
 import { xrefSource } from '../../xref/xrefSource.js';
-import { canonicalSymbolName } from '../../utils/symbolLookup.js';
+import { canonicalSymbolName, subscribesToFtsMatch } from '../../utils/symbolLookup.js';
 
 /**
  * Object kinds a class extension can be based on. [ExtensionOf] takes
@@ -245,12 +245,12 @@ export async function findCocExtensionsTool(request: CallToolRequest, context: X
         ftsHandlers = rdb.prepare(
           `SELECT s.name, s.parent_name, s.model, s.source_snippet
            FROM symbols_fts fts JOIN symbols s ON s.id = fts.rowid
-           WHERE symbols_fts MATCH 'source_snippet:SubscribesTo'
+           WHERE symbols_fts MATCH ?
            AND s.type = 'method'
            AND (s.source_snippet LIKE ? OR s.source_snippet LIKE ?)
            ORDER BY s.model, s.parent_name, s.name
            LIMIT 20`
-        ).all(`%classStr(${className}%`, `%tableStr(${className}%`) as any[];
+        ).all(subscribesToFtsMatch(className), `%classStr(${className}%`, `%tableStr(${className}%`) as any[];
       } catch {
         // FTS5 fallback — use LIKE on source_snippet
         ftsHandlers = rdb.prepare(

@@ -186,14 +186,15 @@ beforeEach(() => {
 });
 
 describe('a skipped single operation signs off on nothing', () => {
-  it('drops "Verified: on disk" and the index trailer that an applied write carries', async () => {
+  it('says SKIPPED with the bridge reason, and signs off on nothing', async () => {
     const applied = textOf(await addDataSource('NewDS', 'DocuHistory'));
-    // The control: without a skip, the trailer is there — so its absence below means something.
-    expect(applied).toMatch(/Verified/);
+    // The control: without a skip, the headline is a ✅.
+    expect(applied).toMatch(/^✅ add-data-source on form "ConDemoForm"/);
 
     mockBridgeAddDataSource.mockResolvedValue(SKIPPED);
     const skipped = textOf(await addDataSource('NewDS', 'DocuHistory'));
 
+    expect(skipped).not.toMatch(/^✅/);
     expect(skipped).toContain('SKIPPED, nothing was written');
     expect(skipped).toContain('already exists');
     expect(skipped).not.toMatch(/Verified/);
