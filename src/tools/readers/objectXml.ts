@@ -11,7 +11,7 @@
 
 import * as fs from 'fs/promises';
 import {
-  findD365FileOnDisk, findD365FileViaIndex, modelsHoldingObject,
+  findAotFilesInAllPackages, findD365FileOnDisk, findD365FileViaIndex, modelsHoldingObject,
   type SymbolFileLookupSource,
 } from '../../utils/objectFileLookup.js';
 import { readIndexedXml, indexedXmlSourceLabel, symbolTypesFor } from '../../utils/indexedXmlLookup.js';
@@ -132,6 +132,16 @@ export async function readObjectXml(
   // common case — reading something in the model being worked in — off the DB.
   const onDisk = await findD365FileOnDisk(objectType, objectName, options.modelName);
   if (onDisk) return renderObjectXml(onDisk, objectType, objectName, options);
+
+  // Menus have no bridge read, and a write-only companion no index: a standard menu
+  // (or another model's menu extension) is found only in the package folders.
+  const menuFolder = { menu: 'AxMenu', 'menu-extension': 'AxMenuExtension' }[objectType];
+  if (menuFolder && !options.modelName) {
+    const indexed = options.index ? await findD365FileViaIndex(options.index, objectType, objectName) : null;
+    if (indexed) return renderObjectXml(indexed.filePath, objectType, objectName, options);
+    const [file] = await findAotFilesInAllPackages(menuFolder, n => n.toLowerCase() === `${objectName.toLowerCase()}.xml`).catch(() => []);
+    if (file) return renderObjectXml(file, objectType, objectName, options);
+  }
 
   // Then the index, which knows every model rather than just the configured one.
   if (options.index) {

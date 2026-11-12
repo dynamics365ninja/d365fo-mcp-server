@@ -33,6 +33,11 @@
  *     describes (its AxEdtRelation / AxEdtTableReference), unless it sets
  *     IgnoreEDTRelation=Yes or a relation already constrains it. TempDB tables
  *     included: the checker reports them too.
+ *   • A field or relation marked IsSystemGenerated=Yes is the platform's own
+ *     (the fields and the DataEntity relation of a data entity's staging table)
+ *     and gets no relation and no OnDelete. The shipped staging tables carry
+ *     neither, and Restricted there would block deleting the referenced record
+ *     while imported rows wait in staging.
  *   • Every relation without <OnDelete> gets Restricted — the relation is
  *     where the platform keeps delete behaviour now. A relation with only a
  *     Name and RelatedTable (what the bridge's AddRelation writes) also gets
@@ -129,6 +134,7 @@ interface FieldInfo {
   allowEdit?: string;
   mandatory?: string;
   ignoreEdtRelation?: string;
+  systemGenerated?: boolean;
 }
 
 function readFields(xml: string, u: string): FieldInfo[] {
@@ -141,6 +147,7 @@ function readFields(xml: string, u: string): FieldInfo[] {
     allowEdit: child(b.text, u3, 'AllowEdit'),
     mandatory: child(b.text, u3, 'Mandatory'),
     ignoreEdtRelation: child(b.text, u3, 'IgnoreEDTRelation'),
+    systemGenerated: /^yes$/i.test(child(b.text, u3, 'IsSystemGenerated') ?? ''),
   })).filter(f => f.name.length > 0);
 }
 
@@ -333,7 +340,7 @@ function applyEdtRelations(
   let rendered = '';
   const ownTable = topLevel(xml, u, 'Name') ?? '';
   for (const f of readFields(xml, u)) {
-    if (!f.edt || /^yes$/i.test(f.ignoreEdtRelation ?? '')) continue;
+    if (!f.edt || f.systemGenerated || /^yes$/i.test(f.ignoreEdtRelation ?? '')) continue;
     if (covered.has(f.name.toLowerCase())) continue;
     const target = lookup.get(f.edt.toLowerCase());
     if (!target || isOwnKeyEdtRelation(ownTable, f.name, target)) continue;
@@ -386,6 +393,7 @@ function applyRelationProperties(
   // Back to front, so earlier offsets stay valid.
   for (const r of [...relations].reverse()) {
     let text = r.block.text;
+    if (/^yes$/i.test(child(text, u3, 'IsSystemGenerated') ?? '')) continue;
     const asked = wanted.get(r.name.toLowerCase());
     const value = ON_DELETE_VALUES.find(v => v.toLowerCase() === (asked ?? 'Restricted').toLowerCase()) ?? 'Restricted';
     if (child(text, u3, 'OnDelete') === undefined) {

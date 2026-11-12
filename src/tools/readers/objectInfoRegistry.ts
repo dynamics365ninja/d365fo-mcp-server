@@ -28,6 +28,7 @@ import { getMapInfoTool } from './mapInfo.js';
 import { getConfigKeyInfoTool } from './configKeyInfo.js';
 import { getSecurityPolicyInfoTool } from './securityPolicyInfo.js';
 import { getMacroInfoTool } from './macroInfo.js';
+import { menuExtensionInfoTool, menuInfoTool } from './menuInfo.js';
 import { tableExtensionInfoTool, formExtensionInfoTool, enumExtensionInfoTool, edtExtensionInfoTool, dataEntityExtensionInfoTool, classExtensionInfoTool } from './tableExtensionInfo.js';
 
 export type InfoTool = (request: CallToolRequest, context: XppServerContext) => Promise<any>;
@@ -82,6 +83,7 @@ export const READER_DISPATCH: Record<string, ReaderDispatch> = {
   'report':             { tool: getReportInfoTool,        toolName: 'get_report_info',            buildArgs: byName('reportName') },
   'data-entity':        { tool: dataEntityInfoTool,       toolName: 'get_data_entity_info',       buildArgs: byName('entityName') },
   'menu-item':          { tool: menuItemInfoTool,         toolName: 'get_menu_item_info',         buildArgs: byName('name') },
+  'menu':               { tool: menuInfoTool,             toolName: 'get_menu_info',              buildArgs: byName('name') },
   'service':            { tool: getServiceInfoTool,       toolName: 'get_service_info',           buildArgs: byName('serviceName') },
   'map':                { tool: getMapInfoTool,           toolName: 'get_map_info',               buildArgs: byName('mapName') },
   'config-key':         { tool: getConfigKeyInfoTool,     toolName: 'get_config_key_info',        buildArgs: byName('name') },
@@ -93,13 +95,15 @@ export const READER_DISPATCH: Record<string, ReaderDispatch> = {
   'edt-extension':           { tool: edtExtensionInfoTool,         toolName: 'get_edt_extension_info',          buildArgs: byBaseName('baseName') },
   'data-entity-extension':   { tool: dataEntityExtensionInfoTool,  toolName: 'get_data_entity_extension_info',  buildArgs: byBaseName('baseName') },
   'class-extension':         { tool: classExtensionInfoTool,       toolName: 'get_class_extension_info',         buildArgs: byBaseName('baseName') },
+  // Not byBaseName: a full extension name shows that one extension, a base name all of them.
+  'menu-extension':          { tool: menuExtensionInfoTool,        toolName: 'get_menu_extension_info',         buildArgs: byName('name') },
 };
 
 /** Homogeneous "object by name → structure" types exposed by get_object_info. */
 export const OBJECT_INFO_TYPES = [
   'class', 'table', 'form', 'query', 'view', 'enum', 'edt', 'report',
-  'data-entity', 'menu-item', 'service', 'map', 'config-key', 'security-policy', 'macro',
+  'data-entity', 'menu-item', 'menu', 'service', 'map', 'config-key', 'security-policy', 'macro',
   // Extension types
   'table-extension', 'class-extension', 'form-extension', 'enum-extension',
-  'edt-extension', 'data-entity-extension',
+  'edt-extension', 'data-entity-extension', 'menu-extension',
 ] as const;

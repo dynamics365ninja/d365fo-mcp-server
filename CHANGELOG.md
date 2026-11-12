@@ -244,6 +244,43 @@ those are called out explicitly below.
   apply the listed item again. The check only reports what is certain: a property the
   serializer may omit as a default, a label given as text, a form control property and a
   control or data source method are not compared. Nothing to configure. (#1161)
+- **A data entity created with `dataManagementEnabled=true` gets its staging table.**
+  `d365fo_file(action="create", objectType="data-entity")` wrote
+  `<DataManagementStagingTable>` and no table, so the next build failed with a missing
+  table and the reply could only warn. The create now writes the table in the same model
+  and project, in the shape of shipped staging tables such as
+  `CustCustomerGroupEntityStaging`: a regular table with TableGroup Staging, the DMF fields
+  DefinitionGroup, ExecutionId, IsSelected and TransferStatus, one field per public entity
+  field, the alternate-key index StagingIdx on DefinitionGroup, ExecutionId and the entity
+  key, and the relation DataEntity. Each field takes the EDT or enum of the table field it
+  maps to, read from that table's file or from the symbol index. A type is never guessed:
+  a field that cannot be resolved is left out and named in the reply, to add with
+  `add-field`. A table of that name that already exists is left as is. `autoCorrect=false`
+  keeps the create to the entity, with the old warning. `undo_last_modification` tracks
+  the table like any other created file. Fields and relations marked
+  `IsSystemGenerated=Yes` no longer get an EDT relation or `OnDelete=Restricted` from the
+  table best-practice defaults, because shipped staging tables carry neither. The
+  `data-entity-staging` template of `generate_object` said TempDB and TableGroup Main and
+  now describes the same shape. Not compiled against a D365FO environment yet, so build
+  the model after the first use (#1161).
+- **`get_object_info` for `menu` and `menu-extension`.** It had neither type, so an agent
+  placing an item had no tool to find a submenu: on a dev VM it grepped
+  PackagesLocalDirectory for the menu XML and read it raw. `objectType="menu"` renders the
+  menu as a tree of submenus (with label) and items (with their menu item and kind), with a
+  count, and a line per extension of the menu: how many items it adds and which submenus,
+  under which parent. `{"submenusOnly": true}` gives the submenu tree alone with an item
+  count each. `objectType="menu-extension"` takes a full extension name (that one) or a
+  base menu name (all of them) and lists each entry under its parent, with its position,
+  nested items and the customizations of base elements. Both read through the index, the
+  configured model and then every package folder, so a write-only companion reads standard
+  menus too; `{"include": "xml"}` falls back to the package folders for both types as well.
+  A read-only server reads only the files its index points to and still finds on its disk
+  (some models' source, not the standard packages), and its index keeps no menu XML. When
+  it cannot read a menu it says so, lists the extensions of the menu the index knows by
+  name and model, and points to the local companion, instead of "not found" with search
+  advice. Extensions the index knows but whose file was not read are counted in the
+  heading ("5 of 7 read") and listed by name and model above the rendered ones, so a
+  partial list does not read as the whole one.
 
 ### Changed
 - **The server opens one read connection to the index instead of three, with a 128 MB
@@ -747,6 +784,21 @@ those are called out explicitly below.
   success, so a requested reference group became a text box bound to nothing. A type the
   caller names that the writer cannot produce is now refused, with the supported list, and
   nothing is written. A type picked from the field's EDT still falls back to String.
+- **Writes and lookups for a model whose package has another name no longer take half a
+  minute each.** When the package folder is not named after the model (a package holding
+  several models, a model in a package of another name, or a mistyped model name), the
+  server reads every package to build a model-to-package map. That map was thrown away
+  after each use, so every create, modify, label write and project check built it again.
+  The build also opened every subfolder of every package, although the comment called
+  that the fallback for a package without descriptors. On a machine with 178 packages
+  one build took over 30 seconds, under 2 of them for reading the descriptors. The map
+  is now built once per set of package roots and shared, and subfolders are opened only
+  in a package whose descriptors name no model. A model the map does not know triggers
+  one rebuild when the map is older than 5 seconds, so a model created in Visual Studio
+  is found without a restart and a mistyped name cannot cause a rebuild on every call.
+  Changing a model descriptor through the server drops the map. One behaviour change: a
+  folder with AOT content that no descriptor of its package declares is no longer
+  treated as a model when that package has descriptors. Nothing to configure.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no

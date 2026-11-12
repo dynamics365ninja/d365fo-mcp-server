@@ -13,7 +13,10 @@
  *
  * This resolver builds a map from model name -> package info by:
  * 1. Reading descriptor XML files (primary strategy)
- * 2. Falling back to filesystem scanning for directories with AOT-type folders
+ * 2. Falling back to filesystem scanning for directories with AOT-type folders,
+ *    in packages whose descriptors name no model
+ *
+ * The map is built once per set of roots and shared by every instance.
  */
 
 import * as fs from 'fs/promises';
@@ -39,15 +42,60 @@ export interface ResolvedPackage {
   rootPath: string; // Which metadata root this was found in
 }
 
+/** One finished sweep of a set of roots. */
+interface PackageMap {
+  map: Map<string, ResolvedPackage>;
+  /** Lowercase lookup mirror of `map` for case-insensitive resolve(). */
+  lcMap: Map<string, ResolvedPackage>;
+  /** When the sweep finished (Date.now()). */
+  builtAt: number;
+}
+
+interface SharedPackageMap {
+  promise: Promise<PackageMap>;
+  /** Set once `promise` resolves. Undefined while the sweep is still running. */
+  value?: PackageMap;
+}
+
+/**
+ * The sweeps of this process, keyed by the joined roots.
+ *
+ * Module level because every caller constructs a fresh PackageResolver and throws
+ * it away: a map held on the instance was rebuilt on every use, and the sweep
+ * reads every package of every root. Keyed by the roots, so a changed roots
+ * configuration gets a map of its own instead of the previous one.
+ */
+const sharedMaps = new Map<string, SharedPackageMap>();
+
+/**
+ * How old a map must be before a miss may rebuild it.
+ *
+ * A model that is not in the map may have been created after the sweep (in Visual
+ * Studio, by a pull), so a miss is allowed one rebuild. Only when the map is older
+ * than this though: a mistyped model name is a miss as well, and without the
+ * interval every call with that name would sweep again.
+ */
+const MISS_REBUILD_INTERVAL_MS = 5_000;
+
+/**
+ * Drop every shared model-to-package map, so the next lookup that needs one
+ * sweeps again. For code that changes which models exist or what a descriptor
+ * declares, and for tests, which need a fresh state per case.
+ */
+export function clearSharedPackageMaps(): void {
+  sharedMaps.clear();
+}
+
 export class PackageResolver {
   private roots: string[];
+  /** Key of this instance's roots in sharedMaps. */
+  private readonly sharedKey: string;
+  /** The shared map this instance last used. Null until a lookup needed the sweep. */
   private modelToPackageMap: Map<string, ResolvedPackage> | null = null;
-  /** Lowercase lookup mirror of modelToPackageMap for case-insensitive resolve(). */
-  private lowercaseLookup: Map<string, ResolvedPackage> | null = null;
-  private buildPromise: Promise<void> | null = null;
 
   constructor(roots: string[]) {
     this.roots = roots.filter(Boolean);
+    this.sharedKey = this.roots.join('|');
   }
 
   /**
@@ -57,9 +105,15 @@ export class PackageResolver {
    * The direct probe first, because buildMap() is a sweep of the WHOLE metadata
    * root and every write path calls this. On the reference VM's 214-package
    * PackagesLocalDirectory the sweep is ~5 s with the directory metadata already
-   * cached, and every write pays it again on a fresh instance — a create in
-   * benchmark run d79f62a3 took 341 s and reported all of it as `(unmeasured)`.
-   * `<root>/<modelName>` answers the same question in two readdirs.
+   * cached — a create in benchmark run d79f62a3 took 341 s and reported all of it
+   * as `(unmeasured)`. `<root>/<modelName>` answers the same question in two
+   * readdirs.
+   *
+   * A model the probe cannot answer (its package has another name) is looked up
+   * in the map, which is swept once per set of roots and shared by every instance
+   * — see sharedMaps. A miss rebuilds the map at most once per
+   * MISS_REBUILD_INTERVAL_MS, so a model created after the sweep is found without
+   * a restart and a mistyped name cannot cost a sweep per call.
    *
    * When two packages declare the same model name the sweep's answer is
    * whichever directory readdir happened to return first; the probe's is the
@@ -69,10 +123,16 @@ export class PackageResolver {
     const direct = await this.probeDirect(modelName);
     if (direct) return direct;
 
-    await this.ensureBuilt();
-    return this.modelToPackageMap!.get(modelName) ||
-      this.lowercaseLookup!.get(modelName.toLowerCase()) ||
-      null;
+    const lookup = (built: PackageMap): ResolvedPackage | null =>
+      built.map.get(modelName) || built.lcMap.get(modelName.toLowerCase()) || null;
+
+    let built = await this.ensureBuilt();
+    let hit = lookup(built);
+    if (!hit && Date.now() - built.builtAt >= MISS_REBUILD_INTERVAL_MS) {
+      built = await this.ensureBuilt(built);
+      hit = lookup(built);
+    }
+    return hit;
   }
 
   /**
@@ -144,26 +204,41 @@ export class PackageResolver {
   }
 
   /**
-   * Invalidate the cache to force a rescan.
+   * Invalidate the cache to force a rescan. Drops the shared map of this
+   * instance's roots, so every other instance on the same roots rescans too.
    */
   clearCache(): void {
     this.modelToPackageMap = null;
-    this.lowercaseLookup = null;
-    this.buildPromise = null;
+    sharedMaps.delete(this.sharedKey);
   }
 
-  private async ensureBuilt(): Promise<void> {
-    if (this.modelToPackageMap) return;
-    if (!this.buildPromise) {
-      this.buildPromise = this.buildMap().catch((err) => {
-        this.buildPromise = null;
-        throw err;
-      });
+  /**
+   * The shared map of this instance's roots, swept if nobody has yet.
+   *
+   * `stale` asks for a newer map than the one given: the sweep restarts only if
+   * `stale` is still the current one, so callers that miss at the same moment
+   * share one rebuild instead of starting one each.
+   */
+  private async ensureBuilt(stale?: PackageMap): Promise<PackageMap> {
+    let entry = sharedMaps.get(this.sharedKey);
+    if (!entry || (stale && entry.value === stale)) {
+      const created: SharedPackageMap = { promise: this.buildMap() };
+      created.promise.then(
+        (value) => { created.value = value; },
+        () => {
+          // A failed sweep is not kept, the next lookup tries again.
+          if (sharedMaps.get(this.sharedKey) === created) sharedMaps.delete(this.sharedKey);
+        },
+      );
+      sharedMaps.set(this.sharedKey, created);
+      entry = created;
     }
-    await this.buildPromise;
+    const built = await entry.promise;
+    this.modelToPackageMap = built.map;
+    return built;
   }
 
-  private async buildMap(): Promise<void> {
+  private async buildMap(): Promise<PackageMap> {
     const map = new Map<string, ResolvedPackage>();
     const lcMap = new Map<string, ResolvedPackage>();
 
@@ -185,6 +260,8 @@ export class PackageResolver {
         const pkgPath = path.join(root, pkgName);
 
         // Strategy 1: descriptor XML files
+        // Lowercased names of the models this package's descriptors declare.
+        const declared = new Set<string>();
         const descriptorDir = path.join(pkgPath, 'Descriptor');
         try {
           const descriptorFiles = await fs.readdir(descriptorDir);
@@ -199,6 +276,7 @@ export class PackageResolver {
               const modelName = nameMatch?.[1]?.trim();
               const packageName = moduleMatch?.[1]?.trim() || pkgName;
 
+              if (modelName) declared.add(modelName.toLowerCase());
               if (modelName && !map.has(modelName)) {
                 const resolved = { packageName, modelName, rootPath: root };
                 map.set(modelName, resolved);
@@ -212,7 +290,16 @@ export class PackageResolver {
           // No Descriptor directory -- fall through to filesystem scan
         }
 
-        // Strategy 2: filesystem scan (subdirs containing an AOT-type folder)
+        // Strategy 2: filesystem scan (subdirs containing an AOT-type folder).
+        // The fallback for a package whose descriptors named no model: no
+        // Descriptor directory, an empty one, or files that could not be read.
+        // Where they did name models they are authoritative and the subfolders
+        // are not opened. Opening them for every package was most of the sweep's
+        // cost: each model folder is a directory of over a hundred Ax* folders,
+        // and a package also carries bin, Resources, Reports and the like.
+        // One exception keeps a real shape working: a folder whose name differs
+        // from a declared model only in case is still registered under the
+        // folder's spelling, because paths have to name real directories.
         try {
           const subEntries = await fs.readdir(pkgPath, { withFileTypes: true });
           const subDirs = subEntries
@@ -221,9 +308,11 @@ export class PackageResolver {
             .filter(n => n !== 'Descriptor' && n !== 'bin' && !n.startsWith('.'));
 
           for (const subDir of subDirs) {
+            if (map.has(subDir)) continue; // already known, nothing to learn
+            if (declared.size > 0 && !declared.has(subDir.toLowerCase())) continue;
             const modelPath = path.join(pkgPath, subDir);
             const hasAotFolder = await this.hasAotTypeFolder(modelPath);
-            if (hasAotFolder && !map.has(subDir)) {
+            if (hasAotFolder) {
               const resolved = { packageName: pkgName, modelName: subDir, rootPath: root };
               map.set(subDir, resolved);
               lcMap.set(subDir.toLowerCase(), resolved);
@@ -235,8 +324,7 @@ export class PackageResolver {
       }
     }
 
-    this.modelToPackageMap = map;
-    this.lowercaseLookup = lcMap;
+    return { map, lcMap, builtAt: Date.now() };
   }
 
   private static readonly AOT_FOLDERS = new Set([
