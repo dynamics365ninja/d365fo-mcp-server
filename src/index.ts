@@ -961,7 +961,7 @@ async function main() {
           { name: 'labels',                       desc: 'Unified label ops: action=search|info|create|rename (read/write)' },
         ]},
         { icon: '📊', category: 'Advanced Object Info', tools: [
-          { name: 'get_object_info',              desc: 'Read one object (objectType, name) or many in one call (objects[]): class/table/form/query/view/enum/edt/report/data-entity/menu-item/service/map/config-key/security-policy/macro' },
+          { name: 'get_object_info',              desc: 'Read one object (objectType, name) or many in one call (objects[]): class/table/form/query/view/enum/edt/report/data-entity/menu-item/menu/service/map/config-key/security-policy/macro' },
           { name: 'find_references',              desc: 'Where-used analysis across the entire codebase' },
         ]},
         { icon: '🧠', category: 'Intelligent Code Generation', tools: [
