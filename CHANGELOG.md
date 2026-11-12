@@ -29,25 +29,16 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
-- **A data entity created with `dataManagementEnabled=true` gets its staging table.**
-  `d365fo_file(action="create", objectType="data-entity")` wrote
-  `<DataManagementStagingTable>` and no table, so the next build failed with a missing
-  table and the reply could only warn. The create now writes the table in the same model
-  and project, in the shape of shipped staging tables such as
-  `CustCustomerGroupEntityStaging`: a regular table with TableGroup Staging, the DMF fields
-  DefinitionGroup, ExecutionId, IsSelected and TransferStatus, one field per public entity
-  field, the alternate-key index StagingIdx on DefinitionGroup, ExecutionId and the entity
-  key, and the relation DataEntity. Each field takes the EDT or enum of the table field it
-  maps to, read from that table's file or from the symbol index. A type is never guessed:
-  a field that cannot be resolved is left out and named in the reply, to add with
-  `add-field`. A table of that name that already exists is left as is. `autoCorrect=false`
-  keeps the create to the entity, with the old warning. `undo_last_modification` tracks
-  the table like any other created file. Fields and relations marked
-  `IsSystemGenerated=Yes` no longer get an EDT relation or `OnDelete=Restricted` from the
-  table best-practice defaults, because shipped staging tables carry neither. The
-  `data-entity-staging` template of `generate_object` said TempDB and TableGroup Main and
-  now describes the same shape. Not compiled against a D365FO environment yet, so build
-  the model after the first use (#1161).
+- **`index.storeObjectSource` turns off the copy of every object's XML in the index.** Since
+  1.23.0 the extraction writes each object's original XML into its JSON as `raw`, and the
+  build stores it gzipped in `object_source`, so a server without the AOT files (a shared or
+  Azure deployment) can still read objects. A server with the metadata folders on disk reads
+  the files and never uses the copy, which costs about 2 GB of extracted JSON and 0.4 GB of
+  database per full standard + custom index. Set `index.storeObjectSource` to `false`
+  (`STORE_OBJECT_SOURCE=false`) to skip both: the extraction leaves `raw` out (enums keep
+  theirs, it is their whole record), and neither the build nor `update_symbol_index` writes
+  `object_source` rows. The default, `true`, keeps today's behaviour. It takes effect at the
+  next index build; run a full rebuild (`extractMode` `all`) to remove copies already stored.
 - **`d365fo_file(action="modify", operation="modify-property")` sets OperationalDomain and
   SubscriberAccessLevel on existing tables and menu items.** Menu items had no writer for
   either (the bridge's setter has no case for them), and SubscriberAccessLevel holds child
@@ -191,16 +182,196 @@ those are called out explicitly below.
   which `tests/validation/platformPatternMatcher.test.ts` holds the validator to in
   CI. `npm run oracle:form-sweep` validates every shipped form and fails on any
   error.
+- **`add-control` writes reference groups, and picks one for a surrogate foreign key as the
+  form designer does.** `controlType="ReferenceGroup"` was not supported: on a form
+  extension it came out as a String control (see Fixed). It now writes an
+  `AxFormReferenceGroupControl` bound the way Visual Studio saves one: `<DataSource>`, the
+  field from `controlDataField` as `<ReferenceField>` (a reference group has no
+  `DataField`), and an empty `<Controls />`. On a plain form the bridge creates the control
+  and `ReferenceField` is then written into the saved file. Without a `controlType`, a field
+  dropped onto a form in Visual Studio as a reference group now gets one too: an Int64 field
+  whose EDT derives from RefRecId and that relates to RecId of a table with a replacement key
+  (e.g. `SalesTable.WorkerSalesTaker` → `HcmWorker`), through a table relation (also one
+  in a table extension) or the EDT's `ReferenceTable`. The tables and EDTs are read from
+  every package folder when the index has no path to them, so this works on a write-only
+  companion too. The reply says why. When the related
+  table has no replacement key the field stays an Int64 control, and the reply says how to
+  ask for a reference group anyway. An explicit `controlType` always wins (`Int64` for a
+  plain control). Set `ReplacementFieldGroup` afterwards with `modify-property`.
+- **`modify-property` with `dataSourceName` sets JoinSource, LinkType, AllowEdit and the
+  other properties of a form data source that already exists.** Join properties could be
+  given only while a data source was added with `add-data-source`, and the others not at
+  all, so an existing data source was edited in the form XML by hand. On `form` and
+  `form-extension`, pass `dataSourceName` with `propertyPath` = `JoinSource`, `LinkType`,
+  a Yes/No property (`AllowCreate`, `AllowDelete`, `AllowEdit`, `AllowCheck`,
+  `AutoNotify`, `AutoQuery`, `AutoSearch`, `CrossCompanyAutoQuery`, `DelayActive`,
+  `OnlyFetchActive`, `InsertAtEnd`, `InsertIfEmpty`), `Index`, `MaxAccessRight` or
+  `StartPosition`. An existing element is replaced where it stands, a missing one is
+  inserted in the platform's element order, and an empty value removes it. That order is
+  not alphabetical. It was measured on Microsoft standard forms (13,234 data sources, no
+  pair of elements in both orders), because the platform drops an element written out of
+  order. A JoinSource that is not a data source of the form is refused, and so is a
+  LinkType outside InnerJoin, OuterJoin, ExistJoin, NotExistJoin, Delayed, Active and
+  Passive. Yes/No properties take Yes or No. InsertIfEmpty=Yes removes the element, as
+  Yes is its default. On a form extension a JoinSource that is not in the extension is
+  written with a note, because it must be a data source of the base form. CounterField,
+  ValidTimeStateAutoQuery, ValidTimeStateUpdate, OptionalRecordMode and MaxRecordsToLoad
+  are too rare to place with certainty and are refused with the supported list (#1161).
+- **`add-method` with `methodName="Control.method"` adds an override on a form control.**
+  On `objectType="form"` a dotted name worked for data sources (`DS.method`,
+  `DS.Field.method`) and for a control override that already existed, but a new one such
+  as `OkButton.clicked` became a form method literally named "OkButton.clicked", which
+  does not compile. A new control override is now written by this server into the
+  control's holder under `<SourceCode><DataControls>`, typed like the design control,
+  where the designer keeps it and where `replace-code` already looks for it. The source
+  gets the same doc comment and indentation pass as every other `add-method`. Data source
+  names and overrides that already exist go to the bridge as before. A first segment that
+  is neither a data source nor a control of the form is refused with the close control
+  names, and nothing is written (#1161).
+- **`d365fo_file` create and modify now warn when something you asked for is not in the
+  saved file.** A write could answer ✅ while the platform or a writer dropped part of the
+  request, for example a field or method the reply said was added, or a data entity's
+  staging table. That surfaced much later as a build or data-management error naming
+  something else. After a successful write the tool now reads the file back and compares
+  it with the request, with no bridge round trip and for every object type, including data
+  entities and their extensions, which had no read-back before. Modify checks
+  `add-field`, `add-method`, `add-index`, `add-field-group`, `add-relation` and
+  `add-enum-value` (the named child must be there), their `remove-` counterparts (it must
+  be gone) and `modify-property` (a top-level property must hold the value). Create checks
+  the scalar `properties` you passed on every type except tables, which keep their own
+  reconciliation. A miss is listed in one `⚠️ Read-back` block at the end of the reply. The
+  write is not rolled back and the call is still a success, so re-read the object and
+  apply the listed item again. The check only reports what is certain: a property the
+  serializer may omit as a default, a label given as text, a form control property and a
+  control or data source method are not compared. Nothing to configure. (#1161)
+- **A data entity created with `dataManagementEnabled=true` gets its staging table.**
+  `d365fo_file(action="create", objectType="data-entity")` wrote
+  `<DataManagementStagingTable>` and no table, so the next build failed with a missing
+  table and the reply could only warn. The create now writes the table in the same model
+  and project, in the shape of shipped staging tables such as
+  `CustCustomerGroupEntityStaging`: a regular table with TableGroup Staging, the DMF fields
+  DefinitionGroup, ExecutionId, IsSelected and TransferStatus, one field per public entity
+  field, the alternate-key index StagingIdx on DefinitionGroup, ExecutionId and the entity
+  key, and the relation DataEntity. Each field takes the EDT or enum of the table field it
+  maps to, read from that table's file or from the symbol index. A type is never guessed:
+  a field that cannot be resolved is left out and named in the reply, to add with
+  `add-field`. A table of that name that already exists is left as is. `autoCorrect=false`
+  keeps the create to the entity, with the old warning. `undo_last_modification` tracks
+  the table like any other created file. Fields and relations marked
+  `IsSystemGenerated=Yes` no longer get an EDT relation or `OnDelete=Restricted` from the
+  table best-practice defaults, because shipped staging tables carry neither. The
+  `data-entity-staging` template of `generate_object` said TempDB and TableGroup Main and
+  now describes the same shape. Not compiled against a D365FO environment yet, so build
+  the model after the first use (#1161).
 
 ### Changed
+- **The server opens one read connection to the index instead of three, with a 128 MB
+  page cache, and no longer opens label read connections it never used.** Reads run one
+  at a time (the SQLite driver is synchronous and tools run on the main thread), so three
+  round-robin connections gave no concurrency, only three 32 MB caches, statement caches
+  and full-text states for the same work. The index file is larger than the memory-mapped
+  window, so scans depend on that cache: the same scan took 630 to 910 ms with 32 MB and
+  100 to 130 ms with 256 MB. Three label connections with a 512 MiB mapping each were
+  opened beside them and nothing read from them. The default of `READ_POOL_SIZE`
+  (`server.readPoolSize`) changes from 3 to 1. If you set it yourself it still opens that
+  many connections, and the 128 MB is now split between them (never less than 32 MB
+  each). Remove the setting to get the single connection.
 - **`build_d365fo_project` and `run_systest_class` are no longer marked as closed-world
   tools.** Both reach the UDE environment's cloud runtime (a deployment, tests in the
   cloud), so their annotations drop `openWorldHint: false` and fall back to MCP's
   default, open-world. Clients that ask for confirmation or show a warning before
   open-world tools may now do so for these two. Every other tool keeps
   `openWorldHint: false`.
+- **A broad `search` without a type filter takes about half as long.** The lookup that
+  finds matches in custom models ran twice per call, once for the bridge answer and once
+  for the index answer, and for a common word it is the slowest query of the call (270 to
+  475 ms warm and seconds on a cold cache, against about 230 ms for the main query). When
+  the index answered, the first run and its file checks were thrown away. Both lookups
+  (exact name and custom models) now run once per call and feed whichever route answers.
+  The file checks for the bridge answer run only when the bridge is asked. Results are
+  unchanged on every route.
+- **Looking up the event handlers of an object reads far fewer methods.**
+  `extension_info(mode="events")`, the event handler section of
+  `extension_info(mode="coc")` and the two subscriber scans in
+  `extension_info(mode="points")` first selected every method in the index that has
+  a `SubscribesTo` attribute (about 1,800 on a production-size index) and then read each
+  one's source to look for the object name. The object name is now part of the
+  full-text match, as a prefix so that longer names starting with it still match, and
+  only the candidates are read. Handlers found through `classStr(…)`, `tableStr(…)` and
+  `formStr(…)` are the same as before. In `mode="points"` a subscriber that has the
+  object name only inside a longer identifier (`MyFooHelper` for `Foo`) is no longer
+  counted, because it does not subscribe to that object. A name that starts with an
+  underscore is searched the old way.
+- **`validate_code(mode="references")` and the grounding gate in create and modify no
+  longer stall on a label whose id or label file is not in the index.** For every
+  `@File:Id` literal that did not resolve, the check asked for the full list of label
+  files, which groups the whole labels table by file and model and collects the
+  languages. On an index with about a million labels that took about 2 seconds per
+  literal, so a class with ten such labels waited about 20 seconds. The check now asks
+  only whether the file id exists: an index seek for the exact spelling, and for a
+  different letter case one read of the bare id list (a few milliseconds), done at most
+  once per validation. The errors and warnings reported are the same as before.
+- **The symbol index is smaller and index builds write less: three indexes on `symbols`
+  that no query used are gone.** Measured on a 3.3 GB index with 1.2 million symbols they
+  took 284 MB, 8.6 % of the file. `idx_symbols_file_path` (223 MB) compared paths
+  case-sensitively, while every lookup by path is case-insensitive and uses
+  `idx_symbols_file_path_nocase`. `idx_parent_type` (49 MB) was a prefix of
+  `idx_parent_type_name`. `idx_symbols_pattern_type` (12 MB) served no filter. The one
+  case-sensitive path lookup, in `update_symbol_index`, is now case-insensitive like the
+  rest. Nothing to do: an existing database drops the three indexes on the next start, in
+  the background when it is large. The freed pages are reused by later writes, and the
+  file itself only shrinks after a rebuild or a `VACUUM`.
+- **`find_references` on a class is faster when it falls back to the index (no
+  cross-reference database).** The fallback asks which classes implement the target with
+  a `LIKE` over `implements_interfaces`, and for a target nobody implements (every
+  ordinary class) that read every class row of the index: 0.6 to 0.9 s warm and several
+  seconds cold on an index with 1.2 million symbols. A new partial index,
+  `idx_symbols_implements`, holds only the classes that implement something, and the
+  lookup now reads that instead. Results are unchanged. Nothing to do: on an existing
+  database the index is built once in the background after the next start, and until it
+  is there the lookup runs as before. The fallback also ran its method-body search twice
+  with the same arguments and now runs it once.
+- **An incremental `build_d365fo_project` build runs as a full build when a table, EDT or
+  enum of the model changed since its last build.** An incremental xppc build recompiles
+  only the elements whose own source changed, so after a table field moved to an EDT of
+  another base type it reported 0 errors and the next full build failed in the code that
+  uses the field. The build now checks the target model's tables, table extensions, EDTs,
+  EDT extensions, enums and enum extensions first. A table counts as changed when its
+  source is newer than its compiler-metadata copy or has none. The other types have no
+  such copy and count as changed when they are newer than the newest compiler-metadata
+  file of the package, which is the last time a build wrote metadata back. The result says
+  `full build, switched from incremental` and why, for example "2 tables, 1 EDT changed
+  since the last build: ..." with up to five names. As with the existing switch for OData
+  actions, `fullBuild: false` is the same as leaving it out and does not opt out. A model
+  that was never built, dependency models and builds with no such change stay as they
+  were. Passing `fullBuild: true` on every build as a workaround is no longer needed.
+  (#1161)
+- **A new label file starts with every `LABEL_LANGUAGES` language.** A file's first
+  label created all its languages, and only the supplied ones, so a first label given
+  in English alone left the file English-only for good. When at least one supplied
+  language is configured, a label file that has no language yet now gets every
+  configured one, the untranslated ones with the English text (or the first supplied
+  translation) as a placeholder, reported as a translation fallback. When none of the
+  supplied languages is configured, the supplied ones are used as before.
+- **A change to the custom models list applies without a server restart.** The list
+  (`environment.customModels` in `d365fo-mcp.json`, or `CUSTOM_MODELS` in `.env`) was read
+  once at startup, so a model added while the server ran, for example a new test model,
+  stayed a Microsoft standard, read-only model until the restart. The server now re-reads
+  this one setting when the file it came from has a newer modification time, checked at
+  most once a second. A model added to the list is custom on the next tool call, and a
+  model removed from it stops being custom, unless the server also detected it on its own
+  (the workspace, the active project, a model it wrote into). A value set in the real
+  environment (the shell, the `env` block of `.mcp.json`, App Settings) still wins and is
+  never replaced from a file. Nothing is indexed by this: a newly listed model that is not
+  in the index yet still needs `update_symbol_index(model=…)`. (#1161)
 
 ### Fixed
+- **First-start indexing waits for its worker to finish closing the index.** The server
+  terminated the indexing worker the moment it reported its result. The worker closes its
+  database after it reports (the step that folds the write-ahead log into the index file
+  the server then opens), so that close and the worker's last console lines could be cut
+  off. The worker is now left to exit on its own and the result is handed over when it
+  has. A worker that does not exit within a minute is terminated as before.
 - **New tables and menu items get the OperationalDomain and SubscriberAccessLevel xppbp
   expects.** Neither writer set OperationalDomain, the bridge's property setters know
   neither property on a menu item, and a Staging or TempDB table kept Visual Studio's
@@ -404,11 +575,189 @@ those are called out explicitly below.
   deserializer drops it), duplicate column names when a pattern has two grids, a
   QuickFilter aimed at the first grid of the form instead of its own, and an empty
   `<Controls />` on buttons and fields, which shipped forms never write.
+- **Large bridge replies are read in linear time and keep their non-ASCII characters.**
+  The client appended every stdout chunk to one string and searched it for the newline
+  from the start, so the work grew with the square of the reply size (measured on the
+  same loop: 208 ms for a 5 MB single-line reply and 2.7 s for 20 MB, against 22 and
+  122 ms when only the new chunk is searched). It also decoded each chunk on its own, so
+  a multi-byte character that fell on a chunk boundary became U+FFFD, which corrupted
+  labels, comments and source text with non-ASCII characters in large replies. Stdout is
+  now decoded as one stream and only the newly arrived text is searched. Nothing to
+  change on your side.
+- **Scanning the workspace no longer blocks the server for a second or more on a large
+  repo.** For every `.xml` file the scan resolved the real path of the file and of the
+  workspace root again, synchronously, and then read the file times one file at a time.
+  On a workspace of about 2,400 files that was over a second with the server unable to
+  answer anything else, and it repeated often because the scan result is kept for 15
+  seconds and every write drops it. `get_workspace_info`, the context snapshot and every
+  read that includes the workspace paid it. The root is now resolved once per scan, file
+  times are read 16 at a time, and a real path is resolved only for an entry that is a
+  link or sits below a linked directory. The same change makes the link check effective:
+  a file link inside the workspace whose target is outside the workspace root was meant
+  to be skipped but was listed, because the check also accepted the path as written. It
+  is now skipped with a warning. Links that stay inside the root, and a workspace root
+  that is itself a link or junction, work as before. Nothing to configure.
+- **`analyze_code(mode="completeness")` no longer suggests methods from unrelated classes,
+  and no longer scans every method in the index, for a class with no known pattern.**
+  When a class had no pattern type in the index and its name did not end in Helper,
+  Service or Controller, the pattern stayed `Unknown` and the tool looked for classes
+  whose name ends in "Unknown". That read about a million method rows on a
+  production-size index, and what it found were classes that only happen to be named
+  that way, so their methods were offered as "missing". Such a class now gets no
+  suggestions and no query runs. The report says that the class has no known pattern
+  and nothing was compared, where it used to say the class "appears complete". Classes
+  with a known pattern get the same suggestions as before.
+- **Generated ListPage and Workspace forms write AllowCreate, AllowDelete, AllowEdit on
+  their data source in the platform's element order.** The templates wrote AllowCreate,
+  AllowEdit, AllowDelete. The order inside a form data source, measured on Microsoft
+  standard forms (13,234 data sources, no pair of elements in both orders), is
+  AllowCreate, AllowDelete, AllowEdit, and the platform drops an element it reads out of
+  order, so the read-only data source of a generated form could lose AllowDelete=No. The
+  same order is fixed in the smart XML builder. Forms generated earlier keep the old
+  order: swap the two lines in the form XML, or recreate the form.
+- **`d365fo-mcp index` no longer replaces a working index with an empty one when the pinned
+  XPP config file is gone.** Visual Studio keeps the old XPP config after a UDE update, but a
+  cleanup that deletes it, or a removed environment, leaves `environment.xppConfigName`
+  naming a file that no longer exists. `start` and `doctor` warned about that pin, but `index`
+  (and `rebuild-instance.ps1`, which runs it) did not check it. The extraction then found no
+  UDE config and read the packages folder found by scanning the drives, which on many UDE
+  machines is an empty leftover `C:\AosService\PackagesLocalDirectory`. It extracted no
+  models, exited 0, and the full rebuild cleared the database. Now `index` refuses such a
+  target before extracting, keeps the existing index, and names the fix
+  (`d365fo-mcp instance upgrade <name>`). `extract-metadata` itself also stops with an error
+  when the pinned name matches none of the XPP configs on the machine, instead of falling back
+  to the drive scan. This covers direct `npm run extract-metadata` runs and a pin that differs
+  from the file name only in case. A machine with no XPP configs falls back as before.
+- **`build_d365fo_project` syncs a table a later call names when the build was started with
+  `dbSync: true`.** `dbSync: true` syncs the project's tables (a full sync only without a
+  project), but it was taken to cover any table list: a call that collected or waited on
+  that build with `dbSync: ["SomeTable"]`, for a table outside the project, got the result
+  with its sync section and the table was never synced. The table is now synced by that
+  call, and its result shows the sync. A full sync still covers every list, and a repeat of
+  `dbSync: true` still collects without syncing again. The sync tool now reports what it
+  synced to the build tool.
+- **A bulk label update now says "updated", and the schema names update for `labels[]`.**
+  `labels(action="update", labels=[…])` already worked, because update runs the create code
+  with overwrite on. The reply header was hard-coded, so a bulk update answered
+  `labels(action="create", labels=[…]): N created`, and the schema tagged `labels[]` as
+  `[create]` only, so an agent had no reason to try it and fixed labels one call at a time.
+  The header now names the action that ran and counts what each entry reports:
+  `N updated, N failed (of N)` for update, `N created, N failed (of N)` for create. An entry
+  that was left alone is counted apart as `unchanged` (update with no translation that
+  applies, or create of a label that already exists) or `reused` (create with
+  createIfMissing). Before, each of these was counted as created. Those two counts appear
+  only when they are not zero. An update that has to create a missing label still counts as
+  updated. The `labels[]` schema tag is now `[create|update]`, and the labels op-spec says
+  the same. Nothing to do. (#1161)
+- **`build_d365fo_project` fails a build whose forms break their pattern, as a pipeline build
+  does.** A pipeline build (MSBuild and Microsoft's BuildTask) compiles the whole package and
+  rejected a form whose `FieldsFieldGroups` header had no `ColumnsMode` `Fill`, while an
+  incremental build here had passed it with 0 errors: xppc does not report pattern errors for
+  forms it does not recompile. After a successful xppc build the tool now validates every form
+  of the package against the platform's pattern definitions (the rules of
+  `object_patterns(domain="form", action="validate")`). Errors give
+  `❌ Compiled; form pattern errors a pipeline build rejects` and list each form, control and
+  property. `FORM_PATTERN_ENFORCE=false` keeps them as a warning.
+- **`labels(action="create")` adds a language to a label file only when `LABEL_LANGUAGES`
+  lists it.** Any supplied translation still added its language, so a caller that
+  translated into every language it had seen in the model (another label file's `lt`,
+  `nb-NO`) gave the target file new `.label.txt` files and descriptors anyway. Without
+  `languages`, a translation for a language the file lacks is now written only when
+  `LABEL_LANGUAGES` lists it, and otherwise skipped with a `Not written:` warning. The
+  match is exact apart from case: `fi` and `fi-FI` are different languages, so use the
+  codes of your locale folders. Languages the file already has are always written, an
+  explicit `languages=[…]` still adds any language, and with `LABEL_LANGUAGES` unset or
+  `all` nothing changes. The warning is also given when every other language already
+  had the label. The tool description, the op-spec and the `index.labelLanguages`
+  description in `docs/CONFIGURATION.md` now say so. The indexer and create
+  read the setting through one parser, so the indexer also accepts `en_US` for `en-US`,
+  and a value with no usable code (`" , "`) indexes no language instead of every one.
+- **`labels(action="create")` no longer replaces a label file it cannot read.** A
+  `.label.txt` that existed but could not be read (locked, no permission) was treated as
+  empty and rewritten with only the new label, losing every other label in that
+  language. The call now fails with the read error and writes nothing to that file.
+- **`labels(action="create", createLabelFileIfMissing=false)` refuses a new label file
+  even when the model has other label files.** The guard only fired for a model with
+  no label folder at all, so a mistyped `labelFileId` in a model with other label files
+  quietly became a new label file.
+- **`d365fo_file(action="undo")` can remove label files that `labels(action="create")`
+  created, with their project entries.** The labels tool never recorded the descriptors
+  and `.label.txt` files it wrote, so undo refused to delete them ("this session did not
+  create it"). They are now recorded, and undo also removes the `.rnrproj` entry of the
+  file it deletes when the create added that entry, retrying while Visual Studio holds
+  the project. Once a later call adds a label to such a file, undo refuses it, because
+  deleting the file would also delete the labels added since.
+- **`labels(action="info", labelFileId=…)` no longer lists a language whose label file is
+  gone, and drops its stale index rows.** The index keeps a deleted language's rows
+  until the next build, and info reported it as a language of the file, which invited a
+  create that recreated it. Such languages now show as `Stale index`, each missing path
+  as `(missing on disk)`, and their rows are removed from the label index, so search
+  stops returning them too. Rows are removed only while another file of the same label
+  file is on disk: when none is (an index built on another machine, a drive that is not
+  mounted), info says so and changes nothing. Without `model`, each model's file is
+  judged by its own paths.
+- **`d365fo_file(action="modify", operation="remove-field")` no longer leaves the table's
+  field groups naming the removed field.** The bridge removes the field from `<Fields>`
+  and nothing else, so every `<AxTableFieldGroupField>` that listed it stayed in the file
+  and the next build failed on a field group that references an unknown field. After a
+  successful removal the server now takes the field out of the field groups of the same
+  file: the `<FieldGroups>` of a table, and on a table extension both its own
+  `<FieldGroups>` and its `<FieldGroupExtensions>`. Names match in any letter case and
+  the reply lists the groups. Indexes, full-text indexes, relations, mappings,
+  `TitleField1` / `TitleField2` and field properties that still name the field are not
+  changed, because removing them changes what the table does. The reply lists each one
+  in a warning with the operation that fixes it (for an index it also says when it is the
+  table's `PrimaryIndex`, `ClusteredIndex` or `ReplacementKey`). Nothing to do for
+  callers. A field that was in no group gets the same reply as before.
+- **`d365fo_file(action="modify", operation="modify-property")` with `ReferenceField` gives
+  an existing EDT its table reference.** The property was listed for EDTs but refused with
+  "Unknown AxEdt property 'ReferenceField'", because the related field is not a scalar
+  property. It is a child of `<TableReferences>`, which no property setter writes. So an
+  EDT could not be pointed at a table and field without hand-written XML. The value is now
+  written on the XML as the EDT's single `<AxEdtTableReference>` (`<RelatedField>` and
+  `<Table>`). Pass `propertyValue="AccountNum"` when the EDT already has a ReferenceTable,
+  or `propertyValue="CustTable.AccountNum"` to set `<ReferenceTable>` and the reference in
+  one call. An existing reference is updated in place. When the EDT also carries one
+  legacy `<Relations>` entry (`AxEdtRelation`), as many shipped EDTs do, that entry gets
+  the same table and field and the reply says so. A bare field on an EDT with no
+  reference table is refused with a message that asks for the table. An EDT with more
+  than one legacy relation or more than one table reference is refused too. EDT
+  extensions are not covered (#1161).
+- **`modify-property` sets a menu item or menu property the file does not have yet.** The
+  bridge has a case for only a few menu item properties and none for a menu, and the XML
+  fallback could only replace an element that was already in the file. So
+  `d365fo_file(action="modify", operation="modify-property")` with `Parameters`,
+  `EnumParameter`, `EnumTypeParameter`, `ImageLocation`, `NeedsRecord` and others failed
+  with "Unknown AxMenuItem property" on every `menu-item-display`, `menu-item-action` and
+  `menu-item-output` that did not carry the element, and `SetCompany`, `FeatureClass` or
+  `ConfigurationKey` failed the same way on a `menu`. After the bridge declines, the
+  property is now written on the XML: an existing top-level element is replaced, a
+  missing one is inserted where the serialiser puts it (alphabetically after `Name`, and
+  ahead of `Elements` on a menu). The name is matched in any case and written in its
+  real casing. An empty value removes the element, because the default is expressed by
+  absence. A name that is not a property of the object is refused with the list of known
+  ones, and nothing is written. The known names are the metamodel's writable scalar
+  properties of `AxMenuItem` and `AxMenu` (so `ExtendedDataSecurity` on a menu item and
+  `NormalImage`, `IsObsolete` or `MenuItemName` on a menu, which standard objects carry,
+  are accepted), and the order was checked against the Microsoft standard menu items and
+  menus. `MenuItemName` on a menu sets the menu's own element, never the one of a menu
+  item below it. `ObjectType` and `OpenMode` stay with the bridge, which checks their
+  values. Menu item and menu extensions are not covered (#1161).
+- **`add-control` on a form extension no longer writes a String control for a type it
+  does not know.** An unknown `controlType` fell back to `AxFormStringControl` and reported
+  success, so a requested reference group became a text box bound to nothing. A type the
+  caller names that the writer cannot produce is now refused, with the supported list, and
+  nothing is written. A type picked from the field's EDT still falls back to String.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
   native add-ons; with `@azure/msal-common` and `jsonwebtoken` (and their `jws`, `semver`
   and `lodash.*` helpers) it adds 16 packages to the lockfile and changes none.
+- **Lockfile refreshed with `npm update`.** Runtime: `@azure/msal-node` 7.2.1,
+  `@clack/prompts` 1.9.0, `@modelcontextprotocol/sdk` 1.32.2, `commander` 15.1.0, `dotenv`
+  18.0.10, `express` 5.3.0, `express-rate-limit` 8.7.4, `zod` 4.6.7. Dev: `@biomejs/biome`
+  2.6.6, `@types/node` 26.6.6, `vitest` and `@vitest/coverage-v8` 5.1.0. The ranges in
+  `package.json` are unchanged.
 
 ## [1.23.0] — 2026-11-05
 

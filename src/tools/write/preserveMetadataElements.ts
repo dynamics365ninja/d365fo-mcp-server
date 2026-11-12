@@ -195,6 +195,15 @@ export function claimedMarkerFor(
       // SubscriberAccessLevel is written as child elements, one per permission
       // ("NoAccess" → six <X>Deny</X>), never as the text passed in.
       if (name.toLowerCase() === 'subscriberaccesslevel') return subscriberAccessLevelMarker(value);
+      // An EDT's ReferenceField is the <RelatedField> of its table reference
+      // ("Table.Field" names the table too), never a <ReferenceField> element.
+      if (name.toLowerCase() === 'referencefield' && args.objectType === 'edt') {
+        const field = value.split('.').pop()!.trim();
+        return {
+          label: `ReferenceField=${value}`,
+          pattern: new RegExp(`<AxEdtTableReference>\\s*<RelatedField>\\s*${escapeRe(field)}\\s*</RelatedField>`),
+        };
+      }
       return {
         label: `${name}=${value}`,
         // Attributes allowed: a form's Design properties are written <Pattern xmlns="">…</Pattern>.

@@ -10,7 +10,35 @@ import { runNode } from '../exec.js';
 import { listInstances } from '../instances.js';
 import { instanceTarget, pickTarget, rootTarget, targetEnv, Target } from '../target.js';
 import { askSelect, p, requireFullInstall } from '../ui.js';
-import { normalizeXppConfigName } from '../xppConfig.js';
+import { isXppConfigStale, normalizeXppConfigName, xppConfigDir } from '../xppConfig.js';
+import { readSetting } from '../settingsStore.js';
+import { settingByPath } from '../../config/settings.js';
+
+/**
+ * Why `target` must not be reindexed now, or null when it may.
+ *
+ * A pinned XPP config whose file is gone (Visual Studio keeps old configs, but
+ * a cleanup after a UDE update may delete them, or the environment was removed)
+ * makes extract-metadata find no UDE config. A full
+ * rebuild then clears the database before anything shows that nothing was
+ * extracted, and replaces a working index with an empty one. `start` and
+ * `doctor` already warn about this pin; a rebuild is where it destroys data,
+ * so here it is a refusal, not a question.
+ *
+ * Not gated on Windows: isXppConfigStale() is false wherever there is no
+ * XPPConfig folder, and that keeps the check testable on any platform.
+ */
+export function staleXppConfigRefusal(target: Target): string | null {
+  if (!isXppConfigStale(target.store)) return null;
+  const configName = readSetting(target.store, settingByPath('environment.xppConfigName')!);
+  const fix = target.instance
+    ? `d365fo-mcp instance upgrade ${target.name}`
+    : 'd365fo-mcp setup (pick an existing XPP config)';
+  return `Pinned XPP config '${configName}' does not match any file in ${xppConfigDir()}.\n` +
+    `   Rebuilding now would index nothing and replace the current index of ${target.label}, ` +
+    'so nothing was changed.\n' +
+    `   Point it at an existing config first: ${fix}`;
+}
 
 /**
  * Node arguments that run one index script.
@@ -38,6 +66,12 @@ export async function rebuildIndex(target: Target): Promise<boolean> {
   if (isWindows) {
     const expanded = normalizeXppConfigName(target.store);
     if (expanded) p.log.info(`Expanded XPP config name: ${expanded.from} → ${expanded.to}`);
+  }
+
+  const refusal = staleXppConfigRefusal(target);
+  if (refusal) {
+    p.log.error(refusal);
+    return false;
   }
 
   p.log.step(`[1/2] Extracting metadata (${target.label})…`);

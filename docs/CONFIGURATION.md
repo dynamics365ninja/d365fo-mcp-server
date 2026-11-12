@@ -49,7 +49,7 @@ Which developer box this is and where its X++ packages live.
 | `environment.type` | setup | `D365FO_DEV_ENVIRONMENT_TYPE` | — | Classic AOSService VM ("traditional") or Unified Developer Experience / Power Platform Tools ("ude"). The wizard preselects the one it detects — UDE when XPP config files exist in %LOCALAPPDATA%\\Microsoft\\Dynamics365\\XPPConfig. Left unset, the server falls back to that same detection. Values: `traditional` — classic AOSService VM with PackagesLocalDirectory; `ude` — Unified Developer Experience / Power Platform Tools. |
 | `environment.packagePath` | setup | `D365FO_PACKAGE_PATH` | — | AOT packages folder (PackagesLocalDirectory) used as the read-only source for indexing. Machine-wide on a traditional VM; UDE resolves it from the XPP config instead. Left empty, the server scans the machine's drives for AosService\\PackagesLocalDirectory — which volume that is depends on the VM image (K:, C:, J:, …). |
 | `environment.scanDrives` | advanced | `D365FO_SCAN_DRIVES` | — | Comma-separated letters the packages-root scan probes when no packagePath is configured, e.g. "C,K". Empty probes C: to Z: — the letters that have ever held AosService first, the rest inside a 2 s budget. Set it on a machine with a disconnected mapped network drive: one stat on such a drive stalls for the SMB timeout, and the scan runs on the first tool call of a session. |
-| `environment.customModels` | setup | `CUSTOM_MODELS` | — | Your own (non-Microsoft) models, comma-separated. They are indexed with priority and treated as writable. Find them in VS → Dynamics 365 → Model Management → View models. UDE detects these automatically. |
+| `environment.customModels` | setup | `CUSTOM_MODELS` | — | Your own (non-Microsoft) models, comma-separated. They are indexed with priority and treated as writable. Find them in VS → Dynamics 365 → Model Management → View models. UDE detects these automatically. Re-read from the config file (or `.env`) while the server runs, so an edit applies without a restart. |
 | `environment.xppConfigName` | setup | `XPP_CONFIG_NAME` | — | Name of a config file in %LOCALAPPDATA%\\Microsoft\\Dynamics365\\XPPConfig. Pinning one keeps the server on a specific environment/version; leave empty to always use the newest config. |
 | `environment.customPackagesPath` | advanced | `D365FO_CUSTOM_PACKAGES_PATH` | — | Where custom model XML is written and tracked by git. Normally read from the XPP config — override only when your working tree lives somewhere else. |
 | `environment.microsoftPackagesPath` | advanced | `D365FO_MICROSOFT_PACKAGES_PATH` | — | Read-only Microsoft packages folder. Normally read from the XPP config. |
@@ -96,11 +96,12 @@ What gets extracted into the SQLite index and where it is stored.
 | --- | --- | --- | --- | --- |
 | `index.extractMode` | setup | `EXTRACT_MODE` | `all` | Scope of the metadata extraction. "all" gives full cross-reference search over the standard application but takes 1–2 hours and produces a multi-GB database; "custom" indexes only your own models and finishes in minutes. Values: `all` — standard + custom — full search, 1–2 h build; `custom` — custom models only — minutes; `standard` — Microsoft models only. |
 | `index.includeLabels` | setup | `INCLUDE_LABELS` | `true` | Builds the labels database so labels(action="search") and label reuse work. Disabling it speeds up the build and shrinks the index, at the cost of label lookup. |
-| `index.labelLanguages` | setup | `LABEL_LANGUAGES` | `en-US` | Comma-separated language codes, or `all` for every language shipped with the model. Each extra language multiplies the label table (~125 MB apiece) — indexing only the languages you actually ship keeps the database small. |
+| `index.labelLanguages` | setup | `LABEL_LANGUAGES` | `en-US` | Comma-separated language codes, or `all` for every language shipped with the model. Each extra language multiplies the label table (~125 MB apiece) — indexing only the languages you actually ship keeps the database small. `labels(action="create")` follows the same list: a translation for a language the label file does not have yet is written only when it is listed here (or passed in `languages`), and a new label file starts with every listed language. |
 | `index.dbPath` | advanced | `DB_PATH` | `./data/xpp-metadata.db` | SQLite file holding the indexed X++ metadata. Relative paths resolve from the config file directory. |
 | `index.labelsDbPath` | advanced | `LABELS_DB_PATH` | `./data/xpp-metadata-labels.db` | Second SQLite file for labels (dual-database architecture keeps label writes from locking metadata reads). Defaults to <dbPath>-labels.db. |
 | `index.xrefSqlitePath` | advanced | `D365FO_XREF_SQLITE_PATH` | — | A SQLite export of DYNAMICSXREFDB (tables Modules, Names, References; meta.schema 1) for a server without the C# bridge, e.g. a shared read-only server. find_references and the extension/event/API-usage lookups then answer from it instead of a name-based search; the bridge still takes precedence when it has the database. Opened read-only and immutable on first use: replace the file by rename, never in place (on Windows an open file cannot be renamed over: stop the server, replace the file, start it again). A missing or invalid file is logged and ignored. get_workspace_info shows its export date. |
 | `index.metadataPath` | advanced | `METADATA_PATH` | `./extracted-metadata` | Working folder for the XML dumped during extraction, before it is loaded into the database. |
+| `index.storeObjectSource` | advanced | `STORE_OBJECT_SOURCE` | `true` | Keeps a copy of every object's original XML in the extracted JSON and, gzipped, in the database (object_source), so a server without the AOT files (a shared or Azure deployment) can still read objects. A server that has the metadata folders on disk reads the files themselves and does not need the copy; turning it off saves about 2 GB of extracted JSON and 0.4 GB of database per full standard + custom index. Takes effect at the next index build; a full rebuild (extractMode "all") removes copies already stored. |
 | `index.bpCatalogPath` | advanced | `BP_CATALOG_PATH` | — | Per-instance JSON catalog of real BP-check monikers, extracted from this instance's own D365FO version (scripts/extract-bp-catalog.ps1). Falls back to the compiled-in snapshot when absent — this setting is only written once an instance has regenerated its own catalog. |
 | `index.labelSortOrder` | advanced | `LABEL_SORT_ORDER` | `alphabetical` | Alphabetical keeps .label.txt files sorted (smaller diffs, matches most teams); append adds new labels at the end of the file (preserves manual grouping). Values: `alphabetical` — insert in sorted position; `append` — add at the end of the file. |
 | `index.computeStats` | advanced | `COMPUTE_STATS` | `false` | Adds per-object usage counts used for ranking. Noticeably slows down large builds. |
@@ -126,7 +127,7 @@ Transport, timeouts and logging of the MCP server process.
 | `server.toolTimeoutMs` | advanced | `MCP_TOOL_TIMEOUT_MS` | `120000` | Upper bound for a single tool call before the server returns a timeout error. |
 | `server.toolTimeoutFastMs` | advanced | `MCP_TOOL_TIMEOUT_FAST_MS` | `30000` | Timeout for lookups that should always be quick (minimum 5000). |
 | `server.toolTimeoutHeavyMs` | advanced | `MCP_TOOL_TIMEOUT_HEAVY_MS` | `600000` | Timeout for builds, DB sync and test runs (minimum 60000). Raise it on slow VMs. |
-| `server.readPoolSize` | advanced | `READ_POOL_SIZE` | `3` | Parallel read connections to the index (clamped 1–8). More helps concurrent searches on fast disks. |
+| `server.readPoolSize` | advanced | `READ_POOL_SIZE` | `1` | Read connections to the index (clamped 1–8). One is right for the server: reads run one at a time, and the 128 MB page cache is split across the connections. |
 | `server.operationLockTimeoutMs` | advanced | `OPERATION_LOCK_TIMEOUT_MS` | `900000` | How long a build/sync waits for another one to finish before failing. |
 | `server.operationLockPollMs` | advanced | `OPERATION_LOCK_POLL_MS` | `250` | How often the waiting process re-checks the lock. |
 | `server.operationLockStaleMs` | advanced | `OPERATION_LOCK_STALE_MS` | `1200000` | A lock older than this is treated as left behind by a crashed process and broken. |
@@ -244,6 +245,7 @@ Downloading a pre-built index from blob storage instead of building it locally.
     "labelsDbPath": "./data/xpp-metadata-labels.db",
     "xrefSqlitePath": "",
     "metadataPath": "./extracted-metadata",
+    "storeObjectSource": true,
     "bpCatalogPath": "",
     "labelSortOrder": "alphabetical",
     "computeStats": false,
@@ -263,7 +265,7 @@ Downloading a pre-built index from blob storage instead of building it locally.
     "toolTimeoutMs": 120000,
     "toolTimeoutFastMs": 30000,
     "toolTimeoutHeavyMs": 600000,
-    "readPoolSize": 3,
+    "readPoolSize": 1,
     "operationLockTimeoutMs": 900000,
     "operationLockPollMs": 250,
     "operationLockStaleMs": 1200000,

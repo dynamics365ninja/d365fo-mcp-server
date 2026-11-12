@@ -17,7 +17,7 @@ import { getConfigManager, fallbackPackagePath } from '../../utils/configManager
 import { describePackagesRootScan } from '../../utils/packagesRoot.js';
 import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
 import { ProjectFileManager, ProjectFileFinder, registerFileInActiveProject } from '../../workspace/projectFile.js';
-import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, renderBatchEditHint } from './inlineWriteVerification.js';
+import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, renderBatchEditHint, verifyWriteIntent, createIntentFor } from './inlineWriteVerification.js';
 import { validateWrittenXpp } from './inlineXppValidation.js';
 import { createPhaseTimer } from '../../utils/phaseTimer.js';
 import { isAsGivenNamingMode, registerCustomModel } from '../../utils/modelClassifier.js';
@@ -1899,6 +1899,10 @@ export async function handleCreateD365File(
           const bpNote = await timer.time('inline BP check',
             () => runInlineBpCheck((args as any).bpCheck, args.objectType, finalObjectName, context));
           const xppRuleNote = validateWrittenXpp(sourceAsWritten(args.sourceCode, finalObjectName));
+          // The scalar properties the caller passed, against the file. A table has
+          // its own reconcile above, so createIntentFor returns nothing for one.
+          const readBackNote = await timer.time('read-back comparison',
+            () => verifyWriteIntent(bridgeResult.filePath, createIntentFor(args.objectType, args.properties)));
 
           return {
             content: [
@@ -1906,7 +1910,7 @@ export async function handleCreateD365File(
                 type: 'text',
                 text: `✅ Created ${args.objectType} '${finalObjectName}' via IMetadataProvider.Create()${crossModelNotice}${renameNote}\n` +
                   `📁 ${bridgeResult.filePath}${projectMsg}\n` +
-                  `🔧 API: ${bridgeResult.message}${honestyReport}${rawLabelWarning}${labelAutoNote}${verifyNote}${indexNote}${bpNote}${xppRuleNote}${timer.render()}`,
+                  `🔧 API: ${bridgeResult.message}${honestyReport}${rawLabelWarning}${labelAutoNote}${verifyNote}${indexNote}${bpNote}${xppRuleNote}${readBackNote}${timer.render()}`,
               },
             ],
           };
@@ -2399,6 +2403,16 @@ export async function handleCreateD365File(
     // class, so the class-scoped rules (COC004, COC005) apply here — the cheap
     // moment to catch what xppbp does not and only a build would.
     const xppRuleNote = validateWrittenXpp(sourceAsWritten(args.sourceCode, finalObjectName));
+    // The scalar properties the caller passed, against the file (see the bridge
+    // path). Keys the data-entity note below already names are left to that note.
+    const readBackNote = await timer.time('read-back comparison', () =>
+      verifyWriteIntent(normalizedFullPath, createIntentFor(
+        args.objectType,
+        args.properties,
+        args.objectType === 'data-entity'
+          ? findIgnoredEntityProperties(args.properties as Record<string, any> | undefined)
+          : [],
+      )));
     // An entity with data management enabled names a staging table: create it now,
     // through this same handler, so the next build finds it (stagingTableProvisioning.ts).
     const stagingNote = args.objectType === 'data-entity'
@@ -2437,6 +2451,7 @@ export async function handleCreateD365File(
             indexNote +
             bpNote +
             xppRuleNote +
+            readBackNote +
             timer.render() +
             `\n${nextSteps}`,
         },
