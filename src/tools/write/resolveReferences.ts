@@ -47,6 +47,7 @@ import {
   type EnumValueSet,
 } from './enumValueNames.js';
 import { checkExtensionTargets, obsoleteCallViolation } from './extensionTargets.js';
+import { checkIntrinsicMember, isMemberIntrinsic } from './intrinsicMembers.js';
 
 export const resolveReferencesArgsSchema = z.object({
   code: z.string().describe(
@@ -87,7 +88,9 @@ export interface ReferenceViolation {
     /** An event handler whose delegate or pre/post target is missing, of the wrong kind or not hookable. */
     | 'handler-target'
     /** A call to a method marked [SysObsolete] (an error when its isError argument is true). */
-    | 'obsolete-method';
+    | 'obsolete-method'
+    /** An intrinsic member of the wrong kind: static vs instance, method vs delegate, a table in methodStr. */
+    | 'wrong-member-kind';
   severity: 'error' | 'warning';
   line: number;
   identifier: string;
@@ -952,17 +955,16 @@ export function resolveXppReferences(code: string, deps: ResolverDeps): ResolveR
         } else {
           violations.push(unknownFieldViolation(verdict, target, member, line));
         }
-      } else if (fn === 'methodstr' || fn === 'staticmethodstr') {
-        if (findMethod(deps, target, member)) {
-          verifiedCount++;
+      } else if (isMemberIntrinsic(fn)) {
+        // Declared on the named type itself, of the right kind: see intrinsicMembers.ts.
+        const finding = checkIntrinsicMember(deps.db, fn, target, member, line, {
+          table: TABLE_BUILTIN_METHODS,
+          object: OBJECT_BUILTIN_METHODS,
+        });
+        if (finding) {
+          violations.push(finding);
         } else {
-          violations.push({
-            kind: 'unknown-method',
-            severity: 'error',
-            line,
-            identifier: `${target}.${member}`,
-            detail: `Method "${member}" not found on ${target} (checked inheritance chain and extensions). Use get_object_info(objectType="class", name="${target}").`,
-          });
+          verifiedCount++;
         }
       } else {
         verifiedCount++;

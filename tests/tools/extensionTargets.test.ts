@@ -201,13 +201,28 @@ describe('event handler targets', () => {
     expect(findings(code, 'handler-target')).toEqual([]);
   });
 
+  // The delegate itself (exists on the named type, is a delegate, static or not)
+  // is the delegateStr() check's finding, reported once, not twice.
   it.each([
     ['a static delegate named with delegateStr',
-      '[SubscribesTo(classStr(ContosoProposal), delegateStr(ContosoProposal, creating))]', creating, 'staticDelegateStr'],
+      '[SubscribesTo(classStr(ContosoProposal), delegateStr(ContosoProposal, creating))]', creating,
+      'wrong-member-kind', 'staticDelegateStr(ContosoProposal, creating)'],
     ['a delegate the class does not have',
-      '[SubscribesTo(classStr(ContosoProposal), staticDelegateStr(ContosoProposal, noSuchDelegate))]', creating, 'does not have'],
+      '[SubscribesTo(classStr(ContosoProposal), staticDelegateStr(ContosoProposal, noSuchDelegate))]', creating,
+      'unknown-method', 'declares no delegate'],
     ['an ordinary method',
-      '[SubscribesTo(classStr(ContosoProposal), delegateStr(ContosoProposal, canGoBatch))]', '', 'not a delegate'],
+      '[SubscribesTo(classStr(ContosoProposal), delegateStr(ContosoProposal, canGoBatch))]', '',
+      'wrong-member-kind', 'not a delegate'],
+  ] as const)('reports %s once, through the intrinsic', (_label, attribute, params, kind, reason) => {
+    const code = handler(attribute, params);
+    expect(findings(code, 'handler-target')).toEqual([]);
+    const [v, ...rest] = findings(code, kind);
+    expect(rest).toEqual([]);
+    expect(v.severity).toBe('error');
+    expect(v.detail).toContain(reason);
+  });
+
+  it.each([
     ['a handler with one parameter fewer',
       '[SubscribesTo(classStr(ContosoProposal), staticDelegateStr(ContosoProposal, creating))]',
       'ContosoTransType _transType', '1 parameter(s), the target 2'],
@@ -333,5 +348,70 @@ describe('shapes the shipped sweep proved legal', () => {
       '    public void run()\n    {\n        int i = ContosoProposal::parmBookType();\n    }\n}';
     const [v] = findings(code, 'obsolete-method');
     expect(v.severity).toBe('warning');
+  });
+});
+
+/**
+ * The member of methodStr / staticMethodStr / tableMethodStr /
+ * tableStaticMethodStr / delegateStr / staticDelegateStr (#1270 probes,
+ * scripts/oracles/probes/intrinsic-members.ts: every error case FAILS in xppc).
+ */
+describe('intrinsic members', () => {
+  beforeAll(() => {
+    const add = (name: string, type: string, extra: Record<string, unknown> = {}) =>
+      index.addSymbol({ name, type, filePath: `/${type}/${name}.xml`, model: 'Test', ...extra } as any);
+    add('find', 'method', {
+      parentName: 'CustTable',
+      source: 'public static CustTable find(str _accountNum)\n{\n    CustTable custTable;\n    return custTable;\n}',
+    });
+    add('ContosoFormOnly', 'form');
+    add('ContosoView', 'view');
+    add('ContosoChildProposal', 'class', { extendsClass: 'ContosoProposal' });
+  });
+
+  const one = (expr: string) => resolveXppReferences(`void run()\n{\n    str s = ${expr};\n}`, deps)
+    .violations.filter(v => ['unknown-method', 'wrong-member-kind'].includes(v.kind));
+
+  it.each([
+    ['a method the class declares', 'methodStr(ContosoProposal, canGoBatch)'],
+    ['a static method through staticMethodStr', 'staticMethodStr(ContosoProposal, construct)'],
+    ['a method an extension class adds', 'methodStr(ContosoProposal, addedByExtension)'],
+    ['a table method through tableMethodStr, any casing', 'tableMethodStr(custtable, VALIDATEWRITE)'],
+    ['a static table method through tableStaticMethodStr', 'tableStaticMethodStr(CustTable, find)'],
+    ['an instance delegate through delegateStr', 'delegateStr(ContosoProposal, changed)'],
+    ['a static delegate through staticDelegateStr', 'staticDelegateStr(ContosoProposal, creating)'],
+    ['a view owner, which the index cannot answer for', 'tableMethodStr(ContosoView, anything)'],
+    ['a delegate of a form that shares its name with a table', 'delegateStr(ContosoShared, controlsUpdating)'],
+  ])('accepts %s', (_label, expr) => {
+    expect(one(expr)).toEqual([]);
+  });
+
+  it.each([
+    ['a method nobody declares', 'methodStr(ContosoProposal, noSuchMethod)', 'unknown-method', 'declares no method'],
+    ['a method only the base class declares', 'methodStr(ContosoProposal, allowSaveLast)', 'unknown-method',
+      'methodStr(ContosoRoot, allowSaveLast)'],
+    ['a delegate only the base class declares', 'delegateStr(ContosoChildProposal, changed)', 'unknown-method',
+      'delegateStr(ContosoProposal, changed)'],
+    ['a kernel method the table does not override', 'tableMethodStr(CustTable, postLoad)', 'unknown-method',
+      'kernel method it does not override'],
+    ['a static method through methodStr', 'methodStr(ContosoProposal, construct)', 'wrong-member-kind',
+      'staticMethodStr(ContosoProposal, construct)'],
+    ['an instance method through staticMethodStr', 'staticMethodStr(ContosoProposal, canGoBatch)', 'wrong-member-kind',
+      'methodStr(ContosoProposal, canGoBatch)'],
+    ['a static table method through tableMethodStr', 'tableMethodStr(CustTable, find)', 'wrong-member-kind',
+      'tableStaticMethodStr(CustTable, find)'],
+    ['an instance delegate through staticDelegateStr', 'staticDelegateStr(ContosoProposal, changed)', 'wrong-member-kind',
+      'delegateStr(ContosoProposal, changed)'],
+    ['an ordinary method through delegateStr', 'delegateStr(ContosoProposal, canGoBatch)', 'wrong-member-kind',
+      'not a delegate'],
+    ['a table in methodStr', 'methodStr(CustTable, validateWrite)', 'wrong-member-kind',
+      'tableMethodStr(CustTable, validateWrite)'],
+    ['a form in methodStr', 'methodStr(ContosoFormOnly, init)', 'wrong-member-kind', 'formMethodStr(ContosoFormOnly, init)'],
+  ])('reports %s', (_label, expr, kind, text) => {
+    const [v, ...rest] = one(expr);
+    expect(rest).toEqual([]);
+    expect(v.kind).toBe(kind);
+    expect(v.severity).toBe('error');
+    expect(v.detail).toContain(text);
   });
 });

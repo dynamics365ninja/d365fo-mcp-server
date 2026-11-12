@@ -15,12 +15,13 @@
  * `conProbeNoSuchMethod`, which adds the method to AssetProposal for the whole
  * build. Give every "missing" name in a batch its own spelling.
  *
- * Two answers beyond the question: `methodStr` does not accept a table
- * ("does not specify a known class"; use `tableMethodStr`), and `staticMethodStr`
- * naming an instance method fails ("must specify a static method"). The resolver
- * does not check the member of `tableMethodStr`, `tableStaticMethodStr`,
- * `delegateStr`, `indexStr`, `tableFieldGroupStr` or the `form*Str` intrinsics
- * yet; each of them would be an error-severity check by this evidence.
+ * The later rows answered what the member check in src/tools/write/intrinsicMembers.ts
+ * enforces, all FAILS: the member must be declared on the NAMED type (inherited
+ * methods and delegates, and kernel table methods the table does not override,
+ * are "does not exist"); `methodStr` takes neither a table nor a form; static vs
+ * instance must match the intrinsic; `delegateStr` rejects an ordinary method.
+ * Tables have no kernel data-event delegates: `delegateStr(CustTable, onInserted)`
+ * fails too.
  *
  * Targets: AssetProposal (class, declares canGoBatch), CustTable (table, field
  * AccountNum, method validateWrite, static find, field group AutoReport, index
@@ -62,6 +63,47 @@ const probes: Probe[] = [
   probe('FormDataSourceStr', 'formDataSourceStr(form, missing data source)', `formDataSourceStr(CustTable, ${MISSING})`, 'str'),
   probe('FormControlStr', 'formControlStr(form, missing control)', `formControlStr(CustTable, ${MISSING})`, 'str'),
   probe('FormMethodStr', 'formMethodStr(form, missing method)', `formMethodStr(CustTable, ${MISSING})`, 'str'),
+
+  // ── Members that exist, but of the wrong kind or only in the kernel ───────
+  probe('MethodStrTableReal', 'methodStr(table, a method the table declares)', 'methodStr(CustTable, validateWrite)', 'str'),
+  probe('MethodStrStatic', 'methodStr naming a STATIC class method', 'methodStr(AssetProposal, construct)', 'str'),
+  probe('TableMethodStrKernel', 'tableMethodStr naming a kernel method the table does not declare (postLoad)',
+    'tableMethodStr(CustTable, postLoad)', 'str'),
+  probe('TableMethodStrStatic', 'tableMethodStr naming a STATIC table method (find)', 'tableMethodStr(CustTable, find)', 'str'),
+  probe('TableStaticMethodStrInstance', 'tableStaticMethodStr naming an INSTANCE table method',
+    'tableStaticMethodStr(CustTable, validateWrite)', 'str'),
+  probe('TableMethodStrInherited', 'tableMethodStr naming a method only RunBaseBatch declares, through a class (wrong kind)',
+    'tableMethodStr(AssetProposal, allowSaveLast)', 'str'),
+  probe('DelegateStrOrdinary', 'delegateStr naming an ordinary method, in a method body', 'delegateStr(AssetProposal, canGoBatch)', 'str'),
+  probe('DelegateStrOfStatic', 'delegateStr naming a STATIC delegate, in a method body',
+    'delegateStr(AssetProposal, assetProposalCreating)', 'str'),
+  probe('StaticDelegateStrOk', 'staticDelegateStr naming a static delegate, in a method body',
+    'staticDelegateStr(AssetProposal, assetProposalCreating)', 'str', 'compiles'),
+  probe('DelegateStrInherited', 'delegateStr naming an instance delegate only the base class (SalesFormLetter) declares',
+    'delegateStr(SalesFormLetter_Invoice, getUpdateNowQtyDelegate)', 'str'),
+  probe('StaticDelegateStrInstance', 'staticDelegateStr naming an INSTANCE delegate',
+    'staticDelegateStr(SalesFormLetter, getUpdateNowQtyDelegate)', 'str'),
+  probe('MethodStrForm', 'methodStr(form, a method the form declares) — SalesCreateOrder is only a form',
+    'methodStr(SalesCreateOrder, changeType)', 'str'),
+  probe('FormMethodStrReal', 'formMethodStr(form, a method the form declares)', 'formMethodStr(SalesCreateOrder, changeType)', 'str', 'compiles'),
+  probe('MethodStrInherited', 'methodStr naming a method only the base class (RunBaseBatch) declares',
+    'methodStr(AssetProposal, allowSaveLast)', 'str'),
+  probe('StaticMethodStrInherited', 'staticMethodStr naming a static method only the base class (AssetProposal) declares',
+    'staticMethodStr(AssetProposalDepreciation, construct)', 'str'),
+
+  // ── Tables have kernel data-event delegates that no table XML declares ────
+  probe('TableKernelDelegateBody', 'delegateStr(table, onInserted) — a kernel data-event delegate, in a body',
+    'delegateStr(CustTable, onInserted)', 'str'),
+  {
+    id: 'TableKernelDelegateAttr',
+    question: '[SubscribesTo(tableStr(CustTable), delegateStr(CustTable, onInserted))] handler',
+    methods: [
+      '[SubscribesTo(tableStr(CustTable), delegateStr(CustTable, onInserted))]\n' +
+      '    public static void onCustInserted(Common _sender, DataEventArgs _e)\n    {\n    }',
+    ],
+  },
+  probe('TableKernelDelegateMissing', 'delegateStr(table, a name that is no kernel delegate either)',
+    'delegateStr(CustTable, onConProbeNoSuchEvent)', 'str'),
 ];
 
 export default probes;

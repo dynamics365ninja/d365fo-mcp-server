@@ -22,7 +22,9 @@
  */
 import * as fs from 'fs';
 import { DatabaseSync } from 'node:sqlite';
+import { blankCommentsAndStrings } from '../../src/metadata/xppDeclaration.js';
 import { checkExtensionTargets } from '../../src/tools/write/extensionTargets.js';
+import { checkIntrinsicMember } from '../../src/tools/write/intrinsicMembers.js';
 import {
   OBJECT_BUILTIN_METHODS,
   resolveXppReferences,
@@ -36,7 +38,18 @@ interface Finding extends ReferenceViolation {
   packageName: string;
 }
 
-const NEW_KINDS = new Set(['coc-target', 'handler-target', 'obsolete-method']);
+const NEW_KINDS = new Set(['coc-target', 'handler-target', 'obsolete-method', 'unknown-method', 'wrong-member-kind']);
+
+/** The intrinsics whose member intrinsicMembers.ts checks; `(name)(owner, member)`. */
+const MEMBER_INTRINSIC = /\b(?:static|table|tableStatic)?(?:method|delegate)Str\s*\(/i;
+const MEMBER_INTRINSIC_ALL =
+  /\b((?:static|tableStatic|table)?(?:method|delegate)Str)\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)/gi;
+
+function lineOf(code: string, index: number): number {
+  let line = 1;
+  for (let i = 0; i < index; i++) if (code.charCodeAt(i) === 10) line++;
+  return line;
+}
 const XPP_TYPES = ['AxClass', 'AxTable', 'AxForm', 'AxView', 'AxMap', 'AxDataEntityView', 'AxTableExtension', 'AxFormExtension'];
 
 function main(): void {
@@ -52,6 +65,7 @@ function main(): void {
   const obsoleteNames = new Set<string>();
   let scanned = 0;
   let extensionFiles = 0;
+  let intrinsicCalls = 0;
 
   // Pass 1
   for (const file of walkAot(walkOptions)) {
@@ -60,6 +74,14 @@ function main(): void {
     const code = xppOf(file);
     for (const m of code.matchAll(/\bSysObsolete(?:Attribute)?\s*\([^)]*?,\s*true\b[^)]*\)\s*\]\s*(?:\[[^\]]*\]\s*)*[^(\n{]*?\b(\w+)\s*\(/gi)) {
       obsoleteNames.add(m[1]);
+    }
+    if (MEMBER_INTRINSIC.test(code)) {
+      const blanked = blankCommentsAndStrings(code);
+      for (const m of blanked.matchAll(MEMBER_INTRINSIC_ALL)) {
+        intrinsicCalls++;
+        const v = checkIntrinsicMember(db, m[1], m[2], m[3], lineOf(code, m.index ?? 0), kernel);
+        if (v) findings.push({ ...v, file: file.file, packageName: file.packageName });
+      }
     }
     if (!/\bExtensionOf\b|\bSubscribesTo\b|HandlerFor\b/.test(code)) continue;
     extensionFiles++;
@@ -96,7 +118,7 @@ function main(): void {
   const byKind = new Map<string, number>();
   for (const f of relevant) byKind.set(`${f.kind}/${f.severity}`, (byKind.get(`${f.kind}/${f.severity}`) ?? 0) + 1);
 
-  console.log(`\nScanned ${scanned} files: ${extensionFiles} with wrappers/handlers, ` +
+  console.log(`\nScanned ${scanned} files: ${extensionFiles} with wrappers/handlers, ${intrinsicCalls} member intrinsics, ` +
     `${obsoleteNames.size} error-obsolete method names, ${obsoleteFiles} files calling one of them.`);
   console.log(`Findings: ${errors.length} error(s), ${warnings.length} warning(s) in ${((Date.now() - started) / 1000).toFixed(0)} s.`);
   for (const [k, n] of [...byKind].sort((a, b) => b[1] - a[1])) console.log(`  ${k.padEnd(28)} ${n}`);

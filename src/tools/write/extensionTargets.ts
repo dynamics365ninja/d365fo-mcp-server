@@ -108,7 +108,7 @@ export function lookupMember(
   return { state: 'unknown' };
 }
 
-function extensionContributes(db: DbLike, owner: string, member: string): boolean {
+export function extensionContributes(db: DbLike, owner: string, member: string): boolean {
   const rows = db.prepare(
     `SELECT added_methods, coc_methods FROM extension_metadata WHERE base_object_name = ?`,
   ).all(owner) as Array<{ added_methods: string | null; coc_methods: string | null }>;
@@ -245,7 +245,7 @@ function typeMismatchSeverity(db: DbLike, a: string, b: string): 'error' | 'warn
   return 'warning';
 }
 
-function hasModifier(decl: XppDeclaration, modifier: string): boolean {
+export function hasModifier(decl: XppDeclaration, modifier: string): boolean {
   return decl.modifiers.some(m => m.toLowerCase() === modifier);
 }
 
@@ -418,38 +418,16 @@ function checkHandlers(code: string, blanked: string, db: DbLike, kernel: Kernel
     const identifier = `${owner}.${name}`;
     const found = lookupMember(db, owner, name, kernel, kind);
 
-    if (found.state === 'missing') {
-      violations.push({
-        kind: 'handler-target',
-        severity: 'error',
-        line,
-        identifier,
-        detail: `[SubscribesTo] names a delegate ${owner} does not have: "${name}" is declared on none of ` +
-          `${found.chain.join(' → ')}. If an update removed or renamed it, find the replacement with ` +
-          `get_object_info(name="${owner}").`,
-      });
-      continue;
-    }
-    if (found.state !== 'found' || !found.source) continue;
-
+    // Whether the delegate exists on this very type, is a delegate, and is named
+    // with the matching static/instance intrinsic is the delegateStr() check's
+    // finding (intrinsicMembers.ts), reported once there. Here: the handler's
+    // parameters against the delegate's.
+    if (found.state !== 'found' || !found.source || found.owner.toLowerCase() !== owner.toLowerCase()) continue;
     const header = readMethodHeader(found.source);
     const delegate = parseXppDeclaration(found.source, name);
-    const reasons: Compared[] = [];
-    if (!header.isDelegate) {
-      reasons.push({
-        severity: 'error',
-        reason: `"${name}" is an ordinary method, not a delegate; subscribe with [PreHandlerFor]/[PostHandlerFor] or wrap it with Chain of Command`,
-      });
-    } else if (delegate) {
-      const delegateStatic = hasModifier(delegate, 'static');
-      if (delegateStatic && !isStaticStr) {
-        reasons.push({ severity: 'error', reason: 'the delegate is static, so the attribute must name it with staticDelegateStr' });
-      } else if (!delegateStatic && isStaticStr) {
-        reasons.push({ severity: 'warning', reason: 'the delegate is an instance delegate, so the attribute should name it with delegateStr' });
-      }
-      const handler = handlerAfter(code, blanked, (m.index ?? 0) + m[0].length);
-      if (handler) reasons.push(...compareParameters(db, handler, delegate));
-    }
+    if (!header.isDelegate || !delegate || hasModifier(delegate, 'static') !== isStaticStr) continue;
+    const handler = handlerAfter(code, blanked, (m.index ?? 0) + m[0].length);
+    const reasons = handler ? compareParameters(db, handler, delegate) : [];
 
     if (reasons.length === 0) continue;
     violations.push({
@@ -458,7 +436,7 @@ function checkHandlers(code: string, blanked: string, db: DbLike, kernel: Kernel
       line,
       identifier,
       detail: `Event handler does not match its delegate: ${reasons.map(r => r.reason).join('; ')}.` +
-        (delegate && header.isDelegate ? ` The delegate is declared as \`${render(delegate)}\`; the handler repeats its parameters.` : ''),
+        ` The delegate is declared as \`${render(delegate)}\`; the handler repeats its parameters.`,
     });
   }
 

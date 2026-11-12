@@ -50,6 +50,20 @@ those are called out explicitly below.
   answer: a form's delegates, an owner whose base class is not indexed, or a method an
   extension adds. The same checks run in the `GROUNDING_ENFORCE` write gate, so an error
   there blocks the write.
+- **`validate_code(mode="references")` checks the member of `methodStr`, `staticMethodStr`,
+  `tableMethodStr`, `tableStaticMethodStr`, `delegateStr` and `staticDelegateStr` the way
+  the compiler does** (#1270). Only `methodStr`/`staticMethodStr` were checked, and they
+  accepted a method found on any base class, on a table or on a form. The compiler wants the
+  member declared on the named type itself (an extension class's methods count, inherited
+  ones and kernel table methods the table does not override do not), of the matching kind,
+  and `methodStr` only takes a class. A member nobody declares, or only a base class
+  declares, is now an `unknown-method` error that names the declaring type. The new
+  `wrong-member-kind` error covers a static member through `methodStr`, `tableMethodStr` or
+  `delegateStr`, an instance member through their `static…` twins, an ordinary method
+  through `delegateStr`, and a table or form in `methodStr`, and names the intrinsic to use.
+  Form members, views, maps and data entities, field groups and indexes are not checked:
+  the index does not hold them. Over the 38,060 uses in shipped code the check raises no
+  error.
 - **`index.storeObjectSource` turns off the copy of every object's XML in the index.** Since
   1.23.0 the extraction writes each object's original XML into its JSON as `raw`, and the
   build stores it gzipped in `object_source`, so a server without the AOT files (a shared or
