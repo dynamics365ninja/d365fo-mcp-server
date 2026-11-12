@@ -26,7 +26,12 @@ export interface StartupIndexOptions extends StartupIndexWorkerData {
   maxOldGenerationSizeMb?: number;
   /** Called as the build moves between models and phases. */
   onProgress?: (p: IndexProgress) => void;
+  /** How long a worker that has reported may take to exit before it is terminated. */
+  exitGraceMs?: number;
 }
+
+/** Closing a large index checkpoints its WAL, which takes seconds, not milliseconds. */
+const EXIT_GRACE_MS = 60_000;
 
 export interface StartupIndexResult {
   elapsedMs: number;
@@ -73,19 +78,38 @@ export function indexMetadataOffThread(opts: StartupIndexOptions): Promise<Start
     worker.stdout.pipe(output, { end: false });
     worker.stderr.pipe(output, { end: false });
 
+    // The verdict is held until the worker has EXITED, and the worker is left to
+    // exit on its own. Terminating it on the message cut off two things that
+    // happen after the post: the worker closing its database (the checkpoint
+    // that folds the WAL into the file the parent is about to read) and the
+    // last of its console output, which is still in the pipe at that moment.
+    let verdict: (() => void) | undefined;
+    let grace: NodeJS.Timeout | undefined;
+    const finishAfterExit = (fn: () => void) => {
+      if (verdict) return;
+      verdict = fn;
+      // A worker that keeps a handle open never exits by itself.
+      grace = setTimeout(() => void worker.terminate(), opts.exitGraceMs ?? EXIT_GRACE_MS);
+      grace.unref();
+    };
+
     worker.on('message', (msg: StartupIndexMessage) => {
       if (msg.type === 'progress') {
         try { opts.onProgress?.(msg.progress); } catch { /* never let a listener kill the build */ }
       } else if (msg.type === 'done') {
-        settle(() => resolve({ elapsedMs: msg.elapsedMs, symbolCount: msg.symbolCount }));
-        void worker.terminate();
+        finishAfterExit(() => resolve({ elapsedMs: msg.elapsedMs, symbolCount: msg.symbolCount }));
       } else if (msg.type === 'error') {
-        settle(() => reject(new Error(msg.error)));
-        void worker.terminate();
+        finishAfterExit(() => reject(new Error(msg.error)));
       }
     });
-    worker.once('error', e => settle(() => reject(e)));
-    // A promise settles once — this covers "exited before the done message".
-    worker.once('exit', code => settle(() => reject(new Error(`startup index worker exited with code ${code}`))));
+    worker.once('error', e => {
+      if (grace) clearTimeout(grace);
+      settle(() => reject(e));
+    });
+    // A promise settles once — without a verdict this is "exited before the done message".
+    worker.once('exit', code => {
+      if (grace) clearTimeout(grace);
+      settle(verdict ?? (() => reject(new Error(`startup index worker exited with code ${code}`))));
+    });
   });
 }
