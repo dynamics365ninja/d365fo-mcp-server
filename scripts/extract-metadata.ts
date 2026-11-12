@@ -16,6 +16,7 @@ import { writeExtractManifest } from '../src/utils/extractManifest.js';
 import { readBlobDownloadMarker } from '../src/utils/blobDownloadMarker.js';
 import { XppConfigProvider, type XppEnvironmentConfig } from '../src/utils/xppConfigProvider.js';
 import { defaultPackagesRoot } from '../src/utils/packagesRoot.js';
+import { storeObjectSourceEnabled } from '../src/metadata/objectSourceSetting.js';
 import { box, kv, sectionTitle, statusLine, spread, c, glyph, log, shortPath, supportsUnicode, sanitize } from '../src/utils/terminalUi.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -115,11 +116,19 @@ function sourcePathReplacer(key: string, value: unknown): unknown {
 const writtenByModel = new Map<string, Set<string>>();
 
 /**
+ * index.storeObjectSource: whether objects' original XML is kept for object_source. Read
+ * once; bootstrapEnv, this script's first import, has already loaded the configuration.
+ */
+const STORE_OBJECT_SOURCE = storeObjectSourceEnabled();
+
+/**
  * The object's original XML rides along as `raw` (the convention enums and forms use) so
  * the index build can store it: a host with only the database has no AOT files to read.
- * The parsers do not return the XML, hence the second read (OS-cached).
+ * The parsers do not return the XML, hence the second read (OS-cached). Skipped when
+ * index.storeObjectSource is off: readers use it only when the AOT file is not on disk.
  */
 async function withRaw<T extends object>(filePath: string, data: T): Promise<T & { raw?: string }> {
+  if (!STORE_OBJECT_SOURCE) return data;
   try {
     return { ...data, raw: await fs.readFile(filePath, 'utf-8') };
   } catch {
@@ -1169,13 +1178,12 @@ export async function extractForms(
 
       // The original XML rides along as `raw` (the convention enums use) so the index
       // build can store it: a host with only the database has no AOT files to read.
-      // parseFormFile does not return it, hence the second read (OS-cached).
-      const raw = await fs.readFile(filePath, 'utf-8');
-
+      // parseFormFile does not return it, hence the second read (OS-cached). Not kept
+      // when index.storeObjectSource is off.
       const outputDir = path.join(OUTPUT_PATH, modelName, 'forms');
       await fs.mkdir(outputDir, { recursive: true });
       const outputFile = path.join(outputDir, `${formInfo.name}.json`);
-      await writeMetadataJson(outputFile, { ...formInfo, raw }, isCustom, modelName);
+      await writeMetadataJson(outputFile, await withRaw(filePath, formInfo), isCustom, modelName);
 
       stats.forms++;
     } catch (error) {
