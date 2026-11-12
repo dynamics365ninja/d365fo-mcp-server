@@ -199,7 +199,8 @@ export const SETTINGS: Setting[] = [
     label: 'Custom model names',
     description:
       'Your own (non-Microsoft) models, comma-separated. They are indexed with priority and treated as writable. ' +
-      'Find them in VS → Dynamics 365 → Model Management → View models. UDE detects these automatically.',
+      'Find them in VS → Dynamics 365 → Model Management → View models. UDE detects these automatically. ' +
+      'Re-read from the config file (or `.env`) while the server runs, so an edit applies without a restart.',
     placeholder: 'ContosoRobotics,ContosoBank',
   },
   {
@@ -568,7 +569,9 @@ export const SETTINGS: Setting[] = [
     description:
       'Comma-separated language codes, or `all` for every language shipped with the model. Each extra language ' +
       'multiplies the label table (~125 MB apiece) — indexing only the languages you actually ship keeps the ' +
-      'database small.',
+      'database small. `labels(action="create")` follows the same list: a translation for a language the label ' +
+      'file does not have yet is written only when it is listed here (or passed in `languages`), and a new label ' +
+      'file starts with every listed language.',
     // src/metadata/labelParser.ts reads this default straight off the registry:
     // it used to carry its own 'en-US,cs,sk,de' literal, so an unconfigured
     // build silently indexed four languages while this table promised one.
@@ -621,6 +624,21 @@ export const SETTINGS: Setting[] = [
     label: 'Extracted XML folder',
     description: 'Working folder for the XML dumped during extraction, before it is loaded into the database.',
     default: './extracted-metadata',
+  },
+  {
+    path: 'index.storeObjectSource',
+    env: 'STORE_OBJECT_SOURCE',
+    section: 'index',
+    tier: 'advanced',
+    type: 'boolean',
+    label: 'Store object XML in the index',
+    description:
+      'Keeps a copy of every object\'s original XML in the extracted JSON and, gzipped, in the database ' +
+      '(object_source), so a server without the AOT files (a shared or Azure deployment) can still read objects. ' +
+      'A server that has the metadata folders on disk reads the files themselves and does not need the copy; ' +
+      'turning it off saves about 2 GB of extracted JSON and 0.4 GB of database per full standard + custom index. ' +
+      'Takes effect at the next index build; a full rebuild (extractMode "all") removes copies already stored.',
+    default: true,
   },
   {
     path: 'index.bpCatalogPath',
@@ -841,8 +859,8 @@ export const SETTINGS: Setting[] = [
     tier: 'advanced',
     type: 'int',
     label: 'SQLite read connections',
-    description: 'Parallel read connections to the index (clamped 1–8). More helps concurrent searches on fast disks.',
-    default: 3,
+    description: 'Read connections to the index (clamped 1–8). One is right for the server: reads run one at a time, and the 128 MB page cache is split across the connections.',
+    default: 1,
   },
   {
     path: 'server.operationLockTimeoutMs',

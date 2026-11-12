@@ -101,7 +101,7 @@ import {
   directXmlAddControl,
   coerceNoYesFlag,
   directXmlAddIndex,
-  directXmlSetIndexValidTimeState,
+  directXmlSetIndexValidTimeState, withRemovedFieldCleanup,
   directXmlClearEmptyProperty,
   directXmlAddQueryRange,
   directXmlRemoveQueryRange,
@@ -2376,11 +2376,11 @@ async function runModify(
       }
       case 'remove-field': {
         if (args.fieldName) {
-          bridgeResult = await bridgeRemoveField(
+          bridgeResult = await withRemovedFieldCleanup(await bridgeRemoveField(
             context.bridge,
             objectName,
             args.fieldName,
-          );
+          ), actualFilePath, args.fieldName);
         }
         break;
       }

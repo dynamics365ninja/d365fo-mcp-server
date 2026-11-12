@@ -5,6 +5,9 @@
 
 import 'dotenv/config';
 import * as fs from 'node:fs';
+// A developer's .env limits which label languages create may add; CI has none. Tests
+// that need a restriction set LABEL_LANGUAGES themselves.
+delete process.env.LABEL_LANGUAGES;
 import * as os from 'node:os';
 import { afterAll } from 'vitest';
 import { TMPDIR_CANARY_ENV } from './tmpdirGuard.globalSetup';

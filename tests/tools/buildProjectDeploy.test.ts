@@ -33,6 +33,7 @@ vi.mock('../../src/tools/sdlc/dbSync.js', () => ({ dbSyncTool: m.sync }));
 vi.mock('../../src/tools/sdlc/odataActionGuard.js', async () => ({
   ...(await vi.importActual<any>('../../src/tools/sdlc/odataActionGuard.js')), scanODataActions: m.scan,
 }));
+vi.mock('../../src/tools/sdlc/schemaChangeGuard.js', () => ({ scanSchemaChanges: async () => ({ changed: [], errors: [] }), describeSchemaChanges: () => '' }));
 vi.mock('../../src/tools/sdlc/udeDeploy.js', () => ({
   checkDeployPrerequisites: m.check, signInForDeploy: m.signIn, deployModelToUde: m.deploy, udePackagePaths: m.paths,
 }));

@@ -3,7 +3,8 @@
  * Determines whether a D365 F&O model is custom or standard
  * 
  * Logic:
- * - Custom models are defined in CUSTOM_MODELS environment variable
+ * - Custom models are defined in CUSTOM_MODELS environment variable, which
+ *   follows its config file while the server runs (see getCustomModels)
  * - Supports wildcards: Custom*, *Test, *Extension*
  * - Models with EXTENSION_PREFIX are considered custom
  * - Auto-detected models from workspace are automatically registered as custom
@@ -13,6 +14,7 @@
 import { getInferredModelPrefix, toExtensionInfixCase } from './modelPrefixInference.js';
 import { normalizeModelToken } from './modelToken.js';
 import { readClassExtensionName } from './extensionNameFormat.js';
+import { reloadCustomModels } from './loadEnv.js';
 
 // Runtime registry for auto-detected custom models
 const autoDetectedCustomModels = new Set<string>();
@@ -41,9 +43,27 @@ function isAutoDetectedCustomModel(modelName: string): boolean {
 }
 
 /**
- * Get list of custom models from environment
+ * How often the configured list is checked against its files, at most. The
+ * classifier runs inside loops over whole models, so the check itself (two
+ * stats) is rationed. A hand edit of a config file takes far longer than this.
+ */
+const CUSTOM_MODELS_RECHECK_MS = 1000;
+let customModelsCheckedAt = 0;
+
+/**
+ * Get list of custom models from environment.
+ *
+ * The list follows the .env / JSON config file it came from while the server
+ * runs (reloadCustomModels), so a model added there is custom on the next tool
+ * call and a model removed there stops being custom. Models registered through
+ * registerCustomModel() are a separate source and are not affected.
  */
 export function getCustomModels(): string[] {
+  const now = Date.now();
+  if (now - customModelsCheckedAt >= CUSTOM_MODELS_RECHECK_MS || now < customModelsCheckedAt) {
+    customModelsCheckedAt = now;
+    reloadCustomModels();
+  }
   return process.env.CUSTOM_MODELS?.split(',').map(m => m.trim()).filter(Boolean) || [];
 }
 
