@@ -436,6 +436,28 @@ those are called out explicitly below.
   in the index yet still needs `update_symbol_index(model=…)`. (#1161)
 
 ### Fixed
+- **`d365fo_file(action="generate")` previews the object `create` would write, under its
+  name and at its path.** Generate used `objectName` as passed and built the path as
+  `<packagePath>\<model>\<model>\…`. Under a configured prefix the preview said
+  `<Name>RentEquipmentJob</Name>` (and renamed the caller's `class ContosoRentEquipmentJob` back to
+  match) where `prepare` and `create` named the object ContosoRentEquipmentJob, and it
+  recommended the Microsoft PackagesLocalDirectory where `create` writes into the custom
+  write root (`customPackagesPath`), in the package the model's descriptor names. Generate
+  now names the object and resolves its file with the same code as `create`, says so when
+  the name differs from the one passed, refuses a name `create` would refuse, and takes
+  `packageName` / `packagePath` as `create` does.
+- **`create` and `generate` find the model when `modelName` is its package's name, and warn
+  before they make a new model folder.** Descriptors are matched by the model's `<Name>`, so
+  `modelName: "ContosoCore"` for package ContosoCore holding model "Contoso Core" matched
+  nothing and the write fell back to `<root>\ContosoCore\ContosoCore`, a new folder beside
+  the model's own, without a word. A name that is the `<ModelModule>` of exactly one model
+  now resolves to that model (`…\ContosoCore\Contoso Core\…`) and the reply says so and
+  names the model to pass next time. It is resolved before `create` checks the model, so
+  the cross-model guard, the Microsoft-model check and the naming all see "Contoso Core",
+  and a workspace that targets "Contoso Core" no longer refuses the write as one into
+  another model. A package with several models, or a name no
+  descriptor knows, keeps the old fallback folder, and the reply now warns that it is a new
+  model folder.
 - **First-start indexing waits for its worker to finish closing the index.** The server
   terminated the indexing worker the moment it reported its result. The worker closes its
   database after it reports (the step that folds the write-ahead log into the index file

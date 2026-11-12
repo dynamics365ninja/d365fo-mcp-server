@@ -185,6 +185,45 @@ export class PackageResolver {
   }
 
   /**
+   * The models declared by the package `packageName`: each descriptor in
+   * `<root>/<packageName>/Descriptor` whose <ModelModule> is that name.
+   *
+   * For a caller that passed the package name where the model name belongs
+   * (package "ContosoCore" holding model "Contoso Core"). resolve() does not
+   * match it, since descriptors are keyed by the model's <Name>. Reads the
+   * package's own directory only, never the whole root. First root that has
+   * any wins, like resolve().
+   */
+  async modelsOfPackage(packageName: string): Promise<ResolvedPackage[]> {
+    for (const rawRoot of this.roots) {
+      const root = normalizePathCase(rawRoot);
+      const descriptorDir = path.join(root, packageName, 'Descriptor');
+      let descriptorFiles: string[];
+      try {
+        descriptorFiles = await fs.readdir(descriptorDir);
+      } catch {
+        continue;
+      }
+      const models: ResolvedPackage[] = [];
+      for (const file of descriptorFiles) {
+        if (!file.endsWith('.xml')) continue;
+        try {
+          const content = await fs.readFile(path.join(descriptorDir, file), 'utf-8');
+          const declared = content.match(/<Name>([^<]+)<\/Name>/)?.[1]?.trim();
+          const module = content.match(/<ModelModule>([^<]+)<\/ModelModule>/)?.[1]?.trim();
+          if (declared && module && module.toLowerCase() === packageName.toLowerCase()) {
+            models.push({ packageName: module, modelName: declared, rootPath: root });
+          }
+        } catch {
+          // Skip unreadable descriptor
+        }
+      }
+      if (models.length) return models;
+    }
+    return [];
+  }
+
+  /**
    * Resolve with an explicit package name (bypasses lookup).
    */
   resolveWithPackage(modelName: string, packageName: string): ResolvedPackage {
