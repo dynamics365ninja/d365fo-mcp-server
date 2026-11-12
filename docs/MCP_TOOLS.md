@@ -172,6 +172,8 @@ Two things shared by `create` and `modify`:
 
 **A changed table, EDT or enum needs a full build.** An incremental compile recompiles only the elements whose own source changed, so code that uses a changed table, EDT or enum is not checked and the build can report 0 errors where a full build fails. When a table, table extension, EDT, EDT extension, enum or enum extension of the target model changed since its last build, `build_d365fo_project` runs a full build instead and names what changed (`full build, switched from incremental`). A model that was never built is built as asked.
 
+**Form patterns are checked after every successful build.** A pipeline build (MSBuild and Microsoft's BuildTask) compiles the whole package and rejects a form whose controls break their pattern, for example a `FieldsFieldGroups` container without `ColumnsMode` `Fill`. An incremental xppc build does not report those errors for forms it does not recompile, so `build_d365fo_project` runs the form pattern validator (the platform's own pattern definitions, the same rules as `object_patterns(domain="form", action="validate")`) over every form of the package once xppc succeeds. Errors turn the result into `❌ Compiled; form pattern errors a pipeline build rejects`, listing `AxForm/<form>: <control path>: <finding> (<rule>)`. With `FORM_PATTERN_ENFORCE=false` they are listed under `⚠️ Build succeeded; form pattern errors` and the result is not an error.
+
 > Local-only — require a Windows D365FO VM; excluded from the Azure `read-only` mode.
 
 | Tool | What it does | Example prompt |

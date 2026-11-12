@@ -550,6 +550,15 @@ those are called out explicitly below.
   only when they are not zero. An update that has to create a missing label still counts as
   updated. The `labels[]` schema tag is now `[create|update]`, and the labels op-spec says
   the same. Nothing to do. (#1161)
+- **`build_d365fo_project` fails a build whose forms break their pattern, as a pipeline build
+  does.** A pipeline build (MSBuild and Microsoft's BuildTask) compiles the whole package and
+  rejected a form whose `FieldsFieldGroups` header had no `ColumnsMode` `Fill`, while an
+  incremental build here had passed it with 0 errors: xppc does not report pattern errors for
+  forms it does not recompile. After a successful xppc build the tool now validates every form
+  of the package against the platform's pattern definitions (the rules of
+  `object_patterns(domain="form", action="validate")`). Errors give
+  `❌ Compiled; form pattern errors a pipeline build rejects` and list each form, control and
+  property. `FORM_PATTERN_ENFORCE=false` keeps them as a warning.
 
 ### Dependencies
 - **New:** `@azure/msal-node` 7.1.1, for the Dataverse sign-in above. Pure JavaScript, no
