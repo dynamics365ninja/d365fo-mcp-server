@@ -26,9 +26,16 @@ function options(scenario: string, output: NodeJS.WritableStream): Parameters<ty
   };
 }
 
-/** The fixture posts before it exits; give the pipe a tick to flush. */
+/**
+ * Everything the sink holds. `read()` hands back one buffered chunk at a time on
+ * current Node, so a single call saw the stdout line and missed the stderr one.
+ */
 const captured = (sink: PassThrough) =>
-  new Promise<string>(resolve => setTimeout(() => resolve(sink.read()?.toString() ?? ''), 50));
+  new Promise<string>(resolve => setTimeout(() => {
+    let out = '';
+    for (let chunk = sink.read(); chunk !== null; chunk = sink.read()) out += chunk.toString();
+    resolve(out);
+  }, 50));
 
 describe('indexMetadataOffThread', () => {
   it('resolves with the worker result and routes its console output to the given stream', async () => {
@@ -39,6 +46,18 @@ describe('indexMetadataOffThread', () => {
     const out = await captured(sink);
     expect(out).toContain('[100%] ContosoCore indexing...');
     expect(out).toContain('worker stderr line');
+  });
+
+  it('waits for the worker to exit, so what it prints after the verdict still arrives', async () => {
+    const sink = new PassThrough();
+    const result = await indexMetadataOffThread(options('late-output', sink));
+    expect(result).toEqual({ elapsedMs: 1, symbolCount: 7 });
+    expect(await captured(sink)).toContain('printed after the verdict');
+  });
+
+  it('terminates a worker that reported but does not exit, and still resolves', async () => {
+    const opts = { ...options('linger', new PassThrough()), exitGraceMs: 100 };
+    await expect(indexMetadataOffThread(opts)).resolves.toEqual({ elapsedMs: 1, symbolCount: 7 });
   });
 
   it('rejects with the worker-reported error', async () => {
