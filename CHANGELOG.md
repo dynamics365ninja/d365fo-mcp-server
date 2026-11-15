@@ -28,6 +28,17 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Fixed
+- **The string size of an EDT from a binary ISV model is shown as an integer, not as
+  "15.0".** `npm run extract-binary-models` wrote the dump's `StringSize` into the EDT's JSON
+  as a number; the index build bound it to the text column `edt_metadata.string_size`, and
+  SQLite stored the number as `15.0`. The EDT read, the EDT hierarchy and the string size
+  after a table field printed that text. The importer now writes the size as text, as
+  `extract-metadata` does, the index build stores a whole-number string size, database
+  string size or display length as integer text whatever the JSON holds, and the readers
+  show a `15.0` already in an index as `15`. Rebuilding the database corrects the stored
+  values; no re-import is needed.
+
 ## [1.24.0] — 2026-11-12
 
 ### Added

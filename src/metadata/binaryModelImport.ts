@@ -18,6 +18,7 @@
 import type { XppClassInfo, XppMethodInfo, XppTableInfo, XppFieldInfo } from './types.js';
 import { buildClassExtensionRecord, type XppClassExtensionRecord } from './xmlParser.js';
 import { parseExtensionOfAttribute, parseXppClassHeader, type XppVisibility } from './xppDeclaration.js';
+import { integerText } from '../utils/integerText.js';
 
 export const BINARY_ISV_NOTE = 'binary ISV, signatures only';
 
@@ -404,7 +405,9 @@ export function toEdtInfo(e: DumpEdt, model: string, info: BinaryIsvInfo): Recor
     label: e.Label,
     baseType: e.BaseType,
     referenceTable: e.ReferenceTable,
-    stringSize: e.StringSize,
+    // Text, as extract-metadata writes it from AxEdt XML. A JS number reaches the TEXT column
+    // edt_metadata.string_size through node:sqlite as a REAL, which SQLite stores as '15.0'.
+    stringSize: integerText(e.StringSize) ?? undefined,
     binaryIsv: info,
   };
 }

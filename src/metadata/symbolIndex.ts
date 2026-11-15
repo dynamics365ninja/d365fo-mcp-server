@@ -14,6 +14,7 @@ import { storeObjectSourceEnabled } from './objectSourceSetting.js';
 import { isStandardModel } from '../utils/modelClassifier.js';
 import { labelIdSpellings, parseLabelReference } from '../utils/labelReference.js';
 import { normalizeLabelText } from '../utils/labelText.js';
+import { integerText } from '../utils/integerText.js';
 import { c, log } from '../utils/terminalUi.js';
 
 /**
@@ -3105,9 +3106,10 @@ export class XppSymbolIndex {
             edtData.enumType || null,
             edtData.referenceTable || null,
             edtData.relationType || null,
-            edtData.stringSize || null,
-            edtData.databaseStringSize || null,
-            edtData.displayLength || null,
+            // As text: a binary ISV import wrote numbers here, which SQLite stored as '15.0'.
+            integerText(edtData.stringSize),
+            integerText(edtData.databaseStringSize),
+            integerText(edtData.displayLength),
             edtData.label || null,
             model
           );
