@@ -319,6 +319,22 @@ export function sourcePathFor(info: BinaryIsvInfo, folder: string, name: string)
   return `binary-isv://${info.moduleName}/${folder}/${name}`;
 }
 
+/**
+ * True for the file path a binary ISV object is indexed under ({@link sourcePathFor}). Such a
+ * path is a marker, not a file: the model ships compiled only, so no XML or X++ source exists.
+ */
+export function isBinaryIsvPath(filePath: unknown): filePath is string {
+  return typeof filePath === 'string' && filePath.startsWith('binary-isv://');
+}
+
+/**
+ * The line a reader prints above an object of a binary ISV model, so that a signatures-only
+ * answer is never mistaken for an object whose source was simply not read.
+ */
+export function binaryIsvNotice(what: string): string {
+  return `> 🔒 **Binary ISV, signatures only** — compiled model, ${what}.\n\n`;
+}
+
 export function toClassInfo(c: DumpClass, model: string, info: BinaryIsvInfo): XppClassInfo & Record<string, unknown> {
   const decl = c.Declaration ?? '';
   const header = parseXppClassHeader(decl);

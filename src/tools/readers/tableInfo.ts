@@ -16,6 +16,7 @@ import { bridgeUnavailableNote, indexedPathIsMissing } from '../../utils/indexed
 import { canonicalSymbolName } from '../../utils/symbolLookup.js';
 import { indexedEdtStringSize, INDEXED_SIZE_CAVEAT } from './edtInfo.js';
 import { pageFields, fieldsHeading, fieldsFooter, TABLE_FIELD_PAGE_SIZE } from '../../utils/payloadBudget.js';
+import { binaryIsvNotice, isBinaryIsvPath } from '../../metadata/binaryModelImport.js';
 
 const TableInfoArgsSchema = z.object({
   tableName: z.string().describe('Name of the X++ table'),
@@ -208,6 +209,11 @@ async function buildTableResponseFromDb(
 
   let out = `# Table: ${tableSym.name}\n`;
   if (tableSym.model) out += `**Model:** ${tableSym.model}\n`;
+  // The class reader says this; a table of the same model said nothing, so its field list
+  // read like any other table's and its missing method bodies like a gap in the index.
+  if (isBinaryIsvPath(tableSym.filePath)) {
+    out += `\n${binaryIsvNotice('no AxTable XML, X++ source or method bodies exist').trimEnd()}\n`;
+  }
   const fieldPage = pageFields(fields, fieldsOffset, fieldFilter);
   out += `\n## ${fieldsHeading(fieldPage)}\n\n`;
   let sizesShown = false;

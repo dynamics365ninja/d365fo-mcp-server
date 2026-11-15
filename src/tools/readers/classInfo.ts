@@ -11,6 +11,7 @@ import { buildObjectTypeMismatchMessage } from '../../utils/metadataResolver.js'
 import { tryBridgeClass } from '../../bridge/bridgeAdapter.js';
 import { COMPACT_METHODS_HINT, SOURCE_UNAVAILABLE_HINT, INDEXED_BODIES_HINT, fullBodyHint } from '../../utils/methodBodyHint.js';
 import { readIndexedMethodSources } from '../../utils/indexedMethodSource.js';
+import { isBinaryIsvPath } from '../../metadata/binaryModelImport.js';
 
 const METHOD_PAGE_SIZE = 15;
 
@@ -234,7 +235,7 @@ async function buildDbOnlyResponse(
   output += '\n\n';
 
   // Binary ISV model: no X++ source exists anywhere, so say so instead of promising bodies.
-  const isBinaryIsv = typeof classSymbol.filePath === 'string' && classSymbol.filePath.startsWith('binary-isv://');
+  const isBinaryIsv = isBinaryIsvPath(classSymbol.filePath);
   if (isBinaryIsv) {
     output += `> 🔒 **Binary ISV, signatures only** — compiled model, no X++ source or method bodies exist. ${classSymbol.description ?? ''}\n\n`;
   }

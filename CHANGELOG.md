@@ -29,6 +29,13 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Fixed
+- **`get_object_info` on a table or an EDT of a binary ISV model says that the model is
+  compiled only, as it already did for a class.** Without the bridge, a class of a model
+  imported with `npm run extract-binary-models` was shown with "🔒 Binary ISV, signatures
+  only", but a table of the same model was shown like any table, so its missing method
+  bodies read like a gap in the index, and an EDT the same. The table and EDT reads from the
+  symbol index now print the same notice when the object's index row has a `binary-isv://`
+  path; objects of source models are shown as before.
 - **The string size of an EDT from a binary ISV model is shown as an integer, not as
   "15.0".** `npm run extract-binary-models` wrote the dump's `StringSize` into the EDT's JSON
   as a number; the index build bound it to the text column `edt_metadata.string_size`, and

@@ -14,6 +14,7 @@ import { canonicalSymbolName, lookupSymbolNocase } from '../../utils/symbolLooku
 import { normalizeFieldBaseType } from '../../utils/axFieldTypes.js';
 import { describeKernelEdt } from '../../knowledge/kernelEdts.js';
 import { integerText } from '../../utils/integerText.js';
+import { binaryIsvNotice, isBinaryIsvPath } from '../../metadata/binaryModelImport.js';
 
 const GetEdtInfoArgsSchema = z.object({
   edtName: z.string().describe('Name of the Extended Data Type (EDT)'),
@@ -136,6 +137,7 @@ function getEdtFromIndex(symbolIndex: any, edtName: string, modelName?: string) 
         text:
           `# Extended Data Type: ${hit.name}\n\n` +
           (hit.model ? `**Model:** ${hit.model}\n` : '') +
+          (isBinaryIsvPath(hit.file_path) ? `\n${binaryIsvNotice(BINARY_EDT_NOTE)}` : '') +
           `_Source: SQLite symbol index (bridge returned no data)_\n\n` +
           `⚠️ Only the symbol entry is indexed — no \`edt_metadata\` row, so base type / string size / ` +
           `reference table are NOT available from this server. This is missing data, not an empty EDT.\n` +
@@ -146,6 +148,7 @@ function getEdtFromIndex(symbolIndex: any, edtName: string, modelName?: string) 
 
   let out = `# Extended Data Type: ${row.edt_name ?? resolvedName}\n\n`;
   if (row.model) out += `**Model:** ${row.model}\n`;
+  if (edtIsBinaryIsv(db, row.edt_name ?? resolvedName, row.model)) out += `\n${binaryIsvNotice(BINARY_EDT_NOTE)}`;
   out += `_Source: SQLite symbol index (edt_metadata) — the C# bridge returned no data_\n\n`;
   out += `## 🔧 Core Properties\n\n`;
   out += `| Property | Value |\n|---|---|\n`;
@@ -171,6 +174,23 @@ function getEdtFromIndex(symbolIndex: any, edtName: string, modelName?: string) 
     sizeCaveat;
 
   return { content: [{ type: 'text', text: out }] };
+}
+
+const BINARY_EDT_NOTE = 'no AxEdt XML exists; the properties below were read from the compiled model';
+
+/**
+ * Whether the EDT's symbol row places it in a binary ISV model. `edt_metadata` keeps no file
+ * path, so the row's `symbols` twin is asked: an equality probe on idx_name_type.
+ */
+function edtIsBinaryIsv(db: any, edtName: string, model?: string | null): boolean {
+  try {
+    const row = db.prepare(
+      `SELECT file_path FROM symbols WHERE name = ? AND type = 'edt'${model ? ' AND model = ?' : ''} LIMIT 1`,
+    ).get(...(model ? [edtName, model] : [edtName])) as { file_path?: string | null } | undefined;
+    return isBinaryIsvPath(row?.file_path);
+  } catch {
+    return false;
+  }
 }
 
 /**

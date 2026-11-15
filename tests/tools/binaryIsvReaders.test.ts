@@ -77,6 +77,34 @@ afterAll(() => {
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
+const NOTICE = '🔒 **Binary ISV, signatures only**';
+
+describe('binary ISV notice in the table and EDT reads', () => {
+  it('a table of a binary model carries the notice', async () => {
+    const out = await text(tableInfoTool(req({ tableName: 'ContosoToolLog' }), ctx()));
+    expect(out).toContain(NOTICE);
+    expect(out).toContain('no AxTable XML, X++ source or method bodies exist');
+    // Between the header and the fields, where the class reader puts it.
+    expect(out.indexOf(NOTICE)).toBeLessThan(out.indexOf('## Fields'));
+  });
+
+  it('a table of a source model does not', async () => {
+    const out = await text(tableInfoTool(req({ tableName: 'ContosoRentEquipmentTable' }), ctx()));
+    expect(out).toContain('# Table: ContosoRentEquipmentTable');
+    expect(out).not.toContain('Binary ISV');
+  });
+
+  it('an EDT of a binary model carries the notice, one of a source model does not', async () => {
+    const binary = await text(getEdtInfoTool(req({ edtName: 'ContosoToolCode' }), ctx()));
+    expect(binary).toContain(NOTICE);
+    expect(binary).toContain('no AxEdt XML exists');
+
+    const source = await text(getEdtInfoTool(req({ edtName: 'ContosoEquipmentId' }), ctx()));
+    expect(source).toContain('# Extended Data Type: ContosoEquipmentId');
+    expect(source).not.toContain('Binary ISV');
+  });
+});
+
 describe('EDT string size of a binary ISV model', () => {
   it('is stored as integer text', () => {
     const row = index.getReadDb()
