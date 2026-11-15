@@ -36,6 +36,15 @@ those are called out explicitly below.
   bodies read like a gap in the index, and an EDT the same. The table and EDT reads from the
   symbol index now print the same notice when the object's index row has a `binary-isv://`
   path; objects of source models are shown as before.
+- **`extension_info(mode="coc")` marks the extension classes of a binary ISV model.** The
+  wrappers of a model imported with `npm run extract-binary-models` were listed with their
+  wrapped methods, but nothing said that they are compiled only, so a caller could go
+  looking for their source. Each such class is now listed as
+  `(<model>, binary ISV, signatures only)`, with one line under the list saying that no
+  X++ source exists for them and that `get_object_info` gives their signatures. This holds
+  whether the answer comes from the bridge, the xref SQLite file
+  (`D365FO_XREF_SQLITE_PATH`) or the symbol index; a class counts as binary when its
+  symbol index row has a `binary-isv://` path.
 - **The string size of an EDT from a binary ISV model is shown as an integer, not as
   "15.0".** `npm run extract-binary-models` wrote the dump's `StringSize` into the EDT's JSON
   as a number; the index build bound it to the text column `edt_metadata.string_size`, and

@@ -335,6 +335,11 @@ export function binaryIsvNotice(what: string): string {
   return `> 🔒 **Binary ISV, signatures only** — compiled model, ${what}.\n\n`;
 }
 
+/** Said once under a list in which some entries carry `(…, binary ISV, signatures only)`. */
+export const BINARY_ISV_LIST_FOOTNOTE =
+  `> 🔒 Classes marked "${BINARY_ISV_NOTE}" belong to a compiled model: no X++ source exists ` +
+  'to read. get_object_info gives their method signatures.';
+
 export function toClassInfo(c: DumpClass, model: string, info: BinaryIsvInfo): XppClassInfo & Record<string, unknown> {
   const decl = c.Declaration ?? '';
   const header = parseXppClassHeader(decl);

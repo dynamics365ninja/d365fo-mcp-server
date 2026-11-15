@@ -14,6 +14,7 @@ import { XppSymbolIndex } from '../../src/metadata/symbolIndex';
 import { convertBinaryModel, type BinaryModelDump } from '../../src/metadata/binaryModelImport';
 import { tableInfoTool } from '../../src/tools/readers/tableInfo';
 import { getEdtInfoTool } from '../../src/tools/readers/edtInfo';
+import { findCocExtensionsTool } from '../../src/tools/knowledge/findCocExtensions';
 
 const BINARY_MODEL = 'ContosoTools';
 const SOURCE_MODEL = 'ContosoExt';
@@ -21,6 +22,22 @@ const SOURCE_MODEL = 'ContosoExt';
 const DUMP: BinaryModelDump = {
   Model: 'Contoso Tools',
   ModelInfo: { Module: BINARY_MODEL, Publisher: 'Contoso' },
+  Classes: [
+    {
+      Name: 'ContosoPrinter',
+      Declaration: 'public class ContosoPrinter\n{\n}',
+      Methods: Array.from({ length: 14 }, (_, i) => ({ Name: `step${String(i).padStart(2, '0')}`, ReturnType: 'void' })),
+    },
+    {
+      Name: 'ContosoPrinter_ContosoTools_Extension',
+      IsFinal: true,
+      Declaration: '[ExtensionOf(classStr(ContosoPrinter))]\nfinal class ContosoPrinter_ContosoTools_Extension\n{\n}',
+      Methods: [{ Name: 'step01', ReturnType: 'void' }],
+    },
+  ],
+  ChainOfCommand: [
+    { Class: 'ContosoPrinter_ContosoTools_Extension', Target: 'ContosoPrinter', Methods: [{ Name: 'step01' }] },
+  ],
   Tables: [{ Name: 'ContosoToolLog', Fields: [{ Name: 'Code', Type: 'String', Edt: 'ContosoToolCode' }] }],
   // The dump's JSON numbers are what used to come out as "15.0".
   Edts: [
@@ -54,6 +71,8 @@ beforeAll(async () => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'binary-isv-readers-'));
 
   const m = convertBinaryModel(DUMP);
+  for (const c of m.classes) writeJson(m.model, 'classes', c);
+  for (const c of m.classExtensions) writeJson(m.model, 'class-extensions', c as unknown as Record<string, unknown>);
   for (const t of m.tables) writeJson(m.model, 'tables', t);
   for (const e of m.edts) writeJson(m.model, 'edts', e);
 
@@ -67,6 +86,19 @@ beforeAll(async () => {
     fields: [{ name: 'EquipmentId', type: 'String', extendedDataType: 'ContosoEquipmentId' }],
   });
   writeJson(SOURCE_MODEL, 'edts', { name: 'ContosoEquipmentId', model: SOURCE_MODEL, sourcePath: xml, stringSize: '20' });
+  // A source-model wrapper of the same binary class.
+  writeJson(SOURCE_MODEL, 'class-extensions', {
+    name: 'ContosoPrinter_ContosoExt_Extension',
+    model: SOURCE_MODEL,
+    type: 'class-extension',
+    baseObjectName: 'ContosoPrinter',
+    baseKind: 'class',
+    sourcePath: xml,
+    addedFields: [],
+    addedIndexes: [],
+    addedMethods: ['step02'],
+    cocMethods: ['step02'],
+  });
 
   index = new XppSymbolIndex(':memory:', ':memory:');
   await index.indexMetadataDirectory(path.join(tmp, 'meta'));
@@ -102,6 +134,54 @@ describe('binary ISV notice in the table and EDT reads', () => {
     const source = await text(getEdtInfoTool(req({ edtName: 'ContosoEquipmentId' }), ctx()));
     expect(source).toContain('# Extended Data Type: ContosoEquipmentId');
     expect(source).not.toContain('Binary ISV');
+  });
+});
+
+describe('extension_info(mode="coc") marks the wrappers of a binary ISV model', () => {
+  const BINARY_LINE = /ContosoPrinter_ContosoTools_Extension\*{0,2} \(ContosoTools, binary ISV, signatures only\)/;
+  const SOURCE_LINE = /ContosoPrinter_ContosoExt_Extension\*{0,2} \(ContosoExt\)\n/;
+
+  it('on the index path', async () => {
+    const out = await text(findCocExtensionsTool(req({ className: 'ContosoPrinter' }), ctx()));
+    expect(out).toContain('Found 2 extension class(es)');
+    expect(out).toMatch(BINARY_LINE);
+    expect(out).toMatch(SOURCE_LINE);
+    expect(out).toContain('Wraps methods: step01');
+    expect(out).toContain('no X++ source exists to read');
+  });
+
+  it('on the cross-reference path (bridge or xref SQLite file)', async () => {
+    const xref = {
+      isReady: true,
+      xrefAvailable: true,
+      sourceLabel: 'xref SQLite file (DYNAMICSXREFDB export)',
+      findExtensionClasses: async () => ({
+        baseClassName: 'ContosoPrinter',
+        count: 2,
+        extensions: [
+          { className: 'ContosoPrinter_ContosoTools_Extension', module: BINARY_MODEL, extendedElement: '/Classes/ContosoPrinter', wrappedMethods: ['step01'] },
+          { className: 'ContosoPrinter_ContosoExt_Extension', module: SOURCE_MODEL, extendedElement: '/Classes/ContosoPrinter', wrappedMethods: ['step02'] },
+        ],
+      }),
+    };
+    const out = await text(findCocExtensionsTool(req({ className: 'ContosoPrinter' }), { ...ctx(), bridge: xref }));
+    expect(out).toContain('_Source: xref SQLite file');
+    expect(out).toMatch(BINARY_LINE);
+    expect(out).toMatch(SOURCE_LINE);
+    expect(out).toContain('no X++ source exists to read');
+
+    // With a method filter the classes are split into sections; the mark goes with the class.
+    const filtered = await text(findCocExtensionsTool(
+      req({ className: 'ContosoPrinter', methodName: 'step02' }), { ...ctx(), bridge: xref },
+    ));
+    expect(filtered).toContain('Found 1 extension class(es) wrapping "step02"');
+    expect(filtered).toMatch(BINARY_LINE);
+    expect(filtered).toMatch(SOURCE_LINE);
+  });
+
+  it('adds nothing when no wrapper is binary', async () => {
+    const out = await text(findCocExtensionsTool(req({ className: 'ContosoRentEquipmentTable' }), ctx()));
+    expect(out).not.toContain('binary ISV');
   });
 });
 

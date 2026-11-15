@@ -30,6 +30,7 @@ import { debugLog } from '../utils/logger.js';
 import { xppMethodSourceForXml } from '../utils/xppFormat.js';
 import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../utils/xppDocGen.js';
 import { parseXppDeclaration, parseXppClassHeader } from '../metadata/xppDeclaration.js';
+import { BINARY_ISV_LIST_FOOTNOTE, BINARY_ISV_NOTE } from '../metadata/binaryModelImport.js';
 import { rankCustomFirst, isExactNameMatch } from '../utils/exactMatchRanking.js';
 import { COMPACT_METHODS_HINT, fullBodyHint } from '../utils/methodBodyHint.js';
 import { subscriberAccessLevelValue } from '../utils/subscriberAccessLevel.js';
@@ -3129,19 +3130,43 @@ export async function tryBridgeCocExtensions(
   bridge: XrefSource | undefined,
   baseClassName: string,
   methodName?: string,
+  /**
+   * Which of these extension classes belong to a binary ISV model, as lower-cased names. The
+   * cross-reference data cannot tell; the caller asks the symbol index. Omitted: none marked.
+   */
+  binaryIsvClasses?: (classNames: string[]) => ReadonlySet<string>,
 ): Promise<ToolResult | null> {
   if (!bridge?.isReady || !bridge.xrefAvailable) return null;
   try {
     const result = await bridge.findExtensionClasses(baseClassName);
     if (!result) return null;
-    return { content: [{ type: 'text', text: formatCocExtensions(result, methodName, xrefSourceLabel(bridge)) }] };
+    const binary = binaryIsvClasses?.(result.extensions.map(e => e.className)) ?? new Set<string>();
+    return { content: [{ type: 'text', text: formatCocExtensions(result, methodName, xrefSourceLabel(bridge), binary) }] };
   } catch (e) {
     recordBridgeFailure(`findExtensionClasses(${baseClassName})`, e);
     return null;
   }
 }
 
-function formatCocExtensions(r: BridgeExtensionClassResult, methodNameFilter: string | undefined, source: string): string {
+function formatCocExtensions(
+  r: BridgeExtensionClassResult,
+  methodNameFilter: string | undefined,
+  source: string,
+  binaryIsv: ReadonlySet<string>,
+): string {
+  const out = formatCocExtensionList(r, methodNameFilter, source, binaryIsv);
+  // Every class the list counts is printed in one of its sections, so one marked class
+  // anywhere in the result means one marked line above.
+  const marked = r.extensions.some(e => binaryIsv.has(e.className.toLowerCase()));
+  return marked ? `${out}${BINARY_ISV_LIST_FOOTNOTE}\n` : out;
+}
+
+function formatCocExtensionList(
+  r: BridgeExtensionClassResult,
+  methodNameFilter: string | undefined,
+  source: string,
+  binaryIsv: ReadonlySet<string>,
+): string {
   let out = `CoC Extensions of: ${r.baseClassName}\n`;
   out += `_Source: ${source}_\n\n`;
 
@@ -3163,7 +3188,7 @@ function formatCocExtensions(r: BridgeExtensionClassResult, methodNameFilter: st
 
   if (!methodNameFilter) {
     out += `Found ${unique.length} extension class(es):\n\n`;
-    return out + formatCocGroups(unique);
+    return out + formatCocGroups(unique, binaryIsv);
   }
 
   // With a method filter, "Found N … wrapping m" counts only the classes whose wrap list names
@@ -3184,21 +3209,21 @@ function formatCocExtensions(r: BridgeExtensionClassResult, methodNameFilter: st
   }
 
   out += `Found ${wrappers.length} extension class(es) wrapping "${methodNameFilter}":\n\n`;
-  out += formatCocGroups(wrappers);
+  out += formatCocGroups(wrappers, binaryIsv);
   if (others.length > 0) {
     out += `Other extension classes of ${r.baseClassName} (no wrap of "${methodNameFilter}" recorded): ${others.length}\n\n`;
-    out += formatCocGroups(others);
+    out += formatCocGroups(others, binaryIsv);
   }
   if (unknown.length > 0) {
     out += `Extension classes of ${r.baseClassName}, wraps unknown (the source sent no wrap list): ${unknown.length}\n\n`;
-    out += formatCocGroups(unknown);
+    out += formatCocGroups(unknown, binaryIsv);
   }
   return out;
 }
 
 type CocExtensionEntry = BridgeExtensionClassResult['extensions'][number];
 
-function formatCocGroups(extensions: CocExtensionEntry[]): string {
+function formatCocGroups(extensions: CocExtensionEntry[], binaryIsv: ReadonlySet<string>): string {
   let out = '';
   // Grouped by the element each class actually extends, never pooled into one list. A name can
   // denote several objects at once — "SalesTable" is a table (14 extensions) AND a form (17),
@@ -3220,7 +3245,10 @@ function formatCocGroups(extensions: CocExtensionEntry[]): string {
     if (element) out += `### ${describeXrefElement(element)} — ${exts.length}\n\n`;
     for (const ext of exts) {
       out += `- **${ext.className}**`;
-      if (ext.module) out += ` (${ext.module})`;
+      const binary = binaryIsv.has(ext.className.toLowerCase());
+      if (ext.module || binary) {
+        out += ` (${[ext.module, binary ? BINARY_ISV_NOTE : ''].filter(Boolean).join(', ')})`;
+      }
       if (ext.wrappedMethods && ext.wrappedMethods.length > 0) {
         // Deliberately no `Uses 'next' keyword: ✓` line on THIS path, unlike the index /
         // filesystem path in findCocExtensions.ts. That one earns it — fsExtensionScanner
