@@ -28,6 +28,20 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Fixed
+- **`get_object_info(include:"xml")` says that an object of a binary ISV model has no XML,
+  instead of sending the caller in a circle.** A model imported with
+  `npm run extract-binary-models` ships compiled only, so its objects have no file. The
+  reader answered "the index has it in "<model>" — retry with options.modelName", and the
+  retry answered "No model in the symbol index holds a class of that name … or the object
+  does not exist yet", for an object `get_object_info` had just described. It now answers,
+  for any object type, that the object is in the binary ISV model (compiled only,
+  signatures only), that no XML or X++ source exists and that `get_object_info` without
+  `include:"xml"` gives its signatures, and names its `binary-isv://` path. Separately,
+  when the index lists the object only in the model passed as `options.modelName` but its
+  file is missing, the answer no longer claims that no model holds it: it says the index
+  row is stale or the host has only the database. Objects with a file are read as before.
+
 ## [1.24.0] — 2026-11-12
 
 ### Added
