@@ -41,6 +41,22 @@ those are called out explicitly below.
   test method is named and left out instead of failing the call. `testMethod` still needs a
   single class, and classes of different packages are refused, since one run sends one
   module assembly. One class answers exactly as before. On a classic VM nothing changes.
+- **`run_systest_class` on UDE says when the environment was busy with another operation.**
+  The environment runs one operation at a time, so a test run sent during a deploy or another
+  test run waits behind it, and a slow or timed-out run looked like a fault of the tests. Before
+  sending, the tool now reads the operations still in progress from the environment's
+  operation history (`msprov_operationhistory`) and, when there are any, the reply says
+  `⏳ When this run was sent, the environment was already running Deploy (since 07:29 UTC)`.
+  Read-only and best-effort: when the history cannot be read, the run goes ahead without the
+  note.
+
+### Fixed
+- **`run_systest_class` finds a test class in another model when no model was named.** The
+  tool looked for the class only in the workspace model, while test classes usually live in a
+  test model of their own, so the call failed with "was not found in model …" and the agent
+  had to guess the model and call again. When `modelName` is omitted and the class is not in
+  the workspace model, the class is now looked up in the symbol index, run from the model the
+  index names, and the reply says so. A model the caller names is still the only one searched.
 
 ## [1.24.0] — 2026-11-12
 
