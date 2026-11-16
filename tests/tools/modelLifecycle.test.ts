@@ -101,7 +101,7 @@ afterEach(async () => {
 const create = (args: Record<string, unknown>, random = () => 0) =>
   handleCreateModel({ objectType: 'model-descriptor', ...args }, undefined, { envFile: envFile(), random });
 const remove = (args: Record<string, unknown>) =>
-  handleDeleteModel({ objectType: 'model-descriptor', ...args }, undefined, { envFile: envFile() });
+  handleDeleteModel({ objectType: 'model-descriptor', dryRun: false, ...args }, undefined, { envFile: envFile() });
 
 describe('create', () => {
   it('writes the descriptor and the model folder, defaulting layer and publisher from the workspace model', async () => {
@@ -269,6 +269,12 @@ describe('delete', () => {
     expect(text(res)).toMatch(/name the model to delete/);
   });
 
+  it('previews by default: without dryRun:false nothing is deleted', async () => {
+    const res = await remove({ objectName: 'ContosoScripts', dryRun: undefined });
+    expect(text(res)).toMatch(/DRY RUN/);
+    expect((await fs.stat(path.join(state.root, 'ContosoScripts', 'Descriptor', 'ContosoScripts.xml'))).isFile()).toBe(true);
+  });
+
   it('dryRun lists what would go and deletes nothing', async () => {
     const res = await remove({ objectName: 'ContosoScripts', dryRun: true });
     expect(res.isError).toBeFalsy();
@@ -345,7 +351,7 @@ describe('delete', () => {
     const res: any = await d365foFileTool({
       method: 'tools/call',
       params: { name: 'd365fo_file', arguments: {
-        action: 'delete', objectType: 'model-descriptor', objectName: 'ContosoScripts', params: { dryRun: true },
+        action: 'delete', objectType: 'model-descriptor', objectName: 'ContosoScripts',
       } },
     } as any, {} as any);
     expect(text(res)).toMatch(/DRY RUN/);

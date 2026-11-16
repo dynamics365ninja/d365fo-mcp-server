@@ -13,7 +13,7 @@ discriminators were already in the schema.
 | Create | `d365fo_file(action="create", objectType="model-descriptor", objectName="ContosoScripts", properties:{…})` |
 | Add / remove a module reference | `d365fo_file(action="modify", objectType="model-descriptor", operation="add-module-reference" \| "remove-module-reference", params:{moduleReference})` |
 | Edit a property | `d365fo_file(action="modify", objectType="model-descriptor", operation="modify-property", params:{propertyPath, propertyValue})` |
-| Delete | `d365fo_file(action="delete", objectType="model-descriptor", objectName="ContosoScripts", params:{dryRun:true})` first, then without `dryRun` |
+| Delete | `d365fo_file(action="delete", objectType="model-descriptor", objectName="ContosoScripts", params:{dryRun:false})` after the user has seen the preview (a call without `dryRun` only previews) |
 | Undo a create | `d365fo_file(action="undo", filePath="<descriptor>")` |
 | Rename, move between packages | Not offered — see [Why there is no rename](#why-there-is-no-rename) |
 
@@ -101,7 +101,7 @@ never.
 
 ## Delete
 
-Run it with `dryRun: true` first and show the user the list. The dry run names the descriptor,
+`dryRun` defaults to `true`: a delete call only previews. Show the user the list, and after they agree re-send with `dryRun: false`. The preview names the descriptor,
 every file in the model folder, what happens to the package folder, the models that reference
 the package, the VS projects, and whether the delete would be refused.
 

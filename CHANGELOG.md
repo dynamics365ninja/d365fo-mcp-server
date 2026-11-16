@@ -43,7 +43,7 @@ those are called out explicitly below.
   session. `operation="modify-property"` on a descriptor sets Description, DisplayName,
   Publisher, Layer or Version; Name, ModelModule and Id are refused.
   `action="delete"` removes a model: it takes an explicit name, lists everything with
-  `dryRun: true`, and is refused while the model holds files or another model references
+  a preview unless `dryRun: false` is passed (the default only lists what would go), and is refused while the model holds files or another model references
   its package unless `force: true`; Microsoft models, linked folders and models the
   cross-model guard does not allow are always refused. `get_object_info(objectType="model")`
   describes one model (references, the models referencing it, cycles, object counts,

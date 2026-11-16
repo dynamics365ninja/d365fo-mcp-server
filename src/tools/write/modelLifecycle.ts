@@ -557,7 +557,9 @@ export async function handleDeleteModel(
   const parsed = DeleteSchema.safeParse(rawArgs);
   if (!parsed.success) return bad(`invalid arguments — ${parsed.error.message}`);
   const a = parsed.data;
-  const dryRun = a.dryRun === true;
+  // A preview unless the caller says dryRun:false — a whole model is not removed by a call that
+  // merely omitted a flag. The preview is what the user is shown before saying yes.
+  const dryRun = a.dryRun !== false;
   const force = a.force === true;
 
   // Never defaulted to the configured model: "delete the model" with no name is not a request.
@@ -650,12 +652,12 @@ export async function handleDeleteModel(
         ? `⛔ As it stands the delete would be REFUSED:\n${blockers.map(b => `  • ${b}`).join('\n')}\n` +
           `force=true overrides this — only after the user has seen this list and said so.`
         : `Nothing blocks it. It cannot be undone by this server: recovery is \`git restore\` when the metadata is ` +
-          `under source control, and nothing otherwise. Confirm with the user, then re-run without dryRun.`) +
+          `under source control, and nothing otherwise. Confirm with the user, then re-run with dryRun=false.`) +
       `\nA model already DEPLOYED to an environment stays installed there; this only removes the source.`);
   }
   if (blockers.length && !force) {
     return bad(`refusing to delete model "${model.name}":\n${blockers.map(b => `  • ${b}`).join('\n')}\n` +
-      `Run it with dryRun=true to see everything it would remove. force=true overrides this refusal — only after the ` +
+      `Run it with dryRun=true (the default) to see everything it would remove. force=true overrides this refusal — only after the ` +
       `user has seen that list and said so.`);
   }
 
