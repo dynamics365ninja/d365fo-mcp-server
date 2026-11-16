@@ -99,7 +99,7 @@ describe('getDataverseAccessToken', () => {
     silentMock.mockResolvedValue({ accessToken: 'from-cache' });
     const opener = vi.fn();
 
-    const settings = { ...SETTINGS, tokenCachePath: 'C:\cache\dataverse-token-cache.bin' };
+    const settings = { ...SETTINGS, tokenCachePath: 'C:\\cache\\dataverse-token-cache.bin' };
     expect(await getDataverseAccessToken(settings, opener)).toBe('from-cache');
 
     expect(interactiveMock).not.toHaveBeenCalled();
