@@ -755,6 +755,25 @@ export async function handleDeleteModel(
   ].filter(Boolean).join('\n') + standDownNotice(check));
 }
 
+/** Remove every directory under `dir` (and `dir` itself) that ends up empty; returns how many went. */
+async function pruneEmptyDirs(dir: string): Promise<number> {
+  let removed = 0;
+  let entries: import('fs').Dirent[];
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  for (const e of entries) {
+    if (e.isDirectory() && !e.isSymbolicLink()) removed += await pruneEmptyDirs(path.join(dir, e.name));
+  }
+  try {
+    await fs.rmdir(dir);
+    removed++;
+  } catch { /* holds a file, or already gone */ }
+  return removed;
+}
+
 /**
  * After action="undo" removed a descriptor this session created: take away the
  * folders the create made (only while they are empty) and the configuration
@@ -768,14 +787,11 @@ export async function tidyAfterModelUndo(
   const name = path.basename(descriptorPath).replace(/\.xml$/i, '');
   const descriptorDir = path.dirname(descriptorPath);
   const packageDir = path.dirname(descriptorDir);
-  const removed: string[] = [];
-  // rmdir, never rm: a folder that has gained content since the create stays.
-  for (const dir of [path.join(packageDir, name), descriptorDir, packageDir]) {
-    try {
-      await fs.rmdir(dir);
-      removed.push(dir);
-    } catch { /* not empty, or already gone */ }
-  }
+  // rmdir only, bottom-up: a folder that holds any file stays. Measured against the real server: once
+  // the model exists, the bridge lays out the empty Ax* / Delta / XppMetadata skeleton beside the
+  // descriptor, so "remove the folders the create made" has to mean the whole empty tree.
+  const removedCount = await pruneEmptyDirs(packageDir);
+  void descriptorDir;
   invalidateModelVisibility(name);
   const envFile = deps.envFile !== undefined ? deps.envFile : loadedEnvFile();
   const settings: ListSettingOutcome[] = [];
@@ -783,7 +799,7 @@ export async function tidyAfterModelUndo(
     if (addedConfigKeys.includes(key)) settings.push(await updateListSetting(envFile, key, { remove: name }));
   }
   return (
-    (removed.length ? `\nRemoved the empty model folder(s): ${removed.join(', ')}.` : '') +
+    (removedCount ? `\nRemoved ${removedCount} empty folder(s) of the model.` : '') +
     (settings.length ? `\n"${name}" was taken out of ${settings.map(o => o.key).join(' and ')}.` : '')
   );
 }

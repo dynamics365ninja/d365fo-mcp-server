@@ -407,9 +407,23 @@ describe('create through d365fo_file, then undo', () => {
     // What action="undo" does once it has unlinked the descriptor.
     await fs.rm(file);
     const note = await tidyAfterModelUndo(file, ['D365FO_CROSS_MODEL_WRITE_MODELS'], { envFile: null });
-    expect(note).toMatch(/Removed the empty model folder/);
+    expect(note).toMatch(/Removed \d+ empty folder/);
     await expect(fs.stat(path.join(state.root, 'ContosoScripts'))).rejects.toThrow();
     expect(process.env.D365FO_CROSS_MODEL_WRITE_MODELS).toBeUndefined();
+  });
+
+  it('prunes the empty skeleton the bridge lays out, but never a folder that holds a file', async () => {
+    await create({ objectName: 'ContosoScripts' });
+    const file = path.join(state.root, 'ContosoScripts', 'Descriptor', 'ContosoScripts.xml');
+    await fs.mkdir(path.join(state.root, 'ContosoScripts', 'ContosoScripts', 'AxClass', 'Delta'), { recursive: true });
+    await fs.mkdir(path.join(state.root, 'ContosoScripts', 'XppMetadata', 'ContosoScripts', 'AxTable'), { recursive: true });
+    await fs.mkdir(path.join(state.root, 'ContosoScripts', 'ContosoScripts', 'AxTable'), { recursive: true });
+    await fs.writeFile(path.join(state.root, 'ContosoScripts', 'ContosoScripts', 'AxTable', 'Keep.xml'), '<AxTable/>');
+    await fs.rm(file);
+    await tidyAfterModelUndo(file, [], { envFile: null });
+    expect((await fs.stat(path.join(state.root, 'ContosoScripts', 'ContosoScripts', 'AxTable', 'Keep.xml'))).isFile()).toBe(true);
+    await expect(fs.stat(path.join(state.root, 'ContosoScripts', 'ContosoScripts', 'AxClass'))).rejects.toThrow();
+    await expect(fs.stat(path.join(state.root, 'ContosoScripts', 'XppMetadata'))).rejects.toThrow();
   });
 });
 
