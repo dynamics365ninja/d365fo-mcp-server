@@ -28,6 +28,20 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Fixed
+- **`d365fo_file(action="modify")` no longer reports a successful `modify-property` as
+  failed when the value is the property's default or a `true`/`false` NoYes.** The
+  post-write check looked for the literal `<Name>value</Name>` in the file. The metadata
+  serializer writes no element for a default value (a data entity's `EntityCategory=Master`,
+  `SupportsSetBasedSqlOperations=No`, a table's `CacheLookup=None`) and spells NoYes as
+  Yes/No, so `entityCategory=Master` or `supportsSetBasedSqlOperations=true` ended in
+  "❌ Verification: … is NOT in the file … Treat this write as failed" after a write that
+  had worked. The check now accepts Yes/No for `true`/`false`, and accepts an absent
+  top-level element when the value is the serializer's default for that object type
+  (AxTable and AxDataEntityView, measured by reflection on the metamodel and over the
+  5,887 shipped data entities). A non-default value that is missing, or an element present
+  with another value, is still reported.
+
 ## [1.24.0] — 2026-11-12
 
 ### Added

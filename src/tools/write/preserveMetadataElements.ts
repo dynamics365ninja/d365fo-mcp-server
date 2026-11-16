@@ -34,6 +34,7 @@
 
 import { AX_TABLE_SERIALIZER_DEFAULTS } from '../xml/createTablePropertyHonesty.js';
 import { scanXmlLeaves } from '../../utils/xmlScan.js';
+import { isOmittedDefault, noYesSpelling, rootElementOf } from './serializerOmittedDefaults.js';
 import { SUBSCRIBER_PERMISSIONS, subscriberAccessLevelValue } from '../../utils/subscriberAccessLevel.js';
 
 /**
@@ -176,10 +177,20 @@ export function renderPreservationNote(restored: readonly string[]): string {
  * marker that cannot be derived returns null, and a check that cannot be made is
  * not reported as one that passed.
  */
+export interface ClaimMarker {
+  label: string;
+  pattern: RegExp;
+  /**
+   * The top-level property a modify-property claims to have set. Lets the check
+   * accept an ABSENT element when the value is the one the serializer omits.
+   */
+  property?: { name: string; value: string };
+}
+
 export function claimedMarkerFor(
   operation: string,
   args: Record<string, unknown>,
-): { label: string; pattern: RegExp } | null {
+): ClaimMarker | null {
   const str = (v: unknown): string | null =>
     typeof v === 'string' && v.trim() ? v.trim() : null;
 
@@ -204,10 +215,14 @@ export function claimedMarkerFor(
           pattern: new RegExp(`<AxEdtTableReference>\\s*<RelatedField>\\s*${escapeRe(field)}\\s*</RelatedField>`),
         };
       }
+      // A NoYes property passed as true/false is written Yes/No: accept either spelling.
+      const noYes = noYesSpelling(value);
+      const valueRe = noYes === 'Yes' ? '(?:Yes|true)' : noYes === 'No' ? '(?:No|false)' : escapeRe(value);
       return {
         label: `${name}=${value}`,
         // Attributes allowed: a form's Design properties are written <Pattern xmlns="">…</Pattern>.
-        pattern: new RegExp(`<${escapeRe(name)}(?:\\s[^>]*)?>\\s*${escapeRe(value)}\\s*</${escapeRe(name)}>`, 'i'),
+        pattern: new RegExp(`<${escapeRe(name)}(?:\\s[^>]*)?>\\s*${valueRe}\\s*</${escapeRe(name)}>`, 'i'),
+        property: { name, value },
       };
     }
     case 'add-delete-action': {
@@ -265,11 +280,20 @@ function escapeRe(v: string): string {
 
 /** The warning an unfulfilled claim earns. Empty when the claim held (or none was checkable). */
 export function renderClaimCheck(
-  marker: { label: string; pattern: RegExp } | null,
+  marker: ClaimMarker | null,
   postImage: string | null,
 ): string {
   if (!marker || !postImage) return '';
-  if (marker.pattern.test(postImage.replace(/\r\n/g, '\n'))) return '';
+  const xml = postImage.replace(/\r\n/g, '\n');
+  if (marker.pattern.test(xml)) return '';
+  // The serializer writes no element for a default value (EntityCategory=Master,
+  // SupportsSetBasedSqlOperations=No): absence IS the claimed value. An element that
+  // is present with another value is still a failed write.
+  if (marker.property && isOmittedDefault(rootElementOf(xml), marker.property.name, marker.property.value)) {
+    const wanted = marker.property.name.toLowerCase();
+    const present = [...readTopLevelLeaves(xml).keys()].some(n => n.toLowerCase() === wanted);
+    if (!present) return '';
+  }
   return (
     `\n\n❌ Verification: "${marker.label}" is NOT in the file after a reported success.\n` +
     `Treat this write as failed and re-read the object — a metadata round trip can drop a value it ` +
