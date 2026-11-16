@@ -28,6 +28,38 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Added
+- **The server can create, edit, inspect and delete models.** `d365fo_file(action="create",
+  objectType="model-descriptor")` was listed by the tool description and the op-spec index
+  and then rejected by the input schema ("Invalid option"), so a new model meant a
+  hand-written `Descriptor/<Model>.xml`. It now writes the descriptor and the model folder
+  under the custom write root (`ModelStoreFolder` on UDE, `PackagesLocalDirectory`
+  otherwise), as a new package or, with `properties.packageName`, inside an existing one.
+  The name is checked against every descriptor under every configured root, the Id is one
+  no visible descriptor uses, layer and publisher default from the workspace's model, and
+  each module reference must name an existing package folder (a self-reference or a
+  reference cycle is refused). `dryRun: true` previews, `properties.project` also creates
+  a VS project, and `action="undo"` on the descriptor removes a model created in the same
+  session. `operation="modify-property"` on a descriptor sets Description, DisplayName,
+  Publisher, Layer or Version; Name, ModelModule and Id are refused.
+  `action="delete"` removes a model: it takes an explicit name, lists everything with
+  `dryRun: true`, and is refused while the model holds files or another model references
+  its package unless `force: true`; Microsoft models, linked folders and models the
+  cross-model guard does not allow are always refused. `get_object_info(objectType="model")`
+  describes one model (references, the models referencing it, cycles, object counts,
+  projects) and `name="*"` lists all custom models with reference cycles, references to
+  missing packages and duplicate Ids. `add-module-reference` now reports a reference that
+  closes a cycle. Rename is not offered; `get_knowledge(kind="op-spec", topic="model")` and
+  docs/MODEL_LIFECYCLE.md say why and give the contracts.
+- **A model the server creates is recorded in the server's `.env`.** The workspace still
+  targets the model its project builds, so the cross-model guard would refuse the first
+  object written into a new model. Creating a model adds it to `CUSTOM_MODELS` and
+  `D365FO_CROSS_MODEL_WRITE_MODELS` in the loaded `.env` and in the running server, and
+  deleting or undoing it removes the entries. The reply lists each change. A key set by
+  the server's real environment (shell or the MCP client's `env` block) cannot be
+  persisted from the server; the change then applies to the session only and the reply
+  says so. Review the two lists if you did not expect a model to be writable.
+
 ## [1.24.0] — 2026-11-12
 
 ### Added

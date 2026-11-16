@@ -57,6 +57,20 @@ let writePolicySource: { envPath: string; pinned: Set<string> } | null = null;
 /** mtime of the file as of the last read, so an unchanged file costs one stat. */
 let writePolicyStamp = '';
 
+/** The .env loadEnv() read and the keys the real environment owned at boot. */
+let loadedEnv: { envPath: string; fromRealEnv: Set<string> } | null = null;
+
+/**
+ * Where a setting of this running server can be persisted, or null before
+ * loadEnv() has run (tests, scripts). `ownedByRealEnv(key)` is true for a key
+ * the shell / .mcp.json env block set: the file cannot change what the next
+ * start sees for it, so a writer has to say so instead of reporting it saved.
+ */
+export function loadedEnvFile(): { envPath: string; ownedByRealEnv(key: string): boolean } | null {
+  const src = loadedEnv;
+  return src ? { envPath: src.envPath, ownedByRealEnv: key => src.fromRealEnv.has(key) } : null;
+}
+
 /**
  * Re-read ONLY the cross-model write policy from the .env loadEnv() used.
  *
@@ -202,6 +216,7 @@ export function loadEnv(callerImportMetaUrl: string): void {
     pinned: new Set(WRITE_POLICY_VARS.filter(k => fromRealEnv.has(k))),
   };
   try { writePolicyStamp = String(statSync(envPath).mtimeMs); } catch { writePolicyStamp = '-'; }
+  loadedEnv = { envPath, fromRealEnv };
 
   // quiet: true suppresses dotenv v17's stdout logging, which would otherwise
   // corrupt the MCP JSON-RPC channel in stdio mode (writes to process.stdout

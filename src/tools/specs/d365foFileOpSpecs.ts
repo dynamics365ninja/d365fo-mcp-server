@@ -1085,7 +1085,9 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       'alphabetically after Name), children in serializer order, xmlns="" on menu item children. An ' +
       'existing element is replaced. The reply says when the value differs from what xppbp expects: ' +
       'TempDB/InMemory/Staging tables Local + NoAccess, SaveDataPerCompany=No Shared + Read, other tables ' +
-      'Company + Read. Action menu item on a class NoAccess, Display on a class any right Allow. No hint for a menu item on a form or report: xppbp decides from its data sources (all Local, i.e. TempDB, gives Local + NoAccess, otherwise Read).',
+      'Company + Read. model-descriptor: propertyPath is one of Description, DisplayName, Publisher, Layer (name ' +
+      'or number), Version ("1.2.0.0") or VersionMajor/Minor/Build/Revision; Name, ModelModule and Id are the ' +
+      'model\'s identity and are refused (topic="model" says why). Action menu item on a class NoAccess, Display on a class any right Allow. No hint for a menu item on a form or report: xppbp decides from its data sources (all Local, i.e. TempDB, gives Local + NoAccess, otherwise Read).',
   },
 };
 
@@ -1175,6 +1177,22 @@ export const D365FO_FILE_CREATE_PROPERTY_SPECS: Record<string, string> = {
     'label?, developerDocumentation?, fields[{name,type?,edt?,enumType?,stringSize?}] — type is ' +
     'String|Integer|Int64|Real|Date|Time|UtcDateTime|Enum|Container|Guid (no Boolean: use Enum + ' +
     'enumType:"NoYes"), mappingTable?, mappings?[{mapField,mapFieldTo}] (one connection/field by default)',
+  'model-descriptor':
+    'Creates a MODEL: <root>/<Package>/Descriptor/<Model>.xml plus the empty <root>/<Package>/<Model>/ folder. ' +
+    'objectName = the new model\'s name (never defaulted; a letter, then letters/digits/_). properties: ' +
+    'displayName? (default the name), description?, publisher? and layer? (usr|cus|var|isv or their patch layers, ' +
+    'by name or number — both default from the models beside it, the workspace\'s model first; with no model to ' +
+    'copy from the create is refused and you ASK THE USER), version? ("1.0.0.0"), moduleReferences?[] (PACKAGE ' +
+    'folder names; default ["ApplicationPlatform"]; each must exist under a configured packages root, or pass ' +
+    'allowUnresolvedReferences:true; a self-reference or a reference cycle is refused), packageName? (an EXISTING ' +
+    'package to add the model to — it then compiles into that package\'s assembly and answers to the cross-model ' +
+    'guard; omitted = a new package named like the model), id? (default: one no visible descriptor uses), ' +
+    'project? ({projectName?, projectsRoot?, solutionMode?, …} — also create a VS project for it, same contract as ' +
+    'topic="project"). Top level: dryRun:true previews without writing; packagePath overrides the root (default: ' +
+    'the custom write root — ModelStoreFolder on UDE, PackagesLocalDirectory otherwise). The model is added to ' +
+    'CUSTOM_MODELS and D365FO_CROSS_MODEL_WRITE_MODELS in the server\'s .env so objects can be written into it ' +
+    'with modelName="<Model>"; the reply lists every change. Confirm with the user before creating a model. ' +
+    'Whole lifecycle (edit, delete, list, why there is no rename): get_knowledge(kind="op-spec", topic="model")',
   query: 'title?, dataSource (root table; table also works), dataSourceName?, fields?[{name,field?}]',
   view: 'query (existing AxQuery), fields[{name,dataField?}] — dataSource defaults to query',
   service:

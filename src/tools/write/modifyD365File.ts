@@ -1653,8 +1653,8 @@ async function runModify(
           throw new Error(
             `No descriptor found for model "${modelName || objectName}".\n\n` +
             `A descriptor lives at <root>\\<Package>\\Descriptor\\<Model>.xml and is NOT created ` +
-            `here — a model without one is a wrong model name or a packages root this server is not ` +
-            `configured for, not a model waiting to be given a manifest.\n` +
+            `by a modify — usually a wrong model name or a packages root this server is not configured ` +
+            `for. (A NEW model: action="create", objectType="model-descriptor".)\n` +
             `  1. Check the model name (get_workspace_info reports the configured one).\n` +
             `  2. Pass packagePath="<root that contains the package>" if the metadata lives outside ` +
             `the configured PackagesLocalDirectory.\n` +

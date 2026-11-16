@@ -29,6 +29,7 @@ import { getConfigKeyInfoTool } from './configKeyInfo.js';
 import { getSecurityPolicyInfoTool } from './securityPolicyInfo.js';
 import { getMacroInfoTool } from './macroInfo.js';
 import { menuExtensionInfoTool, menuInfoTool } from './menuInfo.js';
+import { modelInfoTool } from './modelInfo.js';
 import { tableExtensionInfoTool, formExtensionInfoTool, enumExtensionInfoTool, edtExtensionInfoTool, dataEntityExtensionInfoTool, classExtensionInfoTool } from './tableExtensionInfo.js';
 
 export type InfoTool = (request: CallToolRequest, context: XppServerContext) => Promise<any>;
@@ -89,6 +90,8 @@ export const READER_DISPATCH: Record<string, ReaderDispatch> = {
   'config-key':         { tool: getConfigKeyInfoTool,     toolName: 'get_config_key_info',        buildArgs: byName('name') },
   'security-policy':    { tool: getSecurityPolicyInfoTool,toolName: 'get_security_policy_info',   buildArgs: byName('policyName') },
   'macro':              { tool: getMacroInfoTool,         toolName: 'get_macro_info',             buildArgs: byName('macroName') },
+  // Not an AOT object: read from the descriptors on disk. name="*" lists every custom model.
+  'model':              { tool: modelInfoTool,            toolName: 'get_model_info',             buildArgs: byName('modelName') },
   'table-extension':         { tool: tableExtensionInfoTool,       toolName: 'get_table_extension_info',        buildArgs: byBaseName('tableName') },
   'form-extension':          { tool: formExtensionInfoTool,        toolName: 'get_form_extension_info',         buildArgs: byBaseName('baseName') },
   'enum-extension':          { tool: enumExtensionInfoTool,        toolName: 'get_enum_extension_info',         buildArgs: byBaseName('baseName') },
@@ -102,7 +105,7 @@ export const READER_DISPATCH: Record<string, ReaderDispatch> = {
 /** Homogeneous "object by name → structure" types exposed by get_object_info. */
 export const OBJECT_INFO_TYPES = [
   'class', 'table', 'form', 'query', 'view', 'enum', 'edt', 'report',
-  'data-entity', 'menu-item', 'menu', 'service', 'map', 'config-key', 'security-policy', 'macro',
+  'data-entity', 'menu-item', 'menu', 'service', 'map', 'config-key', 'security-policy', 'macro', 'model',
   // Extension types
   'table-extension', 'class-extension', 'form-extension', 'enum-extension',
   'edt-extension', 'data-entity-extension', 'menu-extension',
