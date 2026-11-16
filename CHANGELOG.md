@@ -28,6 +28,18 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Fixed
+- **`d365fo_file(action="project", operation="remove-object")` now unregisters label
+  files.** For `objectType: "label-file"` it answered "label-file removal is not
+  supported", so moving a feature's objects to another project of the model removed
+  every object except its label files. It now removes, per language, the
+  `AxLabelFile\<id>_<lang>` descriptor entry and its `<id>.<lang>.label.txt` resource
+  entry that `add-object` writes: every language the project lists, or only those in
+  `languages[]`. The same rules as for other object types apply: a language no other
+  project of the model lists is refused without `allowOrphan: true`, a label file the
+  project does not list reports "not in the project", and the files on disk are never
+  touched.
+
 ## [1.24.0] — 2026-11-12
 
 ### Added

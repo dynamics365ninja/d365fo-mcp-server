@@ -186,12 +186,67 @@ describe('label files and the active project', () => {
     expect(xml).not.toContain('AxLabelFile\\ContosoProj_fi');
   });
 
-  it('reports a label file with no descriptors, and refuses removal', async () => {
+  it('reports a label file with no descriptors, and one the project does not list', async () => {
     const pkg = await labelTree([]);
     const none = await call('add-object', { projectPath: a, objectType: 'label-file', objectName: 'ContosoProj', packagePath: pkg });
     expect(none.isError).toBe(true);
     expect(none.content[0].text).toContain('no label descriptor files');
-    expect((await call('remove-object', { projectPath: a, objectType: 'label-file', objectName: 'ContosoProj' })).isError).toBe(true);
+    const gone = await call('remove-object', { projectPath: a, objectType: 'label-file', objectName: 'ContosoProj' });
+    expect(gone.isError).toBeFalsy();
+    expect(gone.content[0].text).toContain('not in the project');
+  });
+
+  // remove-object used to answer "label-file removal is not supported", so moving a
+  // feature's objects to another project of the model left its label files behind.
+  it('remove-object unregisters a label file listed by another project too, files untouched', async () => {
+    const pkg = await labelTree(['en-US', 'fi']);
+    for (const p of [a, b]) await call('add-object', { projectPath: p, objectType: 'label-file', objectName: 'ContosoProj', packagePath: pkg });
+    const r = await call('remove-object', { projectPath: a, objectType: 'label-file', objectName: 'ContosoProj' });
+    expect(r.isError, r.content[0].text).toBeFalsy();
+    expect(r.content[0].text).toContain('removed (en-US, fi, files untouched)');
+    const xml = await fs.readFile(a, 'utf-8');
+    expect(xml).not.toContain('ContosoProj');
+    expect(xml).toContain('Label Files\\');
+    expect(await has(b, 'AxLabelFile\\ContosoProj_en-US')).toBe(true);
+    expect(await has(b, 'ContosoProj.fi.label.txt')).toBe(true);
+    const files = await fs.readdir(path.join(pkg, 'ContosoCore', 'ContosoCore', 'AxLabelFile'));
+    expect(files.sort()).toEqual(['ContosoProj_en-US.xml', 'ContosoProj_fi.xml']);
+  });
+
+  it('remove-object refuses the last reference to a label file unless allowOrphan is set', async () => {
+    const pkg = await labelTree(['en-US']);
+    await call('add-object', { projectPath: a, objectType: 'label-file', objectName: 'ContosoProj', packagePath: pkg });
+    const refused = await call('remove-object', { projectPath: a, objectType: 'label-file', objectName: 'ContosoProj' });
+    expect(refused.isError).toBe(true);
+    expect(refused.content[0].text.toLowerCase()).toContain('the only project referencing it (en-us)');
+    expect(await has(a, 'AxLabelFile\\ContosoProj_en-US')).toBe(true);
+
+    const ok = await call('remove-object', { projectPath: a, objectType: 'label-file', objectName: 'ContosoProj', allowOrphan: true });
+    expect(ok.isError, ok.content[0].text).toBeFalsy();
+    expect(await has(a, 'AxLabelFile\\ContosoProj_en-US')).toBe(false);
+    expect(await has(a, 'ContosoProj.en-US.label.txt')).toBe(false);
+  });
+
+  it('remove-object with languages[] removes only those, and leaves a label file with a longer id alone', async () => {
+    const pkg = await labelTree(['en-US', 'fi']);
+    const model = path.join(pkg, 'ContosoCore', 'ContosoCore', 'AxLabelFile');
+    await fs.writeFile(path.join(model, 'ContosoProj_Extra_en-US.xml'), '<x/>');
+    await call('add-object', { projectPath: a, objectType: 'label-file', objectName: 'ContosoProj', packagePath: pkg });
+    await call('add-object', { projectPath: a, objectType: 'label-file', objectName: 'ContosoProj_Extra', packagePath: pkg });
+    const r = await call('remove-object', {
+      projectPath: a, objectType: 'label-file', objectName: 'ContosoProj', languages: ['FI'], allowOrphan: true,
+    });
+    expect(r.isError, r.content[0].text).toBeFalsy();
+    expect(r.content[0].text).toContain('removed (fi,');
+    expect(await has(a, 'AxLabelFile\\ContosoProj_fi')).toBe(false);
+    expect(await has(a, 'ContosoProj.fi.label.txt')).toBe(false);
+    expect(await has(a, 'AxLabelFile\\ContosoProj_en-US')).toBe(true);
+    expect(await has(a, 'ContosoProj.en-US.label.txt')).toBe(true);
+
+    const all = await call('remove-object', { projectPath: a, objectType: 'label-file', objectName: 'ContosoProj', allowOrphan: true });
+    expect(all.content[0].text).toContain('removed (en-US,');
+    expect(await has(a, 'AxLabelFile\\ContosoProj_Extra_en-US')).toBe(true);
+    expect(await has(a, 'ContosoProj_Extra.en-US.label.txt')).toBe(true);
   });
 
   it('a project just created is the active one, so add-object needs no projectPath', async () => {

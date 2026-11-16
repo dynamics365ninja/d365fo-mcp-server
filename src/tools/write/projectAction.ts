@@ -13,7 +13,9 @@ import { extractModelNameFromProject } from '../../utils/workspaceDetector.js';
 import { assertProjectPathAllowed } from '../../utils/pathContainment.js';
 import { ProjectFileManager } from '../../workspace/projectFile.js';
 import { solutionsListingProject, solutionMateProjects } from '../../workspace/projectScaffold.js';
-import { axFolderForObjectType, hasAxFolder, resolveMembership } from '../../workspace/projectMembership.js';
+import {
+  axFolderForObjectType, hasAxFolder, labelLanguagesInIncludes, readProjectIncludes, resolveMembership,
+} from '../../workspace/projectMembership.js';
 import { handleCreateProject, handleDeleteProject } from './createProject.js';
 
 export const PROJECT_OPERATIONS = ['create', 'delete', 'add-object', 'remove-object'] as const;
@@ -101,8 +103,12 @@ async function handleMembership(op: 'add-object' | 'remove-object', args: Record
     const id = `${objectType} ${objectName}`;
     const fail = (why: string) => { failed++; rows.push(`❌ ${id}: ${why}`); };
     if (objectType === 'label-file') {
-      if (op === 'remove-object') { fail('label-file removal is not supported.'); continue; }
       try {
+        if (op === 'remove-object') {
+          const r = await removeLabelFile(mgr, projectPath, objectName, siblings, a.languages, a.allowOrphan);
+          if (r.refused) fail(r.refused); else rows.push(`${r.icon} ${id}: ${r.note}`);
+          continue;
+        }
         const onDisk = await labelLanguages(cfg, modelName, objectName, a.packagePath);
         if (!onDisk.length) { fail('no label descriptor files (<name>_<lang>.xml) found in the model — check the label file name.'); continue; }
         // An explicit list is checked against the files too: an entry for a language
@@ -147,6 +153,38 @@ async function handleMembership(op: 'add-object' | 'remove-object', args: Record
 
   const head = `${failed ? '⚠️' : '✅'} ${label} on ${path.basename(projectPath)} — ${objects.length - failed}/${objects.length} ok`;
   return text(`${head}\n${rows.join('\n')}\nReload the project in Visual Studio if it is open.`, failed > 0);
+}
+
+/**
+ * remove-object for a label file: the reverse of add-object, under the same rules
+ * as every other object type. The languages are the ones the project lists
+ * (narrowed by `languages`), the files on disk are not looked at or touched, and
+ * a language no other project of the model lists needs allowOrphan.
+ */
+async function removeLabelFile(
+  mgr: ProjectFileManager, projectPath: string, labelFileId: string, siblings: readonly string[],
+  languages: string[] | undefined, allowOrphan: boolean | undefined,
+): Promise<{ refused?: string; icon?: string; note?: string }> {
+  const listed = labelLanguagesInIncludes(await readProjectIncludes(projectPath), labelFileId);
+  const wanted = languages?.length
+    ? listed.filter(l => languages.some(w => w.toLowerCase() === l.toLowerCase()))
+    : listed;
+  if (!wanted.length) return { icon: 'ℹ️', note: 'not in the project.' };
+  if (!allowOrphan) {
+    const lonely: string[] = [];
+    for (const lang of wanted) {
+      const m = await resolveMembership('AxLabelFile', `${labelFileId}_${lang}`, projectPath, siblings);
+      if (m.owners.length < 2) lonely.push(lang);
+    }
+    if (lonely.length) {
+      return { refused: `the only project referencing it (${lonely.join(', ')}) — it would leave Visual Studio ` +
+        '(allowOrphan=true to remove anyway).' };
+    }
+  }
+  const removed = await mgr.removeLabelFromProject(projectPath, labelFileId, wanted);
+  return removed.length
+    ? { icon: '✅', note: `removed (${removed.join(', ')}, files untouched).` }
+    : { icon: 'ℹ️', note: 'not in the project.' };
 }
 
 /** Languages a label file has on disk: the `<id>_<lang>.xml` descriptors in the model's AxLabelFile folder. */

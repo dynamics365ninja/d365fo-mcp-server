@@ -22,7 +22,7 @@ import { detectEol, withEol } from '../utils/eolUtils.js';
 import { recordCreatedProjectFolder, takeCreatedProjectFolder } from './createdArtifactLedger.js';
 import {
   axFolderForObjectType, resolveMembership, projectDisplayName, includeKey, normalizeInclude,
-  type Membership,
+  labelLanguagesInIncludes, type Membership,
 } from './projectMembership.js';
 import { getConfigManager } from '../utils/configManager.js';
 import { assertProjectPathAllowed } from '../utils/pathContainment.js';
@@ -665,6 +665,78 @@ export class ProjectFileManager {
       await retryWhileLocked(() => fs.writeFile(projectPath, hadBom ? '\uFEFF' + eolXml : eolXml, 'utf-8'));
       console.error(`[ProjectFileManager] Removed '${include}' from project ${path.basename(projectPath)}`);
       return true;
+    });
+  }
+
+  /**
+   * Reverse of {@link addLabelToProject}: remove, per language, the
+   * `AxLabelFile\{id}_{lang}` descriptor entry and its `{id}.{lang}.label.txt`
+   * resource entry (matched by name or by a DependentUpon on a removed
+   * descriptor). `languages` limits it to those languages (any case); without it
+   * every language the project lists goes. The "Label Files\" folder entry and
+   * the files on disk are left alone. Returns the languages removed, as spelled
+   * in the project.
+   */
+  async removeLabelFromProject(projectPath: string, labelFileId: string, languages?: string[]): Promise<string[]> {
+    await this.assertWithinRoots(projectPath);
+    return withFileLock(projectPath, async () => {
+      const projectXml = await retryWhileLocked(() => fs.readFile(projectPath, 'utf-8'));
+      const hadBom = projectXml.charCodeAt(0) === 0xFEFF;
+      const body = hadBom ? projectXml.slice(1) : projectXml;
+      const project = await this.parser.parseStringPromise(body);
+      if (!project.Project?.ItemGroup) return [];
+      const itemGroups = Array.isArray(project.Project.ItemGroup)
+        ? project.Project.ItemGroup
+        : [project.Project.ItemGroup];
+      const only = languages?.length ? new Set(languages.map(l => l.toLowerCase())) : undefined;
+      const wantedLang = (lang: string) => !only || only.has(lang.toLowerCase());
+      // `<id>.<lang>.label.txt`, the id compared literally and the language captured.
+      const resourceLang = (fileName: string): string | undefined => {
+        const prefix = `${labelFileId}.`.toLowerCase();
+        const suffix = '.label.txt';
+        const lower = fileName.toLowerCase();
+        if (!lower.startsWith(prefix) || !lower.endsWith(suffix)) return undefined;
+        const lang = fileName.slice(prefix.length, -suffix.length);
+        return lang && !/[.\\/]/.test(lang) ? lang : undefined;
+      };
+      const removedDescriptors = new Set<string>();
+      const langs = new Map<string, string>();
+      const contentsOf = (group: any): any[] => Array.isArray(group.Content) ? group.Content : [group.Content];
+
+      // Descriptors first, so a resource can be matched by its DependentUpon.
+      for (const group of itemGroups) {
+        if (group.Content === undefined) continue;
+        group.Content = contentsOf(group).filter((c: any) => {
+          const inc = c?.$?.Include;
+          const lang = typeof inc === 'string' ? labelLanguagesInIncludes([inc], labelFileId)[0] : undefined;
+          if (!lang || !wantedLang(lang)) return true;
+          removedDescriptors.add(normalizedInclude(c));
+          if (!langs.has(lang.toLowerCase())) langs.set(lang.toLowerCase(), lang);
+          return false;
+        });
+      }
+      let removedResources = 0;
+      for (const group of itemGroups) {
+        if (group.Content === undefined) continue;
+        const before = contentsOf(group);
+        group.Content = before.filter((c: any) => {
+          const inc = c?.$?.Include;
+          const dependentUpon = typeof c?.DependentUpon === 'string' ? normalizeInclude(c.DependentUpon) : '';
+          if (dependentUpon && removedDescriptors.has(dependentUpon)) return false;
+          const lang = typeof inc === 'string' ? resourceLang(inc.split(/[\\/]/).pop() ?? '') : undefined;
+          if (!lang || !wantedLang(lang)) return true;
+          if (!langs.has(lang.toLowerCase())) langs.set(lang.toLowerCase(), lang);
+          return false;
+        });
+        removedResources += before.length - group.Content.length;
+      }
+      if (!removedDescriptors.size && !removedResources) return [];
+
+      const eolXml = withEol(this.builder.buildObject(project), detectEol(body));
+      await retryWhileLocked(() => fs.writeFile(projectPath, hadBom ? '﻿' + eolXml : eolXml, 'utf-8'));
+      console.error(`[ProjectFileManager] Removed label file '${labelFileId}' (${[...langs.values()].join(', ')}) ` +
+        `from project ${path.basename(projectPath)}`);
+      return [...langs.values()];
     });
   }
 
