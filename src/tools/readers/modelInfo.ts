@@ -19,7 +19,7 @@ import type { XppServerContext } from '../../types/context.js';
 import { getConfigManager } from '../../utils/configManager.js';
 import {
   scanDescriptors, findModel, packageMates, dependentsOfPackage, findReferenceCycles,
-  unresolvedReferences, describeLayer, formatVersion, type ModelEntry, type ModelInventory,
+  unresolvedReferences, describeLayer, formatVersion, isMicrosoftModel, type ModelEntry, type ModelInventory,
 } from '../../metadata/modelInventory.js';
 
 const ArgsSchema = z.object({
@@ -29,7 +29,7 @@ const ArgsSchema = z.object({
   packagePath: z.string().optional(),
 }).passthrough();
 
-const isMicrosoft = (m: ModelEntry) => /\bmicrosoft\b/i.test(m.publisher) || (m.layer !== null && m.layer < 8);
+const isMicrosoft = (m: ModelEntry) => isMicrosoftModel(m);
 const sameName = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 async function inventoryOf(packagePath?: string): Promise<{ inventory: ModelInventory; anchor: string | null; projectsOf(model: string): string[] }> {

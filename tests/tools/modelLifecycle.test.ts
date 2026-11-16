@@ -177,6 +177,14 @@ describe('create', () => {
     expect(text(await create({ objectName: 'ApplicationSuite' }))).toMatch(/already exists/);
   });
 
+  it('refuses an Id or a name the descriptor cannot hold', async () => {
+    for (const id of [true, 99999999999, 0, 'x']) {
+      expect((await create({ objectName: 'ContosoScripts', properties: { id } })).isError, String(id)).toBe(true);
+    }
+    expect((await create({ objectName: 'NUL' })).isError).toBe(true);
+    expect((await create({ objectName: 'ContosoScripts', properties: { version: '1.2.3.4.5' } })).isError).toBe(true);
+  });
+
   it('refuses a Microsoft layer, and asks when there is no model to copy from', async () => {
     expect(text(await create({ objectName: 'ContosoScripts', properties: { layer: 'sys' } }))).toMatch(/Microsoft layer/);
     await fs.rm(path.join(state.root, 'ContosoCore'), { recursive: true });
@@ -228,6 +236,14 @@ describe('modify-property', () => {
     expect(res.isError).toBe(true);
     expect(text(res)).toMatch(/rename/);
     expect((await fs.readFile(file())).equals(before)).toBe(true);
+  });
+
+  it('will not make a model look like Microsoft\'s, which would lock it', async () => {
+    for (const [propertyPath, propertyValue] of [['Layer', 'sys'], ['Layer', '3'], ['Publisher', 'Microsoft Corporation']]) {
+      const res = await handleModelProperty({ modelName: 'ContosoCore', propertyPath, propertyValue });
+      expect(res.isError, `${propertyPath}=${propertyValue}`).toBe(true);
+    }
+    expect(parseDescriptor(await fs.readFile(file(), 'utf-8'))).toMatchObject({ layer: 12, publisher: 'Contoso' });
   });
 
   it('refuses a Microsoft descriptor and another model\'s', async () => {
@@ -326,6 +342,13 @@ describe('delete', () => {
     await expect(fs.stat(path.join(state.root, 'ContosoCore', 'Descriptor', 'ContosoCoreTests.xml'))).rejects.toThrow();
     await expect(fs.stat(path.join(state.root, 'ContosoCore', 'ContosoCoreTests'))).rejects.toThrow();
     expect((await fs.stat(path.join(state.root, 'ContosoCore', 'Descriptor', 'ContosoCore.xml'))).isFile()).toBe(true);
+  });
+
+  it('keeps the package when a sibling descriptor sits beside it, even one the scan cannot read', async () => {
+    await fs.writeFile(path.join(state.root, 'ContosoScripts', 'Descriptor', 'ContosoBroken.xml'), '<not a descriptor', 'utf-8');
+    const res = await remove({ objectName: 'ContosoScripts' });
+    expect(res.isError, text(res)).toBeFalsy();
+    expect((await fs.stat(path.join(state.root, 'ContosoScripts', 'Descriptor', 'ContosoBroken.xml'))).isFile()).toBe(true);
   });
 
   it('keeps a package folder that holds anything it does not recognise', async () => {

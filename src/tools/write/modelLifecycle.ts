@@ -44,7 +44,7 @@ import {
 import {
   scanDescriptors, findModel, packageMates, dependentsOfPackage, findReferenceCycles,
   modelNameProblem, allocateModelId, buildDescriptorXml, setDescriptorProperty, parseDescriptor,
-  layerNumber, describeLayer, parseVersion, formatVersion, isDirectory,
+  layerNumber, describeLayer, parseVersion, formatVersion, isDirectory, isMicrosoftModel,
   MODEL_LAYERS, EDITABLE_DESCRIPTOR_PROPERTIES,
   type ModelEntry, type ModelInventory,
 } from '../../metadata/modelInventory.js';
@@ -105,7 +105,7 @@ async function resolveRoots(explicit?: string): Promise<Roots> {
  * CUSTOM_MODELS — a custom model nobody listed there is still the user's.
  */
 function looksMicrosoft(model: Pick<ModelEntry, 'publisher' | 'layer'>): boolean {
-  return /^\s*microsoft(\s+corporation)?\s*$/i.test(model.publisher) || (model.layer !== null && model.layer < 8);
+  return isMicrosoftModel(model);
 }
 
 const sameName = (a: string | null | undefined, b: string | null | undefined) =>
@@ -288,8 +288,8 @@ export async function handleCreateModel(
   const usedIds = inventory.models.map(m => m.id).filter((id): id is number => id !== null);
   let id: number;
   if (p.id !== undefined && p.id !== null && p.id !== '') {
-    id = Number(p.id);
-    if (!Number.isInteger(id) || id <= 0) return bad(`id ${JSON.stringify(p.id)} is not a positive whole number.`);
+    id = typeof p.id === 'number' || typeof p.id === 'string' ? Number(p.id) : NaN;
+    if (!Number.isInteger(id) || id <= 0 || id > 2_147_483_647) return bad(`id ${JSON.stringify(p.id)} is not a whole number between 1 and 2147483647.`);
     const owner = inventory.models.find(m => m.id === id);
     if (owner) return bad(`model Id ${id} is already used by "${owner.name}" (${owner.descriptorPath}).`);
   } else {
@@ -337,7 +337,8 @@ export async function handleCreateModel(
         created.push(dir);
       }
     }
-    await writeFileAtomic(descriptorPath, BOM + normalizeD365Xml(xml));
+    // Exclusive: two creates of one name that both passed the check above cannot overwrite each other.
+    await fs.writeFile(descriptorPath, BOM + normalizeD365Xml(xml), { encoding: 'utf-8', flag: 'wx' });
   } catch (e: any) {
     // Leave nothing half-made: remove only the folders this call created, deepest first.
     for (const dir of created.reverse()) await fs.rmdir(dir).catch(() => {});
@@ -470,6 +471,14 @@ async function editDescriptorProperty(
   const refusal = crossModelWriteRefusal(check);
   if (refusal) return fail(refusal);
 
+  const key = property.trim().toLowerCase();
+  if (key === 'layer') {
+    const layer = layerNumber(value);
+    if (layer !== null && layer < 8) return bad(`layer ${describeLayer(layer)} is a Microsoft layer — a model that carries it is treated as Microsoft's and could no longer be edited or deleted here.`);
+  }
+  if (key === 'publisher' && isMicrosoftModel({ publisher: value, layer: null })) {
+    return bad(`publisher "${value}" is Microsoft's — a model that carries it is treated as Microsoft's and could no longer be edited or deleted here.`);
+  }
   const outcome = setDescriptorProperty(content, property, value);
   if (outcome.kind === 'refused') return bad(outcome.reason + '.');
   if (outcome.kind === 'unchanged') {
@@ -638,6 +647,11 @@ export async function handleDeleteModel(
       if (sameName(entry, model.name) || isBuildOutput(entry)) continue;
       leftovers.push(entry);
     }
+    // Read from disk, not from the scan: a descriptor the scan could not parse or that another root
+    // shadows is still a model's, and the package folder must not take it along.
+    for (const f of await fs.readdir(path.dirname(model.descriptorPath)).catch(() => [] as string[])) {
+      if (!sameName(f, path.basename(model.descriptorPath))) leftovers.push(`Descriptor/${f}`);
+    }
   }
   const removePackage = lastInPackage && leftovers.length === 0;
 
@@ -686,15 +700,6 @@ export async function handleDeleteModel(
 
   // ── execute ────────────────────────────────────────────────────────────────
   const notes: string[] = [];
-  for (const projectPath of projects) {
-    try {
-      const res = await removeProject({ projectPath, removeFiles: false, otherProjectPaths: projects });
-      notes.push(`project ${path.basename(projectPath)}: removed from ${res.solutions.map(s => path.basename(s)).join(', ')} (files left at ${path.dirname(projectPath)})`);
-    } catch (e: any) {
-      notes.push(`⚠️ project ${path.basename(projectPath)} was NOT unregistered: ${e?.message ?? e}`);
-    }
-  }
-
   try {
     if (removePackage) {
       await fs.rm(packageDir, { recursive: true, force: true });
@@ -706,6 +711,16 @@ export async function handleDeleteModel(
   } catch (e: any) {
     return fail(`❌ ${label}: the delete stopped part-way — ${e?.message ?? e}.\nCheck ${packageDir}; a file locked by ` +
       `Visual Studio or the AOS is the usual cause. Re-run once it is released.`);
+  }
+
+  // After the files: a delete that fails part-way must not also have edited the solutions.
+  for (const projectPath of projects) {
+    try {
+      const res = await removeProject({ projectPath, removeFiles: false, otherProjectPaths: projects });
+      notes.push(`project ${path.basename(projectPath)}: removed from ${res.solutions.map(s => path.basename(s)).join(', ')} (files left at ${path.dirname(projectPath)})`);
+    } catch (e: any) {
+      notes.push(`⚠️ project ${path.basename(projectPath)} was NOT unregistered: ${e?.message ?? e}`);
+    }
   }
 
   forgetCreatedArtifact(model.descriptorPath);

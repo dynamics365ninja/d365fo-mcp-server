@@ -78,7 +78,8 @@ export function loadedEnvFile(): { envPath: string; ownedByRealEnv(key: string):
  * authorise a write sees it take effect on the next attempt instead of having to
  * restart the server and lose the session. That matters because this is the one
  * consent the agent must not be able to grant itself: it has no tool that writes
- * .env, so the file stays the user's, while "restart first" was pushing everyone
+ * .env (the one exception: creating a model adds that NEW model's name, see
+ * utils/envListSetting.ts), so the file stays the user's, while "restart first" was pushing everyone
  * towards granting it some easier — and self-servable — way.
  *
  * Nothing else is re-read. This is a policy refresh, not a configuration reload;

@@ -38,6 +38,11 @@ describe('editEnvList', () => {
     expect(out.text).toBe('# CUSTOM_MODELS=Old\nPORT=3000\nCUSTOM_MODELS=ContosoExt\n');
   });
 
+  it('keeps a trailing comment, quoted or not', () => {
+    expect(editEnvList('K=A,B # keep me\n', 'K', { add: 'New' }).text).toBe('K=A,B,New # keep me\n');
+    expect(editEnvList('K="A,B" # note\n', 'K', { add: 'New' }).text).toBe('K="A,B,New" # note\n');
+  });
+
   it('keeps quotes around the value', () => {
     expect(editEnvList('CUSTOM_MODELS="A,B"\n', 'CUSTOM_MODELS', { add: 'C' }).text).toBe('CUSTOM_MODELS="A,B,C"\n');
   });

@@ -44,15 +44,19 @@ export function editEnvList(text: string, key: string, edit: { add?: string; rem
   }
 
   const [, head, rawValue] = lineRe.exec(lines[at])!;
-  const quote = /^(["']).*\1\s*$/.test(rawValue.trim()) ? rawValue.trim()[0] : '';
-  const inner = quote ? rawValue.trim().slice(1, -1) : rawValue.replace(/\s+#.*$/, '');
+  // "A,B" # note  → quote ", inner A,B, tail " # note";   A,B # note → no quote, tail " # note".
+  const quoted = /^(["'])(.*?)\1(\s*#.*)?$/.exec(rawValue.trim());
+  const unquoted = quoted ? null : /^(.*?)(\s+#.*)?$/.exec(rawValue.trim());
+  const quote = quoted ? quoted[1] : '';
+  const inner = quoted ? quoted[2] : unquoted![1];
+  const tail = (quoted ? quoted[3] : unquoted![2]) ?? '';
   let entries = splitList(inner);
   const before = entries.join(',');
   if (edit.remove) entries = entries.filter(e => !eqi(e, edit.remove!));
   if (edit.add && !entries.some(e => eqi(e, edit.add!))) entries.push(edit.add);
   const value = entries.join(',');
   if (value === before) return { text, changed: false, value };
-  lines[at] = `${head}${quote}${value}${quote}`;
+  lines[at] = `${head}${quote}${value}${quote}${tail}`;
   return { text: lines.join(eol), changed: true, value };
 }
 

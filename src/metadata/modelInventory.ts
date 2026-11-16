@@ -54,7 +54,8 @@ export interface ModelVersion {
 export function parseVersion(version: unknown): ModelVersion | null {
   if (typeof version !== 'string' && typeof version !== 'number') return null;
   const text = String(version).trim();
-  if (!/^\d+(\.\d+){0,3}$/.test(text)) return null;
+  // Each part is a descriptor int: at most 9 digits keeps it inside Int32.
+  if (!/^\d{1,9}(\.\d{1,9}){0,3}$/.test(text)) return null;
   const [major, minor = 0, build = 0, revision = 0] = text.split('.').map(Number);
   return { major, minor, build, revision };
 }
@@ -303,6 +304,7 @@ export function findReferenceCycles(
 export function modelNameProblem(name: string): string | null {
   if (!name) return 'the model name is empty';
   if (name.length > 80) return 'the model name is longer than 80 characters';
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(name)) return 'a Windows device name cannot be a folder name';
   if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(name)) {
     return 'a model name starts with a letter and holds only letters, digits and "_" ' +
       '(it becomes a folder, a file and an assembly name)';
@@ -525,6 +527,14 @@ export function setDescriptorProperty(xml: string, property: string, rawValue: s
     return { kind: 'unchanged', element: targets.map(t => t[0]).join(', '), value: rawValue };
   }
   return { kind: 'changed', xml: out, changes };
+}
+
+/**
+ * Is this one of Microsoft's own models? By its descriptor: the publisher is Microsoft, or the layer
+ * is below isv. Shared by the reader and every writer so they cannot disagree about what is protected.
+ */
+export function isMicrosoftModel(model: { publisher: string; layer: number | null }): boolean {
+  return /^\s*microsoft(\s+corp(oration|\.)?)?\s*$/i.test(model.publisher) || (model.layer !== null && model.layer < 8);
 }
 
 /** Does this folder exist as a directory? */
