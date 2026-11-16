@@ -41,8 +41,10 @@ those are called out explicitly below.
   neighbours, sorted by Include as Visual Studio's MSBuild `AddItem` does, and a
   removal takes out exactly the item's lines (and an item group it leaves empty). Every
   other byte stays as it was, and adding an object that is already listed writes
-  nothing. A project written by an earlier version keeps the builder's layout until it
-  is saved again in Visual Studio.
+  nothing. A folder item written without its trailing backslash (`<Folder
+  Include="Classes" />`, as a hand edit leaves it) now counts as that folder, so a second
+  `Classes\` entry is no longer added next to it. A project written by an earlier
+  version keeps the builder's layout until it is saved again in Visual Studio.
 
 ## [1.24.0] — 2026-11-12
 

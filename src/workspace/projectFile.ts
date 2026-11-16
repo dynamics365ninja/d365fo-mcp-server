@@ -127,6 +127,23 @@ export async function registerFileInActiveProject(
 }
 
 /**
+ * A `<Folder Include>` in the one comparable form: normalised like every other
+ * include, and without its trailing backslash. Visual Studio writes `Classes\`,
+ * but a hand-edited project may say `Classes`. Both are the same folder, and
+ * comparing them as different strings added a second `Classes\` entry next to
+ * the hand-written one.
+ */
+function folderKey(include: string): string {
+  return normalizeInclude(include).replace(/\\+$/, '');
+}
+
+/** Whether the project already lists the folder `include`, however its backslash is written. */
+function hasFolder(text: string, include: string): boolean {
+  const wanted = folderKey(include);
+  return listProjectIncludes(text, 'Folder').some(inc => folderKey(inc) === wanted);
+}
+
+/**
  * Project File Finder
  * Finds .rnrproj files in solution directory or specific paths
  */
@@ -404,7 +421,7 @@ export class ProjectFileManager {
       // prune an entry this session did not create.
       let text = body;
       const folderInclude = `${displayFolderName}\\`;
-      if (!listProjectIncludes(text, 'Folder').includes(normalizeInclude(folderInclude))) {
+      if (!hasFolder(text, folderInclude)) {
         text = insertProjectItem(text, { type: 'Folder', include: folderInclude, metadata: [] }, eol);
         folderAdded = true;
       }
@@ -473,8 +490,8 @@ export class ProjectFileManager {
       const stillUsesFolder = listProjectIncludes(content.text, 'Content')
         .some(inc => inc.startsWith(`${axFolderPrefix.toLowerCase()}\\`));
       if (!weAddedFolder || stillUsesFolder) return content.text;
-      const folderKey = normalizeInclude(`${displayFolderName}\\`);
-      return removeProjectItems(content.text, 'Folder', inc => inc === folderKey).text;
+      const wantedFolder = folderKey(displayFolderName);
+      return removeProjectItems(content.text, 'Folder', inc => folderKey(inc) === wantedFolder).text;
     });
     if (written) console.error(`[ProjectFileManager] Removed '${objectName}' from project ${path.basename(projectPath)}`);
     return written;
@@ -565,7 +582,7 @@ export class ProjectFileManager {
 
       // Ensure "Label Files\" folder entry
       let text = body;
-      if (!listProjectIncludes(text, 'Folder').includes(normalizeInclude('Label Files\\'))) {
+      if (!hasFolder(text, 'Label Files\\')) {
         text = insertProjectItem(text, { type: 'Folder', include: 'Label Files\\', metadata: [] }, eol);
       }
       for (const entry of entries) text = insertProjectItem(text, entry, eol);

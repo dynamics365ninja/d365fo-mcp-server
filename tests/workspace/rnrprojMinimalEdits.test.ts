@@ -174,6 +174,22 @@ describe('rnrproj edits keep the rest of the file byte for byte', () => {
     expect(fileStore.get(PROJECT)).toBe(once);
   });
 
+  it('a project with `Classes` written without its backslash gets no second Classes folder', async () => {
+    const handEdited = VS_PROJECT.replace('<Folder Include="Classes\\" />', '<Folder Include="Classes" />');
+    fileStore.set(PROJECT, handEdited);
+    const manager = new ProjectFileManager();
+
+    await manager.addToProject(PROJECT, 'class', 'ContosoBravo', '');
+
+    const after = fileStore.get(PROJECT)!;
+    expect(after.match(/<Folder Include="Classes/g) ?? []).toHaveLength(1);
+    expect(insertedLines(handEdited, after)).toHaveLength(5); // the Content block only
+
+    // Not recorded as ours either, so undo leaves the hand-written folder in place.
+    await manager.removeFromProject(PROJECT, 'class', 'ContosoBravo');
+    expect(fileStore.get(PROJECT)).toBe(handEdited);
+  });
+
   it('an LF project stays LF', async () => {
     fileStore.set(PROJECT, VS_PROJECT_LF);
 
