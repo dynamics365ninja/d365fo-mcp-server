@@ -224,6 +224,10 @@ const CHARS_PER_TOKEN = 4;
 // get_object_info's objectType enum gained menu and menu-extension. Paid for in its
 // description, which spelled out the six *-extension types its own enum already
 // lists. Measured payload after: 45_020 (was 45_072). The ceiling holds.
+//
+// run_systest_class's className says that on UDE it takes several classes of one model,
+// comma-separated, sent as one run (+40, no new parameter, the type stays string). Its
+// description says "classes". Measured payload after: 45_060. The ceiling holds.
 const TOTAL_BUDGET = 45_100;
 // axdb_sql is published only once SQL is configured, so TOTAL_BUDGET above —
 // the payload every default install sends — does not carry it. A configured

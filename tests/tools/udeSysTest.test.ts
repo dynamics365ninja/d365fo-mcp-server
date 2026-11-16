@@ -5,6 +5,7 @@ import path from 'node:path';
 import { deflateRawSync } from 'node:zlib';
 import {
   buildTestSuiteXml,
+  buildTestSuiteXmlForClasses,
   findRuntimeAssembly,
   parseTrxResults,
   readTestClass,
@@ -94,6 +95,35 @@ describe('buildTestSuiteXml', () => {
       expect(c.key).toMatch(/^[0-9a-f-]{36}$/);
       expect(xml).toContain(`<TestKey>${c.key}</TestKey>`);
     }
+  });
+
+  it('lists the methods of several classes in one request, each with its own class file', () => {
+    const { xml, cases } = buildTestSuiteXmlForClasses(ASSEMBLY, [
+      { className: 'ContosoInvoiceTest', methodNames: ['testPosting'], testSource: 'C:\\src\\ContosoInvoiceTest.xml' },
+      { className: 'ContosoOrderTest', methodNames: ['testCreate', 'testCancel'], testSource: 'C:\\src\\ContosoOrderTest.xml' },
+    ]);
+
+    expect(cases.map(c => c.name)).toEqual(['ContosoInvoiceTest.testPosting', 'ContosoOrderTest.testCreate', 'ContosoOrderTest.testCancel']);
+    expect(new Set(cases.map(c => c.key)).size).toBe(3);
+    expect(xml.match(/<AssemblyPath>/g)).toHaveLength(1);
+    expect(xml).toContain('<RunAll>false</RunAll>');
+    const sources = [...xml.matchAll(/<TestCaseName>([^<]+)<\/TestCaseName>[\s\S]*?<TestSource>([^<]+)<\/TestSource>/g)]
+      .map(m => [m[1], m[2]]);
+    expect(sources).toEqual([
+      ['ContosoInvoiceTest.testPosting', 'C:\\src\\ContosoInvoiceTest.xml'],
+      ['ContosoOrderTest.testCreate', 'C:\\src\\ContosoOrderTest.xml'],
+      ['ContosoOrderTest.testCancel', 'C:\\src\\ContosoOrderTest.xml'],
+    ]);
+  });
+
+  it('writes the same document for one class as the one-class form', () => {
+    const one = buildTestSuiteXml(ASSEMBLY, 'ContosoInvoiceTest', ['testPosting', 'testTotals'], 'C:\\src\\ContosoInvoiceTest.xml');
+    const list = buildTestSuiteXmlForClasses(ASSEMBLY, [
+      { className: 'ContosoInvoiceTest', methodNames: ['testPosting', 'testTotals'], testSource: 'C:\\src\\ContosoInvoiceTest.xml' },
+    ]);
+    const withoutKeys = (xml: string) => xml.replace(/<TestKey>[^<]+<\/TestKey>/g, '<TestKey/>');
+
+    expect(withoutKeys(list.xml)).toBe(withoutKeys(one.xml));
   });
 
   it('escapes what it embeds', () => {
