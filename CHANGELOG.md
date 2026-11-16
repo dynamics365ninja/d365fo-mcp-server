@@ -28,6 +28,17 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Fixed
+- **`validate_code` no longer warns BP002 about `doInsert()`, `doUpdate()` or `doDelete()`
+  in a SysTest test class.** A test sets up its fixtures with the do* variants on purpose,
+  so the table's own insert/update/delete logic does not run, and 82 of the 359 shipped
+  test classes do it. The rule was a plain regex and warned on every one. It now stays
+  quiet when the code carries `[SysTestMethod]` or declares `extends SysTestCase`, or when
+  the symbol index shows that the declared class, its base or the class named in
+  `context` derives from SysTestCase (most shipped test classes reach it through a base
+  such as a module's own test case). Production code is still warned, including a class
+  with "Test" in its name: no name heuristic is used.
+
 ## [1.24.0] — 2026-11-12
 
 ### Added
