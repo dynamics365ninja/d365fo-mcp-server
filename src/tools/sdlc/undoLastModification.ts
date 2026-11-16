@@ -258,7 +258,7 @@ async function modelTidyNote(entry: CreatedArtifact | undefined): Promise<string
   if (entry?.objectType !== 'model-descriptor') return '';
   try {
     const { tidyAfterModelUndo } = await import('../write/modelLifecycle.js');
-    return await tidyAfterModelUndo(entry.filePath);
+    return await tidyAfterModelUndo(entry.filePath, entry.addedConfigKeys ?? []);
   } catch {
     return '';
   }

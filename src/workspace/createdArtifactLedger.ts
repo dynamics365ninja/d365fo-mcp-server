@@ -38,6 +38,11 @@ export interface CreatedArtifact {
    * entry itself, so undo never removes one that was already in the project.
    */
   projectInclude?: string;
+  /**
+   * model-descriptor only: the configuration keys (CUSTOM_MODELS, the cross-model allow-list) the
+   * create itself added this model to, so undo removes only those and not a pre-existing entry.
+   */
+  addedConfigKeys?: string[];
 }
 
 /**

@@ -31,7 +31,7 @@ import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
 import { getConfigManager } from '../../utils/configManager.js';
 import { assertWritePathAllowed } from '../../utils/pathContainment.js';
-import { writeFileAtomic } from '../../utils/atomicFileWrite.js';
+import { writeFileAtomic, withFileLock } from '../../utils/atomicFileWrite.js';
 import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
 import { isCustomModel, registerCustomModel } from '../../utils/modelClassifier.js';
 import { crossModelWriteRefusal, standDownNotice } from '../../utils/crossModelWriteGuard.js';
@@ -105,7 +105,7 @@ async function resolveRoots(explicit?: string): Promise<Roots> {
  * CUSTOM_MODELS — a custom model nobody listed there is still the user's.
  */
 function looksMicrosoft(model: Pick<ModelEntry, 'publisher' | 'layer'>): boolean {
-  return /\bmicrosoft\b/i.test(model.publisher) || (model.layer !== null && model.layer < 8);
+  return /^\s*microsoft(\s+corporation)?\s*$/i.test(model.publisher) || (model.layer !== null && model.layer < 8);
 }
 
 const sameName = (a: string | null | undefined, b: string | null | undefined) =>
@@ -344,7 +344,6 @@ export async function handleCreateModel(
     return fail(`❌ ${label}: could not write the model — ${e?.message ?? e}. Nothing was left behind.`);
   }
 
-  recordCreatedArtifact({ filePath: descriptorPath, objectType: 'model-descriptor', objectName: name });
   invalidateModelVisibility(name);
 
   // Known to configuration from here on — see the header.
@@ -353,6 +352,11 @@ export async function handleCreateModel(
   if (!isCustomModel(name)) settings.push(await updateListSetting(envFile, CUSTOM_MODELS_KEY, { add: name }));
   registerCustomModel(name);
   if (!sameName(anchor, name)) settings.push(await updateListSetting(envFile, ALLOW_LIST_KEY, { add: name }));
+  // Only what THIS create added is taken out again by undo.
+  recordCreatedArtifact({
+    filePath: descriptorPath, objectType: 'model-descriptor', objectName: name,
+    addedConfigKeys: settings.filter(s => s.persisted || s.appliedToProcess).map(s => s.key),
+  });
   await refreshBridge(context);
 
   const lines = [
@@ -438,6 +442,14 @@ export async function handleModelProperty(rawArgs: Record<string, unknown>): Pro
   });
   if (!containment.ok) return bad(containment.reason ?? 'path containment check failed');
 
+  return withFileLock(filePath, () => editDescriptorProperty(filePath!, property, value, containment, label));
+}
+
+async function editDescriptorProperty(
+  filePath: string, property: string, value: string,
+  containment: Awaited<ReturnType<typeof assertWritePathAllowed>>, label: string,
+): Promise<ToolResult> {
+  const bad = (t: string) => fail(`❌ ${label}: ${t}\nNothing was written.`);
   let raw: string;
   try {
     raw = await fs.readFile(filePath, 'utf-8');
@@ -586,6 +598,17 @@ export async function handleDeleteModel(
   });
   if (!containment.ok) return bad(containment.reason ?? 'path containment check failed');
 
+  // The model folder is built from the descriptor's <Name>, which the containment check above
+  // never sees: a <Name> that differs from the file name, or steps out of the package, would
+  // point the recursive delete somewhere else. It must be what a model name is, match the file,
+  // and the folder must sit directly inside its package folder.
+  const fileModel = path.basename(model.descriptorPath).replace(/\.xml$/i, '');
+  const rel = path.relative(path.join(model.root, model.packageName), model.modelFolder);
+  if (modelNameProblem(model.name) || !sameName(model.name, fileModel) || !rel || rel.startsWith('..') || path.isAbsolute(rel) || rel.includes(path.sep)) {
+    return bad(`the descriptor ${model.descriptorPath} names model "${model.name}", which is not a valid model name ` +
+      `or differs from its file name — deleting its folder could remove files elsewhere. Fix or remove it by hand.`);
+  }
+
   const anchor = (await resolveAnchorModel(roots.cfg)) || null;
   const check = {
     objectName: model.name, objectType: 'model-descriptor', owningModel: model.name,
@@ -722,7 +745,11 @@ export async function handleDeleteModel(
  * folders the create made (only while they are empty) and the configuration
  * entries it added. Returns the line undo appends to its reply.
  */
-export async function tidyAfterModelUndo(descriptorPath: string, deps: ModelLifecycleDeps = {}): Promise<string> {
+export async function tidyAfterModelUndo(
+  descriptorPath: string,
+  addedConfigKeys: readonly string[] = [],
+  deps: ModelLifecycleDeps = {},
+): Promise<string> {
   const name = path.basename(descriptorPath).replace(/\.xml$/i, '');
   const descriptorDir = path.dirname(descriptorPath);
   const packageDir = path.dirname(descriptorDir);
@@ -736,10 +763,10 @@ export async function tidyAfterModelUndo(descriptorPath: string, deps: ModelLife
   }
   invalidateModelVisibility(name);
   const envFile = deps.envFile !== undefined ? deps.envFile : loadedEnvFile();
-  const settings = [
-    await updateListSetting(envFile, CUSTOM_MODELS_KEY, { remove: name }),
-    await updateListSetting(envFile, ALLOW_LIST_KEY, { remove: name }),
-  ].filter(o => o.persisted || o.appliedToProcess);
+  const settings: ListSettingOutcome[] = [];
+  for (const key of [CUSTOM_MODELS_KEY, ALLOW_LIST_KEY]) {
+    if (addedConfigKeys.includes(key)) settings.push(await updateListSetting(envFile, key, { remove: name }));
+  }
   return (
     (removed.length ? `\nRemoved the empty model folder(s): ${removed.join(', ')}.` : '') +
     (settings.length ? `\n"${name}" was taken out of ${settings.map(o => o.key).join(' and ')}.` : '')

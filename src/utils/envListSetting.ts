@@ -9,6 +9,7 @@
  */
 
 import * as fs from 'fs/promises';
+import { withFileLock } from './atomicFileWrite.js';
 
 const eqi = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
@@ -98,6 +99,13 @@ export async function updateListSetting(
     };
   }
 
+  return withFileLock(envFile.envPath, () => persist(envFile.envPath, key, edit, value, appliedToProcess));
+}
+
+async function persist(
+  envPath: string, key: string, edit: { add?: string; remove?: string }, value: string, appliedToProcess: boolean,
+): Promise<ListSettingOutcome> {
+  const envFile = { envPath };
   let text = '';
   try {
     text = await fs.readFile(envFile.envPath, 'utf-8');

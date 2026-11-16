@@ -337,6 +337,16 @@ describe('delete', () => {
     await expect(fs.stat(path.join(state.root, 'ContosoScripts', 'Descriptor'))).rejects.toThrow();
   });
 
+  it('refuses a descriptor whose <Name> would point the delete outside its package', async () => {
+    const file = path.join(state.root, 'ContosoScripts', 'Descriptor', 'ContosoScripts.xml');
+    const xml = await fs.readFile(file, 'utf-8');
+    await fs.writeFile(file, xml.replace('<Name>ContosoScripts</Name>', '<Name>..</Name>'), 'utf-8');
+    const res = await remove({ objectName: 'ContosoScripts', force: true });
+    expect(res.isError).toBe(true);
+    expect((await fs.stat(file)).isFile()).toBe(true);
+    expect((await fs.stat(path.join(state.root, 'ContosoCore'))).isDirectory()).toBe(true);
+  });
+
   it('refuses a Microsoft model, a model the guard does not allow, and an unknown one', async () => {
     expect(text(await remove({ objectName: 'ApplicationSuite', force: true }))).toMatch(/Microsoft model/);
     await seedModel(state.root, 'ContosoShared', 'ContosoShared', [], MODEL_ID_MIN + 50);
@@ -373,7 +383,7 @@ describe('create through d365fo_file, then undo', () => {
 
     // What action="undo" does once it has unlinked the descriptor.
     await fs.rm(file);
-    const note = await tidyAfterModelUndo(file, { envFile: null });
+    const note = await tidyAfterModelUndo(file, ['D365FO_CROSS_MODEL_WRITE_MODELS'], { envFile: null });
     expect(note).toMatch(/Removed the empty model folder/);
     await expect(fs.stat(path.join(state.root, 'ContosoScripts'))).rejects.toThrow();
     expect(process.env.D365FO_CROSS_MODEL_WRITE_MODELS).toBeUndefined();
