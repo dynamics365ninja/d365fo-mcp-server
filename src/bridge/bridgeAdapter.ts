@@ -37,6 +37,7 @@ import { subscriberAccessLevelValue } from '../utils/subscriberAccessLevel.js';
 import {
   pageFields, fieldsHeading, fieldsFooter,
   createControlBudget, chargeControl, chargeSkippedSubtree, controlsFooter,
+  methodOffsetPastEndNote, methodRangeText,
   type ControlBudget,
 } from '../utils/payloadBudget.js';
 import type {
@@ -249,9 +250,10 @@ function formatTable(
 
     out += `\n## Methods (${total} total`;
     if (total > page.limit) {
-      out += `, showing ${page.offset + 1}–${Math.min(page.offset + page.limit, total)}`;
+      out += methodRangeText(page.offset, total, page.limit);
     }
     out += `)\n\n`;
+    out += methodOffsetPastEndNote(page.offset, total, page.limit);
 
     for (const m of visible) {
       if (page.includeSource) {
@@ -370,9 +372,10 @@ function formatClass(cls: BridgeClassInfo, compact: boolean, methodOffset: numbe
 
   out += `## Methods (${total} total`;
   if (total > CLASS_METHOD_PAGE_SIZE) {
-    out += `, showing ${methodOffset + 1}–${Math.min(methodOffset + CLASS_METHOD_PAGE_SIZE, total)}`;
+    out += methodRangeText(methodOffset, total, CLASS_METHOD_PAGE_SIZE);
   }
   out += `)\n\n`;
+  out += methodOffsetPastEndNote(methodOffset, total, CLASS_METHOD_PAGE_SIZE);
 
   for (const m of visible) {
     if (compact) {

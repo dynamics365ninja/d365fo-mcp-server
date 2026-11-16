@@ -54,6 +54,13 @@ those are called out explicitly below.
   string size or display length as integer text whatever the JSON holds, and the readers
   show a `15.0` already in an index as `15`. Rebuilding the database corrects the stored
   values; no re-import is needed.
+- **`get_object_info` with a `methodOffset` past the last method says so, instead of
+  "showing 1000–14".** The method list heading computed its range whatever the offset, so
+  `methodOffset: 999` on a class with 14 methods printed "Methods (14 total, showing
+  1000–14)" and an empty list. The class and table reads, from the bridge and from the
+  symbol index, now print "Methods (14 total)" and a line saying that the offset is past the
+  end, how many methods there are and which `methodOffset` gives the first and the last
+  page. A valid offset is paged as before.
 
 ## [1.24.0] — 2026-11-12
 

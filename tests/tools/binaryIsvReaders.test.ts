@@ -15,6 +15,7 @@ import { convertBinaryModel, type BinaryModelDump } from '../../src/metadata/bin
 import { tableInfoTool } from '../../src/tools/readers/tableInfo';
 import { getEdtInfoTool } from '../../src/tools/readers/edtInfo';
 import { findCocExtensionsTool } from '../../src/tools/knowledge/findCocExtensions';
+import { classInfoTool } from '../../src/tools/readers/classInfo';
 
 const BINARY_MODEL = 'ContosoTools';
 const SOURCE_MODEL = 'ContosoExt';
@@ -38,7 +39,13 @@ const DUMP: BinaryModelDump = {
   ChainOfCommand: [
     { Class: 'ContosoPrinter_ContosoTools_Extension', Target: 'ContosoPrinter', Methods: [{ Name: 'step01' }] },
   ],
-  Tables: [{ Name: 'ContosoToolLog', Fields: [{ Name: 'Code', Type: 'String', Edt: 'ContosoToolCode' }] }],
+  Tables: [
+    {
+      Name: 'ContosoToolLog',
+      Fields: [{ Name: 'Code', Type: 'String', Edt: 'ContosoToolCode' }],
+      Methods: Array.from({ length: 30 }, (_, i) => ({ Name: `check${String(i).padStart(2, '0')}`, ReturnType: 'boolean' })),
+    },
+  ],
   // The dump's JSON numbers are what used to come out as "15.0".
   Edts: [
     { Name: 'ContosoToolCode', BaseType: 'String', StringSize: 15 },
@@ -182,6 +189,33 @@ describe('extension_info(mode="coc") marks the wrappers of a binary ISV model', 
   it('adds nothing when no wrapper is binary', async () => {
     const out = await text(findCocExtensionsTool(req({ className: 'ContosoRentEquipmentTable' }), ctx()));
     expect(out).not.toContain('binary ISV');
+  });
+});
+
+describe('methodOffset past the last method', () => {
+  it('the class read says so, instead of "showing 1000–14"', async () => {
+    const out = await text(classInfoTool(req({ className: 'ContosoPrinter', methodOffset: 999 }), ctx()));
+    expect(out).toContain('## Methods (14 total)\n');
+    expect(out).not.toContain('showing');
+    expect(out).toContain('`methodOffset: 999` is past the end: there are 14 methods (offsets 0–13). Call again with `methodOffset: 0`.');
+  });
+
+  it('the class read pages a valid offset as before', async () => {
+    const out = await text(classInfoTool(req({ className: 'ContosoPrinter', methodOffset: 0 }), ctx()));
+    expect(out).toContain('## Methods (14 total, showing 1–14)');
+    expect(out).toContain('- `void step13()`');
+    expect(out).not.toContain('past the end');
+  });
+
+  it('the table read says so too, and pages a valid offset as before', async () => {
+    const past = await text(tableInfoTool(req({ tableName: 'ContosoToolLog', methodOffset: 999 }), ctx()));
+    expect(past).toContain('## Methods (30 total)\n');
+    expect(past).toContain('there are 30 methods (offsets 0–29)');
+    expect(past).toContain('`methodOffset: 25` for the last');
+
+    const page = await text(tableInfoTool(req({ tableName: 'ContosoToolLog', methodOffset: 25 }), ctx()));
+    expect(page).toContain('## Methods (30 total, showing 26–30)');
+    expect(page).not.toContain('past the end');
   });
 });
 
