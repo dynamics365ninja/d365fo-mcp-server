@@ -28,6 +28,34 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Added
+- **`d365fo_file(modify, objectType="report", operation="report-design")` can now edit the
+  RDL of an existing report: `reportAction="fix-labels"` and `reportAction="add-column"`.**
+  Until now the RDL was off limits, because a malformed RDL builds fine and fails only in
+  the SSRS renderer. `fix-labels` rewrites textbox values that are a bare label id
+  (`@SYS313987`) to `=Labels!@SYS313987`, the only form that renders as text.
+  `add-column` (`fieldName`, optional `datasetName`, optional `promptString` as header
+  caption, a label id or plain text) appends a column bound to a dataset field to the
+  tablix, cloning the last column's cells so styling matches, and adds the field to the
+  RDL's own dataset from the report metadata when only the metadata has it (run
+  `refresh-dataset` first for a new temp-table field). Both read the RDL in either
+  storage form (the scaffold's CDATA block or the XML-escaped text shipped reports use),
+  make targeted edits that keep every other byte, namespace and `rd:` GUID, and run a
+  static validator BEFORE writing: well-formed XML, every `Fields!X` resolves to a dataset
+  field, every `Parameters!X` to a declared parameter, unique textbox, tablix and group
+  names, and every tablix row and column hierarchy matching its column count. A design
+  `add-column` does not recognise (column groups, spans, nested or several tablixes
+  without `datasetName`, rows that are not header, detail or Sum summary) is refused with
+  the reason and the file untouched. This is validation, not rendering: check the layout
+  in the Report Designer.
+
+### Fixed
+- **A scaffolded report's page-header title now renders its label text instead of the raw
+  id.** `generate_object` wrote the title as `<Value>@SYS313987</Value>`; shipped reports
+  write `=Labels!@SYS313987`, and a bare id is not label-resolved at deploy. New scaffolds
+  emit the `=Labels!` form. Existing reports: run `report-design` with
+  `reportAction="fix-labels"`.
+
 ## [1.24.0] — 2026-11-12
 
 ### Added
