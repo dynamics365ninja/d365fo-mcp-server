@@ -59,6 +59,19 @@ const CONTROL_ELEMENTS = new Set(['AxFormControl', 'FormControl']);
  */
 const STRUCTURAL = new Set(['name', 'type', 'controls', 'formcontrolextension']);
 
+/**
+ * Child order of an EXTENSIBLE control: a control element with no i:type that carries a
+ * <FormControlExtension> (#1286). Census of 5,039 such controls across 10,724 shipped
+ * AxForm / AxFormExtension files: only these 13 children ever occur, no pair of them is
+ * ever seen in both orders, and the order below is consistent with the typed-control census.
+ * HelpText and Label never occur on an extensible control, so they are refused rather than
+ * guessed from the typed controls.
+ */
+const EXTENSIBLE_CONTROL_ORDER: readonly string[] = [
+  'Name', 'AllowEdit', 'AutoDeclaration', 'ConfigurationKey', 'EnableFormRef', 'Enabled',
+  'Height', 'HeightMode', 'Skip', 'Visible', 'Width', 'WidthMode', 'FormControlExtension',
+];
+
 const ITYPE = /\bi:type\s*=\s*"([^"]+)"/;
 
 const escapeXmlText = (v: string): string =>
@@ -132,21 +145,24 @@ export function upsertFormControlProperty(
   const control = found[0];
 
   const itype = ITYPE.exec(xml.slice(control.start, control.openEnd))?.[1];
-  const canonical = itype ? FORM_CONTROL_ELEMENT_ORDER[itype] : undefined;
-  if (!itype || !canonical) {
+  // An extensible control has no i:type; it is recognised by the <FormControlExtension> it carries.
+  const extensible = !itype && control.children.some(c => c.name === 'FormControlExtension');
+  const canonical = itype ? FORM_CONTROL_ELEMENT_ORDER[itype] : extensible ? EXTENSIBLE_CONTROL_ORDER : undefined;
+  if (!canonical) {
     return {
       ok: false,
-      reason: `control "${controlName}" has ${itype ? `type ${itype}, which` : 'no i:type, so it'} is not in the ` +
+      reason: `control "${controlName}" has ${itype ? `type ${itype}, which` : 'no i:type and no <FormControlExtension>, so it'} is not in the ` +
         `element-order census — there is no evidence where its properties belong, so nothing was written.`,
     };
   }
+  const typeLabel = itype ?? 'an extensible control (no i:type)';
 
   // The census spelling wins: a property written in the wrong case is a different element.
   const property = canonical.find(p => p.toLowerCase() === propertyName.toLowerCase());
   if (!property) {
     return {
       ok: false,
-      reason: `${itype} has no property "${propertyName}" in shipped metadata (309,668 controls) — ` +
+      reason: `${typeLabel} has no property "${propertyName}" in shipped metadata (${itype ? '309,668' : '5,039'} controls) — ` +
         `the platform would ignore it. If the control needs it, it is probably the wrong control type.`,
     };
   }
@@ -209,6 +225,6 @@ export function upsertFormControlProperty(
     ok: true,
     xml: applyEol(xml.slice(0, anchor.end) + block + xml.slice(anchor.end), eol),
     changed: true,
-    detail: `set ${name}.${property}='${value}' (added after <${anchor.name}>, in the order shipped ${itype} controls use)`,
+    detail: `set ${name}.${property}='${value}' (added after <${anchor.name}>, in the order shipped ${typeLabel} controls use)`,
   };
 }

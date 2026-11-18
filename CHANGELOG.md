@@ -29,6 +29,16 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **A green `build_d365fo_project` reply says what is new: "3 new, 18 known".** A model
+  with a stable set of known warnings had every one of them printed again on each build,
+  and the agent had to spot the new one among them (#1282). The server now keeps a warning
+  baseline per model in `.warning-baseline.json` next to `.last-build.json`, keyed by
+  model, element kind, object, member and message (not the line number). From the second
+  build on, the reply lists only warnings absent from the baseline and gives the known
+  ones as a count with the file path; the warning icon follows the new ones. A full build
+  replaces the baseline, an incremental one adds to it. No parameter, nothing to
+  configure. The first build of a model behaves as before. Not done yet: the same for
+  `run_bp_check` findings and the `changedSince` option (open on the issue).
 - **The server can create, edit, inspect and delete models.** `d365fo_file(action="create",
   objectType="model-descriptor")` was listed by the tool description and the op-spec index
   and then rejected by the input schema ("Invalid option"), so a new model meant a
@@ -129,6 +139,15 @@ those are called out explicitly below.
   environment status in `get_workspace_info` is not done yet.
 
 ### Fixed
+- **`modify-property` now sets a property on an extensible form control.** A control without
+  `i:type` (one that carries a `<FormControlExtension>`) was refused with "has no i:type, so
+  it is not in the element-order census", so `Visible`, `Width` or `AutoDeclaration` had to
+  be edited by hand. A census of the 5,039 such controls in the shipped AOT shows only 13
+  children ever occur (`Name`, `AllowEdit`, `AutoDeclaration`, `ConfigurationKey`,
+  `EnableFormRef`, `Enabled`, `Height`, `HeightMode`, `Skip`, `Visible`, `Width`, `WidthMode`,
+  `FormControlExtension`) and never in conflicting order, so those are now written in that
+  order. `HelpText` and `Label` never occur on an extensible control and are still refused;
+  an untyped control without `<FormControlExtension>` is refused as before (#1286).
 - **`run_systest_class` finds a test class in another model when no model was named.** The
   tool looked for the class only in the workspace model, while test classes usually live in a
   test model of their own, so the call failed with "was not found in model …" and the agent
