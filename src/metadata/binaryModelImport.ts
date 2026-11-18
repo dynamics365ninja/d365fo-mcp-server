@@ -237,8 +237,15 @@ function vis(v?: string): XppVisibility {
 }
 
 /** `[Hookable(False)]`-style rendering of the attributes an extension author must know about. */
-export function renderAttr(a: DumpAttr): string {
-  const args = (a.Args ?? []).filter(x => x !== undefined && x !== '');
+export function renderAttr(a: DumpAttr, extensionTarget?: { baseObjectName: string; baseKind: string; memberName?: string }): string {
+  let args = (a.Args ?? []).filter(x => x !== undefined && x !== '');
+  // Dumps written before the extractor kept intrinsic arguments hold only the function name
+  // ("tableStr"). The declaration still names the target, so restore it for [ExtensionOf].
+  if (extensionTarget && a.Name.replace(/Attribute$/, '') === 'ExtensionOf') {
+    const t = extensionTarget;
+    const member = t.memberName ? `, ${t.memberName}` : '';
+    args = args.map(x => (x.toLowerCase() === `${t.baseKind}str` ? `${x}(${t.baseObjectName}${member})` : x));
+  }
   const name = a.Name.replace(/Attribute$/, '');
   return args.length ? `[${name}(${args.join(', ')})]` : `[${name}]`;
 }
@@ -344,7 +351,7 @@ export function toClassInfo(c: DumpClass, model: string, info: BinaryIsvInfo): X
   const decl = c.Declaration ?? '';
   const header = parseXppClassHeader(decl);
   const extensionOf = parseExtensionOfAttribute(decl) ?? undefined;
-  const attrs = (c.Attributes ?? []).map(renderAttr);
+  const attrs = (c.Attributes ?? []).map(a => renderAttr(a, extensionOf));
   const summary = summaryFromDeclaration(decl);
   const ext = c.Extends || header?.extends || undefined;
   const base: XppClassInfo = {

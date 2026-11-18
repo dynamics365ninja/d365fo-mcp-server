@@ -115,6 +115,12 @@ those are called out explicitly below.
   in the Report Designer.
 
 ### Fixed
+- **Binary ISV classes show `[ExtensionOf(tableStr(X))]` instead of `[ExtensionOf(tableStr)]`.**
+  The binary model extractor stored each attribute argument as the intrinsic's bare name, so
+  the class and method documentation lost the target (and a `[SubscribesTo(classStr(X),
+  delegateStr(X, d))]` lost both). It now dumps the whole expression. Re-run the extractor to
+  get it for existing imports; until then the class description restores the target of an
+  `[ExtensionOf]` from the declaration. (#1277)
 - **`run_systest_class` finds a test class in another model when no model was named.** The
   tool looked for the class only in the workspace model, while test classes usually live in a
   test model of their own, so the call failed with "was not found in model …" and the agent
