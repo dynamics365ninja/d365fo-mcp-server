@@ -552,6 +552,7 @@ describe('run_systest_class — on a UDE environment', () => {
       const text = result.content[0].text;
 
       expect(result.isError).toBeFalsy();
+      expect(text.startsWith('⚠️ Tests passed, but 2 of 3 classes were not run')).toBe(true);
       expect(text).toContain('Classes: 1 run in one request, 2 not run');
       expect(text).toContain('`ContosoTestBase` was not run: abstract');
       expect(text).toContain('`ContosoMissingTest` was not run: not found in model `ContosoExtTests`.');
