@@ -29,6 +29,17 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`get_workspace_info` says what the UDE environment is doing** (#1283). On a UDE with
+  `environment.dataverseUrl` set, the reply gains a short `## UDE environment` section
+  read from the environment's operation history (`msprov_operationhistory`): the operation
+  running now (a deploy, test run, copy or update, which the environment runs one at a time
+  and during which its web endpoint may answer HTTP 503), how the last deploy ended and
+  when, and how many local files are newer than that deploy, so a test run against an
+  older build is no surprise. The "newer than the deploy" reference is the start time this
+  server recorded for its own last deploy, else the environment's. The section is omitted,
+  with no error, when the machine is not a UDE, no Dataverse URL is set, the server is not
+  signed in yet (this read never opens a sign-in page; sign in by running a UDE test or
+  deploy) or the environment does not answer within 4 seconds.
 - **`validate_code` warns about two data-entity traps that only show at import time**
   (#1285). Neither raises a build error or a BP rule, and both surface only when data is
   imported through DMF or OData. `ENT001` (any XML code type, run it on an
