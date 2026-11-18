@@ -41,6 +41,38 @@ those are called out explicitly below.
   when the index lists the object only in the model passed as `options.modelName` but its
   file is missing, the answer no longer claims that no model holds it: it says the index
   row is stale or the host has only the database. Objects with a file are read as before.
+- **`d365fo_file(action="project", operation="create")` creates a project for a custom
+  model in the UDE custom metadata folder without the model being listed anywhere.**
+  A model with no project yet that was not the configured model, not in `CUSTOM_MODELS`
+  and did not start with `EXTENSION_PREFIX` (a new TEST model, say) was refused as
+  "looks like a standard Microsoft model", although its package sat in the XPP config's
+  `ModelStoreFolder` (the custom packages path), not in the Microsoft `FrameworkDirectory`.
+  On a UDE whose two folders are separate, a model whose package or descriptor is in the
+  custom folder now counts as custom for project creation. On a classic VM, where custom
+  and Microsoft packages share `PackagesLocalDirectory`, location proves nothing and the
+  check is unchanged. Only project creation reads the location: the classifier behind
+  the cross-model write guard and the other write refusals is untouched.
+- **`d365fo_file(action="modify")` no longer reports a successful `modify-property` as
+  failed when the value is the property's default or a `true`/`false` NoYes.** The
+  post-write check looked for the literal `<Name>value</Name>` in the file. The metadata
+  serializer writes no element for a default value (a data entity's `EntityCategory=Master`,
+  `SupportsSetBasedSqlOperations=No`, a table's `CacheLookup=None`) and spells NoYes as
+  Yes/No, so `entityCategory=Master` or `supportsSetBasedSqlOperations=true` ended in
+  "❌ Verification: … is NOT in the file … Treat this write as failed" after a write that
+  had worked. The check now accepts Yes/No for `true`/`false`, and accepts an absent
+  top-level element when the value is the serializer's default for that object type
+  (AxTable and AxDataEntityView, measured by reflection on the metamodel and over the
+  5,887 shipped data entities). A non-default value that is missing, or an element present
+  with another value, is still reported.
+- **`validate_code` no longer warns BP002 about `doInsert()`, `doUpdate()` or `doDelete()`
+  in a SysTest test class.** A test sets up its fixtures with the do* variants on purpose,
+  so the table's own insert/update/delete logic does not run, and 82 of the 359 shipped
+  test classes do it. The rule was a plain regex and warned on every one. It now stays
+  quiet when the code carries `[SysTestMethod]` or declares `extends SysTestCase`, or when
+  the symbol index shows that the declared class, its base or the class named in
+  `context` derives from SysTestCase (most shipped test classes reach it through a base
+  such as a module's own test case). Production code is still warned, including a class
+  with "Test" in its name: no name heuristic is used.
 
 ## [1.24.0] — 2026-11-12
 
