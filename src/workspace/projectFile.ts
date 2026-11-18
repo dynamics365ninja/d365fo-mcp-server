@@ -13,16 +13,19 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { Parser, Builder } from '../utils/xml.js';
+import { Parser } from '../utils/xml.js';
 // The per-file mutex from the atomic-write work — same semantics as the private
 // withProjectFileLock this used to carry, so the second copy is retired rather
 // than moved along with the classes.
 import { withFileLock } from '../utils/atomicFileWrite.js';
-import { detectEol, withEol } from '../utils/eolUtils.js';
+import { detectEol } from '../utils/eolUtils.js';
+import {
+  insertProjectItem, listProjectIncludes, listRawProjectIncludes, removeProjectItems, type Eol, type ProjectItemSpec,
+} from './rnrprojText.js';
 import { recordCreatedProjectFolder, takeCreatedProjectFolder } from './createdArtifactLedger.js';
 import {
   axFolderForObjectType, resolveMembership, projectDisplayName, includeKey, normalizeInclude,
-  type Membership,
+  labelLanguagesInIncludes, type Membership,
 } from './projectMembership.js';
 import { getConfigManager } from '../utils/configManager.js';
 import { assertProjectPathAllowed } from '../utils/pathContainment.js';
@@ -124,21 +127,20 @@ export async function registerFileInActiveProject(
 }
 
 /**
- * A parsed `<Content>` / `<Folder>` node's Include in the one comparable form.
- *
- * normalizeInclude is the shared definition (see projectMembership.ts), so this
- * side and the membership side can never disagree about whether a project lists
- * an item. Returns '' for a node without an Include, which matches no key.
- *
- * Every duplicate check and every removal in this file goes through it. Comparing
- * the raw attribute with `===` is what let a differently-cased include read as
- * absent: `addToProject` then wrote a SECOND item for the same element (MSBuild
- * fails the build on duplicate items, and VS shows the object twice), while
- * `removeFromProject` reported it as not there.
+ * A `<Folder Include>` in the one comparable form: normalised like every other
+ * include, and without its trailing backslash. Visual Studio writes `Classes\`,
+ * but a hand-edited project may say `Classes`. Both are the same folder, and
+ * comparing them as different strings added a second `Classes\` entry next to
+ * the hand-written one.
  */
-function normalizedInclude(node: any): string {
-  const inc = node?.$?.Include;
-  return typeof inc === 'string' ? normalizeInclude(inc) : '';
+function folderKey(include: string): string {
+  return normalizeInclude(include).replace(/\\+$/, '');
+}
+
+/** Whether the project already lists the folder `include`, however its backslash is written. */
+function hasFolder(text: string, include: string): boolean {
+  const wanted = folderKey(include);
+  return listProjectIncludes(text, 'Folder').some(inc => folderKey(inc) === wanted);
 }
 
 /**
@@ -259,7 +261,6 @@ async function retryWhileLocked<T>(op: () => Promise<T>): Promise<T> {
 
 export class ProjectFileManager {
   private parser: Parser;
-  private builder: Builder;
   private readonly withinSolutionRoots: boolean;
 
   /**
@@ -275,10 +276,6 @@ export class ProjectFileManager {
       explicitArray: false,
       mergeAttrs: false,
       trim: true,
-    });
-    this.builder = new Builder({
-      xmldec: { version: '1.0', encoding: 'utf-8' },
-      renderOpts: { pretty: true, indent: '  ' },
     });
   }
 
@@ -364,98 +361,42 @@ export class ProjectFileManager {
     return withFileLock(projectPath, () => this._addToProjectLocked(projectPath, objectType, objectName));
   }
 
+  /**
+   * Read the project, apply `edit` to its text, and write the result back when
+   * `edit` changed something.
+   *
+   * The edit sees the text without its BOM and gets the file's own line ending;
+   * the BOM is put back on write. Everything `edit` does not touch is written back
+   * byte for byte (see rnrprojText.ts for why the xml2js Builder is no longer
+   * used here). xml2js still parses the file first, so a project it cannot read
+   * is refused before anything is written, as it was.
+   *
+   * Visual Studio holds the .rnrproj open, so a locked read or write is retried.
+   */
+  private async editProjectText(
+    projectPath: string,
+    edit: (body: string, eol: Eol) => string | null,
+  ): Promise<boolean> {
+    const raw = await retryWhileLocked(() => fs.readFile(projectPath, 'utf-8'));
+    const hadBom = raw.charCodeAt(0) === 0xFEFF;
+    const body = hadBom ? raw.slice(1) : raw;
+    const project = await this.parser.parseStringPromise(body);
+    if (!project?.Project) throw new Error('Invalid .rnrproj file structure');
+
+    const updated = edit(body, detectEol(body));
+    if (updated === null || updated === body) return false;
+    await retryWhileLocked(() => fs.writeFile(projectPath, hadBom ? '﻿' + updated : updated, 'utf-8'));
+    return true;
+  }
+
   private async _addToProjectLocked(
     projectPath: string,
     objectType: string,
     objectName: string
   ): Promise<boolean> {
-    // Read project file (with retry for transient VS file locks)
-    let projectXml = '';
-    for (let attempt = 0; attempt < 5; attempt++) {
-      try {
-        projectXml = await fs.readFile(projectPath, 'utf-8');
-        break;
-      } catch (err: any) {
-        if ((err.code === 'EBUSY' || err.code === 'EPERM' || err.code === 'EACCES') && attempt < 4) {
-          await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
-          continue;
-        }
-        throw err;
-      }
-    }
-    // Strip UTF-8 BOM if present (VS writes BOM; Node fs.readFile keeps it)
-    let hadBom = false;
-    if (projectXml.charCodeAt(0) === 0xFEFF) {
-      projectXml = projectXml.slice(1);
-      hadBom = true;
-    }
-    const project = await this.parser.parseStringPromise(projectXml);
-
-    // Ensure project structure exists
-    if (!project.Project) {
-      throw new Error('Invalid .rnrproj file structure');
-    }
-
-    // Initialize ItemGroup if not exists — insert BEFORE Import elements
-    // so MSBuild/VS sees items before targets (xml2js preserves JS key order)
-    if (!project.Project.ItemGroup) {
-      const { Import, ...rest } = project.Project;
-      project.Project = { ...rest, ItemGroup: [{ Folder: [] }, { Content: [] }] };
-      if (Import) {
-        project.Project.Import = Import;
-      }
-    }
-
-    // Convert to array if single ItemGroup
-    if (!Array.isArray(project.Project.ItemGroup)) {
-      project.Project.ItemGroup = [project.Project.ItemGroup];
-    }
-
-    // Find or create Folder ItemGroup
-    let folderGroup = project.Project.ItemGroup.find(
-      (group: any) => group.Folder !== undefined
-    );
-    if (!folderGroup) {
-      folderGroup = { Folder: [] };
-      project.Project.ItemGroup.push(folderGroup);
-    }
-
-    // Find or create Content ItemGroup
-    let contentGroup = project.Project.ItemGroup.find(
-      (group: any) => group.Content !== undefined
-    );
-    if (!contentGroup) {
-      contentGroup = { Content: [] };
-      project.Project.ItemGroup.push(contentGroup);
-    }
-
-    // Ensure arrays
-    if (!Array.isArray(folderGroup.Folder)) {
-      folderGroup.Folder = folderGroup.Folder ? [folderGroup.Folder] : [];
-    }
-    if (!Array.isArray(contentGroup.Content)) {
-      contentGroup.Content = contentGroup.Content ? [contentGroup.Content] : [];
-    }
-
     // Get folder names for project organization
     const displayFolderName = this.getFolderName(objectType);
     const axFolderPrefix = this.getAxFolderPrefix(objectType);
-
-    // Add folder if not exists (uses friendly display name, e.g. "Classes\")
-    // A folder already there under another spelling must not be added again —
-    // and must not be recorded as ours, or the ledger would let a later remove
-    // prune an entry this session did not create.
-    const folderKey = normalizeInclude(`${displayFolderName}\\`);
-    const folderExists = folderGroup.Folder.some(
-      (folder: any) => normalizedInclude(folder) === folderKey
-    );
-    if (!folderExists) {
-      folderGroup.Folder.push({
-        $: { Include: `${displayFolderName}\\` },
-      });
-      // Only an entry WE added may be pruned again on undo — see the ledger.
-      recordCreatedProjectFolder(projectPath, displayFolderName);
-    }
 
     // D365FO .rnrproj standard:
     //   Content Include = AxClass\ObjectName  (Ax prefix, NO .xml extension)
@@ -463,54 +404,39 @@ export class ProjectFileManager {
     const contentInclude = `${axFolderPrefix}\\${objectName}`;
     const linkPath = `${displayFolderName}\\${objectName}`;
 
-    // Check if file already in project. Case-insensitively and `.xml`-tolerantly:
-    // VS resolves `AxForm\Foo`, `axform\foo` and `AxForm\Foo.xml` to one item, so
-    // an exact comparison here reads an existing entry as absent and writes a
-    // second one for the same element — a duplicate MSBuild fails the build over.
-    const contentKey = normalizeInclude(contentInclude);
-    const fileExists = contentGroup.Content.some(
-      (content: any) => normalizedInclude(content) === contentKey
-    );
-
-    if (fileExists) {
-      console.error(
-        `[ProjectFileManager] File ${objectName} is already in the project - skipping`
-      );
-      return false; // File already exists in project
-    }
-
-    // Add file reference
-    contentGroup.Content.push({
-      $: { Include: contentInclude },
-      SubType: 'Content',
-      Name: objectName,
-      Link: linkPath,
-    });
-
-    console.error(
-      `[ProjectFileManager] Added file reference to project, Content items: ${contentGroup.Content.length}`
-    );
-
-    // Write back to project file (with retry for transient VS file locks)
-    const updatedXml = this.builder.buildObject(project);
-    // Restore UTF-8 BOM if the original file had one (VS 2022 writes .rnrproj with BOM)
-    // VS writes .rnrproj with CRLF; xml2js emits LF, which would rewrite every line.
-    const eolXml = withEol(updatedXml, detectEol(projectXml));
-    const output = hadBom ? '\uFEFF' + eolXml : eolXml;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      try {
-        await fs.writeFile(projectPath, output, 'utf-8');
-        break;
-      } catch (err: any) {
-        if ((err.code === 'EBUSY' || err.code === 'EPERM' || err.code === 'EACCES') && attempt < 4) {
-          await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
-          continue;
-        }
-        throw err;
+    let folderAdded = false;
+    const written = await this.editProjectText(projectPath, (body, eol) => {
+      // Check if file already in project. Case-insensitively and `.xml`-tolerantly:
+      // VS resolves `AxForm\Foo`, `axform\foo` and `AxForm\Foo.xml` to one item, so
+      // an exact comparison here reads an existing entry as absent and writes a
+      // second one for the same element — a duplicate MSBuild fails the build over.
+      if (listProjectIncludes(body, 'Content').includes(normalizeInclude(contentInclude))) {
+        console.error(`[ProjectFileManager] File ${objectName} is already in the project - skipping`);
+        return null;
       }
-    }
 
-    console.error(`[ProjectFileManager] Project file saved successfully`);
+      // Add folder if not exists (uses friendly display name, e.g. "Classes\")
+      // A folder already there under another spelling must not be added again —
+      // and must not be recorded as ours, or the ledger would let a later remove
+      // prune an entry this session did not create.
+      let text = body;
+      const folderInclude = `${displayFolderName}\\`;
+      if (!hasFolder(text, folderInclude)) {
+        text = insertProjectItem(text, { type: 'Folder', include: folderInclude, metadata: [] }, eol);
+        folderAdded = true;
+      }
+
+      return insertProjectItem(text, {
+        type: 'Content',
+        include: contentInclude,
+        metadata: [['SubType', 'Content'], ['Name', objectName], ['Link', linkPath]],
+      }, eol);
+    });
+    if (!written) return false;
+
+    // Only an entry WE added may be pruned again on undo — see the ledger.
+    if (folderAdded) recordCreatedProjectFolder(projectPath, displayFolderName);
+    console.error(`[ProjectFileManager] Added ${contentInclude} to ${path.basename(projectPath)}`);
     return true; // File successfully added
   }
 
@@ -536,31 +462,6 @@ export class ProjectFileManager {
     objectType: string,
     objectName: string,
   ): Promise<boolean> {
-    let projectXml = '';
-    for (let attempt = 0; attempt < 5; attempt++) {
-      try {
-        projectXml = await fs.readFile(projectPath, 'utf-8');
-        break;
-      } catch (err: any) {
-        if ((err.code === 'EBUSY' || err.code === 'EPERM' || err.code === 'EACCES') && attempt < 4) {
-          await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
-          continue;
-        }
-        throw err;
-      }
-    }
-    let hadBom = false;
-    if (projectXml.charCodeAt(0) === 0xFEFF) {
-      projectXml = projectXml.slice(1);
-      hadBom = true;
-    }
-    const project = await this.parser.parseStringPromise(projectXml);
-    if (!project.Project || !project.Project.ItemGroup) return false;
-
-    const itemGroups = Array.isArray(project.Project.ItemGroup)
-      ? project.Project.ItemGroup
-      : [project.Project.ItemGroup];
-
     const displayFolderName = this.getFolderName(objectType);
     const axFolderPrefix = this.getAxFolderPrefix(objectType);
     // Compared through includeKey, NOT as a literal string. resolveMembership
@@ -574,59 +475,26 @@ export class ProjectFileManager {
     // neither may we.
     const wantedKey = includeKey(axFolderPrefix, objectName);
 
-    let removed = false;
-    for (const group of itemGroups) {
-      if (group.Content === undefined) continue;
-      const contents = Array.isArray(group.Content) ? group.Content : [group.Content];
-      const kept = contents.filter((c: any) => normalizedInclude(c) !== wantedKey);
-      if (kept.length !== contents.length) {
-        removed = true;
-        group.Content = kept;
-      }
-    }
+    const written = await this.editProjectText(projectPath, (body) => {
+      const content = removeProjectItems(body, 'Content', inc => inc === wantedKey);
+      if (content.removed === 0) return null;
 
-    if (!removed) return false;
-
-    // Drop the "<Type>\" folder entry only when THIS session added it and no
-    // remaining Content of this AOT type references it. Both conditions matter:
-    // the second protects folders still hosting siblings, the first protects
-    // orphan entries that were in the project before we touched it.
-    const weAddedFolder = takeCreatedProjectFolder(projectPath, displayFolderName);
-    const stillUsesFolder = itemGroups.some((group: any) => {
-      if (group.Content === undefined) return false;
-      const contents = Array.isArray(group.Content) ? group.Content : [group.Content];
+      // Drop the "<Type>\" folder entry only when THIS session added it and no
+      // remaining Content of this AOT type references it. Both conditions matter:
+      // the second protects folders still hosting siblings, the first protects
+      // orphan entries that were in the project before we touched it.
+      const weAddedFolder = takeCreatedProjectFolder(projectPath, displayFolderName);
       // Same normalisation as the removal above: a sibling spelled `axform\Other`
       // still occupies the folder, and pruning the folder entry out from under it
       // is the same silent breakage one level up.
-      return contents.some((c: any) => normalizedInclude(c).startsWith(`${axFolderPrefix.toLowerCase()}\\`));
+      const stillUsesFolder = listProjectIncludes(content.text, 'Content')
+        .some(inc => inc.startsWith(`${axFolderPrefix.toLowerCase()}\\`));
+      if (!weAddedFolder || stillUsesFolder) return content.text;
+      const wantedFolder = folderKey(displayFolderName);
+      return removeProjectItems(content.text, 'Folder', inc => folderKey(inc) === wantedFolder).text;
     });
-    if (weAddedFolder && !stillUsesFolder) {
-      for (const group of itemGroups) {
-        if (group.Folder === undefined) continue;
-        const folders = Array.isArray(group.Folder) ? group.Folder : [group.Folder];
-        const folderKey = normalizeInclude(`${displayFolderName}\\`);
-        group.Folder = folders.filter((f: any) => normalizedInclude(f) !== folderKey);
-      }
-    }
-
-    const updatedXml = this.builder.buildObject(project);
-    // VS writes .rnrproj with CRLF; xml2js emits LF, which would rewrite every line.
-    const eolXml = withEol(updatedXml, detectEol(projectXml));
-    const output = hadBom ? '\uFEFF' + eolXml : eolXml;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      try {
-        await fs.writeFile(projectPath, output, 'utf-8');
-        break;
-      } catch (err: any) {
-        if ((err.code === 'EBUSY' || err.code === 'EPERM' || err.code === 'EACCES') && attempt < 4) {
-          await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
-          continue;
-        }
-        throw err;
-      }
-    }
-    console.error(`[ProjectFileManager] Removed '${objectName}' from project ${path.basename(projectPath)}`);
-    return true;
+    if (written) console.error(`[ProjectFileManager] Removed '${objectName}' from project ${path.basename(projectPath)}`);
+    return written;
   }
 
   /**
@@ -639,32 +507,71 @@ export class ProjectFileManager {
   async removeIncludeFromProject(projectPath: string, include: string): Promise<boolean> {
     await this.assertWithinRoots(projectPath);
     return withFileLock(projectPath, async () => {
-      // Visual Studio holds the .rnrproj open; retry a locked read/write like the
-      // other project writers do, or undo leaves the entry behind.
-      const projectXml = await retryWhileLocked(() => fs.readFile(projectPath, 'utf-8'));
-      const hadBom = projectXml.charCodeAt(0) === 0xFEFF;
-      const body = hadBom ? projectXml.slice(1) : projectXml;
-      const project = await this.parser.parseStringPromise(body);
-      if (!project.Project?.ItemGroup) return false;
-      const itemGroups = Array.isArray(project.Project.ItemGroup)
-        ? project.Project.ItemGroup
-        : [project.Project.ItemGroup];
       const wanted = normalizeInclude(include);
-      let removed = false;
-      for (const group of itemGroups) {
-        if (group.Content === undefined) continue;
-        const contents = Array.isArray(group.Content) ? group.Content : [group.Content];
-        const kept = contents.filter((c: any) => normalizedInclude(c) !== wanted);
-        if (kept.length !== contents.length) {
-          removed = true;
-          group.Content = kept;
+      const written = await this.editProjectText(projectPath, (body) => {
+        const result = removeProjectItems(body, 'Content', inc => inc === wanted);
+        return result.removed === 0 ? null : result.text;
+      });
+      if (written) console.error(`[ProjectFileManager] Removed '${include}' from project ${path.basename(projectPath)}`);
+      return written;
+    });
+  }
+
+  /**
+   * Reverse of {@link addLabelToProject}: remove, per language, the
+   * `AxLabelFile\{id}_{lang}` descriptor entry and its `{id}.{lang}.label.txt`
+   * resource entry (matched by name or by a DependentUpon on a removed
+   * descriptor). `languages` limits it to those languages (any case); without it
+   * every language the project lists goes. The "Label Files\" folder entry and
+   * the files on disk are left alone. Returns the languages removed, as spelled
+   * in the project.
+   */
+  async removeLabelFromProject(projectPath: string, labelFileId: string, languages?: string[]): Promise<string[]> {
+    await this.assertWithinRoots(projectPath);
+    return withFileLock(projectPath, async () => {
+      const only = languages?.length ? new Set(languages.map(l => l.toLowerCase())) : undefined;
+      const wantedLang = (lang: string) => !only || only.has(lang.toLowerCase());
+      // `<id>.<lang>.label.txt`, the id compared literally and the language captured.
+      const resourceLang = (include: string): string | undefined => {
+        const fileName = include.split(/[\\/]/).pop() ?? '';
+        const prefix = `${labelFileId}.`.toLowerCase();
+        const suffix = '.label.txt';
+        const lower = fileName.toLowerCase();
+        if (!lower.startsWith(prefix) || !lower.endsWith(suffix)) return undefined;
+        const lang = fileName.slice(prefix.length, -suffix.length);
+        return lang && !/[.\\/]/.test(lang) ? lang : undefined;
+      };
+      // Languages as spelled in the project, keyed by lower case.
+      const langs = new Map<string, string>();
+      const note = (lang: string) => { if (!langs.has(lang.toLowerCase())) langs.set(lang.toLowerCase(), lang); };
+
+      const written = await this.editProjectText(projectPath, (body) => {
+        // Includes come back normalised (lower case), so the language is spelled by
+        // the project's own include, read from the raw attribute below.
+        let text = body;
+        for (const raw of listRawProjectIncludes(body, 'Content')) {
+          const descriptor = labelLanguagesInIncludes([raw], labelFileId)[0];
+          if (descriptor && wantedLang(descriptor)) note(descriptor);
+          else {
+            const resource = resourceLang(raw);
+            if (resource && wantedLang(resource)) note(resource);
+          }
         }
-      }
-      if (!removed) return false;
-      const eolXml = withEol(this.builder.buildObject(project), detectEol(body));
-      await retryWhileLocked(() => fs.writeFile(projectPath, hadBom ? '\uFEFF' + eolXml : eolXml, 'utf-8'));
-      console.error(`[ProjectFileManager] Removed '${include}' from project ${path.basename(projectPath)}`);
-      return true;
+        const descriptorWanted = (inc: string) => {
+          const lang = labelLanguagesInIncludes([inc], labelFileId)[0];
+          return !!lang && wantedLang(lang);
+        };
+        text = removeProjectItems(text, 'Content', inc => descriptorWanted(inc)).text;
+        const resources = removeProjectItems(text, 'Content', inc => {
+          const lang = resourceLang(inc);
+          return !!lang && wantedLang(lang);
+        });
+        return resources.text === body ? null : resources.text;
+      });
+      if (!written) return [];
+      console.error(`[ProjectFileManager] Removed label file '${labelFileId}' (${[...langs.values()].join(', ')}) ` +
+        `from project ${path.basename(projectPath)}`);
+      return [...langs.values()];
     });
   }
 
@@ -673,7 +580,7 @@ export class ProjectFileManager {
    * Each language needs TWO entries:
    *   1. AxLabelFile descriptor:   Include="AxLabelFile\{id}_{lang}"  Link="Label Files\{id}_{lang}"
    *   2. LabelResources .label.txt: Include="{id}.{lang}.label.txt"  DependentUpon="AxLabelFile\{id}_{lang}"
-   * Both are added inside a single file-lock + parse/write cycle for efficiency.
+   * Both are added inside a single file-lock + read/write cycle for efficiency.
    * Returns the list of descriptor names that were newly added.
    */
   async addLabelToProject(
@@ -691,120 +598,58 @@ export class ProjectFileManager {
     labelFileId: string,
     languages: string[],
   ): Promise<string[]> {
-    // Read project file (with retry for transient VS file locks)
-    let projectXml = '';
-    for (let attempt = 0; attempt < 5; attempt++) {
-      try {
-        projectXml = await fs.readFile(projectPath, 'utf-8');
-        break;
-      } catch (err: any) {
-        if ((err.code === 'EBUSY' || err.code === 'EPERM' || err.code === 'EACCES') && attempt < 4) {
-          await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
-          continue;
-        }
-        throw err;
-      }
-    }
-    let hadBom = false;
-    if (projectXml.charCodeAt(0) === 0xFEFF) {
-      projectXml = projectXml.slice(1);
-      hadBom = true;
-    }
-    const project = await this.parser.parseStringPromise(projectXml);
-    if (!project.Project) throw new Error('Invalid .rnrproj file structure');
-
-    // Ensure ItemGroup structure
-    if (!project.Project.ItemGroup) {
-      const { Import, ...rest } = project.Project;
-      project.Project = { ...rest, ItemGroup: [{ Folder: [] }, { Content: [] }] };
-      if (Import) project.Project.Import = Import;
-    }
-    if (!Array.isArray(project.Project.ItemGroup)) {
-      project.Project.ItemGroup = [project.Project.ItemGroup];
-    }
-
-    let folderGroup = project.Project.ItemGroup.find((g: any) => g.Folder !== undefined);
-    if (!folderGroup) { folderGroup = { Folder: [] }; project.Project.ItemGroup.push(folderGroup); }
-
-    let contentGroup = project.Project.ItemGroup.find((g: any) => g.Content !== undefined);
-    if (!contentGroup) { contentGroup = { Content: [] }; project.Project.ItemGroup.push(contentGroup); }
-
-    if (!Array.isArray(folderGroup.Folder)) folderGroup.Folder = folderGroup.Folder ? [folderGroup.Folder] : [];
-    if (!Array.isArray(contentGroup.Content)) contentGroup.Content = contentGroup.Content ? [contentGroup.Content] : [];
-
-    // Ensure "Label Files\" folder entry
-    const labelFolderKey = normalizeInclude('Label Files\\');
-    const folderExists = folderGroup.Folder.some(
-      (f: any) => normalizedInclude(f) === labelFolderKey
-    );
-    if (!folderExists) {
-      folderGroup.Folder.push({ $: { Include: 'Label Files\\' } });
-    }
-
     const added: string[] = [];
-    let newEntries = 0;
-    // Keyed like every other include comparison: a label file whose descriptor is
-    // already listed as `AxLabelFile\Foo_EN-US` must not get a second entry under
-    // `AxLabelFile\Foo_en-US`. Language tags are exactly where casing drifts.
-    const existingIncludes = new Set<string>(
-      contentGroup.Content.map((c: any) => normalizedInclude(c)).filter(Boolean)
-    );
+    const written = await this.editProjectText(projectPath, (body, eol) => {
+      // Keyed like every other include comparison: a label file whose descriptor is
+      // already listed as `AxLabelFile\Foo_EN-US` must not get a second entry under
+      // `AxLabelFile\Foo_en-US`. Language tags are exactly where casing drifts.
+      const existingIncludes = new Set<string>(listProjectIncludes(body, 'Content'));
+      const entries: ProjectItemSpec[] = [];
 
-    for (const lang of languages) {
-      const descriptorName = `${labelFileId}_${lang}`;
-      const descriptorInclude = `AxLabelFile\\${descriptorName}`;
-      const resourceFileName = `${labelFileId}.${lang}.label.txt`;
+      for (const lang of languages) {
+        const descriptorName = `${labelFileId}_${lang}`;
+        const descriptorInclude = `AxLabelFile\\${descriptorName}`;
+        const resourceFileName = `${labelFileId}.${lang}.label.txt`;
 
-      // 1. AxLabelFile descriptor entry
-      if (!existingIncludes.has(normalizeInclude(descriptorInclude))) {
-        contentGroup.Content.push({
-          $: { Include: descriptorInclude },
-          SubType: 'Content',
-          Name: descriptorName,
-          Link: `Label Files\\${descriptorName}`,
-        });
-        existingIncludes.add(normalizeInclude(descriptorInclude));
-        added.push(descriptorName);
-        newEntries++;
-      }
-
-      // 2. LabelResources .label.txt entry with DependentUpon
-      if (!existingIncludes.has(normalizeInclude(resourceFileName))) {
-        contentGroup.Content.push({
-          $: { Include: resourceFileName },
-          SubType: 'Content',
-          Name: resourceFileName,
-          DependentUpon: descriptorInclude,
-        });
-        existingIncludes.add(normalizeInclude(resourceFileName));
-        newEntries++;
-      }
-    }
-
-    if (newEntries === 0) {
-      console.error(`[ProjectFileManager] All label entries already in project — skipping write`);
-      return added;
-    }
-
-    // Write back
-    const updatedXml = this.builder.buildObject(project);
-    // VS writes .rnrproj with CRLF; xml2js emits LF, which would rewrite every line.
-    const eolXml = withEol(updatedXml, detectEol(projectXml));
-    const output = hadBom ? '\uFEFF' + eolXml : eolXml;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      try {
-        await fs.writeFile(projectPath, output, 'utf-8');
-        break;
-      } catch (err: any) {
-        if ((err.code === 'EBUSY' || err.code === 'EPERM' || err.code === 'EACCES') && attempt < 4) {
-          await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
-          continue;
+        // 1. AxLabelFile descriptor entry
+        if (!existingIncludes.has(normalizeInclude(descriptorInclude))) {
+          entries.push({
+            type: 'Content',
+            include: descriptorInclude,
+            metadata: [['SubType', 'Content'], ['Name', descriptorName], ['Link', `Label Files\\${descriptorName}`]],
+          });
+          existingIncludes.add(normalizeInclude(descriptorInclude));
+          added.push(descriptorName);
         }
-        throw err;
-      }
-    }
 
-    console.error(`[ProjectFileManager] Added ${added.length} label descriptor(s) + resource entries to project`);
+        // 2. LabelResources .label.txt entry with DependentUpon
+        if (!existingIncludes.has(normalizeInclude(resourceFileName))) {
+          entries.push({
+            type: 'Content',
+            include: resourceFileName,
+            metadata: [['SubType', 'Content'], ['Name', resourceFileName], ['DependentUpon', descriptorInclude]],
+          });
+          existingIncludes.add(normalizeInclude(resourceFileName));
+        }
+      }
+
+      if (entries.length === 0) {
+        console.error(`[ProjectFileManager] All label entries already in project — skipping write`);
+        return null;
+      }
+
+      // Ensure "Label Files\" folder entry
+      let text = body;
+      if (!hasFolder(text, 'Label Files\\')) {
+        text = insertProjectItem(text, { type: 'Folder', include: 'Label Files\\', metadata: [] }, eol);
+      }
+      for (const entry of entries) text = insertProjectItem(text, entry, eol);
+      return text;
+    });
+
+    if (written) {
+      console.error(`[ProjectFileManager] Added ${added.length} label descriptor(s) + resource entries to project`);
+    }
     return added;
   }
 

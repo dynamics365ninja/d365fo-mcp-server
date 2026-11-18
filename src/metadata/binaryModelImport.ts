@@ -18,6 +18,7 @@
 import type { XppClassInfo, XppMethodInfo, XppTableInfo, XppFieldInfo } from './types.js';
 import { buildClassExtensionRecord, type XppClassExtensionRecord } from './xmlParser.js';
 import { parseExtensionOfAttribute, parseXppClassHeader, type XppVisibility } from './xppDeclaration.js';
+import { integerText } from '../utils/integerText.js';
 
 export const BINARY_ISV_NOTE = 'binary ISV, signatures only';
 
@@ -318,6 +319,27 @@ export function sourcePathFor(info: BinaryIsvInfo, folder: string, name: string)
   return `binary-isv://${info.moduleName}/${folder}/${name}`;
 }
 
+/**
+ * True for the file path a binary ISV object is indexed under ({@link sourcePathFor}). Such a
+ * path is a marker, not a file: the model ships compiled only, so no XML or X++ source exists.
+ */
+export function isBinaryIsvPath(filePath: unknown): filePath is string {
+  return typeof filePath === 'string' && filePath.startsWith('binary-isv://');
+}
+
+/**
+ * The line a reader prints above an object of a binary ISV model, so that a signatures-only
+ * answer is never mistaken for an object whose source was simply not read.
+ */
+export function binaryIsvNotice(what: string): string {
+  return `> 🔒 **Binary ISV, signatures only** — compiled model, ${what}.\n\n`;
+}
+
+/** Said once under a list in which some entries carry `(…, binary ISV, signatures only)`. */
+export const BINARY_ISV_LIST_FOOTNOTE =
+  `> 🔒 Classes marked "${BINARY_ISV_NOTE}" belong to a compiled model: no X++ source exists ` +
+  'to read. get_object_info gives their method signatures.';
+
 export function toClassInfo(c: DumpClass, model: string, info: BinaryIsvInfo): XppClassInfo & Record<string, unknown> {
   const decl = c.Declaration ?? '';
   const header = parseXppClassHeader(decl);
@@ -404,7 +426,9 @@ export function toEdtInfo(e: DumpEdt, model: string, info: BinaryIsvInfo): Recor
     label: e.Label,
     baseType: e.BaseType,
     referenceTable: e.ReferenceTable,
-    stringSize: e.StringSize,
+    // Text, as extract-metadata writes it from AxEdt XML. A JS number reaches the TEXT column
+    // edt_metadata.string_size through node:sqlite as a REAL, which SQLite stores as '15.0'.
+    stringSize: integerText(e.StringSize) ?? undefined,
     binaryIsv: info,
   };
 }
