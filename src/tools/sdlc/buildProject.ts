@@ -18,6 +18,7 @@ import { describeSchemaChanges, scanSchemaChanges } from './schemaChangeGuard.js
 import { describeFormPatternErrors, scanFormPatternErrors, type FormPatternBuildError } from './formPatternGuard.js';
 import { isFormPatternEnforceEnabled } from '../analysis/validateFormPattern.js';
 import { recordBuild } from '../../utils/buildMarker.js';
+import { updateWarningBaseline, describeWarningDelta, warningKey, type WarningDelta } from '../../utils/warningBaseline.js';
 import { monotonicProgress, type ProgressReporter, startProgressHeartbeat } from '../../utils/progressReporter.js';
 import { restartAosRuntime, type RuntimeRestartResult } from './aosRuntime.js';
 import { localAosUrl } from './aosWebConfig.js';
@@ -711,6 +712,19 @@ export function trimSucceededLog(logTail: string, keepTail = 12): string {
  * dropped warning is the thing this function must not do. So anything that
  * MENTIONS an error or a warning is kept too, whatever its shape.
  */
+/**
+ * Drop the excerpt's warning lines that the model's baseline already knows; they are
+ * reported as a count by describeWarningDelta. Without a baseline nothing is dropped.
+ */
+export function dropKnownWarnings(log: string, delta: WarningDelta | undefined): string {
+  if (!delta?.hadBaseline) return log;
+  const fresh = new Set(delta.newWarnings.map(warningKey));
+  return log.split(/\r?\n/).filter(line => {
+    const d = parseXppcDiagnostics(line)[0];
+    return !(d && d.severity === 'warning' && !fresh.has(warningKey(d)));
+  }).join('\n');
+}
+
 function isWorthKeeping(line: string): boolean {
   return DIAG_LINE_TEST.test(line.trim()) || /\b(error|warning)s?\b/i.test(line);
 }
@@ -1575,7 +1589,14 @@ async function renderFinishedBuildResult(
     ? `\n\n--- AOS restart ---\n${runtimeFacts}${runtimeWarning ? '⚠️ ' : ''}${workflow.result?.message ?? 'AOS restart was not attempted because the build failed.'}`
     : '';
   const logTail       = await readLogTail(finalState.logFile);
-  const hasWarnings   = succeeded && logTail.split(/\r?\n/).some(l => /Warning:\s/.test(l) && DIAG_LINE_TEST.test(l.trim()));
+  // Green build with a data dir: compare the WHOLE log's warnings with the model's baseline,
+  // so the reply lists only what is new (the 60-line tail alone would miss warnings).
+  const warningDelta: WarningDelta | undefined = succeeded && dataDir
+    ? updateWarningBaseline(dataDir, targetModel,
+      parseXppcDiagnostics(await readWholeLog(finalState.logFile)), !!finalState.fullBuild)
+    : undefined;
+  const tailHasWarnings = logTail.split(/\r?\n/).some(l => /Warning:\s/.test(l) && DIAG_LINE_TEST.test(l.trim()));
+  const hasWarnings   = succeeded && (warningDelta?.hadBaseline ? warningDelta.newWarnings.length > 0 : tailHasWarnings);
   const odataMissing  = succeeded ? finalState.odataActionsMissing ?? [] : [];
   const patternErrors = succeeded ? finalState.formPatternErrors ?? [] : [];
   // A pipeline build fails on these, so the local build does too, unless the gate is off.
@@ -1599,7 +1620,7 @@ async function renderFinishedBuildResult(
   // Parse FIRST: how much raw log is worth carrying depends on whether the
   // diagnostics already explain the failure — see renderFailureLog.
   const logContent    = succeeded
-    ? trimSucceededLog(logTail)
+    ? dropKnownWarnings(trimSucceededLog(logTail), warningDelta)
     : await renderFailureLog(finalState.logFile, parsed.some(d => d.severity === 'error'));
 
   // The note run_bp_check and verify_d365fo_project read, so a green verdict from a
@@ -1671,6 +1692,7 @@ async function renderFinishedBuildResult(
         incrementalScopeCaveat(succeeded, !!finalState.fullBuild) + '\n' +
         (unexplained ? `${unexplained}\n\n` : '') +
         (structured ? `${structured}\n\n` : '') +
+        (warningDelta ? describeWarningDelta(warningDelta) : '') +
         `${logContent || '(no output)'}` + bpSection + syncSection + runtimeSection,
     }],
     // A failed sync is an error even though the compile passed: the caller asked

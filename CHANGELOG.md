@@ -29,6 +29,16 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **A green `build_d365fo_project` reply says what is new: "3 new, 18 known".** A model
+  with a stable set of known warnings had every one of them printed again on each build,
+  and the agent had to spot the new one among them (#1282). The server now keeps a warning
+  baseline per model in `.warning-baseline.json` next to `.last-build.json`, keyed by
+  model, element kind, object, member and message (not the line number). From the second
+  build on, the reply lists only warnings absent from the baseline and gives the known
+  ones as a count with the file path; the warning icon follows the new ones. A full build
+  replaces the baseline, an incremental one adds to it. No parameter, nothing to
+  configure. The first build of a model behaves as before. Not done yet: the same for
+  `run_bp_check` findings and the `changedSince` option (open on the issue).
 - **The server can create, edit, inspect and delete models.** `d365fo_file(action="create",
   objectType="model-descriptor")` was listed by the tool description and the op-spec index
   and then rejected by the input schema ("Invalid option"), so a new model meant a
