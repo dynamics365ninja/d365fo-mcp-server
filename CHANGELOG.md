@@ -210,6 +210,14 @@ those are called out explicitly below.
   in the Report Designer.
 
 ### Changed
+- **The agent instructions now carry four scope rules, so an agent asks before guessing,
+  keeps changes small and does not rewrite code next to the change.**
+  `xpp_system_instructions` and `.github/copilot-instructions.md` (the file users copy into
+  their workspace) get a *Scope discipline* section: name the readings of an ambiguous
+  request instead of picking one silently, add nothing that was not asked for, leave
+  adjacent code alone and mention unrelated problems instead of fixing them, and state how
+  the result will be verified before writing it. They apply to every MCP client (GitHub
+  Copilot, Claude Code). Re-copy the instruction file into your workspace to get them.
 - **`build_d365fo_project(deploy: true)` on a UDE now picks its database sync from what
   changed.** It used to deploy a Dev package with no sync unless `dbSync` was given, so the
   agent had to guess: no sync after a table change left the change out of the environment,
