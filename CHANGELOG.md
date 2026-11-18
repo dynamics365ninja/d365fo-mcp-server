@@ -139,6 +139,17 @@ those are called out explicitly below.
   environment status in `get_workspace_info` is not done yet.
 
 ### Fixed
+- **`get_object_info(objectType:"enum")` lists the values of an enum in a binary ISV
+  model.** Without the bridge it answered `Enum "X" not found` for an enum imported with
+  `npm run extract-binary-models`: the reader only understood AxEnum XML, and a binary enum
+  has none (its row's path is `binary-isv://<Model>/AxEnum/<Name>`). The importer now
+  renders the enum's values and labels as AxEnum XML, so the extracted JSON and the index's
+  stored copy (`object_source`) both carry them, and a deployment that serves from the
+  database alone answers too. The reply carries the "Binary ISV, signatures only" notice
+  and leaves out "Use Enum Value", which a compiled model's dump does not know. If neither
+  copy is on the host (an index built before this change, JSON removed), the reply says the
+  enum is in binary model M and its values are not available here, instead of "not found".
+  Re-run `npm run extract-binary-models` and re-index to get the values. (#1275)
 - **Binary ISV classes show `[ExtensionOf(tableStr(X))]` instead of `[ExtensionOf(tableStr)]`.**
   The binary model extractor stored each attribute argument as the intrinsic's bare name, so
   the class and method documentation lost the target (and a `[SubscribesTo(classStr(X),
