@@ -83,6 +83,13 @@ PowerShell / any terminal command **WILL HANG** in VS 2022 / VS 2026 MCP integra
 11. **The post-write diff must be additive or narrowly targeted** — verify via `get_workspace_info(changes=true)` (or re-read with `get_object_info`) that no unrelated XML nodes (`<DataSources>`, `<Controls>`, methods, pattern metadata) disappeared. If they did, the edit failed: `d365fo_file(action="undo")`.
 12. **An example form named by the user is a pattern contract** — keep its pattern family and required scaffolding (datasources, ActionPane/Tab/grid/QuickFilter); missing pattern elements are a failed generation even if the XML is well-formed.
 
+### Scope discipline
+
+- **Surface ambiguity, do not pick silently.** If the request has several plausible readings (which object, which extension mechanism, which model), name them and ask; state any assumption you do make.
+- **Smallest change that does what was asked.** No extra fields, methods, parameters, classes or abstractions "for later". Match the style of the surrounding X++.
+- **Touch only what the request needs.** Do not reformat, rename or "improve" adjacent code. Unrelated problems you notice (dead code, BP warnings in other objects) — mention them, do not fix them unasked. Clean up only what your own change made unused.
+- **Define "done" before writing.** Say how it will be verified (`validate_code` clean, build clean, `run_systest_class` for the new behaviour) and check it before reporting success; if a check was skipped or failed, say so.
+
 ### Spending tool calls
 
 13. **Issue independent read-only calls together, in one step.** Every tool call re-reads the whole conversation, so a turn costs the round trip, not the tool. `get_object_info`, `search`, `labels`, `get_knowledge`, `object_patterns` and `find_references` have no side effects and never need to wait for each other — five lookups are one step, not five.

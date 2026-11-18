@@ -114,6 +114,16 @@ those are called out explicitly below.
   the reason and the file untouched. This is validation, not rendering: check the layout
   in the Report Designer.
 
+### Changed
+- **The agent instructions now carry four scope rules, so an agent asks before guessing,
+  keeps changes small and does not rewrite code next to the change.**
+  `xpp_system_instructions` and `.github/copilot-instructions.md` (the file users copy into
+  their workspace) get a *Scope discipline* section: name the readings of an ambiguous
+  request instead of picking one silently, add nothing that was not asked for, leave
+  adjacent code alone and mention unrelated problems instead of fixing them, and state how
+  the result will be verified before writing it. They apply to every MCP client (GitHub
+  Copilot, Claude Code). Re-copy the instruction file into your workspace to get them.
+
 ### Fixed
 - **`run_systest_class` finds a test class in another model when no model was named.** The
   tool looked for the class only in the workspace model, while test classes usually live in a
