@@ -11,6 +11,8 @@ import { buildFreshness, type BuildFreshnessStatus } from '../../utils/buildMark
 import { validateMoniker, BP_MONIKER_CATALOG } from '../../knowledge/bpMonikers/index.js';
 import { pipelineParitySections } from './bpPipelineParity.js';
 import { formDataSourcesAllLocal } from '../xml/formDataSourceDomain.js';
+import { splitChangedSince, changedFilesSince, objectsFromChangedFiles } from './bpChangedSince.js';
+import { compareAndStoreBaseline, bpBaselineEntry, type KeyedDelta } from '../../utils/warningBaseline.js';
 
 const execFileAsync = util.promisify(execFile);
 
@@ -61,7 +63,10 @@ const INDEX_TYPE_TO_ELEMENT_TYPE: Record<string, string> = {
   macro:             'macro',
 };
 
-const RESOLVABLE_INDEX_TYPES = Object.keys(INDEX_TYPE_TO_ELEMENT_TYPE);
+/** More changed objects than this: one whole-model run instead of one xppbp run per object. */
+const CHANGED_WHOLE_MODEL_THRESHOLD = 25;
+
+const RESOLVABLE_INDEX_TYPES =Object.keys(INDEX_TYPE_TO_ELEMENT_TYPE);
 
 /**
  * Extension kinds xppbp cannot check at all (no element type exists for them), keyed
@@ -349,6 +354,22 @@ export function parseBpFindings(output: string): ParsedBpFinding[] {
 export function renderFindingsSection(output: string): string {
   const findings = parseBpFindings(output);
   if (findings.length === 0) return '';
+  return `\n\nFindings (moniker-checked against ${BP_MONIKER_CATALOG.length} known monikers):\n${renderFindingLines(findings)}`;
+}
+
+/** Identity of a finding for the baseline: rule, element path and message — never the position. */
+export function bpFindingKey(f: ParsedBpFinding): string {
+  return [f.moniker ?? '', f.path ?? f.target, f.message ?? ''].join('|');
+}
+
+/** What `run_bp_check` says once a baseline exists: the counts, then only the new findings. */
+export function describeBpDelta(delta: KeyedDelta<ParsedBpFinding>): string {
+  const head = `BP findings: ${delta.fresh.length} new, ${delta.knownCount} known ` +
+    `(known ones are not listed; they are kept in ${delta.file})`;
+  return delta.fresh.length > 0 ? `${head}\n${renderFindingLines(delta.fresh)}` : head;
+}
+
+function renderFindingLines(findings: ParsedBpFinding[]): string {
   const lines = findings.map(f => {
     if (f.moniker === null) return `  • ${f.target} (rule not named on this line)`;
     const flag = f.knownMoniker ? '' : ' ⚠️ not in the extracted moniker catalog — verify the spelling';
@@ -363,7 +384,7 @@ export function renderFindingsSection(output: string): string {
     return `${head}\n      path: ${f.path}${where ? `\n      ${where}` : ''}` +
       (f.message ? `\n      ${f.message}` : '');
   });
-  return `\n\nFindings (moniker-checked against ${BP_MONIKER_CATALOG.length} known monikers):\n${lines.join('\n')}`;
+  return lines.join('\n');
 }
 
 /**
@@ -498,8 +519,10 @@ export function splitSharedPreamble(outputs: string[]): { preamble: string[]; bo
 
 export const runBpCheckTool = async (params: any, context: any) => {
   try {
-    const requested = normalizeTargets(params);
-    if (params?.objects !== undefined && requested.length === 0) {
+    // `objects: ["git:<ref>"]` = only what changed since the ref (bpChangedSince.ts).
+    const { ref: changedRef, rest } = splitChangedSince(params);
+    const requested = normalizeTargets(rest);
+    if (!changedRef && params?.objects !== undefined && requested.length === 0) {
       return {
         content: [{ type: 'text', text: '❌ `objects` was supplied but contained no usable entry.\n\nEach entry needs an `objectName`, e.g. { objects: [{ objectType: "table", objectName: "MyTable" }] }.' }],
         isError: true
@@ -589,6 +612,37 @@ export const runBpCheckTool = async (params: any, context: any) => {
         content: [{ type: 'text', text: `❌ ${resolveErrors.join('\n\n')}` }],
         isError: true
       };
+    }
+
+    // Only what changed since a git ref. A diff with no object of this model is a finished
+    // answer (nothing to check); a long list is one whole-model run, which is cheaper than
+    // dozens of per-object xppbp runs and a superset of them.
+    let changedNote = '';
+    if (changedRef !== undefined) {
+      const found = await changedFilesSince(changedRef, [
+        configManager.getWorkspacePath(),
+        resolvedProjectPath ? path.dirname(resolvedProjectPath) : null,
+        process.env.D365FO_WORKSPACE_PATH,
+        customPackagesPath ? path.join(customPackagesPath, modelName) : null,
+      ]);
+      if ('error' in found) {
+        return { content: [{ type: 'text', text: `❌ Cannot check "git:${changedRef}": ${found.error}` }], isError: true };
+      }
+      const { objects: changed, skipped } = objectsFromChangedFiles(found.files, modelName);
+      const skippedNote = skipped > 0 ? ` (${skipped} changed object(s) have no BP element type and were not checked)` : '';
+      if (changed.length === 0 && targets.length === 0) {
+        return { content: [{ type: 'text', text:
+          `✅ Nothing to check: no object of ${modelName} differs from ${changedRef}${skippedNote}.` }] };
+      }
+      if (changed.length > CHANGED_WHOLE_MODEL_THRESHOLD && targets.length === 0) {
+        changedNote = `\nChanged since ${changedRef}: ${changed.length} objects, more than ${CHANGED_WHOLE_MODEL_THRESHOLD}, ` +
+          `so the whole model was checked in one run.${skippedNote}`;
+      } else {
+        for (const c of changed) {
+          if (!targets.some(t => t.name === c.name && t.elementType === c.elementType)) targets.push(c);
+        }
+        changedNote = `\nChanged since ${changedRef}: ${changed.length} object(s) checked.${skippedNote}`;
+      }
     }
 
     // Paths for the build-freshness line below. Without them describeBuildFreshness
@@ -803,6 +857,26 @@ export const runBpCheckTool = async (params: any, context: any) => {
     const buildNote = freshness ? `\n\n${freshness.message}` : '';
     const cleanVerdict = passVerdict(freshness?.status);
 
+    // New-vs-known: compare the findings with the model's recorded baseline, and record
+    // this run. Only when every object ran and every output that reports issues was also
+    // parsed into findings — otherwise a finding shape the parser misses would be recorded
+    // as "known" and silently hidden. A whole-model run replaces the baseline; a scoped
+    // one adds to it (the objects it did not check say nothing about their findings).
+    const dataDir: string | undefined = context?.symbolIndex?.dataDir;
+    const perTarget = combinedByTarget.map(o => parseBpFindings(o));
+    const baselineSound = !!dataDir
+      && combinedByTarget.every((o, i) => !describeNonRun(o, runTargets[i]?.name)
+        && (perTarget[i].length > 0 || !hasIssues(o)));
+    let view: { delta: KeyedDelta<ParsedBpFinding>; freshKeys: Set<string> } | undefined;
+    if (baselineSound) {
+      const delta = compareAndStoreBaseline(dataDir!, bpBaselineEntry(modelName),
+        perTarget.flat(), bpFindingKey, runTargets[0] === null);
+      if (delta.hadBaseline) view = { delta, freshKeys: new Set(delta.fresh.map(bpFindingKey)) };
+    }
+    const freshOf = (i: number) => perTarget[i].filter(f => view!.freshKeys.has(bpFindingKey(f)));
+    const noNewVerdict = freshness?.status === 'never' || freshness?.status === 'stale'
+      ? cleanVerdict : '✅ BP Check: no new findings';
+
     // Single target (and the whole-model run) keep the original layout — there
     // is no preamble to share and existing callers read this shape.
     if (runTargets.length === 1) {
@@ -826,14 +900,17 @@ export const runBpCheckTool = async (params: any, context: any) => {
       return {
         content: [{
           type: 'text',
-          text: `${hasIssues(combined) ? '⚠️ BP Check completed with issues' : cleanVerdict}` +
+          text: `${view ? (view.delta.fresh.length > 0 ? '⚠️ BP Check completed with issues' : noNewVerdict)
+            : hasIssues(combined) ? '⚠️ BP Check completed with issues' : cleanVerdict}` +
             buildNote +
             `\n\n${header}` +
             (target ? `\nFilter: ${selector(target)}` : '') +
+            changedNote +
             scopeNote +
             labelNote +
-            `\n\n${combined || '(no output)'}` +
-            renderFindingsSection(combined) +
+            (view
+              ? `\n\n${describeBpDelta(view.delta)}`
+              : `\n\n${combined || '(no output)'}` + renderFindingsSection(combined)) +
             parity.notes[0]
         }]
       };
@@ -844,7 +921,8 @@ export const runBpCheckTool = async (params: any, context: any) => {
     // Not `.map(describeNonRun)` — that would pass the array index as the target name.
     const nonRunByTarget = combinedByTarget.map((output, i) => describeNonRun(output, runTargets[i]?.name));
     const notRunCount = nonRunByTarget.filter(Boolean).length;
-    const issueCount = combinedByTarget.filter((o, i) => !nonRunByTarget[i] && hasIssues(o)).length;
+    const issueCount = combinedByTarget.filter((o, i) => !nonRunByTarget[i]
+      && (view ? freshOf(i).length > 0 : hasIssues(o))).length;
 
     const groups = runTargets.map((target, i) => {
       const combined = combinedByTarget[i];
@@ -854,6 +932,15 @@ export const runBpCheckTool = async (params: any, context: any) => {
         // A rejected element type produces no findings, and "no findings" used
         // to render as ✅ clean — a check that never ran, reported as a pass.
         return `── ${selector(target)} ── ❌ NOT CHECKED\n${notRun}\n${body || ''}`.trimEnd();
+      }
+      if (view) {
+        const fresh = freshOf(i);
+        return (
+          `── ${selector(target)} ── ${fresh.length > 0 ? '⚠️ new findings' : '✅ no new findings'}` +
+          (target ? describeScope(target.name, combined) : '') +
+          (fresh.length > 0 ? `\n${renderFindingLines(fresh)}` : '') +
+          parity.notes[i]
+        );
       }
       return (
         `── ${selector(target)} ── ${hasIssues(combined) ? '⚠️ issues' : '✅ clean'}` +
@@ -873,10 +960,13 @@ export const runBpCheckTool = async (params: any, context: any) => {
       content: [{
         type: 'text',
         text: `${verdict} — ` +
-          `${runTargets.length} objects checked, ${issueCount} with findings` +
+          `${runTargets.length} objects checked, ${issueCount} with ${view ? 'new ' : ''}findings` +
           buildNote +
           `\n\n${header}` +
+          changedNote +
           labelNote +
+          (view ? `\n\nBP findings: ${view.delta.fresh.length} new, ${view.delta.knownCount} known ` +
+            `(known ones are not listed; they are kept in ${view.delta.file})` : '') +
           (preamble.length > 0
             ? `\n\nShared xppbp preamble (identical for all ${runTargets.length} objects, shown once):\n${preamble.join('\n').trim()}`
             : '') +
