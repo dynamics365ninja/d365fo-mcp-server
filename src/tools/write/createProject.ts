@@ -4,6 +4,7 @@ import * as path from 'path';
 import { z } from 'zod';
 import { getConfigManager } from '../../utils/configManager.js';
 import { isStandardModel } from '../../utils/modelClassifier.js';
+import { isModelInCustomStore } from '../../utils/customModelStore.js';
 import { extractModelNameFromProject } from '../../utils/workspaceDetector.js';
 import { assertProjectPathAllowed } from '../../utils/pathContainment.js';
 import {
@@ -42,9 +43,11 @@ export async function handleCreateProject(args: Record<string, unknown>) {
   if (!modelName) {
     return fail('no modelName given and none could be detected — pass modelName (the custom model the project builds).');
   }
-  // The configured model is the user's own; refuse only other models that look standard.
+  // The configured model is the user's own. Refuse only other models that look standard,
+  // and not one whose package is in the UDE custom metadata store (see customModelStore.ts).
   const isConfiguredModel = cfg.getModelName()?.toLowerCase() === modelName.toLowerCase();
-  if (isStandardModel(modelName) && !isConfiguredModel && !cfg.getProjectsForModel(modelName).length) {
+  if (isStandardModel(modelName) && !isConfiguredModel && !cfg.getProjectsForModel(modelName).length &&
+    !(await isModelInCustomStore(modelName))) {
     return fail(`"${modelName}" looks like a standard Microsoft model — refusing to create a project for it ` +
       `(if it is your custom model, list it in CUSTOM_MODELS).`);
   }
