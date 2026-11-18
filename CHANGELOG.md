@@ -90,8 +90,25 @@ those are called out explicitly below.
   build on, the reply lists only warnings absent from the baseline and gives the known
   ones as a count with the file path; the warning icon follows the new ones. A full build
   replaces the baseline, an incremental one adds to it. No parameter, nothing to
-  configure. The first build of a model behaves as before. Not done yet: the same for
-  `run_bp_check` findings and the `changedSince` option (open on the issue).
+  configure. The first build of a model behaves as before.
+- **`run_bp_check` says what is new since the last run, and can check only what changed.**
+  A model with a stable set of known BP findings had all of them printed again on every
+  check, about 55 s per whole-model call (#1282). The server now keeps a findings baseline
+  per model in the same `.warning-baseline.json`, keyed by rule, element path and message
+  (not the position). From the second run on, the reply gives "N new, M known", lists
+  only the new findings in full and names the file that holds the known ones; the verdict
+  follows the new ones. A whole-model run replaces the baseline, a run on named objects
+  adds to it. The same applies to `build_d365fo_project(bpCheck:true)`. Nothing is
+  recorded or hidden when an output reports issues the parser cannot read, so a
+  finding shape it misses is never counted as known. The first run of a model behaves as
+  before. The new option is an entry in the existing `objects` parameter, no new
+  parameter: `objects: ["git:origin/main"]` checks only the objects of the model that
+  differ from that ref (working tree against the merge base, plus untracked files),
+  found by the `Ax*` folder of each changed file. Nothing changed answers at once
+  without running xppbp; more than 25 changed objects run as one whole-model check, with
+  a note. `bpCheck` on the build has no ref form; call `run_bp_check` for that.
+  The schema text grew by about 100 characters, paid for by trimming the tool
+  description's example rule codes.
 - **The server can create, edit, inspect and delete models.** `d365fo_file(action="create",
   objectType="model-descriptor")` was listed by the tool description and the op-spec index
   and then rejected by the input schema ("Invalid option"), so a new model meant a

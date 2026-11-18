@@ -60,6 +60,55 @@ function readAll(dataDir: string): Record<string, BaselineEntry> {
   }
 }
 
+/** What a keyed comparison against a stored baseline found. */
+export interface KeyedDelta<T> {
+  /** Items absent from the baseline, in input order, deduplicated by key. */
+  fresh: T[];
+  /** Distinct items that were already in the baseline. */
+  knownCount: number;
+  /** False on the first recorded run: nothing to compare against yet. */
+  hadBaseline: boolean;
+  /** The file that holds the known keys. */
+  file: string;
+}
+
+/**
+ * Compare `items` with the baseline stored under `entryName`, then store the result as the
+ * new baseline (replaced when `replace`, merged otherwise). The shared core of the build
+ * warning baseline and the BP findings baseline; both live in one file, one entry each.
+ */
+export function compareAndStoreBaseline<T>(
+  dataDir: string,
+  entryName: string,
+  items: T[],
+  keyOf: (item: T) => string,
+  replace: boolean,
+): KeyedDelta<T> {
+  const file = baselinePath(dataDir);
+  const entry = readAll(dataDir)[entryName];
+  const previous = entry && Array.isArray(entry.warnings) ? new Set(entry.warnings) : undefined;
+  const seen = new Set<string>();
+  const fresh: T[] = [];
+  let knownCount = 0;
+  for (const item of items) {
+    const key = keyOf(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (previous?.has(key)) knownCount++;
+    else fresh.push(item);
+  }
+  const stored = replace || !previous ? seen : new Set([...previous, ...seen]);
+  try {
+    const all = readAll(dataDir);
+    all[entryName] = { updatedAt: new Date().toISOString(), warnings: [...stored].sort() };
+    fs.mkdirSync(dataDir, { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(all, null, 2));
+  } catch {
+    /* bookkeeping only — never fail a run over it */
+  }
+  return { fresh, knownCount, hadBaseline: previous !== undefined, file };
+}
+
 /**
  * Compare `warnings` with the model's baseline, then store the result as the new baseline
  * (replaced on a full build, merged otherwise). Call it for a build with zero errors only.
@@ -70,30 +119,14 @@ export function updateWarningBaseline(
   warnings: BaselineWarning[],
   fullBuild: boolean,
 ): WarningDelta {
-  const file = baselinePath(dataDir);
-  const entry = readAll(dataDir)[modelName];
-  const previous = entry && Array.isArray(entry.warnings) ? new Set(entry.warnings) : undefined;
-  const seen = new Set<string>();
-  const newWarnings: BaselineWarning[] = [];
-  let knownCount = 0;
-  for (const w of warnings) {
-    if (w.severity !== 'warning') continue;
-    const key = warningKey(w);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    if (previous?.has(key)) knownCount++;
-    else newWarnings.push(w);
-  }
-  const stored = fullBuild || !previous ? seen : new Set([...previous, ...seen]);
-  try {
-    const all = readAll(dataDir);
-    all[modelName] = { updatedAt: new Date().toISOString(), warnings: [...stored].sort() };
-    fs.mkdirSync(dataDir, { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(all, null, 2));
-  } catch {
-    /* bookkeeping only — never fail a build over it */
-  }
-  return { newWarnings, knownCount, hadBaseline: previous !== undefined, file };
+  const d = compareAndStoreBaseline(
+    dataDir, modelName, warnings.filter(w => w.severity === 'warning'), warningKey, fullBuild);
+  return { newWarnings: d.fresh, knownCount: d.knownCount, hadBaseline: d.hadBaseline, file: d.file };
+}
+
+/** Baseline entry name for a model's BP findings; build warnings use the bare model name. */
+export function bpBaselineEntry(modelName: string): string {
+  return `bp:${modelName}`;
 }
 
 /** The reply block for a delta; empty on the first build, where there is nothing to say. */
