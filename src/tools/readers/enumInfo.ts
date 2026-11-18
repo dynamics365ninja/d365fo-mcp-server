@@ -18,10 +18,13 @@ import { describeKernelEnum } from '../../knowledge/kernelEnums.js';
 import {
   resolveIndexedObject,
   readXmlFile,
+  storedCopyFor,
+  indexedXmlSourceLabel,
   indexedSourceNote,
   bridgeUnavailableNote,
   type IndexedObjectRef,
 } from '../../utils/indexedXmlLookup.js';
+import { binaryIsvNotice, isBinaryIsvPath } from '../../metadata/binaryModelImport.js';
 import { findD365FileOnDisk } from '../../utils/objectFileLookup.js';
 
 const GetEnumInfoArgsSchema = z.object({
@@ -55,13 +58,26 @@ export async function getEnumInfoTool(request: CallToolRequest, context: XppServ
     );
     if (ref) {
       const extractedXml = await readEnumRawXml(ref.model, ref.name);
-      const xml = extractedXml
+      const fileXml = extractedXml
         ?? (ref.localPath ? await readXmlFile(ref.localPath) : null);
-      const source = extractedXml ? 'symbol index (extracted metadata)' : `XML: ${ref.localPath}`;
+      // A binary ISV model has no file at all: the copy stored at index time is its only
+      // source once the extracted JSON is not on this host.
+      const stored = fileXml ? null : storedCopyFor(context.symbolIndex.getReadDb(), ref);
+      const xml = fileXml ?? stored?.xml ?? null;
+      const source = extractedXml ? 'symbol index (extracted metadata)'
+        : stored ? indexedXmlSourceLabel(stored)
+        : `XML: ${ref.localPath}`;
       // `ref` goes through so a JSON cache that outlived its AxEnum.xml is labelled
       // a stale row rather than rendered as a live enum — the ghost enum of #874's run.
       const formatted = xml && await formatEnumXml(ref.name, ref.model, xml, source, args.includeLabels, ref);
       if (formatted) return formatted;
+      if (isBinaryIsvPath(ref.indexedPath)) {
+        return { content: [{ type: 'text' as const, text:
+          `# Enum: \`${ref.name}\`\n\n**Model:** ${ref.model}\n\n` +
+          binaryIsvNotice(`the enum is in binary model ${ref.model} and its values are not available on this host ` +
+            '(neither the extracted metadata nor a stored copy in the index is here). ' +
+            'Re-run `npm run extract-binary-models` and update the index to get them') }] };
+      }
     }
 
     // 3. Disk scan — an enum created this session and not yet indexed
@@ -118,8 +134,11 @@ async function formatEnumXml(
   let out = `# Enum: \`${axEnum.Name?.[0] ?? enumName}\`\n\n`;
   out += `**Model:** ${model}\n`;
   out += `**Extensible:** ${axEnum.IsExtensible?.[0] === 'Yes' ? 'Yes' : 'No'}\n`;
-  out += `**Use Enum Value:** ${axEnum.UseEnumValue?.[0] === 'Yes' ? 'Yes' : 'No'}\n`;
+  const binaryIsv = isBinaryIsvPath(ref?.indexedPath);
+  // A binary model's dump has no UseEnumValue, so printing "No" would be a guess.
+  if (!binaryIsv) out += `**Use Enum Value:** ${axEnum.UseEnumValue?.[0] === 'Yes' ? 'Yes' : 'No'}\n`;
   if (axEnum.Label?.[0]) out += `**Label:** ${axEnum.Label[0]}\n`;
+  if (binaryIsv) out += `\n${binaryIsvNotice('no AxEnum XML exists, the values come from the compiled metadata')}`;
   out += indexedSourceNote(source, ref);
 
   if (values.length > 0) {
