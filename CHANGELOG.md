@@ -139,6 +139,12 @@ those are called out explicitly below.
   environment status in `get_workspace_info` is not done yet.
 
 ### Fixed
+- **Binary ISV classes show `[ExtensionOf(tableStr(X))]` instead of `[ExtensionOf(tableStr)]`.**
+  The binary model extractor stored each attribute argument as the intrinsic's bare name, so
+  the class and method documentation lost the target (and a `[SubscribesTo(classStr(X),
+  delegateStr(X, d))]` lost both). It now dumps the whole expression. Re-run the extractor to
+  get it for existing imports; until then the class description restores the target of an
+  `[ExtensionOf]` from the declaration. (#1277)
 - **`modify-property` now sets a property on an extensible form control.** A control without
   `i:type` (one that carries a `<FormControlExtension>`) was refused with "has no i:type, so
   it is not in the element-order census", so `Visible`, `Width` or `AutoDeclaration` had to
