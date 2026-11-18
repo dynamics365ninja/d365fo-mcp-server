@@ -200,7 +200,8 @@ async function modifyWithExtensionAutoCreate(
     return handleModelProperty(args);
   }
   const first = await modifyD365FileTool(subRequest('modify_d365fo_file', args), context, outcome);
-  if (isModelDescriptorType(args.objectType) && args.operation === 'add-module-reference' && !first?.isError) {
+  if (isModelDescriptorType(args.objectType) && args.operation === 'add-module-reference' &&
+      !first?.isError && args.internalsVisibleTo === undefined && (args as any).params?.internalsVisibleTo === undefined) {
     return appendToResult(first, await moduleReferenceCycleNote(
       (args.modelName ?? args.objectName) as string | undefined, args.packagePath as string | undefined));
   }

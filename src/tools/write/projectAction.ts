@@ -16,6 +16,7 @@ import { solutionsListingProject, solutionMateProjects } from '../../workspace/p
 import {
   axFolderForObjectType, hasAxFolder, labelLanguagesInIncludes, readProjectIncludes, resolveMembership,
 } from '../../workspace/projectMembership.js';
+import { isValidAssemblyReference } from '../../workspace/projectFile.js';
 import { handleCreateProject, handleDeleteProject } from './createProject.js';
 
 export const PROJECT_OPERATIONS = ['create', 'delete', 'add-object', 'remove-object'] as const;
@@ -124,6 +125,25 @@ async function handleMembership(op: 'add-object' | 'remove-object', args: Record
         }
         const added = await mgr.addLabelToProject(projectPath, objectName, langs);
         rows.push(added.length ? `✅ ${id}: added (${langs.join(', ')}).` : `ℹ️ ${id}: already in the project.`);
+      } catch (e) { fail((e as Error)?.message ?? String(e)); }
+      continue;
+    }
+    if (objectType === 'reference') {
+      // A .NET assembly reference (objectName = System.Security), not an AOT object: no
+      // file on disk to find, no other project to leave it orphaned from.
+      const assembly = objectName.trim();
+      if (!isValidAssemblyReference(assembly)) {
+        fail('objectName must be an assembly name such as System.Security (or its full name, ' +
+          'Name, Version=…, Culture=…, PublicKeyToken=…).');
+        continue;
+      }
+      try {
+        const done = op === 'add-object'
+          ? await mgr.addReferenceToProject(projectPath, assembly)
+          : await mgr.removeReferenceFromProject(projectPath, assembly);
+        rows.push(done
+          ? `✅ ${id}: ${op === 'add-object' ? 'added' : 'removed'}.`
+          : `ℹ️ ${id}: ${op === 'add-object' ? 'already in the project' : 'not in the project'}.`);
       } catch (e) { fail((e as Error)?.message ?? String(e)); }
       continue;
     }

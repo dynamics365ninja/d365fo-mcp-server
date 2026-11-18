@@ -264,6 +264,16 @@ async function retryWhileLocked<T>(op: () => Promise<T>): Promise<T> {
   }
 }
 
+/** `System.Security, Version=…` → `system.security`: how a <Reference> is told apart. */
+function assemblySimpleName(assembly: string): string {
+  return assembly.split(',')[0].trim().toLowerCase();
+}
+
+/** A simple assembly name, or a full one (Name, Version=…, Culture=…, PublicKeyToken=…). */
+export function isValidAssemblyReference(assembly: string): boolean {
+  return /^[A-Za-z_][\w.]*(\s*,\s*[\w.]+=[\w.*-]+)*$/.test(assembly);
+}
+
 export class ProjectFileManager {
   private parser: Parser;
   private readonly withinSolutionRoots: boolean;
@@ -443,6 +453,36 @@ export class ProjectFileManager {
     if (folderAdded) recordCreatedProjectFolder(projectPath, displayFolderName);
     console.error(`[ProjectFileManager] Added ${contentInclude} to ${path.basename(projectPath)}`);
     return true; // File successfully added
+  }
+
+  /**
+   * Add `<Reference Include="<assembly>" />` — a .NET assembly reference such as
+   * `System.Security` — to the project. A reference is identified by its simple
+   * name (what precedes the first comma of a full assembly name), compared
+   * case-insensitively: `System.Security` is already there when the project
+   * lists `System.Security, Version=4.0.0.0, …`. Returns false when it is.
+   */
+  async addReferenceToProject(projectPath: string, assembly: string): Promise<boolean> {
+    await this.assertWithinRoots(projectPath);
+    return withFileLock(projectPath, async () => {
+      const key = assemblySimpleName(assembly);
+      return this.editProjectText(projectPath, (body, eol) =>
+        listProjectIncludes(body, 'Reference').some(inc => assemblySimpleName(inc) === key)
+          ? null
+          : insertProjectItem(body, { type: 'Reference', include: assembly, metadata: [] }, eol));
+    });
+  }
+
+  /** Reverse of {@link addReferenceToProject}: every `<Reference>` of that simple name. False when none. */
+  async removeReferenceFromProject(projectPath: string, assembly: string): Promise<boolean> {
+    await this.assertWithinRoots(projectPath);
+    return withFileLock(projectPath, async () => {
+      const key = assemblySimpleName(assembly);
+      return this.editProjectText(projectPath, (body) => {
+        const r = removeProjectItems(body, 'Reference', inc => assemblySimpleName(inc) === key);
+        return r.removed === 0 ? null : r.text;
+      });
+    });
   }
 
   /**

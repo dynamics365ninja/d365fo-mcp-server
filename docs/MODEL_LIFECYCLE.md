@@ -88,7 +88,9 @@ the user's to edit.
 ## Edit
 
 `add-module-reference` and `remove-module-reference` are unchanged, with one addition: a
-reference that closes a cycle is reported in the reply.
+reference that closes a cycle is reported in the reply. Passing `params:{internalsVisibleTo:"<TestModel>"}`
+instead of `moduleReference` edits the descriptor's `<InternalsVisibleTo>` the same way, which is how a
+product model lets its test model see its internal members.
 
 `modify-property` takes `Description`, `DisplayName`, `Publisher`, `Layer` (name or number),
 `Version` (`"1.2.0.0"`) or one of `VersionMajor` / `VersionMinor` / `VersionBuild` /

@@ -116,7 +116,7 @@ import {
   directXmlRemoveEntryPoint,
   directXmlRemoveDiagnosticSuppression,
   directXmlAddDiagnosticSuppression,
-  directXmlAddModuleReference,
+  directXmlAddModuleReference, directXmlInternalsVisibleTo,
   directXmlRemoveModuleReference,
   directXmlEnsureRelationProperties, directXmlModifyControlProperty, directXmlAddViewField, directXmlSetFormDataSourceInsertIfEmpty, directXmlModifyFormDataSourceProperty,
 } from './directXmlWriters.js';
@@ -874,9 +874,9 @@ export const ModifyD365FileArgsSchema = z.object({
   moduleReference: z.string().optional().describe(
     'add-module-reference / remove-module-reference: REQUIRED — the module (package) name to add to or ' +
     'remove from the descriptor\'s <ModuleReferences>, spelled exactly as its package folder is ' +
-    '(e.g. "ApplicationSuite", "Ledger", or an ISV package name).'
+    '(e.g. "ApplicationSuite", "Ledger", or an ISV package name). Pass this OR internalsVisibleTo.'
   ),
-
+  internalsVisibleTo: z.string().optional(), // add-/remove-module-reference: a model for <InternalsVisibleTo>
   // For add-field-modification (table-extension only)
   // uses fieldName, fieldLabel, fieldMandatory (already defined above)
 
@@ -3035,7 +3035,6 @@ async function runModify(
       case 'add-module-reference':
       case 'remove-module-reference': {
         // Not an AOT object at all — no bridge write path exists (see the writer).
-        //
         // The objectType is re-checked here, and not left to canBridgeModify:
         // that gate is `op ∈ OPS && (type ∈ TYPES || pair)`, so an operation
         // listed for the XML-only pair is ALSO admitted on every ordinary bridge
@@ -3052,6 +3051,7 @@ async function runModify(
           });
           break;
         }
+        if ((args as any).internalsVisibleTo !== undefined) { bridgeResult = viaXmlFallback(await directXmlInternalsVisibleTo(actualFilePath, operation, args as any)); break; }
         const moduleRef = String((args as any).moduleReference ?? '').trim();
         if (!isValidModuleReferenceName(moduleRef)) {
           // Refused before the existence probe, which would otherwise join an
