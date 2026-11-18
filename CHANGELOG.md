@@ -44,6 +44,29 @@ those are called out explicitly below.
   matched by simple name so a full name counts as the same reference. There is no file
   lookup or orphan check, and no HintPath (a GAC assembly needs none). Neither adds a
   schema value, so the tool schema is unchanged.
+- **`get_knowledge("data-entity-import-traps")` explains the five data-entity and table
+  traps that only show at DMF / OData import** (#1285). The topic covers the two that
+  `validate_code` now warns about (`ENT001`, `XML011`) and the three it cannot decide:
+  several copies of one child table narrowed by a discriminator range (reads are filtered,
+  writes all hit the same row, so "The record already exists"; needs `findEntityDataSource`
+  and `insertEntityDataSource` overrides), a changed alternate key on a table behind a
+  set-based entity (breaks the entity sync after deployment), and a lookup index without
+  `<AllowDuplicates>Yes</AllowDuplicates>` (a unique index in SQL). The last one is
+  deliberately not a rule: 14,451 of 24,455 shipped table indexes have no `AllowDuplicates`
+  element and nearly all are intended unique indexes, and "lookup" is a purpose the XML does
+  not state. The "staging key misses entity key fields" variant needs the entity and its
+  staging table together, so it is guidance too. `data-entities` now points to the topic.
+- **`get_workspace_info` says what the UDE environment is doing** (#1283). On a UDE with
+  `environment.dataverseUrl` set, the reply gains a short `## UDE environment` section
+  read from the environment's operation history (`msprov_operationhistory`): the operation
+  running now (a deploy, test run, copy or update, which the environment runs one at a time
+  and during which its web endpoint may answer HTTP 503), how the last deploy ended and
+  when, and how many local files are newer than that deploy, so a test run against an
+  older build is no surprise. The "newer than the deploy" reference is the start time this
+  server recorded for its own last deploy, else the environment's. The section is omitted,
+  with no error, when the machine is not a UDE, no Dataverse URL is set, the server is not
+  signed in yet (this read never opens a sign-in page; sign in by running a UDE test or
+  deploy) or the environment does not answer within 4 seconds.
 - **`validate_code` warns about two data-entity traps that only show at import time**
   (#1285). Neither raises a build error or a BP rule, and both surface only when data is
   imported through DMF or OData. `ENT001` (any XML code type, run it on an
@@ -82,8 +105,25 @@ those are called out explicitly below.
   build on, the reply lists only warnings absent from the baseline and gives the known
   ones as a count with the file path; the warning icon follows the new ones. A full build
   replaces the baseline, an incremental one adds to it. No parameter, nothing to
-  configure. The first build of a model behaves as before. Not done yet: the same for
-  `run_bp_check` findings and the `changedSince` option (open on the issue).
+  configure. The first build of a model behaves as before.
+- **`run_bp_check` says what is new since the last run, and can check only what changed.**
+  A model with a stable set of known BP findings had all of them printed again on every
+  check, about 55 s per whole-model call (#1282). The server now keeps a findings baseline
+  per model in the same `.warning-baseline.json`, keyed by rule, element path and message
+  (not the position). From the second run on, the reply gives "N new, M known", lists
+  only the new findings in full and names the file that holds the known ones; the verdict
+  follows the new ones. A whole-model run replaces the baseline, a run on named objects
+  adds to it. The same applies to `build_d365fo_project(bpCheck:true)`. Nothing is
+  recorded or hidden when an output reports issues the parser cannot read, so a
+  finding shape it misses is never counted as known. The first run of a model behaves as
+  before. The new option is an entry in the existing `objects` parameter, no new
+  parameter: `objects: ["git:origin/main"]` checks only the objects of the model that
+  differ from that ref (working tree against the merge base, plus untracked files),
+  found by the `Ax*` folder of each changed file. Nothing changed answers at once
+  without running xppbp; more than 25 changed objects run as one whole-model check, with
+  a note. `bpCheck` on the build has no ref form; call `run_bp_check` for that.
+  The schema text grew by about 100 characters, paid for by trimming the tool
+  description's example rule codes.
 - **The server can create, edit, inspect and delete models.** `d365fo_file(action="create",
   objectType="model-descriptor")` was listed by the tool description and the op-spec index
   and then rejected by the input schema ("Invalid option"), so a new model meant a

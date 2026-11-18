@@ -211,13 +211,13 @@ const EXTENSIBLE = `<?xml version="1.0" encoding="utf-8"?>
 	</Design>
 </AxForm>`;
 
-describe('upsertFormControlProperty — an extensible control (no i:type)', () => {
+describe('upsertFormControlProperty â€” an extensible control (no i:type)', () => {
   it('places properties in the order shipped extensible controls use', () => {
     let xml = ok(upsertFormControlProperty(EXTENSIBLE, 'ContosoExpressionBuilder', 'Visible', 'No')).xml;
     xml = ok(upsertFormControlProperty(xml, 'ContosoExpressionBuilder', 'Height', '200')).xml;
     xml = ok(upsertFormControlProperty(xml, 'ContosoExpressionBuilder', 'AllowEdit', 'No')).xml;
     const own = xml.slice(xml.indexOf('<AxFormControl'), xml.indexOf('</AxFormControl>'));
-    const order = [...own.matchAll(/^	{4}<([A-Za-z]+)[\s>/]/gm)].map(m => m[1]);
+    const order = [...own.matchAll(/^\t{4}<([A-Za-z]+)[\s>/]/gm)].map(m => m[1]);
     expect(order).toEqual(['Name', 'AllowEdit', 'AutoDeclaration', 'Height', 'Visible', 'WidthMode', 'FormControlExtension']);
   });
 

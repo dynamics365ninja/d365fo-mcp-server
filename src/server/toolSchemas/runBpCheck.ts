@@ -6,14 +6,14 @@
 
 export const runBpCheckTool = {
     name: 'run_bp_check',
-    description: 'Run Microsoft Best Practices checker (xppbp.exe) on a D365FO project. Returns BP warnings and errors with rule codes (e.g. BPErrorLabelIsText, BPXmlDocNoDocumentationComments). ' +
-      'Runs AFTER a build, not after a write — and build_d365fo_project(bpCheck:true) already folds this check into the build, so a separate call is rarely needed.',
+    description: 'Run Microsoft Best Practices checker (xppbp.exe) on a D365FO project. Returns BP warnings and errors with rule codes. ' +
+      'Runs AFTER a build, not after a write; build_d365fo_project(bpCheck:true) already folds it in, so a separate call is rarely needed.',
     inputSchema: {
       type: 'object',
       properties: {
         objects: {
           type: 'array',
-          description: 'Check several objects in ONE call — preferred over targetFilter. Shared preamble is printed once and findings are grouped per object.',
+          description: 'Several objects in ONE call, findings grouped per object. An entry "git:<ref>" (e.g. "git:origin/main") checks only objects changed since that ref. Later runs list only findings new since the last run.',
           items: {
             type: 'object',
             properties: {
