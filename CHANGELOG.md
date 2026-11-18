@@ -29,6 +29,17 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Fixed
+- **`d365fo_file(action="project", operation="create")` creates a project for a custom
+  model in the UDE custom metadata folder without the model being listed anywhere.**
+  A model with no project yet that was not the configured model, not in `CUSTOM_MODELS`
+  and did not start with `EXTENSION_PREFIX` (a new TEST model, say) was refused as
+  "looks like a standard Microsoft model", although its package sat in the XPP config's
+  `ModelStoreFolder` (the custom packages path), not in the Microsoft `FrameworkDirectory`.
+  On a UDE whose two folders are separate, a model whose package or descriptor is in the
+  custom folder now counts as custom for project creation. On a classic VM, where custom
+  and Microsoft packages share `PackagesLocalDirectory`, location proves nothing and the
+  check is unchanged. Only project creation reads the location: the classifier behind
+  the cross-model write guard and the other write refusals is untouched.
 - **`d365fo_file(action="modify")` no longer reports a successful `modify-property` as
   failed when the value is the property's default or a `true`/`false` NoYes.** The
   post-write check looked for the literal `<Name>value</Name>` in the file. The metadata
