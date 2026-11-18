@@ -125,6 +125,15 @@ those are called out explicitly below.
   in the Report Designer.
 
 ### Fixed
+- **`modify-property` now sets a property on an extensible form control.** A control without
+  `i:type` (one that carries a `<FormControlExtension>`) was refused with "has no i:type, so
+  it is not in the element-order census", so `Visible`, `Width` or `AutoDeclaration` had to
+  be edited by hand. A census of the 5,039 such controls in the shipped AOT shows only 13
+  children ever occur (`Name`, `AllowEdit`, `AutoDeclaration`, `ConfigurationKey`,
+  `EnableFormRef`, `Enabled`, `Height`, `HeightMode`, `Skip`, `Visible`, `Width`, `WidthMode`,
+  `FormControlExtension`) and never in conflicting order, so those are now written in that
+  order. `HelpText` and `Label` never occur on an extensible control and are still refused;
+  an untyped control without `<FormControlExtension>` is refused as before (#1286).
 - **`run_systest_class` finds a test class in another model when no model was named.** The
   tool looked for the class only in the workspace model, while test classes usually live in a
   test model of their own, so the call failed with "was not found in model …" and the agent
