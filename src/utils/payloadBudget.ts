@@ -77,6 +77,31 @@ export function fieldsFooter<T>(page: FieldPage<T>): string {
     `, or narrow with \`fieldFilter: "<substring>"\` instead of paging through them.\n`;
 }
 
+/**
+ * The `, showing a–b` part of a method list heading, or '' when `offset` is past the last
+ * method. It used to be computed regardless, so `methodOffset: 999` on 14 methods printed
+ * "showing 1000–14"; {@link methodOffsetPastEndNote} says what happened instead.
+ */
+export function methodRangeText(offset: number, total: number, pageSize: number): string {
+  if (offset >= total) return '';
+  return `, showing ${offset + 1}–${Math.min(offset + pageSize, total)}`;
+}
+
+/**
+ * '' while `offset` lands on a method; otherwise one line saying it is past the end, how many
+ * methods there are, and which offsets to call with instead. Silent for an object with no
+ * methods, whose heading already says "0 total".
+ */
+export function methodOffsetPastEndNote(offset: number, total: number, pageSize: number): string {
+  if (total === 0 || offset < total) return '';
+  const lastPage = Math.floor((total - 1) / pageSize) * pageSize;
+  const count = total === 1 ? 'is 1 method (offset 0)' : `are ${total} methods (offsets 0–${total - 1})`;
+  const next = lastPage > 0
+    ? `\`methodOffset: 0\` for the first page or \`methodOffset: ${lastPage}\` for the last`
+    : '`methodOffset: 0`';
+  return `> ⚠️ \`methodOffset: ${offset}\` is past the end: there ${count}. Call again with ${next}.\n\n`;
+}
+
 /** Mutable render budget threaded through a recursive control-tree walk. */
 export interface ControlBudget {
   remaining: number;

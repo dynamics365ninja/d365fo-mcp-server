@@ -11,6 +11,7 @@ import { scanFsExtensions } from '../../utils/fsExtensionScanner.js';
 import { tryBridgeCocExtensions } from '../../bridge/index.js';
 import { xrefSource } from '../../xref/xrefSource.js';
 import { canonicalSymbolName, subscribesToFtsMatch } from '../../utils/symbolLookup.js';
+import { BINARY_ISV_LIST_FOOTNOTE, BINARY_ISV_NOTE, isBinaryIsvPath } from '../../metadata/binaryModelImport.js';
 
 /**
  * Object kinds a class extension can be based on. [ExtensionOf] takes
@@ -41,7 +42,10 @@ export async function findCocExtensionsTool(request: CallToolRequest, context: X
 
     // Bridge fast-path (DYNAMICSXREFDB): returns method-level CoC detail (wrappedMethods per
     // extension class), so it can be used even when a methodName filter is specified.
-    const bridgeResult = await tryBridgeCocExtensions(xrefSource(context), className, methodName);
+    // The xref data does not know which classes are compiled-only; the index does.
+    const bridgeResult = await tryBridgeCocExtensions(
+      xrefSource(context), className, methodName, names => binaryIsvClassNames(rdb, names),
+    );
     if (bridgeResult) return bridgeResult;
 
     let output = `CoC Extensions of: ${className}\n`;
@@ -196,9 +200,11 @@ export async function findCocExtensionsTool(request: CallToolRequest, context: X
       }
     } else {
       output += `Found ${filtered.length} extension class(es):\n\n`;
+      const binaryIsv = binaryIsvClassNames(rdb, filtered.map(e => e.name));
       for (let i = 0; i < filtered.length; i++) {
         const ext = filtered[i];
-        output += `[${i + 1}] ${ext.name} (${ext.model})\n`;
+        const binary = binaryIsv.has(ext.name.toLowerCase()) ? `, ${BINARY_ISV_NOTE}` : '';
+        output += `[${i + 1}] ${ext.name} (${ext.model}${binary})\n`;
 
         if (ext.cocMethods.length > 0) {
           const displayMethods = methodName
@@ -223,6 +229,7 @@ export async function findCocExtensionsTool(request: CallToolRequest, context: X
           output += `    Event subscriptions: ${ext.eventSubs.slice(0, 3).join(', ')}${ext.eventSubs.length > 3 ? '...' : ''}\n`;
         }
       }
+      if (binaryIsv.size > 0) output += `\n${BINARY_ISV_LIST_FOOTNOTE}\n`;
     }
 
     // 3. Event handlers via extension_metadata.event_subscriptions
@@ -316,4 +323,29 @@ export async function findCocExtensionsTool(request: CallToolRequest, context: X
       isError: true,
     };
   }
+}
+
+/**
+ * The extension classes among `names` that belong to a binary ISV model, lower-cased: those
+ * whose class row has a binary-isv:// path. Neither extension_metadata nor the xref data says
+ * so. An equality probe per name on idx_name_type, in chunks well under SQLite's
+ * bound-parameter limit. Empty when the index cannot be read.
+ */
+function binaryIsvClassNames(db: any, names: string[]): Set<string> {
+  const found = new Set<string>();
+  const unique = [...new Set(names)];
+  try {
+    for (let i = 0; i < unique.length; i += 500) {
+      const chunk = unique.slice(i, i + 500);
+      const rows = db.prepare(
+        `SELECT name, file_path FROM symbols
+         WHERE name IN (${chunk.map(() => '?').join(', ')}) AND type IN ('class', 'class-extension')
+           AND file_path LIKE 'binary-isv://%'`,
+      ).all(...chunk) as Array<{ name: string; file_path: string | null }>;
+      for (const r of rows) if (isBinaryIsvPath(r.file_path)) found.add(r.name.toLowerCase());
+    }
+  } catch {
+    // No symbols table: nothing can be marked, and nothing should fail over it.
+  }
+  return found;
 }
