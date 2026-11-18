@@ -268,7 +268,7 @@ export function methodFacts(m: DumpMethod): string[] {
 }
 
 export function toMethodInfo(m: DumpMethod): XppMethodInfo & Record<string, unknown> {
-  const attrs = (m.Attributes ?? []).map(renderAttr);
+  const attrs = (m.Attributes ?? []).map(a => renderAttr(a));
   const mods = [
     vis(m.Visibility),
     m.IsStatic ? 'static' : '',
