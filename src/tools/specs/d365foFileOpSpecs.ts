@@ -521,7 +521,16 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
       'add-module-reference / remove-module-reference: REQUIRED — the module to add to or remove from the ' +
       'descriptor\'s <ModuleReferences>, spelled exactly as the PACKAGE FOLDER is (e.g. "ApplicationSuite", ' +
       '"Ledger", "ApplicationFoundation", or an ISV package name). Matched case-insensitively against what ' +
-      'is already there, so a re-run is a reported duplicate rather than a second entry.',
+      'is already there, so a re-run is a reported duplicate rather than a second entry. Pass this OR ' +
+      'internalsVisibleTo.',
+  },
+  internalsVisibleTo: {
+    type: 'string',
+    description:
+      'add-module-reference / remove-module-reference, instead of moduleReference: the MODEL — in practice ' +
+      'the test model — to add to or remove from the <InternalsVisibleTo> of the descriptor, which lets that model ' +
+      'see the internal members of this model. Spelled as the model is; matched case-insensitively. A descriptor ' +
+      'with no <InternalsVisibleTo> element is reported, not given one. Needs a FULL build.',
   },
   // Alias spellings (see OP_PARAM_ALIASES). They never appear as their own line
   // in a rendered spec - renderOpSpec walks required/optional only - but every
@@ -963,8 +972,8 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       'reply so you can add it to the model\'s .rnrproj if Visual Studio does not pick it up.',
   },
   'add-module-reference': {
-    required: ['moduleReference'],
-    optional: [],
+    required: [],
+    optional: ['moduleReference', 'internalsVisibleTo'],
     note:
       'objectType="model-descriptor". Adds one <d2p1:string> to the model descriptor\'s ' +
       '<ModuleReferences> — the ONLY statement of what your model may see, since xppc resolves types ' +
@@ -980,11 +989,13 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       'root and a miss is WARNED about, not refused — a package can be absent on a dev box and present on ' +
       'the build agent — but a typo produces exactly that warning. ' +
       'A descriptor change needs a FULL build of the model to take effect. ' +
-      'Read the current list with get_workspace_info.',
+      'Read the current list with get_workspace_info. ' +
+      'params.internalsVisibleTo:"<TestModel>" (instead of moduleReference) writes the descriptor <InternalsVisibleTo> ' +
+      'the same way — the step that lets a test model see the internals of this model.',
   },
   'remove-module-reference': {
-    required: ['moduleReference'],
-    optional: [],
+    required: [],
+    optional: ['moduleReference', 'internalsVisibleTo'],
     note:
       'objectType="model-descriptor". Removes one <d2p1:string> from the descriptor\'s <ModuleReferences>. ' +
       'This is the one direction that BREAKS a build that currently passes — every type the model resolved ' +

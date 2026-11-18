@@ -256,7 +256,15 @@ export function buildModelVisibility(
 // itself, and a tool that guesses where to put a namespace declaration is a
 // tool that writes a descriptor Visual Studio rewrites on the next save.
 
-/** `<ModuleReferences>` as it appears in the file, with its byte range. */
+/**
+ * The two `<d2p1:string>` lists a descriptor lets a tool edit. `<InternalsVisibleTo>`
+ * has the same shape as `<ModuleReferences>` in every shipped descriptor that has it
+ * (213 measured: the namespace on the element, self-closing when empty, never i:nil;
+ * 19 have none), so one implementation serves both.
+ */
+export type DescriptorListTag = 'ModuleReferences' | 'InternalsVisibleTo';
+
+/** `<ModuleReferences>` (or `<InternalsVisibleTo>`) as it appears in the file, with its byte range. */
 interface ModuleReferencesElement {
   /** Full matched text, including the open and close tags. */
   text: string;
@@ -295,15 +303,15 @@ function withoutNil(attrs: string): string {
  * `<ModelReferences>` is deliberately NOT matched — it is `i:nil` in every
  * descriptor observed on a real box and means something else.
  */
-function findModuleReferencesElement(xml: string): ModuleReferencesElement | null {
-  const paired = /<ModuleReferences((?:\s[^>]*?)?)>([\s\S]*?)<\/ModuleReferences>/.exec(xml);
+function findModuleReferencesElement(xml: string, tag: DescriptorListTag = 'ModuleReferences'): ModuleReferencesElement | null {
+  const paired = new RegExp(String.raw`<${tag}((?:\s[^>]*?)?)>([\s\S]*?)</${tag}>`).exec(xml);
   if (paired) {
     return {
       text: paired[0], inner: paired[2], attrs: paired[1], from: paired.index,
       to: paired.index + paired[0].length, selfClosing: false,
     };
   }
-  const empty = /<ModuleReferences((?:\s[^>]*?)?)\s*\/>/.exec(xml);
+  const empty = new RegExp(String.raw`<${tag}((?:\s[^>]*?)?)\s*/>`).exec(xml);
   if (empty) {
     return {
       text: empty[0], inner: '', attrs: empty[1], from: empty.index,
@@ -352,6 +360,11 @@ function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** The `<d2p1:string>` entries inside a located list. */
+function entriesOf(element: ModuleReferencesElement): string[] {
+  return Array.from(element.inner.matchAll(/<d2p1:string>\s*([^<\s]+)\s*<\/d2p1:string>/g)).map(m => m[1].trim());
+}
+
 /**
  * Is this reference list in ascending case-insensitive order?
  *
@@ -378,10 +391,10 @@ function isAscending(refs: readonly string[]): boolean {
  * unlike its siblings is exactly the noise this preserves against. Falls back
  * to one level deeper than the `<ModuleReferences>` tag itself.
  */
-function entryIndent(xml: string, element: ModuleReferencesElement): { entry: string; close: string } {
+function entryIndent(xml: string, element: ModuleReferencesElement, tag: DescriptorListTag): { entry: string; close: string } {
   const close =
-    (!element.selfClosing ? /\n([\t ]*)<\/ModuleReferences>/.exec(element.text)?.[1] : undefined)
-    ?? /\n([\t ]*)<ModuleReferences/.exec(xml.slice(0, element.to + 1))?.[1]
+    (!element.selfClosing ? new RegExp(String.raw`\n([\t ]*)</${tag}>`).exec(element.text)?.[1] : undefined)
+    ?? new RegExp(String.raw`\n([\t ]*)<${tag}`).exec(xml.slice(0, element.to + 1))?.[1]
     ?? '  ';
   const existing = /\n([\t ]*)<d2p1:string>/.exec(element.inner);
   if (existing) return { entry: existing[1], close };
@@ -417,17 +430,19 @@ function entryIndent(xml: string, element: ModuleReferencesElement): { entry: st
  * are left alone rather than tidied: re-sorting a file to add one line to it is
  * the larger diff, not the smaller one.
  */
-export function addModuleReference(xml: string, moduleName: string): AddModuleReferenceResult {
-  const element = findModuleReferencesElement(xml);
+export function addModuleReference(
+  xml: string, moduleName: string, tag: DescriptorListTag = 'ModuleReferences',
+): AddModuleReferenceResult {
+  const element = findModuleReferencesElement(xml, tag);
   if (!element) return { kind: 'no-element' };
 
   const name = moduleName.trim();
   if (!isValidModuleReferenceName(name)) return { kind: 'invalid-name' };
-  const present = parseModuleReferences(element.text);
+  const present = entriesOf(element);
   const existing = present.find(r => r.toLowerCase() === name.toLowerCase());
   if (existing) return { kind: 'duplicate', existing };
 
-  const { entry, close } = entryIndent(xml, element);
+  const { entry, close } = entryIndent(xml, element, tag);
   const line = `${entry}<d2p1:string>${name}</d2p1:string>`;
 
   let replacement: string;
@@ -437,7 +452,7 @@ export function addModuleReference(xml: string, moduleName: string): AddModuleRe
     // would unbind the prefix the entry being added uses — while i:nil is
     // removed, because it would otherwise null out the list we just filled.
     replacement =
-      `<ModuleReferences${withoutNil(element.attrs)}>\n${line}\n${close}</ModuleReferences>`;
+      `<${tag}${withoutNil(element.attrs).trimEnd()}>\n${line}\n${close}</${tag}>`;
   } else {
     // Sorted file → sorted position. `successor` is the first entry that should
     // come AFTER the new one; inserting before its line keeps the run ordered.
@@ -450,8 +465,8 @@ export function addModuleReference(xml: string, moduleName: string): AddModuleRe
           `${line}\n$1`,
         )
       : element.text.replace(
-          /[\t ]*<\/ModuleReferences>$/,
-          `${line}\n${close}</ModuleReferences>`,
+          new RegExp(String.raw`[\t ]*</${tag}>$`),
+          `${line}\n${close}</${tag}>`,
         );
   }
 
@@ -470,11 +485,13 @@ export function addModuleReference(xml: string, moduleName: string): AddModuleRe
  * adding a reference is what dropped it. "No list" and "empty list" both mean
  * the model references nothing, so nothing is lost.)
  */
-export function removeModuleReference(xml: string, moduleName: string): RemoveModuleReferenceResult {
-  const element = findModuleReferencesElement(xml);
+export function removeModuleReference(
+  xml: string, moduleName: string, tag: DescriptorListTag = 'ModuleReferences',
+): RemoveModuleReferenceResult {
+  const element = findModuleReferencesElement(xml, tag);
   if (!element) return { kind: 'no-element' };
 
-  const present = parseModuleReferences(element.text);
+  const present = entriesOf(element);
   const name = moduleName.trim().toLowerCase();
   const hit = present.find(r => r.toLowerCase() === name);
   if (!hit) return { kind: 'not-found', present };
@@ -484,7 +501,7 @@ export function removeModuleReference(xml: string, moduleName: string): RemoveMo
     String.raw`[\t ]*<d2p1:string>\s*${escapeRe(hit)}\s*</d2p1:string>[\t ]*\n?`,
   );
   const replacement = present.length === 1
-    ? `<ModuleReferences${element.attrs} />`
+    ? `<${tag}${element.attrs} />`
     : element.text.replace(entryRe, '');
 
   return {

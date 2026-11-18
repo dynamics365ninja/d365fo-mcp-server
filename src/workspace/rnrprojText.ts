@@ -45,9 +45,9 @@ interface XmlElement {
   children: XmlElement[];
 }
 
-/** One item to write: `<Folder Include="…" />` or `<Content Include="…">…</Content>`. */
+/** One item to write: `<Folder Include="…" />`, `<Content Include="…">…</Content>` or `<Reference Include="…" />`. */
 export interface ProjectItemSpec {
-  type: 'Folder' | 'Content';
+  type: 'Folder' | 'Content' | 'Reference';
   include: string;
   /** Child metadata elements, in order. Empty renders a self-closing item. */
   metadata: Array<[string, string]>;

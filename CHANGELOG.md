@@ -29,6 +29,21 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **A model descriptor's `InternalsVisibleTo` and a project's .NET references can be
+  edited without hand-written XML.** (#1286) The test model has to be listed in the
+  product model's `<InternalsVisibleTo>`, and `System.Security` (for `ProtectedData`)
+  has to be a `<Reference>` in the project; agents edited the descriptor and the
+  `.rnrproj` by hand for both. `add-module-reference` / `remove-module-reference` on
+  `model-descriptor` now take `params.internalsVisibleTo: "<TestModel>"` instead of
+  `moduleReference` and edit `<InternalsVisibleTo>` the same way (sorted placement, a
+  case-insensitive duplicate refused, BOM and line ends kept, a descriptor with no such
+  element reported, not given one; 19 of the 213 shipped descriptors have none).
+  `d365fo_file(action="project")` `add-object` / `remove-object` accept
+  `objectType: "reference"` with the assembly as `objectName` (`System.Security`, or a full
+  name): it writes `<Reference Include="..." />`, sorted among the project's references,
+  matched by simple name so a full name counts as the same reference. There is no file
+  lookup or orphan check, and no HintPath (a GAC assembly needs none). Neither adds a
+  schema value, so the tool schema is unchanged.
 - **`get_knowledge("data-entity-import-traps")` explains the five data-entity and table
   traps that only show at DMF / OData import** (#1285). The topic covers the two that
   `validate_code` now warns about (`ENT001`, `XML011`) and the three it cannot decide:
