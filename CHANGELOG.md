@@ -29,6 +29,38 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Fixed
+- **`get_object_info` on a table or an EDT of a binary ISV model says that the model is
+  compiled only, as it already did for a class.** Without the bridge, a class of a model
+  imported with `npm run extract-binary-models` was shown with "🔒 Binary ISV, signatures
+  only", but a table of the same model was shown like any table, so its missing method
+  bodies read like a gap in the index, and an EDT the same. The table and EDT reads from the
+  symbol index now print the same notice when the object's index row has a `binary-isv://`
+  path; objects of source models are shown as before.
+- **`extension_info(mode="coc")` marks the extension classes of a binary ISV model.** The
+  wrappers of a model imported with `npm run extract-binary-models` were listed with their
+  wrapped methods, but nothing said that they are compiled only, so a caller could go
+  looking for their source. Each such class is now listed as
+  `(<model>, binary ISV, signatures only)`, with one line under the list saying that no
+  X++ source exists for them and that `get_object_info` gives their signatures. This holds
+  whether the answer comes from the bridge, the xref SQLite file
+  (`D365FO_XREF_SQLITE_PATH`) or the symbol index; a class counts as binary when its
+  symbol index row has a `binary-isv://` path.
+- **The string size of an EDT from a binary ISV model is shown as an integer, not as
+  "15.0".** `npm run extract-binary-models` wrote the dump's `StringSize` into the EDT's JSON
+  as a number; the index build bound it to the text column `edt_metadata.string_size`, and
+  SQLite stored the number as `15.0`. The EDT read, the EDT hierarchy and the string size
+  after a table field printed that text. The importer now writes the size as text, as
+  `extract-metadata` does, the index build stores a whole-number string size, database
+  string size or display length as integer text whatever the JSON holds, and the readers
+  show a `15.0` already in an index as `15`. Rebuilding the database corrects the stored
+  values; no re-import is needed.
+- **`get_object_info` with a `methodOffset` past the last method says so, instead of
+  "showing 1000–14".** The method list heading computed its range whatever the offset, so
+  `methodOffset: 999` on a class with 14 methods printed "Methods (14 total, showing
+  1000–14)" and an empty list. The class and table reads, from the bridge and from the
+  symbol index, now print "Methods (14 total)" and a line saying that the offset is past the
+  end, how many methods there are and which `methodOffset` gives the first and the last
+  page. A valid offset is paged as before.
 - **`get_object_info(include:"xml")` says that an object of a binary ISV model has no XML,
   instead of sending the caller in a circle.** A model imported with
   `npm run extract-binary-models` ships compiled only, so its objects have no file. The

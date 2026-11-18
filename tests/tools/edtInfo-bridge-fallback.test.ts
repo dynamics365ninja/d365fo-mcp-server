@@ -118,6 +118,30 @@ describe('get_edt_info — bridge returns no data (#14)', () => {
     expect(text).toContain('search(');
   });
 
+  it('prints a size an older binary ISV import stored as "15.0" as an integer', async () => {
+    // The importer wrote the dump's number, and SQLite kept it as REAL text in this TEXT
+    // column. An index built before the fix still holds it until it is rebuilt.
+    const db = makeDb([
+      { name: 'ContosoCode', stringSize: '15.0', model: 'ContosoTools' },
+      { name: 'ContosoChildCode', extends: 'ContosoCode', model: 'ContosoTools' },
+    ]);
+
+    const own = (await getEdtInfoTool(req('ContosoCode'), ctx(db))).content[0].text as string;
+    expect(own).toContain('| String Size | 15 |');
+    expect(own).not.toContain('15.0');
+
+    const inherited = (await getEdtInfoTool(req('ContosoChildCode'), ctx(db))).content[0].text as string;
+    expect(inherited).toContain('| String Size | 15 (inherited from ContosoCode) |');
+
+    const hierarchy = (await getEdtInfoTool(
+      { method: 'tools/call' as const, params: { name: 'get_edt_info', arguments: { edtName: 'ContosoChildCode', mode: 'hierarchy' } } },
+      ctx(db),
+    )).content[0].text as string;
+    expect(hierarchy).toContain('StringSize: 15\n');
+    expect(hierarchy).toContain('Effective String Size: 15 (inherited from ContosoCode)');
+    expect(hierarchy).not.toContain('15.0');
+  });
+
   it('still prefers the bridge when the bridge has data', async () => {
     const db = makeDb([{ name: 'Num', extends: 'str' }]);
     const context = ctx(db);
