@@ -340,11 +340,11 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
       'Only ever matched against other ranges of the SAME data source.',
   },
   reportAction: {
-    type: '"refresh-dataset" | "add-parameter"',
+    type: '"refresh-dataset" | "add-parameter" | "fix-labels" | "add-column"',
     description:
-      'report-design: which half to do. "refresh-dataset" copies the temp table fields into the dataset; ' +
-      '"add-parameter" declares a report parameter and binds it to the dataset. There is deliberately no ' +
-      '"add-column" — placing a column edits the RDL, whose failures surface only in the SSRS renderer.',
+      'report-design: "refresh-dataset" copies temp table fields into the dataset; "add-parameter" declares ' +
+      'a parameter and binds it; "fix-labels" rewrites bare @label ids in RDL textboxes to =Labels!; ' +
+      '"add-column" appends a dataset field (fieldName) to the tablix.',
   },
   tableName: {
     type: 'string',
@@ -775,19 +775,21 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   },
   'report-design': {
     required: ['reportAction'],
-    optional: ['tableName', 'datasetName', 'parameterName', 'parameterDataType', 'parameterHidden', 'promptString'],
+    optional: ['tableName', 'datasetName', 'parameterName', 'parameterDataType', 'parameterHidden', 'promptString', 'fieldName'],
     note:
-      'objectType="report" only — the FIRST write path an AxReport has. Two actions, both metadata-only: ' +
+      'objectType="report" only. Metadata actions (never read the RDL, never remove anything): ' +
       'reportAction="refresh-dataset" (+ tableName, optional datasetName) copies the temp table\'s fields ' +
       'into the dataset, adding only what is missing; reportAction="add-parameter" (+ parameterName, ' +
       'optional parameterDataType [default System.String], parameterHidden, promptString, datasetName) ' +
       'declares a parameter AND binds it to the dataset, which are two elements in two collections that ' +
-      'must agree. ' +
-      'It NEVER touches the RDL in the <![CDATA[…]]> block and never removes anything: a dataset field the ' +
-      'design does not bind is inert, while removing one it does bind breaks the render — and a malformed ' +
-      'RDL fails in the SSRS renderer at run time, where no build and no test can see it. ' +
-      'For the same reason there is no "add-column": placing a column IS layout, and layout stays with the ' +
-      'Report Designer. Both actions are idempotent. ' +
+      'must agree. RDL actions: reportAction="fix-labels" rewrites textbox values that are a bare label id ' +
+      '(@SYS313987) to =Labels!@SYS313987, which is what renders; reportAction="add-column" (+ fieldName, ' +
+      'optional datasetName, promptString = header caption, a label id or text) appends a column bound to ' +
+      'a dataset field to the tablix (run refresh-dataset first for a new temp-table field). A malformed RDL ' +
+      'fails only in the SSRS renderer, so both RDL actions make targeted edits, statically validate the ' +
+      'result BEFORE writing (well-formed, Fields!/Parameters! resolve, names unique, tablix rows match ' +
+      'columns) and REFUSE a design they do not recognise — they never render it, so check the layout in ' +
+      'the Report Designer. All actions are idempotent. ' +
       'parameterHidden=true writes <UserVisibility>Hidden</UserVisibility>; leave it off for a VISIBLE ' +
       'parameter — across 1,057 shipped reports and 13,833 parameters there is no "Visible" value, a ' +
       'visible parameter simply omits the element, and an unknown one is dropped silently ' +

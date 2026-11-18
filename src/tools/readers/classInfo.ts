@@ -11,6 +11,8 @@ import { buildObjectTypeMismatchMessage } from '../../utils/metadataResolver.js'
 import { tryBridgeClass } from '../../bridge/bridgeAdapter.js';
 import { COMPACT_METHODS_HINT, SOURCE_UNAVAILABLE_HINT, INDEXED_BODIES_HINT, fullBodyHint } from '../../utils/methodBodyHint.js';
 import { readIndexedMethodSources } from '../../utils/indexedMethodSource.js';
+import { isBinaryIsvPath } from '../../metadata/binaryModelImport.js';
+import { methodOffsetPastEndNote, methodRangeText } from '../../utils/payloadBudget.js';
 
 const METHOD_PAGE_SIZE = 15;
 
@@ -129,9 +131,10 @@ export async function classInfoTool(request: CallToolRequest, context: XppServer
 
     output += `## Methods (${totalMethods} total`;
     if (totalMethods > METHOD_PAGE_SIZE) {
-      output += `, showing ${methodOffset + 1}–${Math.min(methodOffset + METHOD_PAGE_SIZE, totalMethods)}`;
+      output += methodRangeText(methodOffset, totalMethods, METHOD_PAGE_SIZE);
     }
     output += `)\n\n`;
+    output += methodOffsetPastEndNote(methodOffset, totalMethods, METHOD_PAGE_SIZE);
 
     for (const method of pagedMethods) {
       const params = method.parameters.map((p: { type: string; name: string }) => `${p.type} ${p.name}`).join(', ');
@@ -234,7 +237,7 @@ async function buildDbOnlyResponse(
   output += '\n\n';
 
   // Binary ISV model: no X++ source exists anywhere, so say so instead of promising bodies.
-  const isBinaryIsv = typeof classSymbol.filePath === 'string' && classSymbol.filePath.startsWith('binary-isv://');
+  const isBinaryIsv = isBinaryIsvPath(classSymbol.filePath);
   if (isBinaryIsv) {
     output += `> 🔒 **Binary ISV, signatures only** — compiled model, no X++ source or method bodies exist. ${classSymbol.description ?? ''}\n\n`;
   }
@@ -250,7 +253,8 @@ async function buildDbOnlyResponse(
     ? readIndexedBodies(symbolIndex, className, paged.map(m => m.name))
     : new Map();
 
-  output += `## Methods (${totalMethods} total, showing ${methodOffset + 1}–${Math.min(methodOffset + METHOD_PAGE_SIZE, totalMethods)})\n\n`;
+  output += `## Methods (${totalMethods} total${methodRangeText(methodOffset, totalMethods, METHOD_PAGE_SIZE)})\n\n`;
+  output += methodOffsetPastEndNote(methodOffset, totalMethods, METHOD_PAGE_SIZE);
   for (const m of paged) {
     const sig = m.signature || m.name;
     const body = bodies.get(m.name.toLowerCase());

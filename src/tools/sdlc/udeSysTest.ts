@@ -106,6 +106,13 @@ export interface TestRequestCase {
   name: string;
 }
 
+/** The test methods of one class in a test request, and the class file they come from. */
+export interface TestRequestClass {
+  className: string;
+  methodNames: readonly string[];
+  testSource: string;
+}
+
 /** The `.tsx` TestSuite document the cloud runtime reads, in the shape Visual Studio writes. */
 export function buildTestSuiteXml(
   assemblyPath: string,
@@ -113,14 +120,34 @@ export function buildTestSuiteXml(
   methodNames: readonly string[],
   testSource: string,
 ): { xml: string; cases: TestRequestCase[] } {
-  const cases = methodNames.map(m => ({ key: randomUUID(), name: `${className}.${m}` }));
-  const body = cases.map(c => [
+  return buildTestSuiteXmlForClasses(assemblyPath, [{ className, methodNames, testSource }]);
+}
+
+/**
+ * One request for the test methods of several classes of one package. Each case names its
+ * own class and class file, under the one module assembly: the cloud runtime runs them all in
+ * one operation, so the run's fixed cost (suite record, upload, start, polling, download) is
+ * paid once rather than once per class. Checked against a UDE environment: 36 classes and 225
+ * methods in one request took 6 minutes and returned every result, where the same classes one
+ * request each took about 40.
+ */
+export function buildTestSuiteXmlForClasses(
+  assemblyPath: string,
+  classes: readonly TestRequestClass[],
+): { xml: string; cases: TestRequestCase[] } {
+  const listed = classes.flatMap(c => c.methodNames.map(m => ({
+    key: randomUUID(),
+    name: `${c.className}.${m}`,
+    testSource: c.testSource,
+  })));
+  const cases: TestRequestCase[] = listed.map(({ key, name }) => ({ key, name }));
+  const body = listed.map(c => [
     '    <TestCaseInformation>',
     `      <TestKey>${c.key}</TestKey>`,
     `      <TestCaseName>${xmlEscape(c.name)}</TestCaseName>`,
     `      <FullyQualifiedName>Dynamics.AX.Application.${xmlEscape(c.name)}</FullyQualifiedName>`,
     '      <ExpectedRuntime>0</ExpectedRuntime>',
-    `      <TestSource>${xmlEscape(testSource)}</TestSource>`,
+    `      <TestSource>${xmlEscape(c.testSource)}</TestSource>`,
     '      <ExecutorURI>executor://systestexecutor/v1</ExecutorURI>',
     '    </TestCaseInformation>',
   ].join('\n'));
@@ -413,6 +440,31 @@ export async function runTestRequestInCloud(
   const trxName = [...entries.keys()].find(n => n.toLowerCase().endsWith('.trx'));
   if (!trxName) throw new DataverseError('The test results hold no .trx file.');
   return { suiteId, trx: entries.get(trxName)!.toString('utf8') };
+}
+
+/** An operation the environment is running: a deploy, a test run, a copy, an update. */
+export interface ActiveOperation {
+  /** As the environment names it, e.g. "Deploy" or "Unit Test Execution". */
+  name: string;
+  /** ISO 8601, UTC. */
+  startedAt: string;
+}
+
+/**
+ * The operations the environment is running now, oldest first. The environment's Package
+ * Manager records every deploy, test run, database copy and update in `msprov_operationhistory`
+ * (statecode 0 Active / statuscode 1 InProgress while it runs), and runs one at a time: a test
+ * run sent meanwhile waits behind them. Read-only and best-effort: a caller treats a failure as
+ * "nothing known" rather than as a reason not to run. Asked once, with no retry: a throttled
+ * environment must not delay a run for a note that only explains it.
+ */
+export async function activeOperations(client: DataverseClient): Promise<ActiveOperation[]> {
+  const response = await call(client, 'GET',
+    'msprov_operationhistories?$select=msprov_name,createdon&$filter=statecode eq 0&$orderby=createdon asc&$top=10');
+  const rows = ((await response.json()) as { value?: { msprov_name?: string; createdon?: string }[] })?.value ?? [];
+  return rows
+    .filter(r => r.msprov_name && r.createdon)
+    .map(r => ({ name: r.msprov_name!, startedAt: r.createdon! }));
 }
 
 /** Keep the .trx where the user can open it; best-effort. */

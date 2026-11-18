@@ -122,6 +122,7 @@ import {
 } from './directXmlWriters.js';
 import { addMethodWithXmlFallback, removeMethodWithXmlFallback } from './methodXmlFallback.js';
 import { addReportParameter, refreshReportDataset } from './reportDesignXml.js';
+import { addReportColumn, fixReportLabelIds } from './reportRdlXml.js';
 
 
 /**
@@ -902,11 +903,11 @@ export const ModifyD365FileArgsSchema = z.object({
   // ── report-design ─────────────────────────────────────────────────────────
   // Declared here so a strict MCP client can send them: these are top-level keys,
   // and an undeclared one is dropped before it reaches the handler.
-  reportAction: z.enum(['refresh-dataset', 'add-parameter']).optional().describe(
-    'report-design: which half to do. "refresh-dataset" copies the temp table fields into the ' +
-    'dataset (needs tableName); "add-parameter" declares a parameter and binds it (needs parameterName). ' +
-    'There is deliberately no "add-column" — that edits the RDL, whose failures surface only in the ' +
-    'SSRS renderer.'
+  reportAction: z.enum(['refresh-dataset', 'add-parameter', 'fix-labels', 'add-column']).optional().describe(
+    'report-design: "refresh-dataset" copies temp table fields into the dataset (needs tableName); ' +
+    '"add-parameter" declares and binds one (needs parameterName); "fix-labels" rewrites bare @label ids ' +
+    'in RDL textboxes to =Labels!; "add-column" appends a dataset field (fieldName) to the tablix. The ' +
+    'RDL ones validate before writing and refuse designs they do not recognise.'
   ),
   tableName: z.string().optional().describe(
     'report-design(refresh-dataset): the temp table whose fields the dataset should carry. Read off ' +
@@ -3120,10 +3121,8 @@ async function runModify(
         break;
       }
       case 'report-design': {
-        // The first write path an AxReport has ever had, and deliberately a
-        // narrow one: metadata only, additive only, and the RDL inside the
-        // <![CDATA[…]]> block is never touched. A malformed RDL fails in the
-        // SSRS renderer at run time, where no build and no test can see it.
+        // refresh-dataset / add-parameter: metadata only. fix-labels / add-column edit the
+        // RDL (reportRdlXml.ts), validated before any write and refusing unknown designs.
         const reportAction = String((args as any).reportAction ?? '').trim();
         if (reportAction === 'refresh-dataset') {
           bridgeResult = viaXmlFallback(await refreshReportDataset(
@@ -3142,15 +3141,21 @@ async function runModify(
               datasetName: (args as any).datasetName,
             },
           ));
+        } else if (reportAction === 'fix-labels') {
+          bridgeResult = viaXmlFallback(await fixReportLabelIds(actualFilePath));
+        } else if (reportAction === 'add-column') {
+          bridgeResult = viaXmlFallback(await addReportColumn(
+            actualFilePath,
+            String((args as any).fieldName ?? ''),
+            { datasetName: (args as any).datasetName, caption: (args as any).promptString },
+          ));
         } else {
           bridgeResult = viaXmlFallback({
             success: false,
             message:
               `❌ report-design: reportAction '${reportAction || '(missing)'}' is not one this operation ` +
-              'knows. Pass "refresh-dataset" (sync the dataset with its temp table) or "add-parameter". ' +
-              'There is deliberately no "add-column": placing a column edits the RDL, and a malformed ' +
-              'RDL fails in the SSRS renderer at run time rather than at build time — that half stays ' +
-              'with the Report Designer.',
+              'knows. Pass "refresh-dataset", "add-parameter", "fix-labels" (bare @label ids in textboxes ' +
+              'to =Labels!) or "add-column". Other layout changes stay with the Report Designer.',
           });
         }
         break;

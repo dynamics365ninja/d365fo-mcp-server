@@ -39,9 +39,9 @@
  *      design simply does not show it. REMOVING one the RDL does reference breaks
  *      the render, so removal is not offered at all.
  *
- * That is also why there is no `add-column`: putting a column in the layout means
- * editing the RDL, and the failure mode there is invisible until someone runs the
- * report.
+ * Editing the RDL (`fix-labels`, `add-column`) lives in `reportRdlXml.ts` and is
+ * allowed only behind a validator that runs before the write and refuses designs
+ * it does not recognise — this file still never touches the RDL.
  */
 
 import * as fs from 'fs/promises';
@@ -132,7 +132,7 @@ function tableFields(tableXml: string): Array<{ name: string; iType: string; enu
  * on a copy with those blocks blanked, so a `<Fields>` tag inside the RDL can
  * never be mistaken for the dataset's own.
  */
-function locateDataSet(content: string, datasetName?: string):
+export function locateDataSet(content: string, datasetName?: string):
   | { ok: true; start: number; end: number; name: string }
   | { ok: false; reason: string; available: string[] } {
   const masked = content.replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, m => ' '.repeat(m.length));

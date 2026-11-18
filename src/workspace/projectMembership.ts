@@ -161,6 +161,24 @@ export function includeKey(axFolder: string, objectName: string): string {
 }
 
 /**
+ * The languages a set of includes lists for one label file: every
+ * `AxLabelFile\<labelFileId>_<lang>` descriptor entry, as the `<lang>` part of
+ * the include passed in. Includes in normalizeInclude form give lowercased
+ * languages; raw includes give them as spelled. A language tag has no `_`, so
+ * the descriptors of a label file `Foo_Bar` never count as languages of `Foo`.
+ */
+export function labelLanguagesInIncludes(includes: Iterable<string>, labelFileId: string): string[] {
+  const prefix = normalizeInclude(`AxLabelFile\\${labelFileId}_`);
+  const langs: string[] = [];
+  for (const inc of includes) {
+    if (!normalizeInclude(inc).startsWith(prefix)) continue;
+    const lang = inc.replace(/\.xml$/i, '').slice(prefix.length);
+    if (lang && !/[_\\/]/.test(lang)) langs.push(lang);
+  }
+  return langs;
+}
+
+/**
  * A project path as a human names it: leaf, no extension.
  *
  * Splits on both separators instead of path.basename, which on a POSIX host
