@@ -210,6 +210,11 @@ those are called out explicitly below.
   in the Report Designer.
 
 ### Changed
+- **The README now links to the MIT license file and states how contributions are
+  licensed.** The license badge pointed to opensource.org and the *License* section said
+  only "MIT", so the `LICENSE` file in the repository root was easy to miss. Both now link
+  to `LICENSE`, and the section says that pull requests are accepted under the same MIT
+  License.
 - **The agent instructions now carry four scope rules, so an agent asks before guessing,
   keeps changes small and does not rewrite code next to the change.**
   `xpp_system_instructions` and `.github/copilot-instructions.md` (the file users copy into
