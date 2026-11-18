@@ -79,9 +79,11 @@ export async function tableInfoTool(request: CallToolRequest, context: XppServer
     const { symbolIndex } = context;
     const dbResponse = await buildTableResponseFromDb(
       symbolIndex, args.tableName, args.methodOffset, args.fieldsOffset, args.fieldFilter,
+      args.relations,
     );
     if (dbResponse) {
-      const note = unhonouredOptionsNote(args, 'symbol index');
+      // `relations:true` is honoured from table_relations, so only `compact` is left to name.
+      const note = unhonouredOptionsNote({ ...args, relations: false }, 'symbol index');
       return note ? appendTextNote(dbResponse, note) : dbResponse;
     }
 
@@ -154,6 +156,56 @@ function indexedFieldSize(db: any, edtName: string): string {
 }
 
 /**
+ * Indexes and relations from the symbol index, in the bridge renderer's spirit: every
+ * index with unique / primary / clustered marked, relations as a count (default) or a
+ * list with their constraints (`relations:true`). Rows come from `table_indexes` and
+ * `table_relations`; a database built before `table_indexes` existed has no rows for the
+ * table and says so instead of reading as "no indexes".
+ */
+function indexedIndexesAndRelations(rdb: any, tableName: string, listRelations: boolean): string {
+  let out = '';
+  try {
+    const idx = rdb.prepare(
+      `SELECT index_name, fields, is_unique, is_primary, is_clustered FROM table_indexes
+       WHERE table_name = ? ORDER BY id`,
+    ).all(tableName) as Array<{ index_name: string; fields: string | null; is_unique: number; is_primary: number; is_clustered: number }>;
+    if (idx.length > 0) {
+      out += `\n## Indexes (${idx.length})\n\n`;
+      for (const i of idx) {
+        let fields: string[] = [];
+        try { fields = JSON.parse(i.fields || '[]'); } catch { /* keep empty */ }
+        const marks = [i.is_unique ? 'unique' : '', i.is_primary ? 'primary' : '', i.is_clustered ? 'clustered' : '']
+          .filter(Boolean).join(', ');
+        out += `- **${i.index_name}** (${fields.join(', ')})${marks ? ` [${marks}]` : ''}\n`;
+      }
+    } else {
+      out += `\n> ℹ️ No indexes stored for this table. Either it has none, or the index was built ` +
+        `before indexes were stored; re-index to get them.\n`;
+    }
+  } catch { /* no table_indexes in an older database */ }
+  try {
+    const rels = rdb.prepare(
+      `SELECT relation_name, target_table, constraint_fields FROM table_relations
+       WHERE source_table = ? ORDER BY id`,
+    ).all(tableName) as Array<{ relation_name: string; target_table: string; constraint_fields: string | null }>;
+    if (!listRelations) {
+      out += `\n**Relations:** ${rels.length}${rels.length > 0 ? ' (pass relations:true to list them)' : ''}\n`;
+    } else if (rels.length === 0) {
+      out += `\n## Relations (0)\n`;
+    } else {
+      out += `\n## Relations (${rels.length})\n\n`;
+      for (const r of rels) {
+        let cons: Array<{ field: string; relatedField: string }> = [];
+        try { cons = JSON.parse(r.constraint_fields || '[]'); } catch { /* keep empty */ }
+        const text = cons.map(c => `${c.field} = ${r.target_table}.${c.relatedField}`).join(', ');
+        out += `- **${r.relation_name}** -> ${r.target_table}${text ? `: ${text}` : ''}\n`;
+      }
+    }
+  } catch { /* table_relations unreadable: stay silent as before */ }
+  return out;
+}
+
+/**
  * Serve table info entirely from the pre-indexed symbol database.
  * Returns null when the table is not present in the index; caller then falls through
  * to disk parsing.
@@ -175,6 +227,7 @@ async function buildTableResponseFromDb(
   methodOffset: number,
   fieldsOffset = 0,
   fieldFilter?: string,
+  listRelations = false,
 ): Promise<{ content: { type: 'text'; text: string }[] } | null> {
   let tableSym = symbolIndex.getSymbolByName?.(tableName, 'table');
   const rdb = symbolIndex.getReadDb();
@@ -226,6 +279,7 @@ async function buildTableResponseFromDb(
   }
   out += fieldsFooter(fieldPage);
   if (sizesShown) out += `\n> ℹ️ ${INDEXED_SIZE_CAVEAT}\n`;
+  out += indexedIndexesAndRelations(rdb, tableSym.name, listRelations);
   out += `\n## Methods (${totalMethods} total${totalMethods > METHOD_PAGE ? methodRangeText(methodOffset, totalMethods, METHOD_PAGE) : ''})\n\n`;
   out += methodOffsetPastEndNote(methodOffset, totalMethods, METHOD_PAGE);
   for (const m of paged) {
