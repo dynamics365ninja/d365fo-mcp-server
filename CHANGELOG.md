@@ -114,6 +114,20 @@ those are called out explicitly below.
   the reason and the file untouched. This is validation, not rendering: check the layout
   in the Report Designer.
 
+### Changed
+- **`build_d365fo_project(deploy: true)` on a UDE now picks its database sync from what
+  changed.** It used to deploy a Dev package with no sync unless `dbSync` was given, so the
+  agent had to guess: no sync after a table change left the change out of the environment,
+  a full sync (~20 min) after a class-only change wasted the time. Without `dbSync` the
+  server now compares the package's tables, views, data entities, EDTs, enums and their
+  extensions with the last deployment it made with a sync to the same environment: nothing
+  newer deploys without a sync, anything newer (or no known earlier synced deployment, for
+  example the first deploy from this machine) deploys as a Release package with a full
+  sync. A deployment cannot sync a table list, so "changed tables" also means a full sync.
+  The reply says which scope was chosen and why; `dbSync: true` or `false` still wins. The
+  last-sync times are kept in `~/.d365fo-mcp/ude-sync-state.json`. Part of #1283; the
+  environment status in `get_workspace_info` is not done yet.
+
 ### Fixed
 - **`run_systest_class` finds a test class in another model when no model was named.** The
   tool looked for the class only in the workspace model, while test classes usually live in a

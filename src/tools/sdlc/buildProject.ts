@@ -1710,7 +1710,10 @@ async function runPostBuildDeploy(
     if (!check.ok) return { section: `\n\n--- Deployment (deploy) — FAILED, the build did not ---\n❌ ${check.message.replace(/ Nothing was built\./, ' Nothing was deployed.')}`, failed: true };
     const paths = await deploy.udePackagePaths();
     if (!paths) return { section: '\n\n--- Deployment (deploy) — FAILED, the build did not ---\n❌ The XPP config names no packages folders. Nothing was deployed.', failed: true };
-    const fullSync = params?.dbSync === true || params?.dbSync === 'true' || Array.isArray(params?.dbSync);
+    // No dbSync given: the deployment picks its scope from what changed (udeSyncScope.ts).
+    const given = params?.dbSync;
+    const fullSync = given === undefined || given === null ? undefined
+      : given === true || given === 'true' || Array.isArray(given);
     const result = await deploy.deployModelToUde({
       modelName: targetModel, ...paths, dataverse: check.dataverse, fullSync, logFile, onProgress,
     });
