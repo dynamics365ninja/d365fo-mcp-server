@@ -211,7 +211,7 @@ const EXTENSIBLE = `<?xml version="1.0" encoding="utf-8"?>
 	</Design>
 </AxForm>`;
 
-describe('upsertFormControlProperty — an extensible control (no i:type)', () => {
+describe('upsertFormControlProperty â€” an extensible control (no i:type)', () => {
   it('places properties in the order shipped extensible controls use', () => {
     let xml = ok(upsertFormControlProperty(EXTENSIBLE, 'ContosoExpressionBuilder', 'Visible', 'No')).xml;
     xml = ok(upsertFormControlProperty(xml, 'ContosoExpressionBuilder', 'Height', '200')).xml;
