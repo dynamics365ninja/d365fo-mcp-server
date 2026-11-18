@@ -39,6 +39,22 @@ those are called out explicitly below.
   project of the model lists is refused without `allowOrphan: true`, a label file the
   project does not list reports "not in the project", and the files on disk are never
   touched.
+- **Adding an object to a project or removing it now changes only that object's lines
+  in the `.rnrproj`.** The project file was parsed with xml2js and written back whole
+  with its Builder. #1197 restored the BOM and CRLF, but everything else was serialised
+  again: `<TargetFrameworkProfile />` and every `<Folder Include="…" />` lost the space
+  before `/>`, a multi-line value such as `<Company>` came back with `&#xD;` entities,
+  and attributes were laid out the builder's way. A pull request that added one object
+  showed the whole project file as changed. Create, modify, delete, undo and label-file
+  writes now edit the text: the `<Content>` (and, when needed, `<Folder>`) item is
+  inserted into the existing item group with the indentation and line ending of its
+  neighbours, sorted by Include as Visual Studio's MSBuild `AddItem` does, and a
+  removal takes out exactly the item's lines (and an item group it leaves empty). Every
+  other byte stays as it was, and adding an object that is already listed writes
+  nothing. A folder item written without its trailing backslash (`<Folder
+  Include="Classes" />`, as a hand edit leaves it) now counts as that folder, so a second
+  `Classes\` entry is no longer added next to it. A project written by an earlier
+  version keeps the builder's layout until it is saved again in Visual Studio.
 
 ## [1.24.0] — 2026-11-12
 

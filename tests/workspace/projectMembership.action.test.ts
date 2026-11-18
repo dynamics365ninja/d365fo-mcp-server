@@ -227,6 +227,21 @@ describe('label files and the active project', () => {
     expect(await has(a, 'ContosoProj.en-US.label.txt')).toBe(false);
   });
 
+  // Stacked on the text-edit writer (#1289): a removal must take out only its own lines.
+  it('remove-object of a label file leaves every other byte of the project as it was', async () => {
+    const pkg = await labelTree(['en-US']);
+    const before = await fs.readFile(b, 'utf-8');
+    await call('add-object', { projectPath: a, objectType: 'label-file', objectName: 'ContosoProj', packagePath: pkg });
+    await call('add-object', { projectPath: b, objectType: 'label-file', objectName: 'ContosoProj', packagePath: pkg });
+    const withLabel = await fs.readFile(b, 'utf-8');
+    expect(withLabel).not.toBe(before);
+    const r = await call('remove-object', { projectPath: b, objectType: 'label-file', objectName: 'ContosoProj' });
+    expect(r.isError, r.content[0].text).toBeFalsy();
+    const after = await fs.readFile(b, 'utf-8');
+    // Only the "Label Files\" folder entry (kept on purpose) may differ from the original.
+    expect(after.replace(/^[ \t]*<ItemGroup>\r?\n[ \t]*<Folder Include="Label Files\\" \/>\r?\n[ \t]*<\/ItemGroup>\r?\n/m, '')).toBe(before);
+  });
+
   it('remove-object with languages[] removes only those, and leaves a label file with a longer id alone', async () => {
     const pkg = await labelTree(['en-US', 'fi']);
     const model = path.join(pkg, 'ContosoCore', 'ContosoCore', 'AxLabelFile');
