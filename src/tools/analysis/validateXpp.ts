@@ -36,6 +36,8 @@
  *   XML001  AxTable XML missing an index with <AlternateKey>Yes</AlternateKey>
  *   XML006  AxTable elements out of canonical order (silently dropped by the AOT)
  *   XML007  Table-level property that does not exist in the AxTable model
+ *   XML011  Staging table whose alternate key allows one row per execution (#1285)
+ *   ENT001  Entity child data source with UseRelations=Yes and no Relations (#1285)
  *
  * Added from compiler diagnostics (see src/knowledge/compilerFacts.ts):
  *   FN002   a call to a predefined function this platform version does not have
@@ -69,6 +71,7 @@ import {
   axTableElementRank,
 } from '../../utils/axTablePropertyOrder.js';
 import { maskXpp } from '../../utils/xppLexer.js';
+import { checkEntityChildRelations, checkStagingAlternateKey } from './entityXmlRules.js';
 import type { DbLike } from '../../utils/symbolLookup.js';
 import { isTestClassInIndex, isTestClassSource } from './testClassContext.js';
 import {
@@ -3060,6 +3063,8 @@ const XML_RULES = [
   checkNonExistentTableProperties,
   checkTableExtensionMethods,
   checkDataGroupDeclared,
+  checkEntityChildRelations,
+  checkStagingAlternateKey,
 ];
 
 /**
