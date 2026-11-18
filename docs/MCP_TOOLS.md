@@ -141,11 +141,13 @@ Mode-specific parameters go in a single `params` object (flat top-level keys sti
 | objectType | File | Operations |
 |---|---|---|
 | `ignore-diagnostic-list` | `{Model}/AxIgnoreDiagnosticList/{Model}_BPSuppressions.xml` | `add-diagnostic-suppression`, `remove-diagnostic-suppression` |
-| `model-descriptor` | `{Package}/Descriptor/{Model}.xml` | `add-module-reference`, `remove-module-reference` |
+| `model-descriptor` | `{Package}/Descriptor/{Model}.xml` | `add-module-reference`, `remove-module-reference`, `modify-property` — and `action="create"` / `action="delete"` for the model itself, see [MODEL_LIFECYCLE.md](MODEL_LIFECYCLE.md) |
 
 `<ModuleReferences>` is the only statement of what a model may see — xppc resolves types against the referenced packages and nothing else — so adding an entry is a mandatory step BEFORE writing code that names a type from another model; a missing one is a `classStr`/`delegateStr`/"type not found" error at compile time, not a code bug. Add is idempotent by refusal (a duplicate is reported, never written twice), the referenced package is probed on disk and a miss is warned about rather than refused, and NOTHING is created implicitly: a model with no descriptor, or a descriptor with no `<ModuleReferences>` element, is reported as such. A descriptor change needs a **full** build to take effect. Read the current list with `get_workspace_info(diagnostics=true)`.
 
-Neither type participates in grounding: `prepare` has no mode that produces a token for a file with no base object, so gating them would make them unreachable under `GROUNDING_ENFORCE=true`. Both are still held to path containment, and only the active model's own descriptor is writable.
+Neither type participates in grounding: `prepare` has no mode that produces a token for a file with no base object, so gating them would make them unreachable under `GROUNDING_ENFORCE=true`. Both are still held to path containment, and only the active model's own descriptor is writable (or that of a model on the cross-model allow-list).
+
+**Models.** `objectType="model-descriptor"` also creates and deletes whole models — `action="create"` writes the descriptor and the model folder (Id, layer and publisher defaulted and collision-checked, module references validated), `action="delete"` removes one (dry run first; refused while it holds objects or other models reference it). `get_object_info(objectType="model", name="*")` lists the models with their references, dependents and reference problems. Rename is deliberately not offered. Details: [MODEL_LIFECYCLE.md](MODEL_LIFECYCLE.md).
 
 Two things shared by `create` and `modify`:
 

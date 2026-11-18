@@ -187,13 +187,14 @@ export const undoLastModificationTool = async (params: any, context: XppServerCo
       };
     }
 
+    const createdEntry = lookupCreatedArtifact(absolutePath);
     fs.unlinkSync(absolutePath);
     // The create registered this file in a .rnrproj; deleting it without that
     // entry leaves a <Content Include> pointing at nothing, which nothing else in
     // the session removes and only VS reports. A model directory under source
     // control takes this path, not the ledger one below.
     const projectNote = await removeFromProjectAndForget(absolutePath);
-    const metaNote = compilerCopyNote(await removeCompilerMetadataFor(absolutePath));
+    const metaNote = compilerCopyNote(await removeCompilerMetadataFor(absolutePath)) + await modelTidyNote(createdEntry);
     await cleanupIndexAfterUndo(context, absolutePath, 'deleted');
     return {
       content: [{ type: 'text', text: 'Successfully undid file creation (deleted untracked file): ' + absolutePath + projectNote + metaNote + '\nStale index entries cleaned up.' }],
@@ -240,12 +241,27 @@ async function undoViaLedger(
 
   fs.unlinkSync(absolutePath);
   const projectNote = await removeFromProjectAndForget(absolutePath);
-  const metaNote = compilerCopyNote(await removeCompilerMetadataFor(absolutePath));
+  const metaNote = compilerCopyNote(await removeCompilerMetadataFor(absolutePath)) + await modelTidyNote(entry);
   await cleanupIndexAfterUndo(context, absolutePath, 'deleted');
 
   return {
     content: [{ type: 'text', text: 'Successfully undid file creation (deleted session-created file outside git): ' + absolutePath + projectNote + metaNote + '\nStale index entries cleaned up.' }],
   };
+}
+
+/**
+ * A model descriptor this session created leaves more behind than its file: the
+ * folders made for it and its configuration entries. Dynamic import for the same
+ * reason as removeFromProjectSafe below.
+ */
+async function modelTidyNote(entry: CreatedArtifact | undefined): Promise<string> {
+  if (entry?.objectType !== 'model-descriptor') return '';
+  try {
+    const { tidyAfterModelUndo } = await import('../write/modelLifecycle.js');
+    return await tidyAfterModelUndo(entry.filePath, entry.addedConfigKeys ?? []);
+  } catch {
+    return '';
+  }
 }
 
 /**

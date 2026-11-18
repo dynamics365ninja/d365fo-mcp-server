@@ -40,6 +40,9 @@ import {
   type FieldTypeSlot, type ProvisionResult,
 } from './write/fieldTypeProvisioning.js';
 import { writeFile } from 'fs/promises';
+import {
+  isModelDescriptorType, handleCreateModel, handleDeleteModel, handleModelProperty, moduleReferenceCycleNote,
+} from './write/modelLifecycle.js';
 
 export const D365_FILE_ACTIONS = ['generate', 'create', 'project', 'modify', 'delete', 'undo'] as const;
 export type D365FileAction = (typeof D365_FILE_ACTIONS)[number];
@@ -192,7 +195,15 @@ async function modifyWithExtensionAutoCreate(
   context: XppServerContext,
   outcome: ModifyOutcome,
 ): Promise<any> {
+  // A descriptor's scalar properties are not an AOT write — see write/modelLifecycle.ts.
+  if (isModelDescriptorType(args.objectType) && args.operation === 'modify-property') {
+    return handleModelProperty(args);
+  }
   const first = await modifyD365FileTool(subRequest('modify_d365fo_file', args), context, outcome);
+  if (isModelDescriptorType(args.objectType) && args.operation === 'add-module-reference' && !first?.isError) {
+    return appendToResult(first, await moduleReferenceCycleNote(
+      (args.modelName ?? args.objectName) as string | undefined, args.packagePath as string | undefined));
+  }
   const pending = outcome.createExtensionFirst;
   if (!pending) return first;
   outcome.createExtensionFirst = undefined;
@@ -579,6 +590,10 @@ export async function d365foFileTool(request: CallToolRequest, context: XppServe
   if (action === 'project') {
     return handleProject(rest);
   }
+
+  // A model is not an AOT object: no prefixing, grounding, bridge or .rnrproj entry.
+  if (isModelDescriptorType(rest.objectType) && action === 'create') return handleCreateModel(rest, context);
+  if (isModelDescriptorType(rest.objectType) && action === 'delete') return handleDeleteModel(rest, context);
 
   if (action === 'create') {
     // 16 of the create -> modify sequences in the sampled sessions targeted the
