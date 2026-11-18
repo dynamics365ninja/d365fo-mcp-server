@@ -36,6 +36,16 @@ those are called out explicitly below.
   object referenced by exactly one project stays there and the reply says so; new
   objects, objects no project references and objects in several projects behave as
   before. The default `active` keeps today's behaviour (#1284).
+- **A green `build_d365fo_project` reply says what is new: "3 new, 18 known".** A model
+  with a stable set of known warnings had every one of them printed again on each build,
+  and the agent had to spot the new one among them (#1282). The server now keeps a warning
+  baseline per model in `.warning-baseline.json` next to `.last-build.json`, keyed by
+  model, element kind, object, member and message (not the line number). From the second
+  build on, the reply lists only warnings absent from the baseline and gives the known
+  ones as a count with the file path; the warning icon follows the new ones. A full build
+  replaces the baseline, an incremental one adds to it. No parameter, nothing to
+  configure. The first build of a model behaves as before. Not done yet: the same for
+  `run_bp_check` findings and the `changedSince` option (open on the issue).
 - **The server can create, edit, inspect and delete models.** `d365fo_file(action="create",
   objectType="model-descriptor")` was listed by the tool description and the op-spec index
   and then rejected by the input schema ("Invalid option"), so a new model meant a
@@ -121,7 +131,47 @@ those are called out explicitly below.
   the reason and the file untouched. This is validation, not rendering: check the layout
   in the Report Designer.
 
+### Changed
+- **`build_d365fo_project(deploy: true)` on a UDE now picks its database sync from what
+  changed.** It used to deploy a Dev package with no sync unless `dbSync` was given, so the
+  agent had to guess: no sync after a table change left the change out of the environment,
+  a full sync (~20 min) after a class-only change wasted the time. Without `dbSync` the
+  server now compares the package's tables, views, data entities, EDTs, enums and their
+  extensions with the last deployment it made with a sync to the same environment: nothing
+  newer deploys without a sync, anything newer (or no known earlier synced deployment, for
+  example the first deploy from this machine) deploys as a Release package with a full
+  sync. A deployment cannot sync a table list, so "changed tables" also means a full sync.
+  The reply says which scope was chosen and why; `dbSync: true` or `false` still wins. The
+  last-sync times are kept in `~/.d365fo-mcp/ude-sync-state.json`. Part of #1283; the
+  environment status in `get_workspace_info` is not done yet.
+
 ### Fixed
+- **`get_object_info(objectType:"enum")` lists the values of an enum in a binary ISV
+  model.** Without the bridge it answered `Enum "X" not found` for an enum imported with
+  `npm run extract-binary-models`: the reader only understood AxEnum XML, and a binary enum
+  has none (its row's path is `binary-isv://<Model>/AxEnum/<Name>`). The importer now
+  renders the enum's values and labels as AxEnum XML, so the extracted JSON and the index's
+  stored copy (`object_source`) both carry them, and a deployment that serves from the
+  database alone answers too. The reply carries the "Binary ISV, signatures only" notice
+  and leaves out "Use Enum Value", which a compiled model's dump does not know. If neither
+  copy is on the host (an index built before this change, JSON removed), the reply says the
+  enum is in binary model M and its values are not available here, instead of "not found".
+  Re-run `npm run extract-binary-models` and re-index to get the values. (#1275)
+- **Binary ISV classes show `[ExtensionOf(tableStr(X))]` instead of `[ExtensionOf(tableStr)]`.**
+  The binary model extractor stored each attribute argument as the intrinsic's bare name, so
+  the class and method documentation lost the target (and a `[SubscribesTo(classStr(X),
+  delegateStr(X, d))]` lost both). It now dumps the whole expression. Re-run the extractor to
+  get it for existing imports; until then the class description restores the target of an
+  `[ExtensionOf]` from the declaration. (#1277)
+- **`modify-property` now sets a property on an extensible form control.** A control without
+  `i:type` (one that carries a `<FormControlExtension>`) was refused with "has no i:type, so
+  it is not in the element-order census", so `Visible`, `Width` or `AutoDeclaration` had to
+  be edited by hand. A census of the 5,039 such controls in the shipped AOT shows only 13
+  children ever occur (`Name`, `AllowEdit`, `AutoDeclaration`, `ConfigurationKey`,
+  `EnableFormRef`, `Enabled`, `Height`, `HeightMode`, `Skip`, `Visible`, `Width`, `WidthMode`,
+  `FormControlExtension`) and never in conflicting order, so those are now written in that
+  order. `HelpText` and `Label` never occur on an extensible control and are still refused;
+  an untyped control without `<FormControlExtension>` is refused as before (#1286).
 - **`run_systest_class` finds a test class in another model when no model was named.** The
   tool looked for the class only in the workspace model, while test classes usually live in a
   test model of their own, so the call failed with "was not found in model …" and the agent

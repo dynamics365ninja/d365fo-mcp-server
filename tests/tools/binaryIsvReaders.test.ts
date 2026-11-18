@@ -16,6 +16,7 @@ import { tableInfoTool } from '../../src/tools/readers/tableInfo';
 import { getEdtInfoTool } from '../../src/tools/readers/edtInfo';
 import { findCocExtensionsTool } from '../../src/tools/knowledge/findCocExtensions';
 import { classInfoTool } from '../../src/tools/readers/classInfo';
+import { getEnumInfoTool } from '../../src/tools/readers/enumInfo';
 
 const BINARY_MODEL = 'ContosoTools';
 const SOURCE_MODEL = 'ContosoExt';
@@ -51,6 +52,17 @@ const DUMP: BinaryModelDump = {
     { Name: 'ContosoToolCode', BaseType: 'String', StringSize: 15 },
     { Name: 'ContosoToolChildCode', BaseType: 'String', Extends: 'ContosoToolCode' },
   ],
+  Enums: [
+    {
+      Name: 'ContosoToolMode',
+      IsExtensible: true,
+      Values: [
+        { Name: 'None', Value: 0 },
+        { Name: 'Fast', Value: 1, Label: '@ContosoTools:Fast' },
+        { Name: 'Safe', Value: 2, Label: 'Safe & sound' },
+      ],
+    },
+  ],
 };
 
 let tmp: string;
@@ -82,6 +94,7 @@ beforeAll(async () => {
   for (const c of m.classExtensions) writeJson(m.model, 'class-extensions', c as unknown as Record<string, unknown>);
   for (const t of m.tables) writeJson(m.model, 'tables', t);
   for (const e of m.edts) writeJson(m.model, 'edts', e);
+  for (const e of m.enums) writeJson(m.model, 'enums', e);
 
   // A source model, extracted from XML: its objects point at a real file.
   const xml = path.join(tmp, 'ContosoRentEquipmentTable.xml');
@@ -141,6 +154,38 @@ describe('binary ISV notice in the table and EDT reads', () => {
     const source = await text(getEdtInfoTool(req({ edtName: 'ContosoEquipmentId' }), ctx()));
     expect(source).toContain('# Extended Data Type: ContosoEquipmentId');
     expect(source).not.toContain('Binary ISV');
+  });
+});
+
+describe('get_object_info(enum) on an enum of a binary ISV model', () => {
+  const read = () => text(getEdtLikeEnum());
+  const getEdtLikeEnum = () => getEnumInfoTool(req({ enumName: 'ContosoToolMode' }), ctx());
+
+  it('lists the values with the notice when the extracted JSON is present', async () => {
+    const out = await read();
+    expect(out).toContain('# Enum: `ContosoToolMode`');
+    expect(out).toContain(NOTICE);
+    expect(out).toContain('| Fast | 1 | @ContosoTools:Fast |');
+    expect(out).toContain('| Safe | 2 | Safe &amp; sound |'.replace('&amp;', '&'));
+    expect(out).toContain('**Extensible:** Yes');
+    expect(out).not.toContain('Use Enum Value');
+    expect(out).not.toContain('not found');
+  });
+
+  it('lists them from the database alone once the extracted JSON is gone', async () => {
+    fs.rmSync(path.join(tmp, 'meta', BINARY_MODEL, 'enums'), { recursive: true, force: true });
+    const out = await read();
+    expect(out).toContain(NOTICE);
+    expect(out).toContain('| Fast | 1 | @ContosoTools:Fast |');
+    expect(out).toContain('stored copy in the index');
+  });
+
+  it('names the binary model when the values are not available', async () => {
+    index.getReadDb().prepare('DELETE FROM object_source WHERE object_type = ?').run('enum');
+    const out = await read();
+    expect(out).not.toContain('not found');
+    expect(out).toContain('binary model ContosoTools');
+    expect(out).toContain('values are not available on this host');
   });
 });
 
