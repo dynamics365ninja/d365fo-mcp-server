@@ -28,6 +28,27 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Added
+- **`d365fo_file(modify, objectType="report", operation="report-design")` can now edit the
+  RDL of an existing report: `reportAction="fix-labels"` and `reportAction="add-column"`.**
+  Until now the RDL was off limits, because a malformed RDL builds fine and fails only in
+  the SSRS renderer. `fix-labels` rewrites textbox values that are a bare label id
+  (`@SYS313987`) to `=Labels!@SYS313987`, the only form that renders as text.
+  `add-column` (`fieldName`, optional `datasetName`, optional `promptString` as header
+  caption, a label id or plain text) appends a column bound to a dataset field to the
+  tablix, cloning the last column's cells so styling matches, and adds the field to the
+  RDL's own dataset from the report metadata when only the metadata has it (run
+  `refresh-dataset` first for a new temp-table field). Both read the RDL in either
+  storage form (the scaffold's CDATA block or the XML-escaped text shipped reports use),
+  make targeted edits that keep every other byte, namespace and `rd:` GUID, and run a
+  static validator BEFORE writing: well-formed XML, every `Fields!X` resolves to a dataset
+  field, every `Parameters!X` to a declared parameter, unique textbox, tablix and group
+  names, and every tablix row and column hierarchy matching its column count. A design
+  `add-column` does not recognise (column groups, spans, nested or several tablixes
+  without `datasetName`, rows that are not header, detail or Sum summary) is refused with
+  the reason and the file untouched. This is validation, not rendering: check the layout
+  in the Report Designer.
+
 ### Fixed
 - **Adding an object to a project or removing it now changes only that object's lines
   in the `.rnrproj`.** The project file was parsed with xml2js and written back whole
@@ -45,6 +66,87 @@ those are called out explicitly below.
   Include="Classes" />`, as a hand edit leaves it) now counts as that folder, so a second
   `Classes\` entry is no longer added next to it. A project written by an earlier
   version keeps the builder's layout until it is saved again in Visual Studio.
+- **A scaffolded report's page-header title now renders its label text instead of the raw
+  id.** `generate_object` wrote the title as `<Value>@SYS313987</Value>`; shipped reports
+  write `=Labels!@SYS313987`, and a bare id is not label-resolved at deploy. New scaffolds
+  emit the `=Labels!` form. Existing reports: run `report-design` with
+  `reportAction="fix-labels"`.
+- **`get_object_info` on a table or an EDT of a binary ISV model says that the model is
+  compiled only, as it already did for a class.** Without the bridge, a class of a model
+  imported with `npm run extract-binary-models` was shown with "🔒 Binary ISV, signatures
+  only", but a table of the same model was shown like any table, so its missing method
+  bodies read like a gap in the index, and an EDT the same. The table and EDT reads from the
+  symbol index now print the same notice when the object's index row has a `binary-isv://`
+  path; objects of source models are shown as before.
+- **`extension_info(mode="coc")` marks the extension classes of a binary ISV model.** The
+  wrappers of a model imported with `npm run extract-binary-models` were listed with their
+  wrapped methods, but nothing said that they are compiled only, so a caller could go
+  looking for their source. Each such class is now listed as
+  `(<model>, binary ISV, signatures only)`, with one line under the list saying that no
+  X++ source exists for them and that `get_object_info` gives their signatures. This holds
+  whether the answer comes from the bridge, the xref SQLite file
+  (`D365FO_XREF_SQLITE_PATH`) or the symbol index; a class counts as binary when its
+  symbol index row has a `binary-isv://` path.
+- **The string size of an EDT from a binary ISV model is shown as an integer, not as
+  "15.0".** `npm run extract-binary-models` wrote the dump's `StringSize` into the EDT's JSON
+  as a number; the index build bound it to the text column `edt_metadata.string_size`, and
+  SQLite stored the number as `15.0`. The EDT read, the EDT hierarchy and the string size
+  after a table field printed that text. The importer now writes the size as text, as
+  `extract-metadata` does, the index build stores a whole-number string size, database
+  string size or display length as integer text whatever the JSON holds, and the readers
+  show a `15.0` already in an index as `15`. Rebuilding the database corrects the stored
+  values; no re-import is needed.
+- **`get_object_info` with a `methodOffset` past the last method says so, instead of
+  "showing 1000–14".** The method list heading computed its range whatever the offset, so
+  `methodOffset: 999` on a class with 14 methods printed "Methods (14 total, showing
+  1000–14)" and an empty list. The class and table reads, from the bridge and from the
+  symbol index, now print "Methods (14 total)" and a line saying that the offset is past the
+  end, how many methods there are and which `methodOffset` gives the first and the last
+  page. A valid offset is paged as before.
+- **`get_object_info(include:"xml")` says that an object of a binary ISV model has no XML,
+  instead of sending the caller in a circle.** A model imported with
+  `npm run extract-binary-models` ships compiled only, so its objects have no file. The
+  reader answered "the index has it in "<model>" — retry with options.modelName", and the
+  retry answered "No model in the symbol index holds a class of that name … or the object
+  does not exist yet", for an object `get_object_info` had just described. It now answers,
+  for any object type, that the object is in the binary ISV model (compiled only,
+  signatures only), that no XML or X++ source exists and that `get_object_info` without
+  `include:"xml"` gives its signatures, and names its `binary-isv://` path. Separately,
+  when the index lists the object only in the model passed as `options.modelName` but its
+  file is missing, the answer no longer claims that no model holds it: it says the index
+  row is stale or the host has only the database. Objects with a file are read as before.
+- **`d365fo_file(action="project", operation="create")` creates a project for a custom
+  model in the UDE custom metadata folder without the model being listed anywhere.**
+  A model with no project yet that was not the configured model, not in `CUSTOM_MODELS`
+  and did not start with `EXTENSION_PREFIX` (a new TEST model, say) was refused as
+  "looks like a standard Microsoft model", although its package sat in the XPP config's
+  `ModelStoreFolder` (the custom packages path), not in the Microsoft `FrameworkDirectory`.
+  On a UDE whose two folders are separate, a model whose package or descriptor is in the
+  custom folder now counts as custom for project creation. On a classic VM, where custom
+  and Microsoft packages share `PackagesLocalDirectory`, location proves nothing and the
+  check is unchanged. Only project creation reads the location: the classifier behind
+  the cross-model write guard and the other write refusals is untouched.
+- **`d365fo_file(action="modify")` no longer reports a successful `modify-property` as
+  failed when the value is the property's default or a `true`/`false` NoYes.** The
+  post-write check looked for the literal `<Name>value</Name>` in the file. The metadata
+  serializer writes no element for a default value (a data entity's `EntityCategory=Master`,
+  `SupportsSetBasedSqlOperations=No`, a table's `CacheLookup=None`) and spells NoYes as
+  Yes/No, so `entityCategory=Master` or `supportsSetBasedSqlOperations=true` ended in
+  "❌ Verification: … is NOT in the file … Treat this write as failed" after a write that
+  had worked. The check now accepts Yes/No for `true`/`false`, and accepts an absent
+  top-level element when the value is the serializer's default for that object type
+  (AxTable and AxDataEntityView, measured by reflection on the metamodel and over the
+  5,887 shipped data entities). A non-default value that is missing, or an element present
+  with another value, is still reported.
+- **`validate_code` no longer warns BP002 about `doInsert()`, `doUpdate()` or `doDelete()`
+  in a SysTest test class.** A test sets up its fixtures with the do* variants on purpose,
+  so the table's own insert/update/delete logic does not run, and 82 of the 359 shipped
+  test classes do it. The rule was a plain regex and warned on every one. It now stays
+  quiet when the code carries `[SysTestMethod]` or declares `extends SysTestCase`, or when
+  the symbol index shows that the declared class, its base or the class named in
+  `context` derives from SysTestCase (most shipped test classes reach it through a base
+  such as a module's own test case). Production code is still warned, including a class
+  with "Test" in its name: no name heuristic is used.
 
 ## [1.24.0] — 2026-11-12
 

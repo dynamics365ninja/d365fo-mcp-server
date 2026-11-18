@@ -13,6 +13,8 @@ import { tryBridgeEdt } from '../../bridge/bridgeAdapter.js';
 import { canonicalSymbolName, lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import { normalizeFieldBaseType } from '../../utils/axFieldTypes.js';
 import { describeKernelEdt } from '../../knowledge/kernelEdts.js';
+import { integerText } from '../../utils/integerText.js';
+import { binaryIsvNotice, isBinaryIsvPath } from '../../metadata/binaryModelImport.js';
 
 const GetEdtInfoArgsSchema = z.object({
   edtName: z.string().describe('Name of the Extended Data Type (EDT)'),
@@ -135,6 +137,7 @@ function getEdtFromIndex(symbolIndex: any, edtName: string, modelName?: string) 
         text:
           `# Extended Data Type: ${hit.name}\n\n` +
           (hit.model ? `**Model:** ${hit.model}\n` : '') +
+          (isBinaryIsvPath(hit.file_path) ? `\n${binaryIsvNotice(BINARY_EDT_NOTE)}` : '') +
           `_Source: SQLite symbol index (bridge returned no data)_\n\n` +
           `⚠️ Only the symbol entry is indexed — no \`edt_metadata\` row, so base type / string size / ` +
           `reference table are NOT available from this server. This is missing data, not an empty EDT.\n` +
@@ -145,6 +148,7 @@ function getEdtFromIndex(symbolIndex: any, edtName: string, modelName?: string) 
 
   let out = `# Extended Data Type: ${row.edt_name ?? resolvedName}\n\n`;
   if (row.model) out += `**Model:** ${row.model}\n`;
+  if (edtIsBinaryIsv(db, row.edt_name ?? resolvedName, row.model)) out += `\n${binaryIsvNotice(BINARY_EDT_NOTE)}`;
   out += `_Source: SQLite symbol index (edt_metadata) — the C# bridge returned no data_\n\n`;
   out += `## 🔧 Core Properties\n\n`;
   out += `| Property | Value |\n|---|---|\n`;
@@ -162,14 +166,31 @@ function getEdtFromIndex(symbolIndex: any, edtName: string, modelName?: string) 
     out += `| String Size | ${shown}${from} |\n`;
   }
   const sizeCaveat = size ? `\nℹ️ ${INDEXED_SIZE_CAVEAT}\n` : '';
-  if (row.database_string_size) out += `| Database String Size | ${row.database_string_size} |\n`;
-  if (row.display_length) out += `| Display Length | ${row.display_length} |\n`;
+  if (row.database_string_size) out += `| Database String Size | ${integerText(row.database_string_size)} |\n`;
+  if (row.display_length) out += `| Display Length | ${integerText(row.display_length)} |\n`;
   if (row.label) out += `| Label | ${row.label} |\n`;
   out += `\nℹ️ Indexed metadata only — properties the extractor does not store ` +
     `(HelpText, FormHelp, ConfigurationKey, Alignment…) are absent here, not absent from the EDT.\n` +
     sizeCaveat;
 
   return { content: [{ type: 'text', text: out }] };
+}
+
+const BINARY_EDT_NOTE = 'no AxEdt XML exists; the properties below were read from the compiled model';
+
+/**
+ * Whether the EDT's symbol row places it in a binary ISV model. `edt_metadata` keeps no file
+ * path, so the row's `symbols` twin is asked: an equality probe on idx_name_type.
+ */
+function edtIsBinaryIsv(db: any, edtName: string, model?: string | null): boolean {
+  try {
+    const row = db.prepare(
+      `SELECT file_path FROM symbols WHERE name = ? AND type = 'edt'${model ? ' AND model = ?' : ''} LIMIT 1`,
+    ).get(...(model ? [edtName, model] : [edtName])) as { file_path?: string | null } | undefined;
+    return isBinaryIsvPath(row?.file_path);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -196,7 +217,10 @@ function resolveIndexedStringSize(
   db: any,
   row: any,
 ): { value: string; inheritedFrom?: string } | null {
-  if (row.string_size) return { value: String(row.string_size) };
+  // integerText: an index built from a binary ISV import before the importer stored text
+  // holds '15.0' here; shown as 15 without waiting for a rebuild.
+  const own = integerText(row.string_size);
+  if (own) return { value: own };
 
   const seen = new Set<string>([String(row.edt_name ?? '').toLowerCase()]);
   const hit = indexedEdtStringSize(db, row.extends, seen);
@@ -221,7 +245,8 @@ export function indexedEdtStringSize(
 ): { value: string; declaredBy: string } | null {
   const start = edtName ? canonicalEdtName(db, edtName) : edtName;
   for (const row of walkEdtChain(db, start, { seen })) {
-    if (row.string_size) return { value: String(row.string_size), declaredBy: row.edt_name };
+    const size = integerText(row.string_size);
+    if (size) return { value: size, declaredBy: row.edt_name };
   }
   return null;
 }
@@ -372,7 +397,7 @@ function getEdtHierarchy(db: any, edtName: string, modelName?: string) {
   // on the same dangling `extends` and the same cycle, and agree on what the chain is.
   const chain: Array<{ name: string; model: string; extends?: string; label?: string; stringSize?: string }> = [];
   for (const row of walkEdtChain(db, startName, { modelName })) {
-    chain.push({ name: row.edt_name, model: row.model, extends: row.extends, label: row.label, stringSize: row.string_size });
+    chain.push({ name: row.edt_name, model: row.model, extends: row.extends, label: row.label, stringSize: integerText(row.string_size) ?? undefined });
   }
 
   if (chain.length === 0) {

@@ -79,6 +79,24 @@ describe('compact class listing hint', () => {
     expect(out).not.toContain(COMPACT_METHODS_HINT);
   });
 
+  it('says an offset past the last method is past the end, instead of "showing 1000–14"', async () => {
+    const many = classInfo(Array.from({ length: 20 }, (_, i) => method(`m${i}`, `public void m${i}() {}`)));
+    const out = await render(many, true, 999);
+
+    expect(out).toContain('## Methods (20 total)');
+    expect(out).not.toContain('showing');
+    expect(out).toContain('`methodOffset: 999` is past the end: there are 20 methods (offsets 0–19)');
+    expect(out).toContain('`methodOffset: 0` for the first page or `methodOffset: 15` for the last');
+  });
+
+  it('pages a valid offset as before', async () => {
+    const many = classInfo(Array.from({ length: 20 }, (_, i) => method(`m${i}`, `public void m${i}() {}`)));
+    const out = await render(many, true, 15);
+
+    expect(out).toContain('## Methods (20 total, showing 16–20)');
+    expect(out).not.toContain('past the end');
+  });
+
   it('never points at get_method(include="signature") for a body', async () => {
     // That include value returns the signature INSTEAD of the body, and
     // get_method is no longer published in ListTools — an agent following it
