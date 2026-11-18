@@ -9,7 +9,7 @@
  */
 
 import * as fs from 'fs/promises';
-import { withFileLock } from './atomicFileWrite.js';
+import { withFileLock, writeFileAtomic } from './atomicFileWrite.js';
 
 const eqi = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
@@ -129,7 +129,8 @@ async function persist(
     : editEnvList(text, key, edit);
   if (!edited.changed) return { key, persisted: false, appliedToProcess, value, note: 'already as wanted in .env' };
   try {
-    await fs.writeFile(envFile.envPath, edited.text, 'utf-8');
+    // Atomic: a crash half-way through a plain write would leave the user's .env truncated.
+    await writeFileAtomic(envFile.envPath, edited.text);
   } catch (e: any) {
     return { key, persisted: false, appliedToProcess, value, note: `could not write ${envFile.envPath}: ${e?.message ?? e}` };
   }
