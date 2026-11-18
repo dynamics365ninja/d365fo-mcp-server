@@ -441,9 +441,12 @@ These items had no home anywhere else and would otherwise have gone with it:
 
 - **RPT003** — 31 shipped classes would have fired, roughly half the category it
   judged.
-- **`add-column` on `report-design`** — placing a column edits the RDL, whose
-  failures surface only in the SSRS renderer. The reasoning is in
-  `src/tools/write/reportDesignXml.ts`; the op-spec tells the caller.
+- ~~**`add-column` on `report-design`**~~ — was rejected because placing a column edits
+  the RDL, whose failures surface only in the SSRS renderer. **Now built (Phase 1)** in
+  `src/tools/write/reportRdlXml.ts`, behind a static validator that runs before any
+  write and refuses tablix shapes it does not recognise (see CHANGELOG). Still open:
+  Phase 2 (render check on the VM) and Phase 3 (layout from a picture); until then the
+  edited design is validated, not rendered.
 - **A "scaffold owns this design" fingerprint** — a property of the FILE's
   provenance, so it would refuse every report scaffolded before the marker
   existed (the committed goldens included) and accept a hand-written one that

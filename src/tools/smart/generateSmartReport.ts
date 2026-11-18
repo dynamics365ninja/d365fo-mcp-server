@@ -1320,7 +1320,11 @@ export async function handleGenerateSmartReport(
  * into every ReportSection inside the AxReport XML (CDATA-embedded RDL).
  * The header is placed before the closing </ReportSection> tag.
  */
-function injectRdlPageHeader(axReportXml: string, caption: string): string {
+export function injectRdlPageHeader(axReportXml: string, caption: string): string {
+  // A label id is only resolved inside =Labels!@Id; a bare @Id renders literally.
+  const titleValue = /^@[A-Za-z_]\w*(?::[A-Za-z_]\w*)?$/.test(caption)
+    ? `=Labels!${caption}`
+    : caption.replace(/[<>&"]/g, c => c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '&' ? '&amp;' : '&quot;');
   const pageHeaderXml = [
     `      <PageHeader>`,
     `        <PrintOnFirstPage>true</PrintOnFirstPage>`,
@@ -1335,7 +1339,7 @@ function injectRdlPageHeader(axReportXml: string, caption: string): string {
     `          </Textbox>`,
     `          <Textbox Name="ReportTitle">`,
     `            <CanGrow>true</CanGrow>`,
-    `            <Value>${caption.replace(/[<>&"]/g, c => c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '&' ? '&amp;' : '&quot;')}</Value>`,
+    `            <Value>${titleValue}</Value>`,
     `            <Style><FontSize>9pt</FontSize></Style>`,
     `            <Top>0.25in</Top><Left>0in</Left><Width>4in</Width><Height>0.25in</Height>`,
     `          </Textbox>`,

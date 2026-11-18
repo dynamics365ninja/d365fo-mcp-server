@@ -135,4 +135,21 @@ describe('convertBinaryModel', () => {
     expect(k.tables.find(t => t.name === 'ContosoChild')?.extends).toBe('ContosoBase');
     expect(k.tables.find(t => t.name === 'Common')?.methods).toHaveLength(1);
   });
+
+  it('stores an EDT string size as integer text, the way extract-metadata does', () => {
+    // The dump carries JSON numbers. Stored as numbers they reached the TEXT column
+    // edt_metadata.string_size as REALs, and every reader printed "String Size 15.0".
+    const e = convertBinaryModel(
+      dump({
+        Edts: [
+          { Name: 'ContosoCode', BaseType: 'String', StringSize: 15 },
+          { Name: 'ContosoMemo', BaseType: 'String', StringSize: -1 },
+          { Name: 'ContosoQty', BaseType: 'Real' },
+        ],
+      }),
+    ).edts;
+    expect(e.find(x => x.name === 'ContosoCode')?.stringSize).toBe('15');
+    expect(e.find(x => x.name === 'ContosoMemo')?.stringSize).toBe('-1');
+    expect(e.find(x => x.name === 'ContosoQty')?.stringSize).toBeUndefined();
+  });
 });
