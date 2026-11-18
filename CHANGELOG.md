@@ -29,6 +29,18 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`run_systest_class` runs several test classes in one cloud run on UDE** (#1278). The tool
+  took one class per call, so an agent checking a change ran a test model class by class. The
+  environment runs one test operation at a time and each costs about a minute whatever it
+  holds, so those calls queued up: 36 classes took about 40 minutes one by one. On UDE
+  `className` now also takes several classes of one model, comma-separated
+  (`"ContosoInvoiceTest,ContosoOrderTest"`), and sends all their test methods as one request.
+  The same 36 classes and 225 methods then ran in 6 minutes on a UDE environment, every result
+  returned. The reply counts the methods, gives one line per class (failing classes first) and
+  lists only the methods that failed. A listed class that is not found, abstract or has no
+  test method is named and left out instead of failing the call. `testMethod` still needs a
+  single class, and classes of different packages are refused, since one run sends one
+  module assembly. One class answers exactly as before. On a classic VM nothing changes.
 - **`d365fo_file(modify, objectType="report", operation="report-design")` can now edit the
   RDL of an existing report: `reportAction="fix-labels"` and `reportAction="add-column"`.**
   Until now the RDL was off limits, because a malformed RDL builds fine and fails only in
