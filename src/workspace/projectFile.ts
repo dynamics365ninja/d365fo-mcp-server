@@ -25,7 +25,7 @@ import {
 import { recordCreatedProjectFolder, takeCreatedProjectFolder } from './createdArtifactLedger.js';
 import {
   axFolderForObjectType, resolveMembership, projectDisplayName, includeKey, normalizeInclude,
-  labelLanguagesInIncludes, type Membership,
+  labelLanguagesInIncludes, keepsInOwnerProject, type Membership,
 } from './projectMembership.js';
 import { getConfigManager } from '../utils/configManager.js';
 import { assertProjectPathAllowed } from '../utils/pathContainment.js';
@@ -110,6 +110,11 @@ export async function registerFileInActiveProject(
     return `\n\n⚠️ No project of model "${modelName ?? '(unknown)'}" references \`${axFolder}\\${objectName}\`, ` +
       `and no active projectPath is configured to add it to. It still compiles (xppc builds the whole model folder), ` +
       `but no project shows it in Visual Studio.`;
+  }
+  // D365FO_PROJECT_MEMBERSHIP=owner: one project already owns it, so leave it there.
+  if (keepsInOwnerProject(membership)) {
+    return `\n\nℹ️ Left in ${alsoIn}, the one project that references it ` +
+      `(D365FO_PROJECT_MEMBERSHIP=owner) — not added to the active project ${projectDisplayName(projectPath)}.`;
   }
   try {
     const added = await new ProjectFileManager({ withinSolutionRoots: true }).addToProject(projectPath, objectType, objectName, '');
