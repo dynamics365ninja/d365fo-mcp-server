@@ -31,6 +31,7 @@ import {
 } from '../../utils/dataverseAuth.js';
 import { withOperationLock } from '../../utils/operationLocks.js';
 import type { ProgressReporter } from '../../utils/progressReporter.js';
+import { decideSyncScope, recordSyncedDeploy } from './udeSyncScope.js';
 import { UDE_DEPLOY_LOADER, UDE_DEPLOY_POWERSHELL } from './udeDeployPowerShell.js';
 
 const execFileAsync = promisify(execFile);
@@ -378,7 +379,10 @@ export interface DeployOptions {
   customPackagesPath: string;
   microsoftPackagesPath: string;
   dataverse: DataverseAuthSettings;
-  fullSync: boolean;
+  /** Undefined: chosen from what changed since the last synced deployment (udeSyncScope.ts). */
+  fullSync?: boolean;
+  /** Where the last-sync times are kept; a file in the user's home by default. */
+  syncStateFile?: string;
   /** Where the complete status log is written. */
   logFile: string;
   onProgress?: ProgressReporter;
@@ -393,8 +397,9 @@ export interface DeployResult {
 
 /** Deploys the package holding `modelName`; never throws — failures come back as a section. */
 export async function deployModelToUde(options: DeployOptions): Promise<DeployResult> {
-  const { modelName, dataverse, fullSync } = options;
-  const kind = fullSync ? 'Release package, full database sync' : 'Dev package, no database sync';
+  const { modelName, dataverse } = options;
+  let fullSync = options.fullSync === true;
+  let kind = '';
   const failed = (text: string): DeployResult => ({
     section: `\n\n--- Deployment (deploy) — FAILED, the build did not ---\n❌ ${text}`,
     failed: true,
@@ -427,6 +432,14 @@ export async function deployModelToUde(options: DeployOptions): Promise<DeployRe
   async function deployWithProgress(): Promise<DeployResult> {
     const pkg = await findModelPackage(options.customPackagesPath, modelName);
     if (!pkg) return failed(`No package folder in ${options.customPackagesPath} declares model ${modelName}. Nothing was deployed.`);
+    let chosen = '';
+    if (options.fullSync === undefined) {
+      const decision = await decideSyncScope(dataverse.url, path.join(options.customPackagesPath, pkg), options.syncStateFile);
+      fullSync = decision.fullSync;
+      chosen = `\nSync scope chosen from what changed: ${fullSync ? 'full database sync' : 'no database sync'}. ` +
+        `${decision.reason} Pass dbSync: true or false to decide yourself.`;
+    }
+    kind = fullSync ? 'Release package, full database sync' : 'Dev package, no database sync';
     const toolsDirs = await findPowerPlatformToolsDirs();
     if (toolsDirs.length === 0) {
       return failed('Power Platform Tools for Visual Studio was not found in any Visual Studio installation. It is a UDE ' +
@@ -493,6 +506,7 @@ export async function deployModelToUde(options: DeployOptions): Promise<DeployRe
             `Manager app of ${dataverse.url} before deploying again.\nLog: ${options.logFile}`);
         }
         const outcome = classifyDeployOutcome(lines, run.exitCode);
+        if (outcome.succeeded && fullSync) await recordSyncedDeploy(dataverse.url, pkg, started, options.syncStateFile);
         if (!outcome.succeeded) {
           const detail = run.stderr && !lines.some(l => l.type === 'error') ? `\n${run.stderr.slice(0, 2000)}` : '';
           return failed(`Deploying ${pkg} to ${dataverse.url} (${kind}) failed after ${seconds}s: ${outcome.reason}${detail}\n` +
@@ -503,6 +517,7 @@ export async function deployModelToUde(options: DeployOptions): Promise<DeployRe
             `(${kind}) in ${seconds}s${waited >= 5 ? `, after waiting ${waited}s for another deployment to this environment` : ''}. ` +
             'run_systest_class now runs against this build.' +
             (fullSync ? '' : '\nNo database sync ran: after a table, view, data entity, enum or EDT change, deploy with dbSync: true.') +
+            chosen +
             `\nLog: ${options.logFile}`,
           failed: false,
         };
