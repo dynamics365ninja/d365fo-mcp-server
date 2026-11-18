@@ -116,7 +116,7 @@ export function _resetDataverseAuth(): void {
 export async function getDataverseAccessToken(
   settings: DataverseAuthSettings,
   openBrowser: BrowserOpener = openInBrowser,
-  options: { forceRefresh?: boolean } = {},
+  options: { forceRefresh?: boolean; silentOnly?: boolean } = {},
 ): Promise<string> {
   const key = `${settings.tenant.toLowerCase()}|${settings.clientId.toLowerCase()}`;
   let entry = clients.get(key);
@@ -162,6 +162,11 @@ export async function getDataverseAccessToken(
     } catch {
       /* expired refresh token, or a scope for a different environment: sign in again */
     }
+  }
+
+  if (options.silentOnly) {
+    // For a status read that must never open a browser tab: no usable sign-in is "nothing known".
+    throw new Error('Not signed in to Dataverse yet.');
   }
 
   if (entry.pending) {

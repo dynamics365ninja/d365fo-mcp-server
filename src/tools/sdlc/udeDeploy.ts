@@ -31,7 +31,7 @@ import {
 } from '../../utils/dataverseAuth.js';
 import { withOperationLock } from '../../utils/operationLocks.js';
 import type { ProgressReporter } from '../../utils/progressReporter.js';
-import { decideSyncScope, recordSyncedDeploy } from './udeSyncScope.js';
+import { decideSyncScope, recordDeploy, recordSyncedDeploy } from './udeSyncScope.js';
 import { UDE_DEPLOY_LOADER, UDE_DEPLOY_POWERSHELL } from './udeDeployPowerShell.js';
 
 const execFileAsync = promisify(execFile);
@@ -506,6 +506,7 @@ export async function deployModelToUde(options: DeployOptions): Promise<DeployRe
             `Manager app of ${dataverse.url} before deploying again.\nLog: ${options.logFile}`);
         }
         const outcome = classifyDeployOutcome(lines, run.exitCode);
+        if (outcome.succeeded) await recordDeploy(dataverse.url, pkg, started, options.syncStateFile);
         if (outcome.succeeded && fullSync) await recordSyncedDeploy(dataverse.url, pkg, started, options.syncStateFile);
         if (!outcome.succeeded) {
           const detail = run.stderr && !lines.some(l => l.type === 'error') ? `\n${run.stderr.slice(0, 2000)}` : '';

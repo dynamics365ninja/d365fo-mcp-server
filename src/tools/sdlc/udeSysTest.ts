@@ -467,6 +467,39 @@ export async function activeOperations(client: DataverseClient): Promise<ActiveO
     .map(r => ({ name: r.msprov_name!, startedAt: r.createdon! }));
 }
 
+/** One row of the environment's operation history. */
+export interface OperationRecord {
+  name: string;
+  /** ISO 8601, UTC. */
+  startedAt: string;
+  /** Last change of the record, i.e. when the operation ended once it is no longer active. */
+  endedAt?: string;
+  active: boolean;
+  /** The environment's own label of the status (in the caller's language), e.g. "Succeeded". */
+  status?: string;
+}
+
+/**
+ * The most recent operations of the environment, newest first. Read-only, asked once without
+ * retries, for status displays that must stay quick.
+ */
+export async function recentOperations(client: DataverseClient, top = 15): Promise<OperationRecord[]> {
+  const response = await call(client, 'GET',
+    'msprov_operationhistories?$select=msprov_name,createdon,modifiedon,statecode,statuscode' +
+    `&$orderby=createdon desc&$top=${top}`, { formatted: true });
+  type Row = Record<string, unknown>;
+  const rows = ((await response.json()) as { value?: Row[] })?.value ?? [];
+  return rows
+    .filter(r => typeof r.msprov_name === 'string' && typeof r.createdon === 'string')
+    .map(r => ({
+      name: r.msprov_name as string,
+      startedAt: r.createdon as string,
+      endedAt: typeof r.modifiedon === 'string' ? r.modifiedon : undefined,
+      active: r.statecode === 0,
+      status: typeof r[`statuscode${FORMATTED}`] === 'string' ? (r[`statuscode${FORMATTED}`] as string) : undefined,
+    }));
+}
+
 /** Keep the .trx where the user can open it; best-effort. */
 export async function saveTrx(className: string, trx: string): Promise<string | undefined> {
   const file = path.join(os.tmpdir(), `systest-${className}-${Date.now()}.trx`);
