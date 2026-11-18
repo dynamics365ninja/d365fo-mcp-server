@@ -258,3 +258,14 @@ export function removeProjectItems(
   for (const [s, e] of ranges.sort((a, b) => b[0] - a[0])) out = out.slice(0, s) + out.slice(e);
   return { text: out, removed };
 }
+
+/** Includes of every item of `type`, exactly as the project spells them. */
+export function listRawProjectIncludes(text: string, type: string): string[] {
+  const out: string[] = [];
+  for (const group of itemGroups(parseProject(text))) {
+    for (const item of group.children) {
+      if (item.name === type && typeof item.attrs.Include === 'string') out.push(item.attrs.Include);
+    }
+  }
+  return out;
+}

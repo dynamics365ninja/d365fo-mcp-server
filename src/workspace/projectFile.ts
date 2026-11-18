@@ -20,12 +20,12 @@ import { Parser } from '../utils/xml.js';
 import { withFileLock } from '../utils/atomicFileWrite.js';
 import { detectEol } from '../utils/eolUtils.js';
 import {
-  insertProjectItem, listProjectIncludes, removeProjectItems, type Eol, type ProjectItemSpec,
+  insertProjectItem, listProjectIncludes, listRawProjectIncludes, removeProjectItems, type Eol, type ProjectItemSpec,
 } from './rnrprojText.js';
 import { recordCreatedProjectFolder, takeCreatedProjectFolder } from './createdArtifactLedger.js';
 import {
   axFolderForObjectType, resolveMembership, projectDisplayName, includeKey, normalizeInclude,
-  type Membership,
+  labelLanguagesInIncludes, type Membership,
 } from './projectMembership.js';
 import { getConfigManager } from '../utils/configManager.js';
 import { assertProjectPathAllowed } from '../utils/pathContainment.js';
@@ -514,6 +514,64 @@ export class ProjectFileManager {
       });
       if (written) console.error(`[ProjectFileManager] Removed '${include}' from project ${path.basename(projectPath)}`);
       return written;
+    });
+  }
+
+  /**
+   * Reverse of {@link addLabelToProject}: remove, per language, the
+   * `AxLabelFile\{id}_{lang}` descriptor entry and its `{id}.{lang}.label.txt`
+   * resource entry (matched by name or by a DependentUpon on a removed
+   * descriptor). `languages` limits it to those languages (any case); without it
+   * every language the project lists goes. The "Label Files\" folder entry and
+   * the files on disk are left alone. Returns the languages removed, as spelled
+   * in the project.
+   */
+  async removeLabelFromProject(projectPath: string, labelFileId: string, languages?: string[]): Promise<string[]> {
+    await this.assertWithinRoots(projectPath);
+    return withFileLock(projectPath, async () => {
+      const only = languages?.length ? new Set(languages.map(l => l.toLowerCase())) : undefined;
+      const wantedLang = (lang: string) => !only || only.has(lang.toLowerCase());
+      // `<id>.<lang>.label.txt`, the id compared literally and the language captured.
+      const resourceLang = (include: string): string | undefined => {
+        const fileName = include.split(/[\\/]/).pop() ?? '';
+        const prefix = `${labelFileId}.`.toLowerCase();
+        const suffix = '.label.txt';
+        const lower = fileName.toLowerCase();
+        if (!lower.startsWith(prefix) || !lower.endsWith(suffix)) return undefined;
+        const lang = fileName.slice(prefix.length, -suffix.length);
+        return lang && !/[.\\/]/.test(lang) ? lang : undefined;
+      };
+      // Languages as spelled in the project, keyed by lower case.
+      const langs = new Map<string, string>();
+      const note = (lang: string) => { if (!langs.has(lang.toLowerCase())) langs.set(lang.toLowerCase(), lang); };
+
+      const written = await this.editProjectText(projectPath, (body) => {
+        // Includes come back normalised (lower case), so the language is spelled by
+        // the project's own include, read from the raw attribute below.
+        let text = body;
+        for (const raw of listRawProjectIncludes(body, 'Content')) {
+          const descriptor = labelLanguagesInIncludes([raw], labelFileId)[0];
+          if (descriptor && wantedLang(descriptor)) note(descriptor);
+          else {
+            const resource = resourceLang(raw);
+            if (resource && wantedLang(resource)) note(resource);
+          }
+        }
+        const descriptorWanted = (inc: string) => {
+          const lang = labelLanguagesInIncludes([inc], labelFileId)[0];
+          return !!lang && wantedLang(lang);
+        };
+        text = removeProjectItems(text, 'Content', inc => descriptorWanted(inc)).text;
+        const resources = removeProjectItems(text, 'Content', inc => {
+          const lang = resourceLang(inc);
+          return !!lang && wantedLang(lang);
+        });
+        return resources.text === body ? null : resources.text;
+      });
+      if (!written) return [];
+      console.error(`[ProjectFileManager] Removed label file '${labelFileId}' (${[...langs.values()].join(', ')}) ` +
+        `from project ${path.basename(projectPath)}`);
+      return [...langs.values()];
     });
   }
 
