@@ -3,7 +3,7 @@
  * Fixture is hand-written in the extractor's output shape (no vendor data).
  */
 import { describe, it, expect } from 'vitest';
-import { convertBinaryModel, KERNEL_MODEL, type BinaryModelDump } from '../../src/metadata/binaryModelImport.js';
+import { convertBinaryModel, renderAttr, KERNEL_MODEL, type BinaryModelDump } from '../../src/metadata/binaryModelImport.js';
 
 const dump = (over: Partial<BinaryModelDump> = {}): BinaryModelDump => ({
   Model: 'Contoso Tools',
@@ -151,5 +151,19 @@ describe('convertBinaryModel', () => {
     expect(e.find(x => x.name === 'ContosoCode')?.stringSize).toBe('15');
     expect(e.find(x => x.name === 'ContosoMemo')?.stringSize).toBe('-1');
     expect(e.find(x => x.name === 'ContosoQty')?.stringSize).toBeUndefined();
+  });
+});
+
+describe('renderAttr intrinsic arguments (#1277)', () => {
+  it('prints a full intrinsic expression unchanged', () => {
+    expect(renderAttr({ Name: 'ExtensionOf', Args: ['tableStr(ContosoRentEquipmentTable)'] }))
+      .toBe('[ExtensionOf(tableStr(ContosoRentEquipmentTable))]');
+    expect(renderAttr({ Name: 'SubscribesTo', Args: ['classStr(ContosoX)', 'delegateStr(ContosoX, onDone)'] }))
+      .toBe('[SubscribesTo(classStr(ContosoX), delegateStr(ContosoX, onDone))]');
+  });
+  it('restores the target of an old dump that kept only the intrinsic name', () => {
+    expect(renderAttr({ Name: 'ExtensionOf', Args: ['tableStr'] },
+      { baseObjectName: 'ContosoRentEquipmentTable', baseKind: 'table' }))
+      .toBe('[ExtensionOf(tableStr(ContosoRentEquipmentTable))]');
   });
 });
