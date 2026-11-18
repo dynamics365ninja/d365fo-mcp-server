@@ -255,6 +255,23 @@ namespace BinaryModelExtractor
             }
         }
 
+        // An intrinsic argument (tableStr(X), delegateStr(X, d)) carries only the function name in
+        // TypeValue; its own arguments are in AdditionalData (SDK 7.0, AxAttributeParameter).
+        // Render the whole expression so [ExtensionOf(tableStr(X))] is not dumped as "tableStr".
+        static string RenderAttrParam(dynamic p, int depth = 0)
+        {
+            string v = (string)p.TypeValue;
+            try
+            {
+                if (depth > 4 || p.AdditionalData == null) return v;
+                var inner = new List<string>();
+                foreach (var q in p.AdditionalData) inner.Add(RenderAttrParam(q, depth + 1));
+                if (inner.Count > 0) return v + "(" + string.Join(", ", inner) + ")";
+            }
+            catch { }
+            return v;
+        }
+
         static List<AttrDump> MapAttrs(IEnumerable attrs)
         {
             var r = new List<AttrDump>();
@@ -263,7 +280,7 @@ namespace BinaryModelExtractor
             {
                 dynamic da = a;
                 var ad = new AttrDump { Name = (string)da.Name, Args = new List<string>() };
-                try { foreach (var p in da.Parameters) ad.Args.Add((string)p.TypeValue); } catch { }
+                try { foreach (var p in da.Parameters) ad.Args.Add(RenderAttrParam(p)); } catch { }
                 r.Add(ad);
             }
             return r;

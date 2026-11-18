@@ -237,8 +237,15 @@ function vis(v?: string): XppVisibility {
 }
 
 /** `[Hookable(False)]`-style rendering of the attributes an extension author must know about. */
-export function renderAttr(a: DumpAttr): string {
-  const args = (a.Args ?? []).filter(x => x !== undefined && x !== '');
+export function renderAttr(a: DumpAttr, extensionTarget?: { baseObjectName: string; baseKind: string; memberName?: string }): string {
+  let args = (a.Args ?? []).filter(x => x !== undefined && x !== '');
+  // Dumps written before the extractor kept intrinsic arguments hold only the function name
+  // ("tableStr"). The declaration still names the target, so restore it for [ExtensionOf].
+  if (extensionTarget && a.Name.replace(/Attribute$/, '') === 'ExtensionOf') {
+    const t = extensionTarget;
+    const member = t.memberName ? `, ${t.memberName}` : '';
+    args = args.map(x => (x.toLowerCase() === `${t.baseKind}str` ? `${x}(${t.baseObjectName}${member})` : x));
+  }
   const name = a.Name.replace(/Attribute$/, '');
   return args.length ? `[${name}(${args.join(', ')})]` : `[${name}]`;
 }
@@ -261,7 +268,7 @@ export function methodFacts(m: DumpMethod): string[] {
 }
 
 export function toMethodInfo(m: DumpMethod): XppMethodInfo & Record<string, unknown> {
-  const attrs = (m.Attributes ?? []).map(renderAttr);
+  const attrs = (m.Attributes ?? []).map(a => renderAttr(a));
   const mods = [
     vis(m.Visibility),
     m.IsStatic ? 'static' : '',
@@ -344,7 +351,7 @@ export function toClassInfo(c: DumpClass, model: string, info: BinaryIsvInfo): X
   const decl = c.Declaration ?? '';
   const header = parseXppClassHeader(decl);
   const extensionOf = parseExtensionOfAttribute(decl) ?? undefined;
-  const attrs = (c.Attributes ?? []).map(renderAttr);
+  const attrs = (c.Attributes ?? []).map(a => renderAttr(a, extensionOf));
   const summary = summaryFromDeclaration(decl);
   const ext = c.Extends || header?.extends || undefined;
   const base: XppClassInfo = {
@@ -433,8 +440,31 @@ export function toEdtInfo(e: DumpEdt, model: string, info: BinaryIsvInfo): Recor
   };
 }
 
+const xmlText = (v: string): string =>
+  v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/**
+ * A rendering of a binary enum as AxEnum XML. The binary model has no XML, but the enum
+ * readers and the index's stored copy (object_source) both carry XML, so a rendering lets a
+ * deployment that serves from the database alone answer too. It holds only what the dump
+ * knows: UseEnumValue is not part of it.
+ */
+export function renderEnumXml(e: DumpEnum): string {
+  const lines = ['<?xml version="1.0" encoding="utf-8"?>', '<AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">', `	<Name>${xmlText(e.Name)}</Name>`];
+  if (e.Label) lines.push(`	<Label>${xmlText(e.Label)}</Label>`);
+  lines.push(`	<IsExtensible>${e.IsExtensible ? 'Yes' : 'No'}</IsExtensible>`, '	<EnumValues>');
+  for (const v of e.Values ?? []) {
+    lines.push('		<AxEnumValue>', `			<Name>${xmlText(v.Name)}</Name>`);
+    if (v.Label) lines.push(`			<Label>${xmlText(v.Label)}</Label>`);
+    lines.push(`			<Value>${v.Value}</Value>`, '		</AxEnumValue>');
+  }
+  lines.push('	</EnumValues>', '</AxEnum>');
+  return lines.join('\n');
+}
+
 export function toEnumInfo(e: DumpEnum, model: string, info: BinaryIsvInfo): Record<string, unknown> {
   return {
+    raw: renderEnumXml(e),
     name: e.Name,
     model,
     sourcePath: sourcePathFor(info, 'AxEnum', e.Name),
