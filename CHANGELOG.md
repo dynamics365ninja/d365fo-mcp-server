@@ -29,6 +29,13 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`D365FO_PROJECT_MEMBERSHIP=owner` keeps an object in the project that already owns it.**
+  In a solution split into many feature projects, a write to an object referenced by
+  another project of the model added a second reference to the active project, and
+  agents switched the active project back and forth to avoid it. With `owner`, an
+  object referenced by exactly one project stays there and the reply says so; new
+  objects, objects no project references and objects in several projects behave as
+  before. The default `active` keeps today's behaviour (#1284).
 - **A green `build_d365fo_project` reply says what is new: "3 new, 18 known".** A model
   with a stable set of known warnings had every one of them printed again on each build,
   and the agent had to spot the new one among them (#1282). The server now keeps a warning

@@ -261,6 +261,25 @@ export async function resolveMembership(
 }
 
 /**
+ * Which project a write registers an existing object in (`D365FO_PROJECT_MEMBERSHIP`).
+ *
+ * `active` (default): the active project gets a reference too, even when a sibling
+ * already has one. `owner`: an object referenced by exactly ONE project of the model
+ * stays there — for solutions split into many feature projects where every object has
+ * one home and a second reference is noise in every pull request. New objects (no
+ * project references them) and objects referenced by several projects behave as in
+ * `active` mode either way.
+ */
+export function projectMembershipMode(): 'owner' | 'active' {
+  return process.env.D365FO_PROJECT_MEMBERSHIP?.trim().toLowerCase() === 'owner' ? 'owner' : 'active';
+}
+
+/** True when owner mode applies: referenced by exactly one project, and it is not the active one. */
+export function keepsInOwnerProject(m: Membership): boolean {
+  return projectMembershipMode() === 'owner' && m.status === 'other' && m.owners.length === 1;
+}
+
+/**
  * The one line a write response spends on project membership, or '' when there
  * is nothing worth saying. Silence is the common case: the file is registered
  * where it should be and the caller does not need to be told so again.
@@ -279,6 +298,10 @@ export function renderMembership(m: Membership, axFolder: string, objectName: st
     case 'unknown':
       return '';
     case 'other': {
+      if (keepsInOwnerProject(m)) {
+        return `\nℹ️ Left in ${projectDisplayName(m.owners[0])}, the one project that references it ` +
+          `(D365FO_PROJECT_MEMBERSHIP=owner) — the active project was not changed.`;
+      }
       const where = m.owners.map(projectDisplayName).join(', ');
       return `\nℹ️ Referenced by ${where} but NOT by the active project — it compiles, but the active ` +
         `project does not contain what you just changed. Re-send with addToProject=true to add it here too.`;
