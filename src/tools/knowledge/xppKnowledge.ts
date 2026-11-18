@@ -2513,10 +2513,13 @@ public class MyReportDP extends SrsReportDataProviderBase
       'Nullable, MultiValue (when present), PromptString, UserVisibility, DefaultValue, Values — zero contradicting instances. ' +
       'DataType written after PromptString is silently lost and a DateTime parameter becomes a string',
       'After the scaffold, d365fo_file(action="modify", objectType="report", operation="report-design") is the ' +
-      'write path for the two changes that are bookkeeping, not layout: reportAction="refresh-dataset" copies the ' +
-      'temp table\'s fields onto the dataset, reportAction="add-parameter" declares a parameter and binds it to the ' +
-      'dataset in one write. Placing either in the DESIGN (a column, a dialog control) is still Report Designer ' +
-      'work — there is no add-column, deliberately, because an RDL error surfaces only in the SSRS renderer',
+      'write path: reportAction="refresh-dataset" copies the temp table\'s fields onto the dataset, ' +
+      '"add-parameter" declares a parameter and binds it, "fix-labels" rewrites bare @label ids in RDL textboxes ' +
+      'to =Labels!@Id (a bare id renders literally), and "add-column" (fieldName) appends a dataset field to the ' +
+      'tablix. The two RDL actions validate the edited RDL BEFORE writing (well-formed, Fields!/Parameters! ' +
+      'resolve, unique names, tablix rows match columns) and refuse a design they do not recognise — but an RDL ' +
+      'error surfaces only in the SSRS renderer and nothing here renders it, so check the layout in the Report ' +
+      'Designer. Other layout changes (dialog controls, new regions) stay Report Designer work',
     ],
     examples: [
       {
