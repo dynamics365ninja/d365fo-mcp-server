@@ -534,7 +534,13 @@ async function runSysTestOnUde(
       .filter(c => !returned.some(o => o.name.toLowerCase() === c.name.toLowerCase()))
       .map(c => ({ name: c.name, passed: false, message: 'No result came back for this test.' })),
   ];
-  const status = outcomes.some(o => !o.passed) ? '❌ Tests FAILED' : '✅ Tests passed';
+  // A listed class that was not run (typo, abstract, no test method) must not read as a
+  // clean pass: "✅ Tests passed" would let a misspelt class name go unnoticed.
+  const status = outcomes.some(o => !o.passed)
+    ? '❌ Tests FAILED'
+    : skipped.length > 0
+      ? `⚠️ Tests passed, but ${skipped.length} of ${classNames.length} classes were not run`
+      : '✅ Tests passed';
   const deployedNote = `\nRan in the cloud runtime of ${dataverse.url}, against the code deployed there — a change ` +
     'that is not deployed yet is not in this result (build_d365fo_project with deploy: true deploys it).';
   const resultFileNote = resultFile ? `\n\nResult file: ${resultFile}` : '';
