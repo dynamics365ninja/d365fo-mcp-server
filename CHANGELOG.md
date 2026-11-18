@@ -29,6 +29,21 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`validate_code` warns about two data-entity traps that only show at import time**
+  (#1285). Neither raises a build error or a BP rule, and both surface only when data is
+  imported through DMF or OData. `ENT001` (any XML code type, run it on an
+  `AxDataEntityView`) flags a child data source with `UseRelations` = Yes and no
+  `<Relations>` of its own: the generated `saveDataSources()` can leave such a child out,
+  so an import reports Completed and writes only the root. `XML011` (`xml-table`) flags a
+  staging table (a `...Staging` table with `DefinitionGroup` and `ExecutionId` fields)
+  whose alternate key contains `ExecutionId` but not `DefinitionGroup`, which allows one
+  staging row per execution and fails every later row with "The record already exists".
+  Both are warnings: 106 shipped entities contain the `ENT001` shape and the check cannot
+  tell which are defective, so it marks a place to check. `XML011` fires on no shipped
+  table; a key of exactly (DefinitionGroup, ExecutionId) is deliberately not flagged,
+  because 114 shipped single-row parameter entities use it. The lookup-index
+  (`AllowDuplicates`), duplicate child-table and changed-alternate-key traps from the
+  issue are not covered.
 - **`get_object_info` on a table lists its indexes and relations without the bridge.** On a
   host with only the database (Azure, or a table of a binary ISV model) the answer showed
   fields and methods and said `relations:true` "was NOT applied". `table_relations` was
