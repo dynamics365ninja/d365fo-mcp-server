@@ -61,6 +61,7 @@ Set in the `env` block. The legacy `"context": {...}` block is **deprecated** �
 | `D365FO_PROJECT_PATH` | optional | pin an exact `.rnrproj` (multiple projects in one solution) |
 | `D365FO_SOLUTION_PATH` | optional | `.sln` folder, used when `projectPath` is not set |
 | `D365FO_PACKAGE_PATH` | optional | explicit PackagesLocalDirectory — only when `workspacePath` is not set |
+| `D365FO_PROJECT_MEMBERSHIP` | optional | `active` (default) or `owner`. A write to an object that another project of the model already references adds a second reference to the active project; with `owner`, an object referenced by exactly one project stays there and the reply says so. New objects and objects in several projects are unaffected |
 | `D365FO_MODEL_NAME` | optional | explicit model override (always wins) |
 | `D365FO_DEV_ENVIRONMENT_TYPE` | optional | `auto` (default) / `traditional` / `ude` |
 | `D365FO_CUSTOM_PACKAGES_PATH` | UDE / repo layouts | custom **write root**. UDE: X++ root (`ModelStoreFolder`), auto-detected. Traditional: the package root holding your custom models when they live **outside** `PackagesLocalDirectory` (e.g. a Git checkout junctioned into PLD) — see [Symlink / junction layouts](#symlink--junction-layouts) |

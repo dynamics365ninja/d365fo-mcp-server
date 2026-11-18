@@ -50,7 +50,7 @@ export const buildD365foProjectTool = {
         },
         deploy: {
           type: 'boolean',
-          description: 'UDE: on a SUCCESSFUL build, deploy the model\'s package to the cloud runtime that run_systest_class tests run in. No DB sync (~3 min) unless dbSync (~20 min).',
+          description: 'UDE: on a SUCCESSFUL build, deploy the model\'s package to the cloud runtime that run_systest_class tests run in. dbSync unset: syncs only if schema changed (~20 min, else ~3).',
         },
         restartAos: {
           type: 'boolean',

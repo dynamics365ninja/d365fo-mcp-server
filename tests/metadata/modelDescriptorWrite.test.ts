@@ -435,3 +435,49 @@ describe('the preservation guard after a first module reference', () => {
     expect(guarded.xml.match(/<Publisher>/g)).toHaveLength(1);
   });
 });
+
+describe('InternalsVisibleTo — the same transforms on the other string list', () => {
+  const ns = 'xmlns:d2p1="http://schemas.microsoft.com/2003/10/Serialization/Arrays"';
+  const withIv = (iv: string) =>
+    `<AxModelInfo>\n  <Name>Contoso</Name>\n${iv}\n` +
+    `  <ModuleReferences ${ns}>\n    <d2p1:string>Ledger</d2p1:string>\n  </ModuleReferences>\n</AxModelInfo>`;
+
+  it('fills an empty self-closing list, keeping the namespace attribute', () => {
+    const r = addModuleReference(withIv(`  <InternalsVisibleTo ${ns} />`), 'ContosoTests', 'InternalsVisibleTo');
+    expect(r.kind).toBe('added');
+    if (r.kind !== 'added') return;
+    expect(r.xml).toContain(
+      `  <InternalsVisibleTo ${ns}>\n    <d2p1:string>ContosoTests</d2p1:string>\n  </InternalsVisibleTo>`);
+    // The sibling list is untouched.
+    expect(parseModuleReferences(r.xml)).toEqual(['Ledger']);
+  });
+
+  it('inserts in sorted position, refuses a case-insensitive duplicate', () => {
+    const xml = withIv(
+      `  <InternalsVisibleTo ${ns}>\n    <d2p1:string>Alpha</d2p1:string>\n    <d2p1:string>Zulu</d2p1:string>\n  </InternalsVisibleTo>`);
+    const r = addModuleReference(xml, 'ContosoTests', 'InternalsVisibleTo');
+    expect(r.kind === 'added' && r.xml).toContain(
+      'Alpha</d2p1:string>\n    <d2p1:string>ContosoTests</d2p1:string>\n    <d2p1:string>Zulu');
+    expect(addModuleReference(xml, 'alpha', 'InternalsVisibleTo').kind).toBe('duplicate');
+  });
+
+  it('does not mistake a module reference for an internals entry', () => {
+    const xml = withIv(`  <InternalsVisibleTo ${ns} />`);
+    expect(removeModuleReference(xml, 'Ledger', 'InternalsVisibleTo').kind).toBe('not-found');
+    expect(addModuleReference(xml, 'Ledger', 'InternalsVisibleTo').kind).toBe('added');
+  });
+
+  it('removing the last entry collapses back to the self-closing element (round trip)', () => {
+    const empty = withIv(`  <InternalsVisibleTo ${ns} />`);
+    const added = addModuleReference(empty, 'ContosoTests', 'InternalsVisibleTo');
+    if (added.kind !== 'added') throw new Error('add failed');
+    const removed = removeModuleReference(added.xml, 'ContosoTests', 'InternalsVisibleTo');
+    expect(removed.kind === 'removed' && removed.xml).toBe(empty);
+  });
+
+  it('reports a descriptor with no <InternalsVisibleTo> instead of inventing one', () => {
+    const none = `<AxModelInfo>\n  <Name>Contoso</Name>\n</AxModelInfo>`;
+    expect(addModuleReference(none, 'ContosoTests', 'InternalsVisibleTo').kind).toBe('no-element');
+    expect(removeModuleReference(none, 'ContosoTests', 'InternalsVisibleTo').kind).toBe('no-element');
+  });
+});

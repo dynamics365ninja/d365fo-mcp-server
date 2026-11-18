@@ -635,7 +635,61 @@ final class SalesFormLetter_MyModel_Extension
       'Entity-level properties on an extension go through properties.propertyModifications = [{ name, value }] — an extension owns no properties directly',
       'A data entity (extension) with no matching AxSecurityPrivilege raises the BP ERROR DataEntitySecurityPrivilegeCheck — create the privilege alongside it',
     ],
-    related: ['query-patterns'],
+    related: ['query-patterns', 'data-entity-import-traps', 'data-entity-methods'],
+  },
+
+  // ── Data entity import traps (#1285) ────────────────────────────────────
+  {
+    id: 'data-entity-import-traps',
+    title: 'Data entity and table traps that only show at DMF / OData import',
+    keywords: ['import trap', 'savedatasources', 'the record already exists', 'record already exists',
+      'findentitydatasource', 'insertentitydatasource', 'duplicate child table', 'discriminator',
+      'allowduplicates', 'lookup index', 'unique index', 'alternate key', 'set-based entity',
+      'entity sync', 'staging alternate key', 'executionid', 'definitiongroup', 'userelations',
+      'dmf', 'odata', 'import completed'],
+    summary:
+      'Five metadata shapes that build clean, pass BP and fail only when data is imported through DMF or '
+      + 'OData, usually with a misleading "The record already exists" or a silent partial write. Each is '
+      + 'visible in the XML. validate_code reports the first and the staging half of the third as warnings '
+      + '(ENT001, XML011); the rest are judgement calls a tool cannot decide, so they live here.',
+    rules: [
+      'CHILD DATA SOURCE WITHOUT A RELATION (validate_code ENT001): a child data source of an entity view with '
+        + 'UseRelations = Yes and an empty Relations list gives the compiler no static path to the parent, and '
+        + 'the generated saveDataSources() can leave the child out. The import reports Completed and writes only '
+        + 'the root. Give the child an explicit data source relation to its parent, then import one row and check '
+        + 'the child table. Some shipped entities have this shape and import correctly, so ENT001 is a warning',
+      'SEVERAL COPIES OF ONE CHILD TABLE, EACH NARROWED BY A RANGE ON A DISCRIMINATOR FIELD: a range filters '
+        + 'READS only. On write every copy resolves to the same child row, so the second copy fails with "The '
+        + 'record already exists", even into an empty table. Override findEntityDataSource and '
+        + 'insertEntityDataSource on the entity, switch on _dataSourceCtx.name() and set the discriminator '
+        + '(or look the row up with it) before the write; get_knowledge("data-entity-methods") has the '
+        + 'signatures. Nothing can detect this statically: two copies of a table with ranges are also the '
+        + 'correct shape for a read-only entity',
+      'STAGING TABLE ALTERNATE KEY (validate_code XML011 checks the first half): the alternate key of a staging '
+        + 'table must be DefinitionGroup, ExecutionId and then the entity key fields. A key of ExecutionId alone '
+        + 'allows one staging row per execution, and every row after the first fails with "The record already '
+        + 'exists" with no duplicates in the source. A key that stops after DefinitionGroup and ExecutionId is '
+        + 'only right for a single-row (parameter) entity. Whether the key lists ALL the entity key fields '
+        + 'needs the entity and its staging table together, so it is not checked; compare the two by hand',
+      'CHANGED ALTERNATE KEY ON A TABLE BEHIND A SET-BASED ENTITY: the entity sync is built against the '
+        + 'alternate key that existed when the entity was generated. Add, remove or reorder fields of that '
+        + 'key (or move the AlternateKey flag to another index) and the sync breaks after deployment, not at '
+        + 'build. Treat the alternate key of a table that a data entity reads as part of the entity contract: '
+        + 'find the entities that use the table first (find_references), then regenerate and re-sync them with '
+        + 'the table change in the same deployment',
+      'LOOKUP INDEX WITHOUT <AllowDuplicates>Yes</AllowDuplicates>: AllowDuplicates defaults to No, so an index '
+        + 'written without the element is a UNIQUE index in SQL. An index that exists only to speed a lookup '
+        + 'then fails with "The record already exists" on the second row with the same values, on an empty '
+        + 'table. The element is easy to miss because its absence reads as "nothing set". It is deliberately '
+        + 'not a validate_code rule: in the shipped AOT 14,451 of 24,455 table indexes carry no '
+        + 'AllowDuplicates element and almost all are intended unique indexes, and "lookup" is a purpose, not '
+        + 'something the XML states. State the purpose when you write an index: unique means no element (or No), '
+        + 'a plain lookup means AllowDuplicates Yes',
+      'None of the five is caught by the build or by run_bp_check. After writing or changing an entity or the '
+        + 'tables behind it, an import of two or three rows (two rows with the same parent, to hit the duplicate '
+        + 'cases) is the only test that proves it',
+    ],
+    related: ['data-entities', 'data-entity-methods'],
   },
 
   // ── Temp Tables ─────────────────────────────────────────────────────────

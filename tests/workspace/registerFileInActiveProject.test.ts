@@ -15,7 +15,7 @@
  * only silent case is 'already here'; everything else gets an entry.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const { mockResolveMembership, mockAddToProject, mockGetProjectsForModel } = vi.hoisted(() => ({
   mockResolveMembership: vi.fn(),
@@ -72,6 +72,36 @@ describe('registerFileInActiveProject', () => {
     // Names the sibling, so the second reference is understood as deliberate.
     expect(note).toContain('Ctso - Maintenance');
     expect(note).not.toMatch(/Nothing to add here/i);
+  });
+
+  describe('D365FO_PROJECT_MEMBERSHIP=owner', () => {
+    beforeEach(() => { process.env.D365FO_PROJECT_MEMBERSHIP = 'owner'; });
+    afterEach(() => { delete process.env.D365FO_PROJECT_MEMBERSHIP; });
+
+    it('leaves an object in the single project that owns it', async () => {
+      mockResolveMembership.mockResolvedValue({ status: 'other', owners: [SIBLING] });
+
+      const note = await register(ACTIVE);
+
+      expect(mockAddToProject).not.toHaveBeenCalled();
+      expect(note).toMatch(/Left in Ctso - Maintenance/);
+    });
+
+    it('still adds it when several projects reference it', async () => {
+      mockResolveMembership.mockResolvedValue({ status: 'other', owners: [SIBLING, 'K:\\x\\Other.rnrproj'] });
+
+      await register(ACTIVE);
+
+      expect(mockAddToProject).toHaveBeenCalledTimes(1);
+    });
+
+    it('still adds a new object no project references', async () => {
+      mockResolveMembership.mockResolvedValue({ status: 'missing', owners: [] });
+
+      await register(ACTIVE);
+
+      expect(mockAddToProject).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('adds a true orphan and says so differently', async () => {

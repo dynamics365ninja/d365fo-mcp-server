@@ -18,6 +18,7 @@ import * as path from 'path';
 import {
   directXmlAddModuleReference,
   directXmlRemoveModuleReference,
+  directXmlInternalsVisibleTo,
 } from '../../src/tools/write/directXmlWriters';
 import { canBridgeModify } from '../../src/bridge/bridgeAdapter';
 import { D365FO_FILE_OP_SPECS, getRequiredParams } from '../../src/tools/specs/d365foFileOpSpecs';
@@ -71,11 +72,12 @@ describe('the ops are actually REACHABLE from the tool surface', () => {
       expect(canBridgeModify('model-descriptor', op)).toBe(true);
     });
 
-    it(`${op} is published, has an op-spec, and requires moduleReference`, () => {
+    it(`${op} is published, has an op-spec, and takes moduleReference or internalsVisibleTo`, () => {
       const published: string[] = (d365foFileTool.inputSchema.properties as any).operation.enum;
       expect(published).toContain(op);
       expect(D365FO_FILE_OP_SPECS[op]).toBeDefined();
-      expect(getRequiredParams(op)).toContain('moduleReference');
+      expect(D365FO_FILE_OP_SPECS[op].optional).toEqual(['moduleReference', 'internalsVisibleTo']);
+      expect(getRequiredParams(op)).toEqual([]);
     });
 
   }
@@ -243,5 +245,56 @@ describe('directXmlAddModuleReference name validation', () => {
     expect(r?.success).toBe(false);
     expect(r?.message).toContain('not a package folder name');
     expect((await fs.readFile(file)).equals(before)).toBe(true);
+  });
+});
+
+describe('InternalsVisibleTo through the same writers', () => {
+  const ns = 'xmlns:d2p1="http://schemas.microsoft.com/2003/10/Serialization/Arrays"';
+  const withIv = `<?xml version="1.0" encoding="utf-8"?>\n<AxModelInfo ${ns}>\n  <Name>Contoso</Name>\n` +
+    `  <InternalsVisibleTo />\n  <ModuleReferences>\n    <d2p1:string>ApplicationSuite</d2p1:string>\n` +
+    `  </ModuleReferences>\n</AxModelInfo>`;
+
+  it('adds and removes a test model, BOM and CRLF intact, module references untouched', async () => {
+    await seed(withIv);
+    const added = await directXmlAddModuleReference(file, 'ContosoTests', '', 'InternalsVisibleTo');
+    expect(added?.success, added?.message).toBe(true);
+    expect(added?.message).toContain('InternalsVisibleTo');
+    const after = await fs.readFile(file, 'utf-8');
+    expect(after.charCodeAt(0)).toBe(0xfeff);
+    expect(after).not.toMatch(/[^\r]\n/);
+    expect(after.replace(/\r/g, '')).toContain(
+      '  <InternalsVisibleTo>\n    <d2p1:string>ContosoTests</d2p1:string>\n  </InternalsVisibleTo>');
+    expect(after).toContain('<d2p1:string>ApplicationSuite</d2p1:string>');
+
+    const dup = await directXmlAddModuleReference(file, 'contosotests', '', 'InternalsVisibleTo');
+    expect(dup?.success).toBe(false);
+    expect(dup?.message).toMatch(/already in <InternalsVisibleTo>/);
+
+    const removed = await directXmlRemoveModuleReference(file, 'ContosoTests', 'InternalsVisibleTo');
+    expect(removed?.success, removed?.message).toBe(true);
+    expect((await fs.readFile(file, 'utf-8')).replace(/\r/g, '')).toBe(BOM + withIv);
+  });
+
+  it('the dispatcher helper edits <InternalsVisibleTo>, refusing both params or a bad name', async () => {
+    await seed(withIv);
+    const both = await directXmlInternalsVisibleTo(file, 'add-module-reference',
+      { internalsVisibleTo: 'ContosoTests', moduleReference: 'Ledger' });
+    expect(both?.success).toBe(false);
+    expect(both?.message).toContain('OR');
+    const bad = await directXmlInternalsVisibleTo(file, 'add-module-reference', { internalsVisibleTo: 'Contoso Tests' });
+    expect(bad?.success).toBe(false);
+    const ok = await directXmlInternalsVisibleTo(file, 'add-module-reference', { internalsVisibleTo: 'ContosoTests' });
+    expect(ok?.success, ok?.message).toBe(true);
+    const gone = await directXmlInternalsVisibleTo(file, 'remove-module-reference', { internalsVisibleTo: 'ContosoTests' });
+    expect(gone?.success, gone?.message).toBe(true);
+    expect((await fs.readFile(file, 'utf-8')).split(String.fromCharCode(13)).join('')).toBe(BOM + withIv);
+  });
+
+  it('refuses when the descriptor has no <InternalsVisibleTo>, writing nothing', async () => {
+    const before = await fs.readFile(file, 'utf-8');
+    const r = await directXmlAddModuleReference(file, 'ContosoTests', '', 'InternalsVisibleTo');
+    expect(r?.success).toBe(false);
+    expect(r?.message).toMatch(/no <InternalsVisibleTo> element/);
+    expect(await fs.readFile(file, 'utf-8')).toBe(before);
   });
 });

@@ -290,3 +290,46 @@ describe('label files and the active project', () => {
     if (r.isError) expect(r.content[0].text).toContain('pass projectPath');
   });
 });
+
+describe('objectType "reference" — .NET assembly references', () => {
+  const refs = async (project: string) =>
+    [...(await fs.readFile(project, 'utf-8')).matchAll(/<Reference Include="([^"]*)"/g)].map(m => m[1]);
+
+  it('add-object writes <Reference Include>, sorted, with no file lookup; a re-run reports it', async () => {
+    const r = await call('add-object', { projectPath: a, objects: [
+      { objectType: 'reference', objectName: 'System.Security' },
+      { objectType: 'reference', objectName: 'System.Core' },
+    ] });
+    expect(r.isError, r.content[0].text).toBeFalsy();
+    expect(lookedUpIn).toEqual([]);
+    expect(await refs(a)).toEqual(['System.Core', 'System.Security']);
+    expect(await fs.readFile(a, 'utf-8')).toContain('<Reference Include="System.Security" />');
+    const again = await call('add-object', { projectPath: a, objectType: 'reference', objectName: 'system.security' });
+    expect(again.content[0].text).toContain('already in the project');
+    expect(await refs(a)).toHaveLength(2);
+  });
+
+  it('treats a full assembly name as the same reference as its simple name', async () => {
+    await call('add-object', { projectPath: a, objectType: 'reference', objectName: 'System.Security' });
+    const r = await call('add-object', {
+      projectPath: a, objectType: 'reference',
+      objectName: 'System.Security, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a',
+    });
+    expect(r.content[0].text).toContain('already in the project');
+  });
+
+  it('remove-object removes it (no orphan check), and reports one that is not there', async () => {
+    await call('add-object', { projectPath: a, objectType: 'reference', objectName: 'System.Security' });
+    const r = await call('remove-object', { projectPath: a, objectType: 'reference', objectName: 'System.Security' });
+    expect(r.isError, r.content[0].text).toBeFalsy();
+    expect(await refs(a)).toEqual([]);
+    expect((await call('remove-object', { projectPath: a, objectType: 'reference', objectName: 'System.Security' }))
+      .content[0].text).toContain('not in the project');
+  });
+
+  it('refuses a name that is not an assembly name', async () => {
+    const r = await call('add-object', { projectPath: a, objectType: 'reference', objectName: 'System Security"/>' });
+    expect(r.isError).toBe(true);
+    expect(await refs(a)).toEqual([]);
+  });
+});

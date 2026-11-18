@@ -63,6 +63,7 @@ export function buildProgressMessage(toolName: string, args: Record<string, any>
           const obj = `${a.objectType ?? 'object'} ${objName ?? ''}`.trim();
           switch (op) {
             case 'add-module-reference':
+              if (p.internalsVisibleTo) return `🔗 Making model ${a.modelName ?? objName ?? ''} visible to "${p.internalsVisibleTo}"`;
               return `🔗 Referencing module "${p.moduleReference ?? ''}" from model ${a.modelName ?? objName ?? ''}`.trim();
             case 'remove-module-reference':
               return `🔗 Removing module reference "${p.moduleReference ?? ''}" from model ${a.modelName ?? objName ?? ''}`.trim();

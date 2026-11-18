@@ -56,7 +56,9 @@ import { cleanRemovedFieldReferences, renderRemovedFieldCleanup } from '../xml/t
 import type { RestructureResult } from '../xml/formRestructure.js';
 import { convertEntityFieldToComputed, type ComputedFieldType } from '../xml/entityComputedField.js';
 import {
-  addModuleReference, removeModuleReference, parseModuleReferences, invalidateModelVisibility,
+  addModuleReference, removeModuleReference, parseModuleReferences, parseInternalsVisibleTo, invalidateModelVisibility,
+  isValidModuleReferenceName,
+  type DescriptorListTag,
 } from '../../metadata/modelDescriptor.js';
 import { clearSharedPackageMaps } from '../../utils/packageResolver.js';
 
@@ -2893,18 +2895,22 @@ export const directXmlAddModuleReference = serializedOnFile(async (
   filePath: string,
   moduleName: string,
   unknownModuleNote: string,
+  tag: DescriptorListTag = 'ModuleReferences',
 ): Promise<{ success: boolean; message: string } | null> => {
+  const iv = tag === 'InternalsVisibleTo';
+  // What the entry is, for messages: a module reference or a friend (test) model.
+  const kind = iv ? 'InternalsVisibleTo entry' : 'Module reference';
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
 
-    const outcome = addModuleReference(content, moduleName);
+    const outcome = addModuleReference(content, moduleName, tag);
     switch (outcome.kind) {
       case 'no-element':
         return {
           success: false,
           message:
-            `${filePath} has no <ModuleReferences> element, so there is nowhere to add ` +
+            `${filePath} has no <${tag}> element, so there is nowhere to add ` +
             `'${moduleName}' — nothing was written. One was NOT invented: its <d2p1:string> entries ` +
             `need the arrays-namespace prefix bound by an xmlns:d2p1 attribute, and guessing where ` +
             `that declaration belongs produces a descriptor Visual Studio rewrites on the next save. ` +
@@ -2915,7 +2921,7 @@ export const directXmlAddModuleReference = serializedOnFile(async (
         return {
           success: false,
           message:
-            `'${outcome.existing}' is already in <ModuleReferences> — nothing was added. ` +
+            `'${outcome.existing}' is already in <${tag}> — nothing was added. ` +
             `A second entry for one module changes nothing for xppc and is one more line for a ` +
             `reviewer.` +
             (outcome.existing === moduleName ? '' : ` (Spelled '${outcome.existing}' in the file.)`),
@@ -2924,21 +2930,24 @@ export const directXmlAddModuleReference = serializedOnFile(async (
         return {
           success: false,
           message:
-            `'${moduleName}' is not a package folder name — nothing was written. A module reference ` +
-            `is spelled exactly as the package folder is: letters, digits, '_', '-' or '.', no spaces.`,
+            `'${moduleName}' is not a ${iv ? 'model' : 'package folder'} name — nothing was written. ` +
+            `${iv ? 'An entry' : 'A module reference'} is spelled exactly as the ${iv ? 'model' : 'package folder'} ` +
+            `is: letters, digits, '_', '-' or '.', no spaces.`,
         };
     }
 
     await writeFileAtomic(filePath, withBomOf(rawContent, normalizeD365Xml(outcome.xml)));
     invalidateDescriptorCaches(filePath);
-    console.error(`[modify_d365fo_file] ✅ directXmlAddModuleReference: added '${moduleName}' to ${filePath}`);
+    console.error(`[modify_d365fo_file] ✅ directXmlAddModuleReference: added '${moduleName}' to <${tag}> of ${filePath}`);
     return {
       success: true,
-      message:
-        `${unknownModuleNote}✅ Module reference '${moduleName}' added. File: ${filePath}\n` +
-        `ℹ️ A descriptor change only takes effect on a FULL build of this model — an incremental ` +
-        `build reuses the old reference set, so a classStr/delegateStr/type error against the newly ` +
-        `referenced module can survive it.`,
+      message: iv
+        ? `✅ ${kind} '${moduleName}' added: model ${moduleName} may now see this model's internal members. ` +
+          `File: ${filePath}\nℹ️ Takes effect on a FULL build of this model.`
+        : `${unknownModuleNote}✅ ${kind} '${moduleName}' added. File: ${filePath}\n` +
+          `ℹ️ A descriptor change only takes effect on a FULL build of this model — an incremental ` +
+          `build reuses the old reference set, so a classStr/delegateStr/type error against the newly ` +
+          `referenced module can survive it.`,
     };
   } catch (err) {
     // Real error, not null — a null here would be rendered as "the C# bridge
@@ -2963,38 +2972,44 @@ export const directXmlAddModuleReference = serializedOnFile(async (
 export const directXmlRemoveModuleReference = serializedOnFile(async (
   filePath: string,
   moduleName: string,
+  tag: DescriptorListTag = 'ModuleReferences',
 ): Promise<{ success: boolean; message: string } | null> => {
   try {
     const rawContent = await fs.readFile(filePath, 'utf-8');
     const content = rawContent.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+    const iv = tag === 'InternalsVisibleTo';
 
-    const outcome = removeModuleReference(content, moduleName);
+    const outcome = removeModuleReference(content, moduleName, tag);
     switch (outcome.kind) {
       case 'no-element':
         return {
           success: false,
-          message:
-            `${filePath} has no <ModuleReferences> element, so it references no modules at all — ` +
-            `there is nothing to remove.`,
+          message: `${filePath} has no <${tag}> element, so it ` +
+            `${iv ? 'lists no models at all' : 'references no modules at all'} — there is nothing to remove.`,
         };
       case 'not-found':
         return {
           success: false,
           message:
-            `'${moduleName}' is not in <ModuleReferences> — nothing was removed.\n` +
+            `'${moduleName}' is not in <${tag}> — nothing was removed.\n` +
             (outcome.present.length > 0
-              ? `This model references: ${outcome.present.join(', ')}.`
-              : `This model references nothing.`),
+              ? `${iv ? 'This model lists' : 'This model references'}: ${outcome.present.join(', ')}.`
+              : `${iv ? 'This model lists nothing' : 'This model references nothing'}.`),
         };
     }
 
     await writeFileAtomic(filePath, withBomOf(rawContent, normalizeD365Xml(outcome.xml)));
     invalidateDescriptorCaches(filePath);
-    console.error(`[modify_d365fo_file] ✅ directXmlRemoveModuleReference: removed '${outcome.removed}' from ${filePath}`);
-    const left = parseModuleReferences(outcome.xml);
+    console.error(`[modify_d365fo_file] ✅ directXmlRemoveModuleReference: removed '${outcome.removed}' from <${tag}> of ${filePath}`);
+    const left = iv ? parseInternalsVisibleTo(outcome.xml) : parseModuleReferences(outcome.xml);
     return {
       success: true,
-      message:
+      message: iv
+        ? `✅ InternalsVisibleTo entry '${outcome.removed}' removed. File: ${filePath}\n` +
+          `⚠️ Model ${outcome.removed} can no longer see this model's internal members — a test model ` +
+          `that relies on it stops compiling; run a FULL build.\n` +
+          `Still listed: ${left.length > 0 ? left.join(', ') : '(nothing)'}.`
+        :
         `✅ Module reference '${outcome.removed}' removed. File: ${filePath}\n` +
         `⚠️ Every type this model resolved through '${outcome.removed}' is now invisible to xppc — ` +
         `run a FULL build of the model before trusting this change.\n` +
@@ -3009,6 +3024,37 @@ export const directXmlRemoveModuleReference = serializedOnFile(async (
     };
   }
 });
+
+/**
+ * add-/remove-module-reference with params.internalsVisibleTo: the same two writers over
+ * the descriptor's `<InternalsVisibleTo>`, after the checks the dispatcher would otherwise
+ * carry. `operation` is add-module-reference or remove-module-reference.
+ */
+export async function directXmlInternalsVisibleTo(
+  filePath: string,
+  operation: string,
+  args: { internalsVisibleTo?: unknown; moduleReference?: unknown },
+): Promise<{ success: boolean; message: string } | null> {
+  const model = args.internalsVisibleTo;
+  if (args.moduleReference !== undefined) {
+    return {
+      success: false,
+      message: `${operation} takes moduleReference OR internalsVisibleTo, not both — nothing was written.`,
+    };
+  }
+  const name = String(model ?? '').trim();
+  if (!isValidModuleReferenceName(name)) {
+    return {
+      success: false,
+      message:
+        `${operation} needs params.internalsVisibleTo spelled exactly as the model is (letters, digits, ` +
+        `'_', '-' or '.', no spaces) — got ${JSON.stringify(model)}. Nothing was written.`,
+    };
+  }
+  return operation === 'add-module-reference'
+    ? directXmlAddModuleReference(filePath, name, '', 'InternalsVisibleTo')
+    : directXmlRemoveModuleReference(filePath, name, 'InternalsVisibleTo');
+}
 
 /** Offset just past the last non-whitespace character before `end`. */
 function endOfContentBefore(content: string, end: number): number {

@@ -467,6 +467,23 @@ export async function getWorkspaceInfoTool(
     // Snapshot is additive — omit silently on failure.
   }
 
+  // On a UDE: what the environment is doing (operation history), so a stale deploy or a busy
+  // environment is not mistaken for a fault. Silent without Dataverse access; never signs in.
+  try {
+    if ((await configManager.getDevEnvironmentType()) === 'ude') {
+      const { udeEnvironmentSection } = await import('../sdlc/udeEnvironmentStatus.js');
+      lines.push(...await udeEnvironmentSection(async () => {
+        const root = await configManager.getCustomPackagesPath();
+        if (!root || !modelName) return undefined;
+        const { findModelPackage } = await import('../sdlc/udeDeploy.js');
+        const pkg = await findModelPackage(root, modelName);
+        return pkg ? nodePath.join(root, pkg) : undefined;
+      }));
+    }
+  } catch {
+    // Additive — omit silently.
+  }
+
   // Everything below is a broken/unusual state. It sits last so the facts
   // above stay one uninterrupted block in the normal case, and so the
   // instruction the agent must act on is the last thing it reads.

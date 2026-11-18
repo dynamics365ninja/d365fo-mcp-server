@@ -81,14 +81,14 @@ describe('build_d365fo_project deploy', () => {
     expect(m.spawn).not.toHaveBeenCalled();
   });
 
-  it('deploys after a successful build, without a sync by default', async () => {
+  it('deploys after a successful build, leaving the sync scope to the deployment by default', async () => {
     await buildProjectTool({ modelName: 'ContosoExt', deploy: true, wait: false }, {});
     await finish();
     const result = await collect();
     expect(m.deploy).toHaveBeenCalledTimes(1);
     expect(m.deploy.mock.calls[0][0]).toMatchObject({
       modelName: 'ContosoExt', customPackagesPath: 'C:\\Packages', microsoftPackagesPath: 'C:\\Microsoft',
-      dataverse: DATAVERSE, fullSync: false,
+      dataverse: DATAVERSE, fullSync: undefined,
     });
     expect(m.deploy.mock.calls[0][0].logFile).toMatch(/\.deploy\.log$/);
     expect(result.content[0].text).toContain('✅ Deployed ContosoExt');

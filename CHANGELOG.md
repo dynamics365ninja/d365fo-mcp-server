@@ -29,6 +29,101 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **A model descriptor's `InternalsVisibleTo` and a project's .NET references can be
+  edited without hand-written XML.** (#1286) The test model has to be listed in the
+  product model's `<InternalsVisibleTo>`, and `System.Security` (for `ProtectedData`)
+  has to be a `<Reference>` in the project; agents edited the descriptor and the
+  `.rnrproj` by hand for both. `add-module-reference` / `remove-module-reference` on
+  `model-descriptor` now take `params.internalsVisibleTo: "<TestModel>"` instead of
+  `moduleReference` and edit `<InternalsVisibleTo>` the same way (sorted placement, a
+  case-insensitive duplicate refused, BOM and line ends kept, a descriptor with no such
+  element reported, not given one; 19 of the 213 shipped descriptors have none).
+  `d365fo_file(action="project")` `add-object` / `remove-object` accept
+  `objectType: "reference"` with the assembly as `objectName` (`System.Security`, or a full
+  name): it writes `<Reference Include="..." />`, sorted among the project's references,
+  matched by simple name so a full name counts as the same reference. There is no file
+  lookup or orphan check, and no HintPath (a GAC assembly needs none). Neither adds a
+  schema value, so the tool schema is unchanged.
+- **`get_knowledge("data-entity-import-traps")` explains the five data-entity and table
+  traps that only show at DMF / OData import** (#1285). The topic covers the two that
+  `validate_code` now warns about (`ENT001`, `XML011`) and the three it cannot decide:
+  several copies of one child table narrowed by a discriminator range (reads are filtered,
+  writes all hit the same row, so "The record already exists"; needs `findEntityDataSource`
+  and `insertEntityDataSource` overrides), a changed alternate key on a table behind a
+  set-based entity (breaks the entity sync after deployment), and a lookup index without
+  `<AllowDuplicates>Yes</AllowDuplicates>` (a unique index in SQL). The last one is
+  deliberately not a rule: 14,451 of 24,455 shipped table indexes have no `AllowDuplicates`
+  element and nearly all are intended unique indexes, and "lookup" is a purpose the XML does
+  not state. The "staging key misses entity key fields" variant needs the entity and its
+  staging table together, so it is guidance too. `data-entities` now points to the topic.
+- **`get_workspace_info` says what the UDE environment is doing** (#1283). On a UDE with
+  `environment.dataverseUrl` set, the reply gains a short `## UDE environment` section
+  read from the environment's operation history (`msprov_operationhistory`): the operation
+  running now (a deploy, test run, copy or update, which the environment runs one at a time
+  and during which its web endpoint may answer HTTP 503), how the last deploy ended and
+  when, and how many local files are newer than that deploy, so a test run against an
+  older build is no surprise. The "newer than the deploy" reference is the start time this
+  server recorded for its own last deploy, else the environment's. The section is omitted,
+  with no error, when the machine is not a UDE, no Dataverse URL is set, the server is not
+  signed in yet (this read never opens a sign-in page; sign in by running a UDE test or
+  deploy) or the environment does not answer within 4 seconds.
+- **`validate_code` warns about two data-entity traps that only show at import time**
+  (#1285). Neither raises a build error or a BP rule, and both surface only when data is
+  imported through DMF or OData. `ENT001` (any XML code type, run it on an
+  `AxDataEntityView`) flags a child data source with `UseRelations` = Yes and no
+  `<Relations>` of its own: the generated `saveDataSources()` can leave such a child out,
+  so an import reports Completed and writes only the root. `XML011` (`xml-table`) flags a
+  staging table (a `...Staging` table with `DefinitionGroup` and `ExecutionId` fields)
+  whose alternate key contains `ExecutionId` but not `DefinitionGroup`, which allows one
+  staging row per execution and fails every later row with "The record already exists".
+  Both are warnings: 106 shipped entities contain the `ENT001` shape and the check cannot
+  tell which are defective, so it marks a place to check. `XML011` fires on no shipped
+  table; a key of exactly (DefinitionGroup, ExecutionId) is deliberately not flagged,
+  because 114 shipped single-row parameter entities use it. The lookup-index
+  (`AllowDuplicates`), duplicate child-table and changed-alternate-key traps from the
+  issue are not covered.
+- **`get_object_info` on a table lists its indexes and relations without the bridge.** On a
+  host with only the database (Azure, or a table of a binary ISV model) the answer showed
+  fields and methods and said `relations:true` "was NOT applied". `table_relations` was
+  filled for every table but never read, and indexes were not stored at all. The index path
+  now shows the relation count (the list, with constraints, for `relations:true`) and every
+  index with unique, primary and clustered marked, from a new `table_indexes` table. The
+  relations work on an existing database; the indexes appear after a re-index (a table
+  without stored indexes says so). `relations` is gone from the "not applied" note (#1276).
+- **`D365FO_PROJECT_MEMBERSHIP=owner` keeps an object in the project that already owns it.**
+  In a solution split into many feature projects, a write to an object referenced by
+  another project of the model added a second reference to the active project, and
+  agents switched the active project back and forth to avoid it. With `owner`, an
+  object referenced by exactly one project stays there and the reply says so; new
+  objects, objects no project references and objects in several projects behave as
+  before. The default `active` keeps today's behaviour (#1284).
+- **A green `build_d365fo_project` reply says what is new: "3 new, 18 known".** A model
+  with a stable set of known warnings had every one of them printed again on each build,
+  and the agent had to spot the new one among them (#1282). The server now keeps a warning
+  baseline per model in `.warning-baseline.json` next to `.last-build.json`, keyed by
+  model, element kind, object, member and message (not the line number). From the second
+  build on, the reply lists only warnings absent from the baseline and gives the known
+  ones as a count with the file path; the warning icon follows the new ones. A full build
+  replaces the baseline, an incremental one adds to it. No parameter, nothing to
+  configure. The first build of a model behaves as before.
+- **`run_bp_check` says what is new since the last run, and can check only what changed.**
+  A model with a stable set of known BP findings had all of them printed again on every
+  check, about 55 s per whole-model call (#1282). The server now keeps a findings baseline
+  per model in the same `.warning-baseline.json`, keyed by rule, element path and message
+  (not the position). From the second run on, the reply gives "N new, M known", lists
+  only the new findings in full and names the file that holds the known ones; the verdict
+  follows the new ones. A whole-model run replaces the baseline, a run on named objects
+  adds to it. The same applies to `build_d365fo_project(bpCheck:true)`. Nothing is
+  recorded or hidden when an output reports issues the parser cannot read, so a
+  finding shape it misses is never counted as known. The first run of a model behaves as
+  before. The new option is an entry in the existing `objects` parameter, no new
+  parameter: `objects: ["git:origin/main"]` checks only the objects of the model that
+  differ from that ref (working tree against the merge base, plus untracked files),
+  found by the `Ax*` folder of each changed file. Nothing changed answers at once
+  without running xppbp; more than 25 changed objects run as one whole-model check, with
+  a note. `bpCheck` on the build has no ref form; call `run_bp_check` for that.
+  The schema text grew by about 100 characters, paid for by trimming the tool
+  description's example rule codes.
 - **The server can create, edit, inspect and delete models.** `d365fo_file(action="create",
   objectType="model-descriptor")` was listed by the tool description and the op-spec index
   and then rejected by the input schema ("Invalid option"), so a new model meant a
@@ -123,8 +218,46 @@ those are called out explicitly below.
   adjacent code alone and mention unrelated problems instead of fixing them, and state how
   the result will be verified before writing it. They apply to every MCP client (GitHub
   Copilot, Claude Code). Re-copy the instruction file into your workspace to get them.
+- **`build_d365fo_project(deploy: true)` on a UDE now picks its database sync from what
+  changed.** It used to deploy a Dev package with no sync unless `dbSync` was given, so the
+  agent had to guess: no sync after a table change left the change out of the environment,
+  a full sync (~20 min) after a class-only change wasted the time. Without `dbSync` the
+  server now compares the package's tables, views, data entities, EDTs, enums and their
+  extensions with the last deployment it made with a sync to the same environment: nothing
+  newer deploys without a sync, anything newer (or no known earlier synced deployment, for
+  example the first deploy from this machine) deploys as a Release package with a full
+  sync. A deployment cannot sync a table list, so "changed tables" also means a full sync.
+  The reply says which scope was chosen and why; `dbSync: true` or `false` still wins. The
+  last-sync times are kept in `~/.d365fo-mcp/ude-sync-state.json`. Part of #1283; the
+  environment status in `get_workspace_info` is not done yet.
 
 ### Fixed
+- **`get_object_info(objectType:"enum")` lists the values of an enum in a binary ISV
+  model.** Without the bridge it answered `Enum "X" not found` for an enum imported with
+  `npm run extract-binary-models`: the reader only understood AxEnum XML, and a binary enum
+  has none (its row's path is `binary-isv://<Model>/AxEnum/<Name>`). The importer now
+  renders the enum's values and labels as AxEnum XML, so the extracted JSON and the index's
+  stored copy (`object_source`) both carry them, and a deployment that serves from the
+  database alone answers too. The reply carries the "Binary ISV, signatures only" notice
+  and leaves out "Use Enum Value", which a compiled model's dump does not know. If neither
+  copy is on the host (an index built before this change, JSON removed), the reply says the
+  enum is in binary model M and its values are not available here, instead of "not found".
+  Re-run `npm run extract-binary-models` and re-index to get the values. (#1275)
+- **Binary ISV classes show `[ExtensionOf(tableStr(X))]` instead of `[ExtensionOf(tableStr)]`.**
+  The binary model extractor stored each attribute argument as the intrinsic's bare name, so
+  the class and method documentation lost the target (and a `[SubscribesTo(classStr(X),
+  delegateStr(X, d))]` lost both). It now dumps the whole expression. Re-run the extractor to
+  get it for existing imports; until then the class description restores the target of an
+  `[ExtensionOf]` from the declaration. (#1277)
+- **`modify-property` now sets a property on an extensible form control.** A control without
+  `i:type` (one that carries a `<FormControlExtension>`) was refused with "has no i:type, so
+  it is not in the element-order census", so `Visible`, `Width` or `AutoDeclaration` had to
+  be edited by hand. A census of the 5,039 such controls in the shipped AOT shows only 13
+  children ever occur (`Name`, `AllowEdit`, `AutoDeclaration`, `ConfigurationKey`,
+  `EnableFormRef`, `Enabled`, `Height`, `HeightMode`, `Skip`, `Visible`, `Width`, `WidthMode`,
+  `FormControlExtension`) and never in conflicting order, so those are now written in that
+  order. `HelpText` and `Label` never occur on an extensible control and are still refused;
+  an untyped control without `<FormControlExtension>` is refused as before (#1286).
 - **`run_systest_class` finds a test class in another model when no model was named.** The
   tool looked for the class only in the workspace model, while test classes usually live in a
   test model of their own, so the call failed with "was not found in model …" and the agent

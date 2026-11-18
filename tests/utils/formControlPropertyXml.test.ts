@@ -192,3 +192,45 @@ describe('upsertFormControlProperty — refusals write nothing', () => {
     expect(upsertFormControlProperty(FORM.replace('</Design>', ''), 'PostButton', 'NeedsRecord', 'Yes')?.ok).toBe(false);
   });
 });
+
+/** An extensible control: no i:type, recognised by the <FormControlExtension> it carries (#1286). */
+const EXTENSIBLE = `<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>MyForm</Name>
+	<Design>
+		<Controls xmlns="">
+			<AxFormControl xmlns="">
+				<Name>ContosoExpressionBuilder</Name>
+				<AutoDeclaration>Yes</AutoDeclaration>
+				<WidthMode>SizeToAvailable</WidthMode>
+				<FormControlExtension>
+					<Name>ContosoExpressionBuilder</Name>
+				</FormControlExtension>
+			</AxFormControl>
+		</Controls>
+	</Design>
+</AxForm>`;
+
+describe('upsertFormControlProperty — an extensible control (no i:type)', () => {
+  it('places properties in the order shipped extensible controls use', () => {
+    let xml = ok(upsertFormControlProperty(EXTENSIBLE, 'ContosoExpressionBuilder', 'Visible', 'No')).xml;
+    xml = ok(upsertFormControlProperty(xml, 'ContosoExpressionBuilder', 'Height', '200')).xml;
+    xml = ok(upsertFormControlProperty(xml, 'ContosoExpressionBuilder', 'AllowEdit', 'No')).xml;
+    const own = xml.slice(xml.indexOf('<AxFormControl'), xml.indexOf('</AxFormControl>'));
+    const order = [...own.matchAll(/^\t{4}<([A-Za-z]+)[\s>/]/gm)].map(m => m[1]);
+    expect(order).toEqual(['Name', 'AllowEdit', 'AutoDeclaration', 'Height', 'Visible', 'WidthMode', 'FormControlExtension']);
+  });
+
+  it('refuses a property no shipped extensible control carries, and writes nothing', () => {
+    const r = upsertFormControlProperty(EXTENSIBLE, 'ContosoExpressionBuilder', 'HelpText', 'x');
+    expect(r?.ok).toBe(false);
+    expect(r && !r.ok && r.reason).toMatch(/extensible control.*no property "HelpText"/);
+  });
+
+  it('still refuses an untyped control that carries no <FormControlExtension>', () => {
+    const bare = EXTENSIBLE.replace(/<FormControlExtension>[\s\S]*?<\/FormControlExtension>/, '');
+    const r = upsertFormControlProperty(bare, 'ContosoExpressionBuilder', 'Visible', 'No');
+    expect(r?.ok).toBe(false);
+    expect(r && !r.ok && r.reason).toMatch(/no i:type and no <FormControlExtension>/);
+  });
+});
