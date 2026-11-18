@@ -29,6 +29,14 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`get_object_info` on a table lists its indexes and relations without the bridge.** On a
+  host with only the database (Azure, or a table of a binary ISV model) the answer showed
+  fields and methods and said `relations:true` "was NOT applied". `table_relations` was
+  filled for every table but never read, and indexes were not stored at all. The index path
+  now shows the relation count (the list, with constraints, for `relations:true`) and every
+  index with unique, primary and clustered marked, from a new `table_indexes` table. The
+  relations work on an existing database; the indexes appear after a re-index (a table
+  without stored indexes says so). `relations` is gone from the "not applied" note (#1276).
 - **`D365FO_PROJECT_MEMBERSHIP=owner` keeps an object in the project that already owns it.**
   In a solution split into many feature projects, a write to an object referenced by
   another project of the model added a second reference to the active project, and

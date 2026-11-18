@@ -876,6 +876,23 @@ export class XppSymbolIndex {
       CREATE INDEX IF NOT EXISTS idx_table_relations_model ON table_relations(model);
     `);
 
+    // Table indexes - so get_object_info can list them without the bridge. The binary-ISV
+    // JSON and the extracted source JSON both carry them; before this nothing stored them.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS table_indexes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        table_name TEXT NOT NULL,
+        index_name TEXT NOT NULL,
+        fields TEXT,
+        is_unique INTEGER NOT NULL DEFAULT 0,
+        is_primary INTEGER NOT NULL DEFAULT 0,
+        is_clustered INTEGER NOT NULL DEFAULT 0,
+        model TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_table_indexes_table ON table_indexes(table_name);
+      CREATE INDEX IF NOT EXISTS idx_table_indexes_model ON table_indexes(model);
+    `);
+
     // Form DataSources - for analyzing form patterns
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS form_datasources (
@@ -3006,6 +3023,27 @@ export class XppSymbolIndex {
             }
           }
         }
+        // Indexes, with the primary and clustered one marked. Both are table-level
+        // properties, and the binary dump only sets an index's own `clustered` by name.
+        if (tableData.indexes && Array.isArray(tableData.indexes)) {
+          const stmt = this.db.prepare(`
+            INSERT INTO table_indexes (
+              table_name, index_name, fields, is_unique, is_primary, is_clustered, model
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          `);
+          for (const idx of tableData.indexes) {
+            if (!idx?.name) continue;
+            stmt.run(
+              tableData.name,
+              idx.name,
+              JSON.stringify(Array.isArray(idx.fields) ? idx.fields : []),
+              idx.unique ? 1 : 0,
+              tableData.primaryIndex && idx.name === tableData.primaryIndex ? 1 : 0,
+              idx.clustered || (tableData.clusteredIndex && idx.name === tableData.clusteredIndex) ? 1 : 0,
+              model,
+            );
+          }
+        }
         // Index table→map bindings into map_mappings. Most bindings are declared
         // on the table's side (1,913 shipped, against 147 in maps' own XML, which
         // indexMaps stores), so without this most maps listed no tables.
@@ -4729,6 +4767,7 @@ export class XppSymbolIndex {
     this.invalidateSymbolCounts();
     this.db.exec('DELETE FROM symbols');
     this.db.exec('DELETE FROM table_relations');
+    this.db.exec('DELETE FROM table_indexes');
     this.db.exec('DELETE FROM form_datasources');
     this.db.exec('DELETE FROM form_patterns');
     this.db.exec('DELETE FROM object_source');
@@ -4771,6 +4810,7 @@ export class XppSymbolIndex {
     const deleteAll = this.db.transaction(() => {
       this.db.prepare(`DELETE FROM symbols WHERE model IN (${placeholders})`).run(...modelNames);
       this.db.prepare(`DELETE FROM table_relations WHERE model IN (${placeholders})`).run(...modelNames);
+      this.db.prepare(`DELETE FROM table_indexes WHERE model IN (${placeholders})`).run(...modelNames);
       this.db.prepare(`DELETE FROM form_datasources WHERE model IN (${placeholders})`).run(...modelNames);
       this.db.prepare(`DELETE FROM form_patterns WHERE model IN (${placeholders})`).run(...modelNames);
       this.db.prepare(`DELETE FROM object_source WHERE model IN (${placeholders})`).run(...modelNames);
