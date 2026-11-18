@@ -57,7 +57,7 @@ export function splitChangedSince(params: any): { ref?: string; rest: any } {
 
 /** A ref is passed to git as an argument, never to a shell; still refuse anything option-like. */
 export function isSafeRef(ref: string): boolean {
-  return ref.length > 0 && !ref.startsWith('-') && !/[\s\u0000-\u001f]/.test(ref);
+  return ref.length > 0 && !ref.startsWith('-') && !/\s/.test(ref) && ![...ref].some(c => c.charCodeAt(0) < 0x20);
 }
 
 /** Objects of `modelName` named by changed file paths; other files are counted, not dropped silently. */
