@@ -11,8 +11,8 @@
 
 import * as fs from 'fs/promises';
 import {
-  findAotFilesInAllPackages, findD365FileOnDisk, findD365FileViaIndex, modelsHoldingObject,
-  type SymbolFileLookupSource,
+  binaryIsvObjectRows, findAotFilesInAllPackages, findD365FileOnDisk, findD365FileViaIndex,
+  modelsHoldingObject, type BinaryIsvObjectRow, type SymbolFileLookupSource,
 } from '../../utils/objectFileLookup.js';
 import { readIndexedXml, indexedXmlSourceLabel, symbolTypesFor } from '../../utils/indexedXmlLookup.js';
 
@@ -107,18 +107,53 @@ export function objectXmlNotFound(
   elsewhere: string[] = [],
 ): ObjectXmlResult {
   const where = elsewhere.filter(m => m !== modelName);
+  // The index does hold it, in the very model asked for: "no model holds it" would be
+  // false, and it is the answer a caller gets after following the retry hint above.
+  const listedHere = !!modelName && elsewhere.includes(modelName);
   const hint = where.length > 0
     ? `The index has it in ${where.map(m => `"${m}"`).join(' · ')} — retry with ` +
       `options.modelName="${where[0]}". If that also misses, the index row is stale ` +
       `(the file was moved or deleted since the last index run).`
-    : `No model in the symbol index holds a ${objectType} of that name, so retrying with ` +
-      `a different options.modelName will not help — check the spelling and the ` +
-      `objectType, or the object does not exist yet.`;
+    : listedHere
+      ? `The index lists it in model "${modelName}", but its file is not on disk: the ` +
+        `index row is stale (the file was moved or deleted since the last index run), or ` +
+        `this host has only the database and no stored copy of the XML. Retrying with ` +
+        `another options.modelName will not help; get_object_info without include:"xml" ` +
+        `still answers from the index.`
+      : `No model in the symbol index holds a ${objectType} of that name, so retrying with ` +
+        `a different options.modelName will not help — check the spelling and the ` +
+        `objectType, or the object does not exist yet.`;
   return {
     isError: true,
     text:
       `❌ get_object_info(include="xml"): no file on disk for ${objectType} "${objectName}"` +
       `${modelName ? ` in model "${modelName}"` : ''}.\n${hint}`,
+  };
+}
+
+/**
+ * The message for an object of a binary ISV model: compiled only, so no XML exists
+ * anywhere and no modelName can change that. Without it the reader fell through to
+ * objectXmlNotFound, which sent the caller to retry with that model's name and then,
+ * on the retry, said no model holds the object at all — for an object get_object_info
+ * had just described.
+ */
+export function objectXmlBinaryIsv(
+  objectType: string,
+  objectName: string,
+  rows: BinaryIsvObjectRow[],
+): ObjectXmlResult {
+  const models = [...new Set(rows.map(r => r.model))];
+  const modelText = models.length === 1
+    ? `the binary ISV model "${models[0]}"`
+    : `the binary ISV models ${models.map(m => `"${m}"`).join(' · ')}`;
+  return {
+    isError: true,
+    text:
+      `🔒 get_object_info(include="xml"): ${objectType} "${objectName}" is in ${modelText} ` +
+      `(compiled only, signatures only): no XML or X++ source exists. get_object_info ` +
+      `without include:"xml" gives its signatures.\n` +
+      rows.map(r => `**Indexed path:** ${r.filePath}`).join('\n'),
   };
 }
 
@@ -162,6 +197,13 @@ export async function readObjectXml(
         : `**File:** ${found.ref.localPath}`;
       return renderXmlContent(found.xml.replace(/^\uFEFF/, ''), header, objectType, objectName, options);
     }
+
+    // No file and no stored copy. For a binary ISV object that is the whole answer.
+    const binary = binaryIsvObjectRows(
+      options.index, symbolTypesFor(objectType), objectName, options.modelName,
+    );
+    if (binary.length > 0) return objectXmlBinaryIsv(objectType, objectName, binary);
+
     return objectXmlNotFound(
       objectType, objectName, options.modelName,
       modelsHoldingObject(options.index, objectType, objectName),

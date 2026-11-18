@@ -358,6 +358,9 @@ export async function findD365FileViaIndex(
   };
 
   for (const row of rows) {
+    // A binary ISV model's row carries a binary-isv:// marker, not a path: there is
+    // no file to find under any packages root (see readObjectXml).
+    if (isBinaryIsvPath(row.file_path)) continue;
     const candidates = path.isAbsolute(row.file_path)
       ? [row.file_path]
       : (await packageRoots()).map(root => path.join(root, row.file_path));
@@ -455,6 +458,49 @@ export function modelsHoldingObject(
        ORDER BY model LIMIT ?`
     ).all(objectType, objectName, limit) as Array<{ model: string }>;
     return rows.map(r => r.model);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The file_path a binary ISV model's objects are indexed under
+ * (binaryModelImport.sourcePathFor): a marker, since such a model ships compiled
+ * only and has no XML or X++ source anywhere.
+ */
+export function isBinaryIsvPath(filePath: unknown): boolean {
+  return typeof filePath === 'string' && filePath.startsWith('binary-isv://');
+}
+
+/** An index row of an object that lives in a binary ISV model. */
+export interface BinaryIsvObjectRow {
+  model: string;
+  filePath: string;
+}
+
+/**
+ * The index rows that place this object in a binary ISV model, restricted to
+ * `modelName` (case-insensitively) when given. Empty when the index is unavailable.
+ */
+export function binaryIsvObjectRows(
+  index: SymbolFileLookupSource,
+  types: readonly string[],
+  objectName: string,
+  modelName?: string,
+  limit = 5,
+): BinaryIsvObjectRow[] {
+  if (types.length === 0) return [];
+  try {
+    const rows = index.getReadDb().prepare(
+      `SELECT model, file_path FROM symbols
+       WHERE type IN (${types.map(() => '?').join(', ')}) AND name = ? AND parent_name IS NULL
+         AND file_path LIKE 'binary-isv://%'` +
+      (modelName ? ` AND model = ? COLLATE NOCASE` : ``) +
+      ` ORDER BY model LIMIT ?`
+    ).all(...types, objectName, ...(modelName ? [modelName] : []), limit) as Array<{ model: string; file_path: string }>;
+    return rows
+      .filter(r => isBinaryIsvPath(r.file_path))
+      .map(r => ({ model: r.model, filePath: r.file_path }));
   } catch {
     return [];
   }
