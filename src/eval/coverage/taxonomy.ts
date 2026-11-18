@@ -509,7 +509,7 @@ export const TAXONOMY: CoverageLeaf[] = [
   // ── Integration ─────────────────────────────────────────────────────────
   {
     id: 'data-entity', label: 'Data entity (OData)', domain: 'Integration', source: 'aot', tier: 'core', weight: 5,
-    aotTypes: ['data-entity'], knowledgeIds: ['data-entities'],
+    aotTypes: ['data-entity'], knowledgeIds: ['data-entities', 'data-entity-import-traps'],
     caseIds: ['L4-entity-security', 'L4-bridge-drops-data-entity-primarytable-fields-on-create'],
   },
   {
