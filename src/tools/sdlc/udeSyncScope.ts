@@ -95,13 +95,27 @@ export async function decideSyncScope(
   };
 }
 
+/** Remembers when the last deployment of any kind started, for "files newer than the deploy". */
+export async function recordDeploy(
+  environmentUrl: string, pkg: string, startedAt: number, stateFile: string = DEFAULT_SYNC_STATE_FILE,
+): Promise<void> {
+  await recordSyncedDeploy(environmentUrl, pkg, startedAt, stateFile, 'deploy|');
+}
+
+export async function lastRecordedDeploy(
+  environmentUrl: string, pkg: string, stateFile: string = DEFAULT_SYNC_STATE_FILE,
+): Promise<number | undefined> {
+  const v = (await readState(stateFile))[`deploy|${key(environmentUrl, pkg)}`];
+  return typeof v === 'number' ? v : undefined;
+}
+
 /** Remembers that a deployment that synced the database started at `startedAt`. Best-effort. */
 export async function recordSyncedDeploy(
-  environmentUrl: string, pkg: string, startedAt: number, stateFile: string = DEFAULT_SYNC_STATE_FILE,
+  environmentUrl: string, pkg: string, startedAt: number, stateFile: string = DEFAULT_SYNC_STATE_FILE, keyPrefix = '',
 ): Promise<void> {
   try {
     const state = await readState(stateFile);
-    state[key(environmentUrl, pkg)] = startedAt;
+    state[keyPrefix + key(environmentUrl, pkg)] = startedAt;
     await mkdir(path.dirname(stateFile), { recursive: true });
     const tmp = `${stateFile}.${process.pid}.tmp`;
     await writeFile(tmp, JSON.stringify(state, null, 2), 'utf-8');
