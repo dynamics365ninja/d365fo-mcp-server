@@ -455,12 +455,12 @@ export interface ActiveOperation {
  * Manager records every deploy, test run, database copy and update in `msprov_operationhistory`
  * (statecode 0 Active / statuscode 1 InProgress while it runs), and runs one at a time: a test
  * run sent meanwhile waits behind them. Read-only and best-effort: a caller treats a failure as
- * "nothing known" rather than as a reason not to run.
+ * "nothing known" rather than as a reason not to run. Asked once, with no retry: a throttled
+ * environment must not delay a run for a note that only explains it.
  */
 export async function activeOperations(client: DataverseClient): Promise<ActiveOperation[]> {
   const response = await call(client, 'GET',
-    'msprov_operationhistories?$select=msprov_name,createdon&$filter=statecode eq 0&$orderby=createdon asc&$top=10',
-    { retryDelayMs: 2000 });
+    'msprov_operationhistories?$select=msprov_name,createdon&$filter=statecode eq 0&$orderby=createdon asc&$top=10');
   const rows = ((await response.json()) as { value?: { msprov_name?: string; createdon?: string }[] })?.value ?? [];
   return rows
     .filter(r => r.msprov_name && r.createdon)
