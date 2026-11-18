@@ -9,10 +9,12 @@ import { defaultPackagesRoot } from '../../utils/packagesRoot.js';
 import { readAppSetting } from '../../utils/appSettings.js';
 import { withOperationLock } from '../../utils/operationLocks.js';
 import { wasCreatedThisSession } from '../../workspace/createdArtifactLedger.js';
-import { findD365FileOnDisk } from '../../utils/objectFileLookup.js';
+import { findD365FileOnDisk, findD365FileViaIndex, type SymbolFileLookupSource } from '../../utils/objectFileLookup.js';
 import { DEFAULT_DATAVERSE_CLIENT_ID, getDataverseAccessToken, readDataverseSettings } from '../../utils/dataverseAuth.js';
 import {
-  buildTestSuiteXml,
+  type ActiveOperation,
+  activeOperations,
+  buildTestSuiteXmlForClasses,
   type DataverseClient,
   findRuntimeAssembly,
   parseTrxResults,
@@ -252,50 +254,73 @@ const NOT_UDE_HINT = '\n\nIf this machine is not a UDE box, set `environment.typ
   '"traditional": UDE is detected from the XPP config files in %LOCALAPPDATA%\\Microsoft\\Dynamics365\\XPPConfig.';
 
 /**
- * A test class on a UDE box, run in the cloud runtime (see udeSysTest.ts for the protocol).
- *
- * SysTestConsole cannot be used there at all: it runs tests against a local AOS, and a UDE
- * machine has none — started from the framework Bin it dies with "Failed to obtain app setting
- * from for: Common.HostingEnvironment" before the first test. Visual Studio's test adapter sends
- * UDE tests to the cloud runtime through the environment's Dataverse instead, and so does this.
- *
- * Tests run against the code DEPLOYED to the environment, not the local build, so the reply says
- * which environment ran them and that an undeployed change is not in the result.
+ * The classes a `className` names: one, or several separated by commas. Order is kept and a
+ * class named twice runs once. An array that reaches the tool despite the published string
+ * type reads the same way, since it stringifies to the comma-separated form.
  */
-async function runSysTestOnUde(
-  params: { className: string; testMethod?: string; modelName?: string },
-  configManager: ReturnType<typeof getConfigManager>,
-) {
-  const className = String(params.className ?? '').trim();
-  // `Class::method` and `Class.method` are what the results print; accept them as well.
-  const focus = params.testMethod?.trim().replace(/^.*(::|\.)/, '') || undefined;
-  const fallback = `Until then, run \`${className}\` from Visual Studio Test Explorer and ask the user for the result.`;
-
-  if (!XPP_IDENTIFIER.test(className)) return notRun(`Invalid parameter: className "${className}" is not an X++ class name.`);
-  if (focus && !XPP_IDENTIFIER.test(focus)) return notRun(`Invalid parameter: testMethod "${focus}" is not an X++ method name.`);
-
-  const modelName = params.modelName || configManager.getModelName() || await configManager.getAutoDetectedModelName();
-  if (!modelName) return notRun('Cannot determine model name.\n\nProvide modelName parameter or set it in .mcp.json.');
-  try {
-    assertSafePath(modelName, 'modelName');
-  } catch (error: any) {
-    return notRun(`Invalid parameter: ${error.message}`);
+export function parseTestClassNames(value: unknown): string[] {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const raw of String(value ?? '').split(',')) {
+    const name = raw.trim();
+    if (name && !seen.has(name.toLowerCase())) {
+      seen.add(name.toLowerCase());
+      names.push(name);
+    }
   }
+  return names;
+}
+
+/** What one test class sends to the cloud runtime, or why it sends nothing. */
+type TestClassPlan =
+  | { ok: true; className: string; modelName: string; classFile: string; packageName: string; toRun: string[]; notes: string[] }
+  | { ok: false; className: string; refusal: string; reason: string };
+
+/**
+ * The test methods of one class, by SysTest's own rules: its own and those it inherits from
+ * base classes in the same model, minus [SysTestInactiveTest], narrowed to `focus` when given.
+ * A refusal carries the whole reply for a one-class call and a short reason for a list.
+ *
+ * `index` is passed only when the caller named no model. A test class usually lives in a test
+ * model of its own, not in the workspace model the default points at, so a class missing there
+ * is looked up in the symbol index before it is reported as not found: the index already knows
+ * the model, and asking the caller to supply it cost a round trip with a guess in it.
+ */
+async function planTestClass(
+  className: string,
+  defaultModel: string,
+  focus: string | undefined,
+  index?: SymbolFileLookupSource,
+): Promise<TestClassPlan> {
+  const refuse = (refusal: string, reason: string): TestClassPlan => ({ ok: false, className, refusal, reason });
+  const notes: string[] = [];
 
   // The class file names the package, which names the module assembly the runtime loads.
-  const classFile = await findD365FileOnDisk('class', className, modelName);
+  let modelName = defaultModel;
+  let classFile = await findD365FileOnDisk('class', className, modelName);
+  if (!classFile && index) {
+    const indexed = await findD365FileViaIndex(index, 'class', className);
+    if (indexed) {
+      classFile = indexed.filePath;
+      modelName = indexed.model;
+      notes.push(`Found in model \`${modelName}\` through the symbol index, not in \`${defaultModel}\`.`);
+    }
+  }
   if (!classFile) {
-    return notRun(`Class \`${className}\` was not found in model \`${modelName}\`, so no test ran.\n\n` +
-      'Check the class name, or pass modelName when the test class lives in another model.');
+    return refuse(`Class \`${className}\` was not found in model \`${defaultModel}\`, so no test ran.\n\n` +
+      'Check the class name, or pass modelName when the test class lives in another model.',
+      `not found in model \`${defaultModel}\``);
   }
   const packageName = path.basename(path.resolve(classFile, '..', '..', '..'));
 
   // The test methods: the cloud runtime runs only the methods a request lists.
   const own = readTestClass(await fs.readFile(classFile, 'utf-8'));
-  if (!own) return notRun(`The declaration of \`${className}\` could not be read, so no test ran.`);
-  if (own.isAbstract) return notRun(`\`${className}\` is abstract; SysTest runs only concrete test classes. No test ran.`);
+  if (!own) return refuse(`The declaration of \`${className}\` could not be read, so no test ran.`, 'its declaration could not be read');
+  if (own.isAbstract) {
+    return refuse(`\`${className}\` is abstract; SysTest runs only concrete test classes. No test ran.`,
+      'abstract, SysTest runs only concrete test classes');
+  }
   const methods = new Map(own.methods.map(m => [m.name.toLowerCase(), m]));
-  const notes: string[] = [];
   let base = own.extends;
   for (let depth = 0; base && !/^SysTest/i.test(base) && depth < MAX_TEST_BASE_DEPTH; depth++) {
     const baseFile = await findD365FileOnDisk('class', base, modelName);
@@ -314,19 +339,114 @@ async function runSysTestOnUde(
     selected = selected.filter(m => m.name.toLowerCase() === focus.toLowerCase());
     if (selected.length === 0) {
       const names = [...methods.values()].map(m => m.name).join(', ') || '(none)';
-      return notRun(`\`${className}\` has no test method named "${focus}", so no test ran.\n\nIts test methods: ${names}.`);
+      return refuse(`\`${className}\` has no test method named "${focus}", so no test ran.\n\nIts test methods: ${names}.`,
+        `no test method named "${focus}"`);
     }
   }
   const inactive = selected.filter(m => m.inactive);
-  const toRun = selected.filter(m => !m.inactive);
+  const toRun = selected.filter(m => !m.inactive).map(m => m.name);
   if (inactive.length > 0) {
     notes.push(`Skipped, marked [SysTestInactiveTest]: ${inactive.map(m => m.name).join(', ')}.`);
   }
   if (toRun.length === 0) {
-    return notRun(`\`${className}\` has no test method to run, so no test ran.\n\n` +
+    return refuse(`\`${className}\` has no test method to run, so no test ran.\n\n` +
       'A test method is public, returns void, takes no parameters and is named test… or marked [SysTestMethod].' +
-      (notes.length ? `\n\n${notes.join('\n')}` : ''));
+      (notes.length ? `\n\n${notes.join('\n')}` : ''),
+      'no test method to run');
   }
+  return { ok: true, className, modelName, classFile, packageName, toRun, notes };
+}
+
+/** The outcomes that belong to one class: the results name each test `Class.method`. */
+function outcomesOfClass<T extends { name: string }>(className: string, outcomes: readonly T[]): T[] {
+  const prefix = `${className.toLowerCase()}.`;
+  return outcomes.filter(o => o.name.toLowerCase().startsWith(prefix));
+}
+
+/**
+ * The outcome of a run of several classes: the counts, one line per class (failing classes
+ * first), then only the methods that failed. Listing every passing method of a whole test model
+ * would push the failures past the response cap, and the class lines already count them.
+ */
+export function renderClassOutcomes(classNames: readonly string[], outcomes: readonly SysTestCaseOutcome[]): string {
+  if (outcomes.length === 0) return '';
+  const failed = outcomes.filter(o => !o.passed);
+  const rows = classNames.map(className => {
+    const mine = outcomesOfClass(className, outcomes);
+    const bad = mine.filter(o => !o.passed).length;
+    return { bad, line: `${bad > 0 ? '❌' : '✅'} ${className} — ${mine.length - bad}/${mine.length} passed` };
+  });
+  return `\n\n${outcomes.length - failed.length}/${outcomes.length} passed` +
+    (failed.length > 0 ? `, ${failed.length} failed.` : '.') +
+    '\n\n' + [...rows.filter(r => r.bad > 0), ...rows.filter(r => r.bad === 0)].map(r => r.line).join('\n') +
+    (failed.length > 0
+      ? '\n\nFailed:\n' + failed.map(o => `❌ ${o.name}${o.message ? ` — ${o.message}` : ''}`).join('\n')
+      : '');
+}
+
+/**
+ * Test classes on a UDE box, run in the cloud runtime (see udeSysTest.ts for the protocol).
+ *
+ * SysTestConsole cannot be used there at all: it runs tests against a local AOS, and a UDE
+ * machine has none — started from the framework Bin it dies with "Failed to obtain app setting
+ * from for: Common.HostingEnvironment" before the first test. Visual Studio's test adapter sends
+ * UDE tests to the cloud runtime through the environment's Dataverse instead, and so does this.
+ *
+ * Several classes of one model go out as ONE request. The environment runs one test operation
+ * at a time and each costs about a minute whatever it holds, so a model's classes sent one call
+ * each queue up behind each other: the same 36 classes took about 40 minutes one by one and 6 in
+ * one request.
+ *
+ * Tests run against the code DEPLOYED to the environment, not the local build, so the reply says
+ * which environment ran them and that an undeployed change is not in the result.
+ */
+async function runSysTestOnUde(
+  params: { className: string; testMethod?: string; modelName?: string },
+  configManager: ReturnType<typeof getConfigManager>,
+  index?: SymbolFileLookupSource,
+) {
+  const rawClassName = String(params.className ?? '').trim();
+  const classNames = parseTestClassNames(rawClassName);
+  const several = classNames.length > 1;
+  const className = classNames[0] ?? rawClassName;
+  // `Class::method` and `Class.method` are what the results print; accept them as well.
+  const focus = params.testMethod?.trim().replace(/^.*(::|\.)/, '') || undefined;
+  const subject = several ? 'these test classes' : `\`${className}\``;
+  const fallback = `Until then, run ${subject} from Visual Studio Test Explorer and ask the user for the result.`;
+
+  const invalid = classNames.length === 0 ? rawClassName : classNames.find(n => !XPP_IDENTIFIER.test(n));
+  if (invalid !== undefined) return notRun(`Invalid parameter: className "${invalid}" is not an X++ class name.`);
+  if (focus && !XPP_IDENTIFIER.test(focus)) return notRun(`Invalid parameter: testMethod "${focus}" is not an X++ method name.`);
+  if (focus && several) {
+    return notRun('Invalid parameter: testMethod picks one method of one class, so it needs a single className. ' +
+      'No test ran. Drop testMethod to run every test of the listed classes.');
+  }
+
+  const modelName = params.modelName || configManager.getModelName() || await configManager.getAutoDetectedModelName();
+  if (!modelName) return notRun('Cannot determine model name.\n\nProvide modelName parameter or set it in .mcp.json.');
+  try {
+    assertSafePath(modelName, 'modelName');
+  } catch (error: any) {
+    return notRun(`Invalid parameter: ${error.message}`);
+  }
+
+  const plans = [];
+  for (const name of classNames) plans.push(await planTestClass(name, modelName, focus, params.modelName ? undefined : index));
+  if (!several && !plans[0].ok) return notRun(plans[0].refusal);
+  const runnable = plans.filter((p): p is Extract<TestClassPlan, { ok: true }> => p.ok);
+  const skipped = plans.filter((p): p is Extract<TestClassPlan, { ok: false }> => !p.ok);
+  if (runnable.length === 0) {
+    return notRun(`None of the ${classNames.length} classes has a test to run, so no test ran.\n\n` +
+      skipped.map(s => `• \`${s.className}\`: ${s.reason}`).join('\n'));
+  }
+  const packages = [...new Set(runnable.map(p => p.packageName))];
+  if (packages.length > 1) {
+    return notRun(`The classes are in ${packages.length} packages (${packages.join(', ')}). One run sends one ` +
+      'module assembly, so run the classes of each package in a call of its own. No test ran.');
+  }
+  const packageName = packages[0];
+  // The model each class was found in: the default one, or the one the index named.
+  const runModel = [...new Set(runnable.map(p => p.modelName))].join(', ');
 
   // The built module assembly, under the runtime packages folder the cloud runtime knows it by.
   const runtimeDir = (await configManager.getActiveXppConfig())?.runtimePackagesDirectory;
@@ -364,28 +484,43 @@ async function runSysTestOnUde(
       `\n\n${fallback}`);
   }
 
-  const { xml, cases } = buildTestSuiteXml(assemblyPath, className, toRun.map(m => m.name), classFile);
+  const client: DataverseClient = { url: dataverse.url, getToken: () => getDataverseAccessToken(dataverse) };
+  // The environment runs one operation at a time. A run sent while a deploy or another test run is
+  // going on waits behind it, so say so: a slow run, or one that times out, is then explained.
+  let busy: ActiveOperation[] = [];
+  try {
+    busy = (await activeOperations(client)) ?? [];
+  } catch { /* best-effort: no note rather than no run */ }
+  const busyNote = busy.length > 0
+    ? '\n⏳ When this run was sent, the environment was already running ' +
+      busy.map(o => `${o.name} (since ${o.startedAt.slice(11, 16)} UTC)`).join(', ') +
+      '. It runs one operation at a time, so this run waited for it.'
+    : '';
+
+  const { xml, cases } = buildTestSuiteXmlForClasses(assemblyPath,
+    runnable.map(p => ({ className: p.className, methodNames: p.toRun, testSource: p.classFile })));
+  const runLabel = several ? `${runnable.length}classes` : className;
   let trx: string;
   try {
-    const client: DataverseClient = { url: dataverse.url, getToken: () => getDataverseAccessToken(dataverse) };
-    ({ trx } = await withOperationLock(`systest:${modelName}:${className}`, () =>
-      runTestRequestInCloud(client, `${packageName}_${className}_${Date.now()}.tsx`, xml, {
+    ({ trx } = await withOperationLock(`systest:${runModel}:${runnable.map(p => p.className).join(',')}`, () =>
+      runTestRequestInCloud(client, `${packageName}_${runLabel}_${Date.now()}.tsx`, xml, {
         log: line => console.error(`[run_systest_class] ${line}`),
       })));
   } catch (error: any) {
     const message = String(error?.message ?? error);
     if (/Timeout waiting for filesystem lock/i.test(message)) {
-      return notRun(`Another run of \`${className}\` was still in progress and did not finish in time, so this one ` +
+      return notRun(`Another run of ${subject} was still in progress and did not finish in time, so this one ` +
         'did not start. No test ran. Run it again once the other run has reported.');
     }
     return notRun(`The tests could not be run in the cloud runtime of ${dataverse.url}: ${message}\n\n` +
       'No test result came back, and this says nothing about the test class itself. A run that cannot start often ' +
       'means the model is not deployed to the environment (build_d365fo_project with deploy: true deploys it), or ' +
       'the sign-in has no access to it.' +
+      busyNote +
       `\n\n${fallback}`);
   }
 
-  const resultFile = await saveTrx(className, trx);
+  const resultFile = await saveTrx(several ? `${packageName}-${runLabel}` : className, trx);
   const returned = parseTrxResults(trx);
   if (returned.length === 0) {
     return notRun(`The cloud runtime of ${dataverse.url} finished, but its results name no test. No test result ` +
@@ -399,23 +534,55 @@ async function runSysTestOnUde(
       .filter(c => !returned.some(o => o.name.toLowerCase() === c.name.toLowerCase()))
       .map(c => ({ name: c.name, passed: false, message: 'No result came back for this test.' })),
   ];
-  const status = outcomes.some(o => !o.passed) ? '❌ Tests FAILED' : '✅ Tests passed';
+  // A listed class that was not run (typo, abstract, no test method) must not read as a
+  // clean pass: "✅ Tests passed" would let a misspelt class name go unnoticed.
+  const status = outcomes.some(o => !o.passed)
+    ? '❌ Tests FAILED'
+    : skipped.length > 0
+      ? `⚠️ Tests passed, but ${skipped.length} of ${classNames.length} classes were not run`
+      : '✅ Tests passed';
+  const deployedNote = `\nRan in the cloud runtime of ${dataverse.url}, against the code deployed there — a change ` +
+    'that is not deployed yet is not in this result (build_d365fo_project with deploy: true deploys it).';
+  const resultFileNote = resultFile ? `\n\nResult file: ${resultFile}` : '';
 
+  if (!several) {
+    const [plan] = runnable;
+    return {
+      content: [{
+        type: 'text',
+        text: `${status}\n\nClass: ${className}${focus ? `::${plan.toRun[0]}` : ''}\nModel: ${runModel}` +
+          deployedNote +
+          busyNote +
+          plan.notes.map(n => `\n⚠️ ${n}`).join('') +
+          renderOutcomeList(outcomes) +
+          renderRedPhaseNote(className, outcomes) +
+          resultFileNote,
+      }],
+    };
+  }
+
+  const notes = [
+    ...runnable.flatMap(p => p.notes.map(n => `\`${p.className}\`: ${n}`)),
+    ...skipped.map(s => `\`${s.className}\` was not run: ${s.reason}.`),
+  ];
+  const runNames = runnable.map(p => p.className);
   return {
     content: [{
       type: 'text',
-      text: `${status}\n\nClass: ${className}${focus ? `::${toRun[0].name}` : ''}\nModel: ${modelName}` +
-        `\nRan in the cloud runtime of ${dataverse.url}, against the code deployed there — a change that is not ` +
-        'deployed yet is not in this result (build_d365fo_project with deploy: true deploys it).' +
+      text: `${status}\n\nClasses: ${runnable.length} run in one request` +
+        (skipped.length > 0 ? `, ${skipped.length} not run` : '') +
+        `\nModel: ${runModel}` +
+        deployedNote +
+        busyNote +
         notes.map(n => `\n⚠️ ${n}`).join('') +
-        renderOutcomeList(outcomes) +
-        renderRedPhaseNote(className, outcomes) +
-        (resultFile ? `\n\nResult file: ${resultFile}` : ''),
+        renderClassOutcomes(runNames, outcomes) +
+        runNames.map(n => renderRedPhaseNote(n, outcomesOfClass(n, outcomes))).join('') +
+        resultFileNote,
     }],
   };
 }
 
-export const sysTestRunnerTool = async (params: any, _context: any) => {
+export const sysTestRunnerTool = async (params: any, context: any) => {
   const { className, testMethod } = params;
   // Hoisted out of the try: the failure diagnosis in the catch reads the
   // runner's own .config out of this directory, and a diagnosis that cannot
@@ -434,7 +601,7 @@ export const sysTestRunnerTool = async (params: any, _context: any) => {
 
     // Before any Bin lookup: on UDE no SysTestConsole can run, wherever it is found.
     if (await configManager.getDevEnvironmentType() === 'ude') {
-      return await runSysTestOnUde(params, configManager);
+      return await runSysTestOnUde(params, configManager, context?.symbolIndex);
     }
 
     const resolvedModelName = params.modelName || configManager.getModelName();

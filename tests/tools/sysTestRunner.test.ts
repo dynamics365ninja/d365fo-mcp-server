@@ -5,6 +5,7 @@ const {
   accessMock, readdirMock, execFileMock, readFileMock, cfgEnsureLoaded, cfgGetModelName, cfgGetPackagePath,
   cfgGetDevEnvironmentType, cfgGetActiveXppConfig, cfgGetAutoDetectedModelName, findClassFileMock,
   dataverseSettingsMock, dataverseTokenMock, findRuntimeAssemblyMock, runInCloudMock, saveTrxMock,
+  findClassViaIndexMock, activeOperationsMock,
 } = vi.hoisted(() => {
   const accessMock = vi.fn();
   // Bin listing for the versioned SysTestConsole lookup; empty unless a test lists files.
@@ -28,10 +29,14 @@ const {
   const findRuntimeAssemblyMock = vi.fn();
   const runInCloudMock = vi.fn();
   const saveTrxMock = vi.fn();
+  // Where the symbol index says a class is, and what the environment is busy with.
+  const findClassViaIndexMock = vi.fn();
+  const activeOperationsMock = vi.fn();
   return {
     accessMock, readdirMock, execFileMock, readFileMock, cfgEnsureLoaded, cfgGetModelName, cfgGetPackagePath,
     cfgGetDevEnvironmentType, cfgGetActiveXppConfig, cfgGetAutoDetectedModelName, findClassFileMock,
     dataverseSettingsMock, dataverseTokenMock, findRuntimeAssemblyMock, runInCloudMock, saveTrxMock,
+    findClassViaIndexMock, activeOperationsMock,
   };
 });
 
@@ -50,7 +55,10 @@ vi.mock('../../src/utils/configManager.js', () => ({
     getAutoDetectedModelName: cfgGetAutoDetectedModelName,
   }),
 }));
-vi.mock('../../src/utils/objectFileLookup.js', () => ({ findD365FileOnDisk: findClassFileMock }));
+vi.mock('../../src/utils/objectFileLookup.js', () => ({
+  findD365FileOnDisk: findClassFileMock,
+  findD365FileViaIndex: findClassViaIndexMock,
+}));
 vi.mock('../../src/utils/dataverseAuth.js', () => ({
   DEFAULT_DATAVERSE_CLIENT_ID: 'default-client',
   readDataverseSettings: dataverseSettingsMock,
@@ -61,6 +69,7 @@ vi.mock('../../src/tools/sdlc/udeSysTest.js', async importOriginal => ({
   findRuntimeAssembly: findRuntimeAssemblyMock,
   runTestRequestInCloud: runInCloudMock,
   saveTrx: saveTrxMock,
+  activeOperations: activeOperationsMock,
 }));
 vi.mock('../../src/utils/operationLocks.js', () => ({
   withOperationLock: (_key: string, fn: () => any) => fn(),
@@ -468,6 +477,230 @@ describe('run_systest_class — on a UDE environment', () => {
 
     expect(parsed.ran).toBe(true);
     expect(parsed.passed).toBe(false);
+  });
+
+  describe('several classes in one call', () => {
+    const ORDER_FILE = CLASS_FILE.replace('ContosoInvoiceTest', 'ContosoOrderTest');
+    const BASE_FILE = CLASS_FILE.replace('ContosoInvoiceTest', 'ContosoTestBase');
+    const ORDER_XML = CLASS_XML.replace('class ContosoInvoiceTest', 'class ContosoOrderTest')
+      .replaceAll('testPosting', 'testCreate').replaceAll('testTotals', 'testCancel');
+    const BASE_XML = CLASS_XML.replace('class ContosoInvoiceTest extends', 'abstract class ContosoTestBase extends');
+
+    beforeEach(() => {
+      const files: Record<string, string> = { ContosoInvoiceTest: CLASS_FILE, ContosoOrderTest: ORDER_FILE, ContosoTestBase: BASE_FILE };
+      findClassFileMock.mockImplementation(async (_t: string, name: string) => files[name] ?? null);
+      readFileMock.mockImplementation(async (file: string) => {
+        if (file === CLASS_FILE) return CLASS_XML;
+        if (file === ORDER_FILE) return ORDER_XML;
+        if (file === BASE_FILE) return BASE_XML;
+        throw Object.assign(new Error(`ENOENT: ${file}`), { code: 'ENOENT' });
+      });
+      runInCloudMock.mockResolvedValue({
+        suiteId: 's',
+        trx: trx([
+          { name: 'ContosoInvoiceTest.testPosting', outcome: 'Passed' },
+          { name: 'ContosoInvoiceTest.testTotals', outcome: 'Passed' },
+          { name: 'ContosoOrderTest.testCreate', outcome: 'Passed' },
+          { name: 'ContosoOrderTest.testCancel', outcome: 'Failed', message: 'Assertion failed! (Expected: Canceled; Actual: Open)' },
+        ]),
+      });
+    });
+
+    it('sends the classes as ONE request with one module assembly', async () => {
+      await sysTestRunnerTool({ className: 'ContosoInvoiceTest, ContosoOrderTest' }, {});
+
+      expect(runInCloudMock).toHaveBeenCalledTimes(1);
+      const request = sentRequest();
+      expect(request.match(/<AssemblyPath>/g)).toHaveLength(1);
+      for (const name of ['ContosoInvoiceTest.testPosting', 'ContosoInvoiceTest.testTotals', 'ContosoOrderTest.testCreate', 'ContosoOrderTest.testCancel']) {
+        expect(request).toContain(`<TestCaseName>${name}</TestCaseName>`);
+      }
+      expect(request).toContain(`<TestSource>${ORDER_FILE}</TestSource>`);
+      expect(request).not.toContain('testRetired');
+    });
+
+    it('reports one line per class, failing classes first, and lists only the methods that failed', async () => {
+      const result = await sysTestRunnerTool({ className: 'ContosoInvoiceTest,ContosoOrderTest' }, {});
+      const text = result.content[0].text;
+
+      expect(result.isError).toBeFalsy();
+      expect(text.startsWith('❌ Tests FAILED')).toBe(true);
+      expect(text).toContain('Classes: 2 run in one request');
+      expect(text).toContain('3/4 passed, 1 failed.');
+      expect(text.indexOf('❌ ContosoOrderTest — 1/2 passed')).toBeLessThan(text.indexOf('✅ ContosoInvoiceTest — 2/2 passed'));
+      expect(text).toContain('❌ ContosoOrderTest.testCancel — Assertion failed! (Expected: Canceled; Actual: Open)');
+      expect(text).not.toContain('✅ ContosoInvoiceTest.testPosting');
+      expect(text).toContain('`ContosoInvoiceTest`: Skipped, marked [SysTestInactiveTest]: testRetired.');
+      const parsed = parseSysTestResult(text);
+      expect(parsed.ran).toBe(true);
+      expect(parsed.passed).toBe(false);
+    });
+
+    it('reads as passed when every class passed', async () => {
+      runInCloudMock.mockResolvedValue({
+        suiteId: 's',
+        trx: trx(['ContosoInvoiceTest.testPosting', 'ContosoInvoiceTest.testTotals', 'ContosoOrderTest.testCreate', 'ContosoOrderTest.testCancel']
+          .map(name => ({ name, outcome: 'Passed' }))),
+      });
+
+      const text = (await sysTestRunnerTool({ className: 'ContosoInvoiceTest,ContosoOrderTest' }, {})).content[0].text;
+
+      expect(text.startsWith('✅ Tests passed')).toBe(true);
+      expect(text).toContain('4/4 passed.');
+      expect(text).not.toContain('Failed:');
+      expect(parseSysTestResult(text).passed).toBe(true);
+    });
+
+    it('runs the classes it can and names the ones it could not, instead of failing the call', async () => {
+      runInCloudMock.mockResolvedValue({
+        suiteId: 's',
+        trx: trx([{ name: 'ContosoInvoiceTest.testPosting', outcome: 'Passed' }, { name: 'ContosoInvoiceTest.testTotals', outcome: 'Passed' }]),
+      });
+
+      const result = await sysTestRunnerTool({ className: 'ContosoInvoiceTest,ContosoTestBase,ContosoMissingTest' }, {});
+      const text = result.content[0].text;
+
+      expect(result.isError).toBeFalsy();
+      expect(text.startsWith('⚠️ Tests passed, but 2 of 3 classes were not run')).toBe(true);
+      expect(text).toContain('Classes: 1 run in one request, 2 not run');
+      expect(text).toContain('`ContosoTestBase` was not run: abstract');
+      expect(text).toContain('`ContosoMissingTest` was not run: not found in model `ContosoExtTests`.');
+      expect(sentRequest()).not.toContain('ContosoTestBase');
+    });
+
+    it('runs nothing when none of the classes has a test to run', async () => {
+      const result = await sysTestRunnerTool({ className: 'ContosoTestBase,ContosoMissingTest' }, {});
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('None of the 2 classes has a test to run, so no test ran.');
+      expect(runInCloudMock).not.toHaveBeenCalled();
+    });
+
+    it('counts a method of a listed class that came back without a result as failed', async () => {
+      runInCloudMock.mockResolvedValue({
+        suiteId: 's',
+        trx: trx([{ name: 'ContosoInvoiceTest.testPosting', outcome: 'Passed' }, { name: 'ContosoInvoiceTest.testTotals', outcome: 'Passed' }]),
+      });
+
+      const text = (await sysTestRunnerTool({ className: 'ContosoInvoiceTest,ContosoOrderTest' }, {})).content[0].text;
+
+      expect(text.startsWith('❌ Tests FAILED')).toBe(true);
+      expect(text).toContain('❌ ContosoOrderTest — 0/2 passed');
+      expect(text).toContain('❌ ContosoOrderTest.testCreate — No result came back for this test.');
+    });
+
+    it('refuses testMethod with several classes, before reading any class', async () => {
+      const result = await sysTestRunnerTool({ className: 'ContosoInvoiceTest,ContosoOrderTest', testMethod: 'testPosting' }, {});
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('testMethod picks one method of one class');
+      expect(findClassFileMock).not.toHaveBeenCalled();
+    });
+
+    it('names the listed class that is not an X++ identifier', async () => {
+      const result = await sysTestRunnerTool({ className: 'ContosoInvoiceTest,..\\ContosoOrderTest' }, {});
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('className "..\\ContosoOrderTest" is not an X++ class name');
+      expect(findClassFileMock).not.toHaveBeenCalled();
+    });
+
+    it('runs a class named twice once, and one name is still the one-class reply', async () => {
+      await sysTestRunnerTool({ className: 'ContosoInvoiceTest,contosoinvoicetest' }, {});
+      const text = (await sysTestRunnerTool({ className: 'ContosoInvoiceTest,' }, {})).content[0].text;
+
+      expect(sentRequest().match(/<TestCaseName>ContosoInvoiceTest\.testPosting</g)).toHaveLength(1);
+      expect(text).toContain('Class: ContosoInvoiceTest');
+      expect(text).not.toContain('Classes:');
+    });
+
+    it('refuses classes of different packages, since one run sends one module assembly', async () => {
+      const OTHER = path.join(UDE_CUSTOM, 'ContosoCoreTests', 'ContosoExtTests', 'AxClass', 'ContosoOrderTest.xml');
+      findClassFileMock.mockImplementation(async (_t: string, name: string) =>
+        name === 'ContosoInvoiceTest' ? CLASS_FILE : name === 'ContosoOrderTest' ? OTHER : null);
+      readFileMock.mockImplementation(async (file: string) => (file === OTHER ? ORDER_XML : CLASS_XML));
+
+      const result = await sysTestRunnerTool({ className: 'ContosoInvoiceTest,ContosoOrderTest' }, {});
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('2 packages (ContosoExtTests, ContosoCoreTests)');
+      expect(runInCloudMock).not.toHaveBeenCalled();
+    });
+
+    it('accepts an array, which stringifies to the comma-separated form', async () => {
+      await sysTestRunnerTool({ className: ['ContosoInvoiceTest', 'ContosoOrderTest'] as any }, {});
+
+      expect(sentRequest()).toContain('<TestCaseName>ContosoOrderTest.testCreate</TestCaseName>');
+    });
+  });
+
+  describe('the model of a test class, from the symbol index', () => {
+    const INDEX = { getReadDb: () => ({ prepare: () => ({ all: () => [] }) }) };
+
+    beforeEach(() => {
+      // The workspace model is the product model, the test class lives in its test model.
+      cfgGetModelName.mockReturnValue('ContosoExt');
+      findClassFileMock.mockImplementation(async (_t: string, name: string, model: string) =>
+        name === 'ContosoInvoiceTest' && model === 'ContosoExtTests' ? CLASS_FILE : null);
+      findClassViaIndexMock.mockImplementation(async (_i: unknown, _t: string, name: string) =>
+        name === 'ContosoInvoiceTest' ? { filePath: CLASS_FILE, model: 'ContosoExtTests' } : null);
+    });
+
+    it('runs a class of another model when no model was named, and says where it was found', async () => {
+      const result = await sysTestRunnerTool({ className: 'ContosoInvoiceTest' }, { symbolIndex: INDEX });
+      const text = result.content[0].text;
+
+      expect(result.isError).toBeFalsy();
+      expect(text).toContain('Model: ContosoExtTests');
+      expect(text).toContain('Found in model `ContosoExtTests` through the symbol index, not in `ContosoExt`.');
+      expect(findRuntimeAssemblyMock).toHaveBeenCalledWith(RUNTIME, 'ContosoExtTests');
+    });
+
+    it('keeps to a model the caller named, without asking the index', async () => {
+      const result = await sysTestRunnerTool({ className: 'ContosoInvoiceTest', modelName: 'ContosoExt' }, { symbolIndex: INDEX });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('`ContosoInvoiceTest` was not found in model `ContosoExt`');
+      expect(findClassViaIndexMock).not.toHaveBeenCalled();
+    });
+
+    it('still reports a class the index does not know either as not found', async () => {
+      const result = await sysTestRunnerTool({ className: 'ContosoMissingTest' }, { symbolIndex: INDEX });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('`ContosoMissingTest` was not found in model `ContosoExt`');
+    });
+  });
+
+  describe('an environment busy with another operation', () => {
+    it('says the run waited behind the deploy that was going on', async () => {
+      activeOperationsMock.mockResolvedValue([{ name: 'Deploy', startedAt: '2026-11-16T07:29:32Z' }]);
+
+      const text = (await sysTestRunnerTool({ className: 'ContosoInvoiceTest' }, {})).content[0].text;
+
+      expect(text).toContain('⏳ When this run was sent, the environment was already running Deploy (since 07:29 UTC).');
+      expect(text).toContain('It runs one operation at a time, so this run waited for it.');
+    });
+
+    it('names it in a run that then failed too, where it explains a timeout', async () => {
+      activeOperationsMock.mockResolvedValue([{ name: 'Unit Test Execution', startedAt: '2026-11-16T08:06:19Z' }]);
+      runInCloudMock.mockRejectedValue(new Error('The test run did not finish in time (job j).'));
+
+      const text = (await sysTestRunnerTool({ className: 'ContosoInvoiceTest' }, {})).content[0].text;
+
+      expect(text).toContain('did not finish in time');
+      expect(text).toContain('already running Unit Test Execution (since 08:06 UTC)');
+    });
+
+    it('runs without a note when the operation history cannot be read', async () => {
+      activeOperationsMock.mockRejectedValue(new Error('HTTP 403'));
+
+      const result = await sysTestRunnerTool({ className: 'ContosoInvoiceTest' }, {});
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content[0].text).not.toContain('⏳');
+      expect(runInCloudMock).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('still runs SysTestConsole when the environment is traditional', async () => {

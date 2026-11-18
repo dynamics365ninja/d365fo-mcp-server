@@ -69,6 +69,8 @@ import {
   axTableElementRank,
 } from '../../utils/axTablePropertyOrder.js';
 import { maskXpp } from '../../utils/xppLexer.js';
+import type { DbLike } from '../../utils/symbolLookup.js';
+import { isTestClassInIndex, isTestClassSource } from './testClassContext.js';
 import {
   COMPILER_VERSION,
   acceptsArgumentCount,
@@ -1055,8 +1057,13 @@ function checkHardcodedStrings(code: string): ValidationViolation[] {
 /**
  * BP002 — doInsert/doUpdate/doDelete usage outside a comment that marks it as intentional.
  * These bypass insert/update/delete overrides and event handlers.
+ *
+ * Not in a SysTest test class, where do* is how a fixture is set up without running
+ * the table's own logic (82 of the 359 shipped test classes do it). The source shows
+ * a few of them; validateXppTool asks the index for the rest (testClassContext.ts).
  */
 function checkDoMethods(code: string): ValidationViolation[] {
+  if (isTestClassSource(maskStringsAndComments(code))) return [];
   return matchAll(
     code,
     /\.\s*do(?:Insert|Update|Delete)\s*\(\s*\)/gi,
@@ -3113,7 +3120,7 @@ export function runRules(
 
 export async function validateXppTool(
   request: any,
-  serverContext?: { symbolIndex?: PropertyStatsProvider },
+  serverContext?: { symbolIndex?: PropertyStatsProvider & { getReadDb?: () => DbLike } },
 ): Promise<any> {
   const raw = request?.params?.arguments ?? request;
   const parsed = validateXppArgsSchema.safeParse(raw);
@@ -3128,7 +3135,17 @@ export async function validateXppTool(
   const stats = typeof serverContext?.symbolIndex?.getPropertyPresenceRatio === 'function'
     ? serverContext.symbolIndex
     : undefined;
-  const violations = runRules(code, codeType, stats);
+  let violations = runRules(code, codeType, stats);
+  // BP002 in a test class the source alone does not reveal (a method of a class that
+  // reaches SysTestCase through a base such as a module's own test case).
+  if (codeType === 'xpp' && violations.some(v => v.rule === 'BP002')) {
+    try {
+      const db = serverContext?.symbolIndex?.getReadDb?.();
+      if (db && isTestClassInIndex(db, maskStringsAndComments(code), context)) {
+        violations = violations.filter(v => v.rule !== 'BP002');
+      }
+    } catch { /* index unavailable: keep the warning */ }
+  }
 
   const errors = violations.filter(v => v.severity === 'error');
   const warnings = violations.filter(v => v.severity === 'warning');

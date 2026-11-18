@@ -273,16 +273,16 @@ describe('ProjectFileManager', () => {
       fileStore.set(projectPath, RNRPROJ_WITH_ORPHAN_FOLDER);
 
       const manager = new ProjectFileManager();
-      // Normalise first: the xml2js round trip reformats whitespace, so compare
-      // against a project that has already been through the builder once.
+      // No normalising pass first: the project is edited as text now, so the
+      // round trip returns the very bytes the file started with.
       await manager.addToProject(projectPath, 'class', 'Probe', 'K:\\Pkg\\AxClass\\Probe.xml');
       await manager.removeFromProject(projectPath, 'class', 'Probe');
-      const baseline = fileStore.get(projectPath)!;
+      expect(fileStore.get(projectPath)).toBe(RNRPROJ_WITH_ORPHAN_FOLDER);
 
       await manager.addToProject(projectPath, 'data-entity', 'ProbeEntity', 'K:\\Pkg\\AxDataEntityView\\ProbeEntity.xml');
       await manager.removeFromProject(projectPath, 'data-entity', 'ProbeEntity');
 
-      expect(fileStore.get(projectPath)).toBe(baseline);
+      expect(fileStore.get(projectPath)).toBe(RNRPROJ_WITH_ORPHAN_FOLDER);
     });
 
     it('removes the folder entry it added itself', async () => {
