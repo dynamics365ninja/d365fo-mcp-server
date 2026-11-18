@@ -29,6 +29,21 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **The Dataverse sign-in of `run_systest_class` and the UDE deploy now survives a server
+  restart on Windows, so a new MCP session renews it silently instead of opening the
+  browser.** The token cache was kept in memory only, so every new server process (in most
+  clients every new session) opened the Microsoft sign-in page again, and an unattended
+  agent, with nobody to complete that page, could not run tests or deploy on a UDE. The
+  cache is now also kept in a file encrypted for the current Windows user with DPAPI (the
+  protection `az` and `pac` use), through Windows PowerShell, so no native add-on is
+  needed. The browser opens only for the first sign-in and when the refresh token has
+  expired. PowerShell runs only when the file or the cache changed (about once per session
+  and once per token renewal), not on every request. The file is replaced atomically, so
+  two servers writing at once never leave a broken file, and a missing, corrupt or foreign
+  file just starts an empty cache. The default file is
+  `%LOCALAPPDATA%\d365fo-mcp\dataverse-token-cache.bin`. Set
+  `D365FO_DATAVERSE_TOKEN_CACHE` to another path, or to `off` to keep the cache in memory
+  only as before. Off Windows nothing is persisted and nothing changes.
 - **`run_systest_class` on UDE says when the environment was busy with another operation.**
   The environment runs one operation at a time, so a test run sent during a deploy or another
   test run waits behind it, and a slow or timed-out run looked like a fault of the tests. Before

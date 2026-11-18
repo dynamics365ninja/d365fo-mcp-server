@@ -251,6 +251,18 @@ export const SETTINGS: Setting[] = [
       : 'Enter the environment URL only, e.g. https://contoso-dev.crm.dynamics.com',
   },
   {
+    env: 'D365FO_DATAVERSE_TOKEN_CACHE',
+    section: 'environment',
+    tier: 'env-only',
+    type: 'string',
+    label: 'Dataverse sign-in cache (UDE)',
+    description:
+      'Where the Dataverse sign-in of run_systest_class and the UDE deploy is kept between server processes, encrypted ' +
+      'for the current Windows user (DPAPI, like az and pac). Default `%LOCALAPPDATA%/d365fo-mcp/dataverse-token-cache.bin`, ' +
+      'so the browser opens only for the first sign-in and when the refresh token expires, which lets an unattended ' +
+      'agent run tests. `off` keeps it in memory only, one browser sign-in per server process. Windows only.',
+  },
+  {
     path: 'environment.dataverseClientId',
     env: 'D365FO_DATAVERSE_CLIENT_ID',
     section: 'environment',
