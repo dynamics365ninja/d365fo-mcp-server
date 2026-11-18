@@ -98,7 +98,7 @@ interface PendingSignIn {
  * msal's loopback listener has no timeout of its own and stays open until the sign-in settles,
  * so starting a second one would open a second tab and leave a second listener behind.
  */
-const clients = new Map<string, { app: PublicClientApplication; account?: AccountInfo; pending?: PendingSignIn }>();
+const clients = new Map<string, { app: PublicClientApplication; account?: AccountInfo; pending?: PendingSignIn; ready?: Promise<void> }>();
 
 /** Test-only: forget every cached client and its tokens. */
 export function _resetDataverseAuth(): void {
@@ -135,14 +135,20 @@ export async function getDataverseAccessToken(
     clients.set(key, entry);
     if (settings.tokenCachePath) {
       // A new process starts with the account a previous one stored, so the silent path below can renew it.
-      try {
-        const accounts = await entry.app.getTokenCache().getAllAccounts();
-        entry.account = accounts[0];
-      } catch {
-        /* unreadable cache: sign in as without it */
-      }
+      // Kept as a promise that every call awaits: a second call arriving while the cache is still being
+      // read (it decrypts through PowerShell, up to ~2 s) must not see "no account" and open the browser.
+      const loading = entry;
+      loading.ready = (async () => {
+        try {
+          const accounts = await loading.app.getTokenCache().getAllAccounts();
+          loading.account = accounts.find(a => a.tenantId?.toLowerCase() === settings.tenant.toLowerCase()) ?? accounts[0];
+        } catch {
+          /* unreadable cache: sign in as without it */
+        }
+      })();
     }
   }
+  await entry.ready;
   const scopes = [`${settings.url}/.default`];
 
   if (entry.account) {

@@ -108,6 +108,22 @@ describe('getDataverseAccessToken', () => {
     expect((constructed[0] as { cache?: { cachePlugin?: unknown } }).cache?.cachePlugin).toBeDefined();
   });
 
+  it('a second call during the cache read waits for it instead of opening the browser', async () => {
+    let release!: (accounts: unknown[]) => void;
+    accountsMock.mockReturnValue(new Promise(resolve => { release = resolve; }));
+    silentMock.mockResolvedValue({ accessToken: 'from-cache' });
+    const opener = vi.fn();
+
+    const settings = { ...SETTINGS, tokenCachePath: 'C:\cache\dataverse-token-cache.bin' };
+    const first = getDataverseAccessToken(settings, opener);
+    const second = getDataverseAccessToken(settings, opener);
+    release([ACCOUNT]);
+
+    expect(await Promise.all([first, second])).toEqual(['from-cache', 'from-cache']);
+    expect(interactiveMock).not.toHaveBeenCalled();
+    expect(opener).not.toHaveBeenCalled();
+  });
+
   it('starts a new sign-in after one that failed', async () => {
     interactiveMock.mockRejectedValueOnce(new Error('user_cancelled'))
       .mockResolvedValueOnce({ accessToken: 'ok', account: ACCOUNT });
