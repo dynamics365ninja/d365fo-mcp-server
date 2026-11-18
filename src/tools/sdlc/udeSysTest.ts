@@ -442,6 +442,31 @@ export async function runTestRequestInCloud(
   return { suiteId, trx: entries.get(trxName)!.toString('utf8') };
 }
 
+/** An operation the environment is running: a deploy, a test run, a copy, an update. */
+export interface ActiveOperation {
+  /** As the environment names it, e.g. "Deploy" or "Unit Test Execution". */
+  name: string;
+  /** ISO 8601, UTC. */
+  startedAt: string;
+}
+
+/**
+ * The operations the environment is running now, oldest first. The environment's Package
+ * Manager records every deploy, test run, database copy and update in `msprov_operationhistory`
+ * (statecode 0 Active / statuscode 1 InProgress while it runs), and runs one at a time: a test
+ * run sent meanwhile waits behind them. Read-only and best-effort: a caller treats a failure as
+ * "nothing known" rather than as a reason not to run. Asked once, with no retry: a throttled
+ * environment must not delay a run for a note that only explains it.
+ */
+export async function activeOperations(client: DataverseClient): Promise<ActiveOperation[]> {
+  const response = await call(client, 'GET',
+    'msprov_operationhistories?$select=msprov_name,createdon&$filter=statecode eq 0&$orderby=createdon asc&$top=10');
+  const rows = ((await response.json()) as { value?: { msprov_name?: string; createdon?: string }[] })?.value ?? [];
+  return rows
+    .filter(r => r.msprov_name && r.createdon)
+    .map(r => ({ name: r.msprov_name!, startedAt: r.createdon! }));
+}
+
 /** Keep the .trx where the user can open it; best-effort. */
 export async function saveTrx(className: string, trx: string): Promise<string | undefined> {
   const file = path.join(os.tmpdir(), `systest-${className}-${Date.now()}.trx`);

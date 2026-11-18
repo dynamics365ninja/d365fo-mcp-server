@@ -5,6 +5,7 @@ const {
   accessMock, readdirMock, execFileMock, readFileMock, cfgEnsureLoaded, cfgGetModelName, cfgGetPackagePath,
   cfgGetDevEnvironmentType, cfgGetActiveXppConfig, cfgGetAutoDetectedModelName, findClassFileMock,
   dataverseSettingsMock, dataverseTokenMock, findRuntimeAssemblyMock, runInCloudMock, saveTrxMock,
+  findClassViaIndexMock, activeOperationsMock,
 } = vi.hoisted(() => {
   const accessMock = vi.fn();
   // Bin listing for the versioned SysTestConsole lookup; empty unless a test lists files.
@@ -28,10 +29,14 @@ const {
   const findRuntimeAssemblyMock = vi.fn();
   const runInCloudMock = vi.fn();
   const saveTrxMock = vi.fn();
+  // Where the symbol index says a class is, and what the environment is busy with.
+  const findClassViaIndexMock = vi.fn();
+  const activeOperationsMock = vi.fn();
   return {
     accessMock, readdirMock, execFileMock, readFileMock, cfgEnsureLoaded, cfgGetModelName, cfgGetPackagePath,
     cfgGetDevEnvironmentType, cfgGetActiveXppConfig, cfgGetAutoDetectedModelName, findClassFileMock,
     dataverseSettingsMock, dataverseTokenMock, findRuntimeAssemblyMock, runInCloudMock, saveTrxMock,
+    findClassViaIndexMock, activeOperationsMock,
   };
 });
 
@@ -50,7 +55,10 @@ vi.mock('../../src/utils/configManager.js', () => ({
     getAutoDetectedModelName: cfgGetAutoDetectedModelName,
   }),
 }));
-vi.mock('../../src/utils/objectFileLookup.js', () => ({ findD365FileOnDisk: findClassFileMock }));
+vi.mock('../../src/utils/objectFileLookup.js', () => ({
+  findD365FileOnDisk: findClassFileMock,
+  findD365FileViaIndex: findClassViaIndexMock,
+}));
 vi.mock('../../src/utils/dataverseAuth.js', () => ({
   DEFAULT_DATAVERSE_CLIENT_ID: 'default-client',
   readDataverseSettings: dataverseSettingsMock,
@@ -61,6 +69,7 @@ vi.mock('../../src/tools/sdlc/udeSysTest.js', async importOriginal => ({
   findRuntimeAssembly: findRuntimeAssemblyMock,
   runTestRequestInCloud: runInCloudMock,
   saveTrx: saveTrxMock,
+  activeOperations: activeOperationsMock,
 }));
 vi.mock('../../src/utils/operationLocks.js', () => ({
   withOperationLock: (_key: string, fn: () => any) => fn(),
@@ -622,6 +631,75 @@ describe('run_systest_class — on a UDE environment', () => {
       await sysTestRunnerTool({ className: ['ContosoInvoiceTest', 'ContosoOrderTest'] as any }, {});
 
       expect(sentRequest()).toContain('<TestCaseName>ContosoOrderTest.testCreate</TestCaseName>');
+    });
+  });
+
+  describe('the model of a test class, from the symbol index', () => {
+    const INDEX = { getReadDb: () => ({ prepare: () => ({ all: () => [] }) }) };
+
+    beforeEach(() => {
+      // The workspace model is the product model, the test class lives in its test model.
+      cfgGetModelName.mockReturnValue('ContosoExt');
+      findClassFileMock.mockImplementation(async (_t: string, name: string, model: string) =>
+        name === 'ContosoInvoiceTest' && model === 'ContosoExtTests' ? CLASS_FILE : null);
+      findClassViaIndexMock.mockImplementation(async (_i: unknown, _t: string, name: string) =>
+        name === 'ContosoInvoiceTest' ? { filePath: CLASS_FILE, model: 'ContosoExtTests' } : null);
+    });
+
+    it('runs a class of another model when no model was named, and says where it was found', async () => {
+      const result = await sysTestRunnerTool({ className: 'ContosoInvoiceTest' }, { symbolIndex: INDEX });
+      const text = result.content[0].text;
+
+      expect(result.isError).toBeFalsy();
+      expect(text).toContain('Model: ContosoExtTests');
+      expect(text).toContain('Found in model `ContosoExtTests` through the symbol index, not in `ContosoExt`.');
+      expect(findRuntimeAssemblyMock).toHaveBeenCalledWith(RUNTIME, 'ContosoExtTests');
+    });
+
+    it('keeps to a model the caller named, without asking the index', async () => {
+      const result = await sysTestRunnerTool({ className: 'ContosoInvoiceTest', modelName: 'ContosoExt' }, { symbolIndex: INDEX });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('`ContosoInvoiceTest` was not found in model `ContosoExt`');
+      expect(findClassViaIndexMock).not.toHaveBeenCalled();
+    });
+
+    it('still reports a class the index does not know either as not found', async () => {
+      const result = await sysTestRunnerTool({ className: 'ContosoMissingTest' }, { symbolIndex: INDEX });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('`ContosoMissingTest` was not found in model `ContosoExt`');
+    });
+  });
+
+  describe('an environment busy with another operation', () => {
+    it('says the run waited behind the deploy that was going on', async () => {
+      activeOperationsMock.mockResolvedValue([{ name: 'Deploy', startedAt: '2026-11-16T07:29:32Z' }]);
+
+      const text = (await sysTestRunnerTool({ className: 'ContosoInvoiceTest' }, {})).content[0].text;
+
+      expect(text).toContain('⏳ When this run was sent, the environment was already running Deploy (since 07:29 UTC).');
+      expect(text).toContain('It runs one operation at a time, so this run waited for it.');
+    });
+
+    it('names it in a run that then failed too, where it explains a timeout', async () => {
+      activeOperationsMock.mockResolvedValue([{ name: 'Unit Test Execution', startedAt: '2026-11-16T08:06:19Z' }]);
+      runInCloudMock.mockRejectedValue(new Error('The test run did not finish in time (job j).'));
+
+      const text = (await sysTestRunnerTool({ className: 'ContosoInvoiceTest' }, {})).content[0].text;
+
+      expect(text).toContain('did not finish in time');
+      expect(text).toContain('already running Unit Test Execution (since 08:06 UTC)');
+    });
+
+    it('runs without a note when the operation history cannot be read', async () => {
+      activeOperationsMock.mockRejectedValue(new Error('HTTP 403'));
+
+      const result = await sysTestRunnerTool({ className: 'ContosoInvoiceTest' }, {});
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content[0].text).not.toContain('⏳');
+      expect(runInCloudMock).toHaveBeenCalledTimes(1);
     });
   });
 

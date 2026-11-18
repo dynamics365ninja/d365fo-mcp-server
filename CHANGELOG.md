@@ -29,6 +29,14 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`run_systest_class` on UDE says when the environment was busy with another operation.**
+  The environment runs one operation at a time, so a test run sent during a deploy or another
+  test run waits behind it, and a slow or timed-out run looked like a fault of the tests. Before
+  sending, the tool now reads the operations still in progress from the environment's
+  operation history (`msprov_operationhistory`) and, when there are any, the reply says
+  `⏳ When this run was sent, the environment was already running Deploy (since 07:29 UTC)`.
+  Read-only and best-effort: when the history cannot be read, the run goes ahead without the
+  note.
 - **`run_systest_class` runs several test classes in one cloud run on UDE** (#1278). The tool
   took one class per call, so an agent checking a change ran a test model class by class. The
   environment runs one test operation at a time and each costs about a minute whatever it
@@ -62,6 +70,12 @@ those are called out explicitly below.
   in the Report Designer.
 
 ### Fixed
+- **`run_systest_class` finds a test class in another model when no model was named.** The
+  tool looked for the class only in the workspace model, while test classes usually live in a
+  test model of their own, so the call failed with "was not found in model …" and the agent
+  had to guess the model and call again. When `modelName` is omitted and the class is not in
+  the workspace model, the class is now looked up in the symbol index, run from the model the
+  index names, and the reply says so. A model the caller names is still the only one searched.
 - **`d365fo_file(action="project", operation="remove-object")` now unregisters label
   files.** For `objectType: "label-file"` it answered "label-file removal is not
   supported", so moving a feature's objects to another project of the model removed

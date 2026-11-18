@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { deflateRawSync } from 'node:zlib';
 import {
+  activeOperations,
   buildTestSuiteXml,
   buildTestSuiteXmlForClasses,
   findRuntimeAssembly,
@@ -401,5 +402,43 @@ describe('runTestRequestInCloud', () => {
 
     await expect(runTestRequestInCloud(client, 'x.tsx', '<TestSuite/>'))
       .rejects.toThrow(/HTTP 403 — Principal user is missing prvCreatemsprov_unittestsuite/);
+  });
+});
+
+describe('activeOperations', () => {
+  const URL = 'https://contoso-dev.crm.dynamics.com';
+  const answer = (status: number, body: unknown) => {
+    const asked: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      asked.push(url);
+      return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+    }) as unknown as typeof fetch;
+    return { client: { url: URL, getToken: async () => 'token-value', fetch: fetchImpl } as DataverseClient, asked };
+  };
+
+  it('asks for the operations still in progress, oldest first, and names each with its start', async () => {
+    const { client, asked } = answer(200, {
+      value: [
+        { msprov_name: 'Deploy', createdon: '2026-11-16T07:29:32Z' },
+        { msprov_name: 'Unit Test Execution', createdon: '2026-11-16T07:35:00Z' },
+        { msprov_name: null, createdon: '2026-11-16T07:36:00Z' },
+      ],
+    });
+
+    const active = await activeOperations(client);
+
+    expect(active).toEqual([
+      { name: 'Deploy', startedAt: '2026-11-16T07:29:32Z' },
+      { name: 'Unit Test Execution', startedAt: '2026-11-16T07:35:00Z' },
+    ]);
+    expect(asked[0]).toContain('msprov_operationhistories?');
+    expect(asked[0]).toContain('$filter=statecode eq 0');
+    expect(asked[0]).toContain('$orderby=createdon asc');
+  });
+
+  it('throws on a refused read, for the caller to treat as nothing known', async () => {
+    const { client } = answer(403, { error: { message: 'Principal user is missing prvReadmsprov_operationhistory' } });
+
+    await expect(activeOperations(client)).rejects.toThrow(/HTTP 403/);
   });
 });
