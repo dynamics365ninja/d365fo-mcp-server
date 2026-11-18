@@ -313,6 +313,23 @@ export const SETTINGS: Setting[] = [
     placeholder: 'K:\\AosService\\PackagesLocalDirectory\\YourPackage\\YourModel',
   },
   {
+    path: 'workspace.projectMembership',
+    env: 'D365FO_PROJECT_MEMBERSHIP',
+    section: 'workspace',
+    tier: 'advanced',
+    type: 'enum',
+    label: 'Which project a write registers an existing object in',
+    description:
+      'A write to an object that another project of the model already references adds a second reference to the ' +
+      'active project. With "owner", an object referenced by exactly one other project stays there and the reply ' +
+      'says so. New objects and objects in several projects are unaffected.',
+    default: 'active',
+    choices: [
+      { value: 'active', hint: 'Register the object in the active project (default)' },
+      { value: 'owner', hint: 'Leave it in the single project that already owns it' },
+    ],
+  },
+  {
     path: 'workspace.solutionsPath',
     env: 'D365FO_SOLUTIONS_PATH',
     section: 'workspace',
