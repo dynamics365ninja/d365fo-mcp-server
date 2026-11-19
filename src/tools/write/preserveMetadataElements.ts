@@ -206,6 +206,8 @@ export function claimedMarkerFor(
       // SubscriberAccessLevel is written as child elements, one per permission
       // ("NoAccess" → six <X>Deny</X>), never as the text passed in.
       if (name.toLowerCase() === 'subscriberaccesslevel') return subscriberAccessLevelMarker(value);
+      // Tags are normalised and combined by tagsMode; tagsApply.ts already reports what it wrote.
+      if (name.toLowerCase() === 'tags') return null;
       // An EDT's ReferenceField is the <RelatedField> of its table reference
       // ("Table.Field" names the table too), never a <ReferenceField> element.
       if (name.toLowerCase() === 'referencefield' && args.objectType === 'edt') {

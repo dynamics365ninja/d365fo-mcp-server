@@ -552,6 +552,8 @@ export function modifyIntentFor(
     if (!name || text('controlName') || /[./]/.test(name) || value === undefined || value === null) return null;
     // Written as child elements, one per permission, never as the text passed in.
     if (name.toLowerCase() === 'subscriberaccesslevel') return null;
+    // Tags: normalised ("A;B" -> "A, B") and combined by tagsMode, so the passed text is not what lands.
+    if (name.toLowerCase() === 'tags') return null;
     const requested = String(value).trim();
     // An empty value removes the property, so there is no value to find.
     return requested ? { properties: { [name]: requested } } : null;

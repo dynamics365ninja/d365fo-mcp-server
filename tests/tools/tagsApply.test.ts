@@ -249,3 +249,13 @@ describe('discoverability', () => {
     expect(renderCreatePropertySpec('class')).toContain('properties.tags');
   });
 });
+
+describe('write verification', () => {
+  it('does not claim a Tags modify failed when tagsMode combined or normalised the value', async () => {
+    const { claimedMarkerFor } = await import('../../src/tools/write/preserveMetadataElements');
+    const { modifyIntentFor } = await import('../../src/tools/write/inlineWriteVerification');
+    const args = { propertyPath: 'Tags', propertyValue: 'ABC-1', tagsMode: 'add' };
+    expect(claimedMarkerFor('modify-property', args)).toBeNull();
+    expect(modifyIntentFor('modify-property', 'table', args)).toBeNull();
+  });
+});
