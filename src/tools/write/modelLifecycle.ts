@@ -26,6 +26,7 @@
  */
 
 import * as fs from 'fs/promises';
+import { existsSync } from 'fs';
 import * as path from 'path';
 import { z } from 'zod';
 import type { XppServerContext } from '../../types/context.js';
@@ -36,7 +37,7 @@ import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
 import { isCustomModel, registerCustomModel } from '../../utils/modelClassifier.js';
 import { crossModelWriteRefusal, standDownNotice } from '../../utils/crossModelWriteGuard.js';
 import { loadedEnvFile } from '../../utils/loadEnv.js';
-import { updateListSetting, type ListSettingOutcome } from '../../utils/envListSetting.js';
+import { updateListSetting, splitList, type ListSettingOutcome } from '../../utils/envListSetting.js';
 import { findModelDescriptorPath } from '../../utils/objectFileLookup.js';
 import {
   invalidateModelVisibility, isValidModuleReferenceName,
@@ -80,6 +81,8 @@ interface Roots {
   cfg: ReturnType<typeof getConfigManager>;
   /** Root new metadata is written under, or null when none is configured. */
   writeRoot: string | null;
+  /** The UDE custom packages root, or null on a traditional box. */
+  custom: string | null;
   /** Every root a descriptor may be visible under, in lookup order. */
   all: string[];
 }
@@ -95,6 +98,7 @@ async function resolveRoots(explicit?: string): Promise<Roots> {
   return {
     cfg,
     writeRoot: writeRoot ? path.resolve(writeRoot) : null,
+    custom: custom && custom.trim() ? path.resolve(custom) : null,
     all: [explicit, custom, configured, microsoft].filter((r): r is string => !!r && !!r.trim()),
   };
 }
@@ -348,9 +352,19 @@ export async function handleCreateModel(
   invalidateModelVisibility(name);
 
   // Known to configuration from here on — see the header.
-  const envFile = deps.envFile !== undefined ? deps.envFile : loadedEnvFile();
+  // Never create a .env the server did not read: a JSON-only instance falls back to the
+  // installation root .env, which every such instance would then share.
+  const loaded = loadedEnvFile();
+  const envFile = deps.envFile !== undefined ? deps.envFile : (loaded && existsSync(loaded.envPath) ? loaded : null);
   const settings: ListSettingOutcome[] = [];
-  if (!isCustomModel(name)) settings.push(await updateListSetting(envFile, CUSTOM_MODELS_KEY, { add: name }));
+  // On UDE an empty CUSTOM_MODELS means "every model under the custom root", while a non-empty
+  // list is read by the custom refresh as its whole scope. Writing the new model into an empty
+  // list would silently narrow every later refresh to it, so it is custom for this session only.
+  const pathScoped = !!roots.custom && splitList(process.env[CUSTOM_MODELS_KEY]).length === 0 &&
+    !path.relative(roots.custom, descriptorPath).startsWith('..');
+  if (!isCustomModel(name) && !pathScoped) {
+    settings.push(await updateListSetting(envFile, CUSTOM_MODELS_KEY, { add: name }));
+  }
   registerCustomModel(name);
   if (!sameName(anchor, name)) settings.push(await updateListSetting(envFile, ALLOW_LIST_KEY, { add: name }));
   // Only what THIS create added is taken out again by undo.
@@ -367,6 +381,9 @@ export async function handleCreateModel(
     '',
     'Configuration:',
     ...(settings.length ? settings.map(s => settingLine(s, envFile?.envPath)) : ['  • nothing to change — the model was already covered.']),
+    pathScoped
+      ? `  • ${CUSTOM_MODELS_KEY} left empty: on UDE the custom refresh finds models by path, and a list would narrow it to the listed models. "${name}" is custom for this session; after a restart it is custom once a project in it is open or its name matches EXTENSION_PREFIX.`
+      : '',
     anchor
       ? `  This workspace still targets "${anchor}". "${name}" is on the cross-model allow-list so that objects can be ` +
         `written into it with modelName="${name}"; tell the user, and take it off the list again if that was not wanted.`
