@@ -1,12 +1,16 @@
-# New Tool Registration Checklist
+<sub>[README](../README.md) › [Docs](README.md) › New tool checklist</sub>
+
+# 🧩 New tool registration checklist
 
 Every new MCP tool requires changes in these files. Check each item before opening a PR.
 
+> [!IMPORTANT]
 > **Read this first, then read [Prefer merging over adding](#prefer-merging-over-adding-discriminator-pattern).**
 > Most capabilities belong on an existing unified tool. Adding a tool costs every
 > future request — the `tools/list` payload ships on every call, and the model's
 > selection accuracy falls as the list grows.
 
+> [!NOTE]
 > **Where schemas live.** Tool definitions (`name` / `description` / `inputSchema`)
 > live one-per-file in **`src/server/toolSchemas/`**, aggregated by
 > `src/server/toolSchemas/index.ts`. They were extracted out of `mcpServer.ts` in

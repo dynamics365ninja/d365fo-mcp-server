@@ -1,4 +1,6 @@
-# Testing
+<sub>[README](../README.md) › [Docs](README.md) › Testing</sub>
+
+# ✅ Testing
 
 The project uses [Vitest](https://vitest.dev/). ~5,450 tests across ~370 files run without a live D365FO environment — all external dependencies (SQLite, filesystem, bridge, cache) are mocked.
 

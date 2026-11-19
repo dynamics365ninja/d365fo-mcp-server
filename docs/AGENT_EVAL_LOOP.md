@@ -1,4 +1,6 @@
-# Self-improving agent eval loop — design spec
+<sub>[README](../README.md) › [Docs](README.md) › Eval loop</sub>
+
+# 🧪 Self-improving agent eval loop — design spec
 
 **Status:** implemented and in production use — see
 [eval/COVERAGE.md](../eval/COVERAGE.md) for live coverage and
@@ -46,27 +48,12 @@ What is **missing** and this spec defines: the **use-case catalog**, the **corpu
 
 ## 3. Topology — two roles, one corpus
 
-```
-                         ┌────────────────────────┐
-   D365FO dev VM ───────►│  IMPLEMENTER agent      │
-   (full mode + bridge)  │  Claude Code + mcp tools│
-                         │  generate → build →     │
-                         │  golden diff → score    │
-                         └───────────┬─────────────┘
-                                     │ writes run records
-                                     ▼
-                         ┌────────────────────────┐
-                         │  CORPUS (shared store)  │
-                         │  one record per run     │
-                         └───────────┬─────────────┘
-                                     │ reads clustered failures
-                                     ▼
-                         ┌────────────────────────┐
-   repo / CI ───────────►│  IMPROVER agent         │
-                         │  Claude Code in repo    │
-                         │  reproduce → fix → test │
-                         │  → open PR              │
-                         └────────────────────────┘
+```mermaid
+flowchart TB
+    vm["🖥️ D365FO dev VM<br/>full mode + bridge"] --> impl["<b>IMPLEMENTER agent</b><br/>Claude Code + mcp tools<br/>generate → build → golden diff → score"]
+    impl -- "writes run records" --> corp[("<b>CORPUS</b> · shared store<br/>one record per run")]
+    corp -- "reads clustered failures" --> imp["<b>IMPROVER agent</b><br/>Claude Code in the repo<br/>reproduce → fix → test → open PR"]
+    repo["📦 repo / CI"] --> imp
 ```
 
 **Why split the roles:** the VM has the platform and the compiler; the repo is where TypeScript edits, golden tests, and CI belong. Mixing them on the VM couples slow platform builds to fast unit-test iteration and makes the improver's PRs harder to review in isolation.
@@ -78,6 +65,13 @@ The two agents communicate **only** through the corpus — no shared in-memory s
 ## 4. The loop
 
 For each selected use-case the **implementer** runs:
+
+```mermaid
+flowchart LR
+    s1["1 · Isolate<br/>sandbox model"] --> s1a["1a · Fixtures<br/>re-provision inputs"] --> s2["2 · Implement<br/>grounded tools only"]
+    s2 --> s3{"3 · Static gate<br/>validate_code"} --> s4{"4 · Build"} --> s5{"5 · Oracle<br/>golden diff · SysTest"}
+    s5 --> s6["6 · Score"] --> s7["7 · Triage"] --> s8["8 · Persist<br/>run record"] --> s9["9 · Roll back<br/>keep fixtures"]
+```
 
 1. **Isolate** — provision a throwaway sandbox model/package for this run (see §8).
 1a. **Provision fixtures (§4a)** — (re)provision the shared INPUT objects this case READS (e.g. the `ConDemoNoteHeader` table) from the repo-committed definitions in `eval/fixtures/`, and reindex. These are *not* case outputs; they must exist before the case and are excluded from the rollback in step 9.

@@ -250,6 +250,32 @@ those are called out explicitly below.
   in the Report Designer.
 
 ### Changed
+- **The README is reorganised around what a new user needs first, with a redrawn
+  architecture diagram that is readable in GitHub's dark theme.** The old diagram was one
+  dense, light-only SVG whose figures had drifted from the server (it still said 20 tools
+  and FP000–FP010). `docs/img/architecture.svg` replaces it: larger text, colours that
+  follow the viewer's light or dark scheme, and no counts that go stale. The README now
+  leads with a four-step *How it works* (index → ground → gate → build) and a Mermaid flow
+  of a typical change, gives the three install paths their own headings, adds example
+  prompts, lists all 22 tools by area, and folds the form pipeline and the
+  local/shared/hybrid deployment choice (now also a diagram) into collapsible sections.
+  No setup step changed.
+- **Every page under `docs/` has been reworked to the same layout, and the diagrams in
+  them now render on GitHub.** The Mermaid diagrams in `ARCHITECTURE.md` broke their
+  labels with `\n`, which GitHub's Mermaid prints as a literal `\n`; they are redrawn with
+  real line breaks and theme-safe colours. New diagrams show the scenario chooser, the
+  hybrid split, the Azure pipelines, path resolution, workspace detection, the grounding
+  gates, the prefix rules, the model lifecycle, the AxDB SQL guards, a trace capture, the
+  AOS restart and the eval-loop steps. Each page now opens with a breadcrumb, uses GitHub
+  callouts for notes and warnings, and ends with next steps; a new `docs/README.md` maps
+  every page by audience. Stale statements are corrected: Python is no longer listed as a
+  prerequisite (the index uses the built-in `node:sqlite`), the hybrid scenario installs
+  from npm instead of a `git clone`, `npx d365fo-mcp update` replaces the manual
+  `git pull` / build steps, `read-only` mode is described as hiding the eight local tools
+  (not just the write actions), `find_references` is listed among the tools every mode
+  publishes, and the form rule range is FP000–FP011. `docs/CONFIGURATION.md` is still
+  generated; its header and the value-resolution diagram come from
+  `scripts/generate-config-docs.ts`.
 - **The README now links to the MIT license file and states how contributions are
   licensed.** The license badge pointed to opensource.org and the *License* section said
   only "MIT", so the `LICENSE` file in the repository root was easy to miss. Both now link

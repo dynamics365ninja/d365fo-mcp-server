@@ -1,4 +1,6 @@
-# Authoring knowledge topics
+<sub>[README](../README.md) › [Docs](README.md) › Knowledge authoring</sub>
+
+# 📐 Authoring knowledge topics
 
 The X++ knowledge base (`src/tools/knowledge/xppKnowledge.ts`, exposed as
 `get_knowledge(kind="knowledge")`) is content shipped **directly into the

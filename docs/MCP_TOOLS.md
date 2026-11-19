@@ -1,11 +1,29 @@
-# Tool Reference — 22 tools
+<sub>[README](../README.md) › [Docs](README.md) › Tool reference</sub>
 
-The optional `axdb_sql` and `trace_d365fo` count toward that total but are published only once configured — see SDLC & Build below.
+# 🧰 Tool reference — 22 tools
 
-Every tool the server exposes, grouped by purpose. The AI agent picks tools automatically — the *example prompts* show what to ask to trigger them; you never name tools yourself.
+Every tool the server exposes, grouped by purpose. The AI agent picks tools automatically — the
+*example prompts* show what to ask to trigger them; you never name tools yourself. The optional
+`axdb_sql` and `trace_d365fo` count toward the total but are published only once configured — see
+[SDLC & Build](#️-sdlc--build-6).
 
+| Area | Tools |
+|---|---|
+| [🔍 Search & Discovery](#-search--discovery-1) | `search` |
+| [📊 Advanced Object Info](#-advanced-object-info-2) | `get_object_info` · `find_references` |
+| [🏷️ Label Management](#️-label-management-1) | `labels` |
+| [🧠 Code Intelligence](#-code-intelligence-2) | `get_knowledge` · `analyze_code` |
+| [🎨 Code Generation](#-code-generation-1) | `generate_object` |
+| [📈 Pattern Analysis](#-pattern-analysis-1) | `object_patterns` |
+| [📝 File Operations](#-file-operations-1) | `d365fo_file` |
+| [🔐 Security & Extensions](#-security--extensions-5) | `security_info` · `extension_info` · `validate_object_naming` · `get_workspace_info` · `verify_d365fo_project` |
+| [🏗️ SDLC & Build](#️-sdlc--build-6) | `build_d365fo_project` · `run_bp_check` · `run_systest_class` · `axdb_sql` · `trace_d365fo` · `update_symbol_index` |
+| [✅ Quality & Grounding](#-quality--grounding-2) | `prepare` · `validate_code` |
+
+> [!TIP]
 > Several tools are **unified** behind a discriminator parameter (`action` / `mode` / `domain` / `kind` / `objectType` / `include`) instead of one tool per variant — e.g. `search`, `d365fo_file`, `analyze_code`, `object_patterns`, `prepare`, `security_info`, `extension_info`, `get_knowledge`, `labels`, `get_object_info`, `generate_object`, `validate_code`. Fewer tools to choose from, same coverage.
 
+> [!NOTE]
 > **C# bridge first:** on Windows D365FO VMs, the bridge-backed read tools (marked †) query the live `IMetadataProvider` (always-fresh metadata) and `DYNAMICSXREFDB` (compiler-resolved cross-references), falling back to SQLite transparently on Azure/Linux. Without the bridge, the xref-backed tools read a SQLite export of `DYNAMICSXREFDB` when `D365FO_XREF_SQLITE_PATH` names one (as current as that export; the `_Source:` line gives its date). All write operations go exclusively through the bridge. See [ARCHITECTURE.md](ARCHITECTURE.md).
 >
 > **Server modes:** `full` = all 22 tools · `read-only` (Azure) = everything except the eight local build/verify tools · `write-only` (hybrid companion) = those eight local tools plus the four always-on ones (`get_object_info`, `labels`, `d365fo_file`, `find_references`). Independently, **`MCP_TOOL_PROFILE=core`** publishes only the 17-tool create-and-build loop, for workspaces that already run other MCP servers. See [MCP_CONFIG.md](MCP_CONFIG.md).
@@ -34,14 +52,21 @@ flowchart LR
         C3 --> C4["object_patterns<br/>(domain=form, action=validate)"]
         C4 --> C5["d365fo_file<br/>(action=create)"]
     end
+
+    classDef gate fill:#bc4c00,stroke:#bc4c00,color:#ffffff
+    classDef write fill:#1a7f37,stroke:#1a7f37,color:#ffffff
+    class A3,B3,C4 gate
+    class A4,B4,C5 write
 ```
+
+<sub>🟧 gate — the write is refused until it passes · 🟩 write</sub>
 
 | Workflow | Chain | Gate |
 |----------|-------|------|
 | CoC / event handler / extension | `prepare(mode="change")` → generate → `validate_code(mode="both")` → `d365fo_file(action="modify")` | grounding token + reference proof |
 | New class / table / enum | `prepare(mode="create")` → generate → `validate_code(mode="both")` → `d365fo_file(action="create")` | grounding token + collision check |
 | A rule, test first | `prepare(mode="test")` → `generate_object(pattern="systest")` → `d365fo_file(action="create")` → `build_d365fo_project` (must COMPILE) → `run_systest_class` (expect RED) → implement → build → run again (expect green) | the red run is the proof the assertion is not empty |
-| New form | `object_patterns(domain="form", action="analyze", recommend)` → `object_patterns(domain="form", action="spec")` → `generate_object(mode="scaffold", objectType="form", cloneFrom)` → `object_patterns(domain="form", action="validate")` → `d365fo_file(action="create")` | structural pattern gate (FP001–FP010) |
+| New form | `object_patterns(domain="form", action="analyze", recommend)` → `object_patterns(domain="form", action="spec")` → `generate_object(mode="scaffold", objectType="form", cloneFrom)` → `object_patterns(domain="form", action="validate")` → `d365fo_file(action="create")` | structural pattern gate (FP000–FP011) |
 
 ---
 
@@ -78,6 +103,7 @@ One unified tool covers all label operations via `action` (mirrors the `get_obje
 |------|--------------|----------------|
 | `labels` | `action=search` — full-text query across 20M+ label rows, all languages; with `exact=true` (op-spec, flat or in `params`) the labels whose text *equals* a given text (case, NFC and whitespace ignored), several languages per call via `texts=[{language, text}]`, each with its other translations, custom models listed first, `maxMatches` (default 20) per text plus a per-model/label-file count of all matches, outside the search-call budget · `action=info` — all translations of a labelId (or list label files when omitted) · `action=create` — add a label to all language files of a model · `action=update` — overwrite the text of an existing label (same arguments as create, with the corrected translations; languages you do not supply keep their text and comment) · `action=rename` — rename a label ID across .label.txt, X++ and XML | *"Is there a label for 'payment terms'?"* · *"Which label says exactly 'Posting'?"* · *"Show translations of @SYS12345"* · *"Create label 'Priority tier' in en-US, cs, de"* · *"Fix the typo in @MyModel:PriorityTier"* · *"Rename label MyOldId to MyNewId everywhere"* |
 
+> [!TIP]
 > **Label where-used** (which objects reference a label) is not a `labels` action — use `find_references` with `targetType="label"` or an `@…` id. See Advanced Object Info above.
 
 ## 🧠 Code Intelligence (2)
@@ -104,6 +130,7 @@ One unified tool covers all label operations via `action` (mirrors the `get_obje
 
 Mode-specific parameters go in a single `params` object (flat top-level keys still accepted) and come from `get_knowledge(kind="op-spec", topic="<mode>")`; a missing required one returns the complete per-mode spec (source: `generateObjectOpSpecs.ts`).
 
+> [!NOTE]
 > `suggest_edt` was retired: EDT suggestions come from `prepare(mode="create", fieldsHint=[...])`, which returns them alongside the collision check, naming and mined property defaults in the same call. Its handler stays routable under the old name.
 
 ## 📈 Pattern Analysis (1)
@@ -176,7 +203,9 @@ Two things shared by `create` and `modify`:
 
 **Form patterns are checked after every successful build.** A pipeline build (MSBuild and Microsoft's BuildTask) compiles the whole package and rejects a form whose controls break their pattern, for example a `FieldsFieldGroups` container without `ColumnsMode` `Fill`. An incremental xppc build does not report those errors for forms it does not recompile, so `build_d365fo_project` runs the form pattern validator (the platform's own pattern definitions, the same rules as `object_patterns(domain="form", action="validate")`) over every form of the package once xppc succeeds. Errors turn the result into `❌ Compiled; form pattern errors a pipeline build rejects`, listing `AxForm/<form>: <control path>: <finding> (<rule>)`. With `FORM_PATTERN_ENFORCE=false` they are listed under `⚠️ Build succeeded; form pattern errors` and the result is not an error.
 
-> Local-only — require a Windows D365FO VM; excluded from the Azure `read-only` mode.
+> [!IMPORTANT]
+> Local-only — these tools require a Windows D365FO VM (or UDE) and are excluded from the Azure
+> `read-only` mode.
 
 | Tool | What it does | Example prompt |
 |------|--------------|----------------|
@@ -192,14 +221,16 @@ Two things shared by `create` and `modify`:
 | Tool | What it does | When it runs |
 |------|--------------|--------------|
 | `prepare` | `mode="change"` — one call before extending: signature + existing CoC wrappers + eligibility + strategy + **grounding token** · `mode="create"` — one call before creating: collision check + naming + EDT/label suggestions + property defaults + **grounding token** · `mode="test"` — one call before writing a SysTest: the target's methods worth covering with their real signatures, the test classes that already cover it, whether the model references `TestEssentials`, the ready-made scaffold call and the red-first order + **grounding token**. It also picks the test's SHAPE — class, table, `coc`, `event-handler`, `service` or `report-dp` — and reduces an extension name to the object it extends, because a CoC wrapper is transparent to a test and one that names the `_Extension` class passes with `next` never reached | automatically, before modifications / new objects / a test |
-| `validate_code` | `mode="both"` — runs both checks below in ONE call and merges them; prefer it, since both are wanted before every write · `mode="references"` — proves every type/field/method/label in generated code against the index (anti-hallucination gate) · `mode="syntax"` — offline BP validator, < 50 ms: 40 static rules (deprecated APIs, CoC correctness, select and transaction anti-patterns, C#-isms that cannot compile in X++, SSRS report wiring) plus 4 XML property rules mined from standard models. `codeType` picks the dialect: `xpp` (default), `xml-table`, `xml-report`, `xml-any` | automatically, after generation |
+| `validate_code` | `mode="both"` — runs both checks below in ONE call and merges them; prefer it, since both are wanted before every write · `mode="references"` — proves every type/field/method/label in generated code against the index (anti-hallucination gate) · `mode="syntax"` — offline BP validator, < 50 ms: static rules (deprecated APIs, CoC correctness, select and transaction anti-patterns, C#-isms that cannot compile in X++, SSRS report wiring) plus XML property rules mined from standard models — the full roster is in [ARCHITECTURE.md § Quality gates](ARCHITECTURE.md#quality-gates--the-grounding-chain). `codeType` picks the dialect: `xpp` (default), `xml-table`, `xml-report`, `xml-any` | automatically, after generation |
 
+> [!IMPORTANT]
 > **Grounding enforcement:** `prepare` issues a SHA-256 provenance token (30-min TTL) **bound to the object it was issued for**. When enforcement is on (`behavior.groundingEnforce` in the config, env `GROUNDING_ENFORCE=true`):
 > - extension patterns in `generate_object(mode="pattern")` and extension objectTypes in `d365fo_file(action="create"/"modify")` require a valid token for the target object, and
 > - X++ source passed to `d365fo_file(action="create"/"modify")` is run through `validate_code(mode="references")` — the write is rejected while any identifier cannot be proven against the index.
 >
 > This ensures generated code is grounded in your actual codebase, not AI training data.
->
+
+> [!WARNING]
 > **Hybrid deployment note:** grounding tokens live in the issuing process's memory by default. In `write-only` mode (local companion) `prepare` is not exposed and in-memory tokens issued by the read-only/Azure instance cannot be validated locally, so `GROUNDING_ENFORCE=true` is **ignored** there (with a startup warning) — otherwise the agent would loop forever between the two servers. To enforce grounding end-to-end in a hybrid deployment, set the same `GROUNDING_SECRET` on **both** instances: tokens are then HMAC-signed and the companion validates them statelessly.
 
 ---
@@ -212,7 +243,8 @@ And **5 workspace resources** (read-only JSON for clients that consume MCP resou
 
 ---
 
-## Tips
+## 💡 Tips
+
 - **Describe goals, not tools.** The instruction files route requests automatically — *"add a priority field to CustTable and show it on the form"* triggers the whole chain.
 - **Let the gates work.** `FORM_PATTERN_ENFORCE` (default on) rejects structurally invalid form writes, and `GROUNDING_ENFORCE` (default **off** — see [CONFIGURATION.md](CONFIGURATION.md)) rejects writes that were never grounded in a `prepare` call. Turn grounding enforcement on once your workflow reliably calls `prepare` first; that's the feature, not friction.
 - **Verify after writing.** `verify_d365fo_project` confirms disk + project registration in one call.

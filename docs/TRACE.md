@@ -1,4 +1,6 @@
-# ETW performance trace (optional)
+<sub>[README](../README.md) › [Docs](README.md) › Performance trace</sub>
+
+# ⏱️ ETW performance trace (optional)
 
 `trace_d365fo` measures where a slow D365FO process spends its time — which X++ methods, which SQL
 statements, which callers run the same query thousands of times — without changing the
@@ -7,6 +9,27 @@ application. It replaces the usual approach of an agent adding timer classes, Co
 
 It captures the AOS's own ETW events (the same ones Trace Parser reads) with `logman`, and
 analyses the `.etl` file in the bridge binary. Trace Parser is not needed.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant A as Agent
+    participant T as trace_d365fo
+    participant L as logman (ETW)
+    participant AOS as Local AOS
+    participant B as Bridge --analyze-trace
+
+    A->>T: start (mode auto | manual)
+    T->>L: start session · time + size limit
+    Note over A,AOS: the agent or you reproduce the slow scenario
+    AOS-)L: X++ enter/exit · SQL latency events
+    A->>T: stop
+    T->>L: stop → .etl file
+    A->>T: analyze (focus, pid, scope)
+    T->>B: read .etl in its own process
+    B-->>A: hot methods · SQL by time / count · repeated SQL
+    A->>T: delete (when done)
+```
 
 ## Requirements
 
@@ -17,14 +40,18 @@ analyses the `.etl` file in the bridge binary. Trace Parser is not needed.
   analysis runs as `D365MetadataBridge.exe --analyze-trace` in its own process. It needs only the
   binary, so it works even when the long-running bridge did not start (no packages path, a start-up
   timeout on a cold VM).
-- Disk space: a capture grows by roughly 2 MB/s on an idle AOS and **40–50 MB/s** under a busy
-  batch job. A 60-second capture of a heavy job can take 3 GB.
+
+> [!WARNING]
+> Disk space: a capture grows by roughly 2 MB/s on an idle AOS and **40–50 MB/s** under a busy
+> batch job. A 60-second capture of a heavy job can take 3 GB.
 
 ## Setup
 
-```bash
-npx tsx src/cli/index.ts config trace
+```powershell
+d365fo-mcp config trace
 ```
+
+From a git checkout, use `npx tsx src/cli/index.ts config trace`.
 
 | Setting | Env | Default | |
 |---|---|---|---|
@@ -33,7 +60,8 @@ npx tsx src/cli/index.ts config trace
 | `trace.maxSeconds` | `D365FO_TRACE_MAX_SECONDS` | `120` | Longest capture (10–900). |
 | `trace.maxSizeMB` | `D365FO_TRACE_MAX_SIZE_MB` | `4096` | Largest file (100–20000); `logman` stops by itself there. |
 
-Restart MCP after saving.
+> [!IMPORTANT]
+> Restart MCP after saving.
 
 Each capture gets its own size limit: its `seconds` × 50 MB (at least 200 MB), never more than
 `trace.maxSizeMB`, not even for that minimum — a 30-second capture stops at 1,500 MB. `start`
@@ -70,8 +98,9 @@ capture stays recorded as running and the stop is retried every 30 s. If the cap
 cannot be written (the folder of the index database is not writable), `start` stops the capture
 again at once and answers `TRACE_STATE_FAILED`: nothing could have stopped it later.
 
-Good practice: run the scenario once untraced first (the first run pays for caches), keep
-captures short, and for a job that runs for hours capture a representative minute in the middle.
+> [!TIP]
+> Run the scenario once untraced first (the first run pays for caches), keep captures short, and
+> for a job that runs for hours capture a representative minute in the middle.
 
 ## What `analyze` returns
 
@@ -114,7 +143,8 @@ its callers. What it cannot know is stated, not guessed:
 
 ## Customer data
 
-A capture contains SQL parameter values, user ids and machine names. The tool never returns
-parameter values (bind events are only counted). Keep captures on the VM, do not copy them
-elsewhere, and delete them when the analysis is done: `trace_d365fo(action: "delete", file)`
-removes a capture and its analyses (only inside the trace folder).
+> [!CAUTION]
+> A capture contains SQL parameter values, user ids and machine names. The tool never returns
+> parameter values (bind events are only counted). Keep captures on the VM, do not copy them
+> elsewhere, and delete them when the analysis is done: `trace_d365fo(action: "delete", file)`
+> removes a capture and its analyses (only inside the trace folder).

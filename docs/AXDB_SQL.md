@@ -1,4 +1,6 @@
-# Optional AxDB SQL tool
+<sub>[README](../README.md) › [Docs](README.md) › AxDB SQL</sub>
+
+# 🗄️ Optional AxDB SQL tool
 
 `axdb_sql` gives the agent **read-only, live SQL access to AxDB on a development VM**, for debugging: inspect persisted data, confirm what X++ code wrote, diagnose why a record has a particular value. It is off by default, and until SQL is configured the tool is not published at all — an installation that does not use it pays nothing for it, not even catalogue space.
 
@@ -19,6 +21,9 @@ The questions are:
 1. Server or named instance, such as `localhost` or `localhost\DEV` (offered from web.config when found). Leaving it empty disables SQL and skips the rest.
 2. Database, normally `AxDB` (offered from web.config when found).
 3. Whether to trust the local SQL Server certificate. A developer VM's SQL Server presents a self-signed certificate, so the answer defaults to yes when the server is this machine (`.`, `localhost`, `(local)`, its name) and to no otherwise.
+
+> [!IMPORTANT]
+> Restart the MCP server after any change to the SQL settings.
 
 Authentication uses the **Windows account running the MCP/bridge process**. No SQL password or connection string is collected, stored or accepted in tool arguments. The connection is encrypted; certificate validation is only relaxed if selected in setup. Connections open on demand, not at startup.
 
@@ -55,12 +60,27 @@ The tool is published in the `full` and `core` profiles, in the `full` and `writ
 
 On a D365FO dev VM the Windows account running MCP is normally **sysadmin**, so SQL permissions restrict nothing. Two independent guards stand in their place:
 
+```mermaid
+flowchart LR
+    req(["query from<br/>the agent"]) --> p{"<b>Guard 1 · statement</b><br/>ScriptDom parse:<br/>exactly one SELECT,<br/>allowed objects only"}
+    p -- "anything else" --> no["⛔ refused<br/>nothing sent to SQL"]
+    p -- "one SELECT" --> tx["<b>Guard 2 · connection</b><br/>BEGIN TRANSACTION<br/>run with bound parameters"]
+    tx --> rb["ROLLBACK — always<br/>no code path commits"]
+    rb --> out(["bounded rows<br/>+ column types"])
+
+    classDef gate fill:#bc4c00,stroke:#bc4c00,color:#ffffff
+    classDef bad fill:#cf222e,stroke:#cf222e,color:#ffffff
+    class p gate
+    class no bad
+```
+
 1. **The statement.** Each request is parsed with ScriptDom and must be exactly one `SELECT`. DML, DDL, `EXEC`, dynamic SQL, transaction commands, cross-database or linked-server names, `OPENROWSET`/`OPENQUERY`, `SELECT INTO`, user `OUTPUT`, query/table hints, user-defined functions and types, application views, synonyms and external tables are refused — on the syntax tree, not by the first word.
 2. **The connection.** Every operation runs inside a transaction that the service **always rolls back**; there is no code path that commits. Should a statement ever get past the policy, or the engine read it differently from ScriptDom, it still cannot leave a change behind.
 
 Catalog access is limited to the database-scoped views debugging needs: `sys.tables`, `columns`, `types`, `schemas`, `objects`, `indexes`, `index_columns`, `foreign_keys`, `foreign_key_columns`, `key_constraints`, `default_constraints`, `check_constraints`, `computed_columns`, `identity_columns`, `views`, `triggers` and `partitions`. The check is made on the object a name actually resolves to, so server-scoped views and DMVs (`sys.sql_logins`, `sys.server_principals`, `sys.dm_exec_sessions`) and unqualified compatibility views such as `syslogins` are refused.
 
-Rows read from AxDB are data, never instructions: the contract tells the agent so, since a text column can hold anything.
+> [!NOTE]
+> Rows read from AxDB are data, never instructions: the contract tells the agent so, since a text column can hold anything.
 
 ## When SQL is the right tool
 
@@ -89,7 +109,12 @@ Fetch `{"action":"contract"}` for the full strict input schema, supported types,
 }
 ```
 
-Use `schema` and the actual metadata before naming physical columns. Values are bound SQL parameters, named without `@` in JSON and referenced with `@` in SQL. `bigint`/RecId and `decimal` use strings to preserve precision; decimal requires precision/scale, nvarchar requires size. Include explicit `DATAAREAID` filters where applicable: SQL does not know the active company. `timestamp`/`rowversion` (the `SYSROWVERSION` column most AxDB tables carry) and binary values come back base64.
+Use `schema` and the actual metadata before naming physical columns. Values are bound SQL parameters, named without `@` in JSON and referenced with `@` in SQL. `bigint`/RecId and `decimal` use strings to preserve precision; decimal requires precision/scale, nvarchar requires size.
+
+> [!WARNING]
+> Include explicit `DATAAREAID` filters where applicable: SQL does not know the active company.
+
+ `timestamp`/`rowversion` (the `SYSROWVERSION` column most AxDB tables carry) and binary values come back base64.
 
 The read-only metadata functions `COLLATIONPROPERTY`, `DATABASEPROPERTYEX` and `DB_NAME` are supported, including `SELECT DATABASEPROPERTYEX(DB_NAME(), 'Collation')`. The two property functions return `sql_variant`, which comes back as the value's own type: the collation as text, `COLLATIONPROPERTY(..., 'CodePage')` as a number, and a `bigint`/`decimal` inside a variant as an exact string like any other. Qualified functions such as `dbo.DATABASEPROPERTYEX(...)` remain excluded ([DATABASEPROPERTYEX](https://learn.microsoft.com/en-us/sql/t-sql/functions/databasepropertyex-transact-sql), [COLLATIONPROPERTY](https://learn.microsoft.com/en-us/sql/t-sql/functions/collation-functions-collationproperty-transact-sql)).
 

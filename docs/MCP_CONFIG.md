@@ -1,8 +1,13 @@
-# Configuration Reference — .mcp.json
+<sub>[README](../README.md) › [Docs](README.md) › `.mcp.json` reference</sub>
 
-`.mcp.json` tells the MCP client how to reach the server and tells the server where your D365FO project lives. Without it the server still works, but file creation may target the wrong model.
+# 🔌 `.mcp.json` reference
 
-> Step-by-step setup: [QUICK_START.md](QUICK_START.md) · scenarios: [SETUP.md](SETUP.md)
+`.mcp.json` tells the MCP client how to reach the server and tells the server where your D365FO
+project lives. Without it the server still works, but file creation may target the wrong model.
+
+> [!TIP]
+> Step-by-step setup: [QUICK_START.md](QUICK_START.md) · scenarios: [SETUP.md](SETUP.md) · every
+> setting in the config file: [CONFIGURATION.md](CONFIGURATION.md)
 
 ---
 
@@ -25,7 +30,7 @@
 One path, three derived values — plus automatic `.rnrproj` discovery:
 
 | Derived | Example |
-|---------|---------|
+|---|---|
 | `packagePath` | `K:\AosService\PackagesLocalDirectory` |
 | `packageName` | `YourPackage` |
 | `modelName` | `YourModel` |
@@ -34,28 +39,37 @@ One path, three derived values — plus automatic `.rnrproj` discovery:
 
 ## Transports
 
-| | stdio (recommended locally) | HTTP (Azure / `npm run dev`) |
-|---|---------------------------|------------------------------|
+| | stdio (recommended locally) | HTTP (Azure / `npx d365fo-mcp start`) |
+|---|---|---|
 | Config key | `command` + `args` + `env` | `url` |
 | Started by | the MCP client (VS / Claude), no port | you / Azure |
 | Process / memory | one process **per client** — each loads its own copy of the symbol index (~1.5 GB) | one shared process — index loaded **once** for all connected clients |
 | Workspace context | full (`env` block) | headers only — limited |
 | Auth | n/a | optional `headers: { "X-Api-Key": "..." }` |
 
-> stdio note: `DB_PATH`/`LABELS_DB_PATH` must be **absolute** — the working directory is controlled by the client, not the repo.
->
-> HTTP note: `D365FO_WORKSPACE_PATH` cannot be passed (no subprocess). For reliable model targeting combine HTTP search with a stdio write-only companion ([hybrid](#hybrid-mode-summary)).
->
-> Multiple clients note: if several clients (e.g. VS Code + the CLI) talk to the **same** code base at once, prefer one local HTTP instance ([Scenario C](SETUP.md#scenario-c--local-http)). stdio spawns a separate subprocess per client, so each one loads its own ~1.5 GB index; a single HTTP instance loads it once and serves them all.
+> [!IMPORTANT]
+> **stdio:** `DB_PATH` / `LABELS_DB_PATH` must be **absolute** — the working directory is controlled
+> by the client, not the repo.
+
+> [!NOTE]
+> **HTTP:** `D365FO_WORKSPACE_PATH` cannot be passed (no subprocess). For reliable model targeting
+> combine HTTP search with a stdio write-only companion ([hybrid](#hybrid-mode-summary)).
+
+> [!TIP]
+> **Several clients on one code base** (e.g. VS Code + the CLI at once)? Prefer one local HTTP
+> instance ([Scenario C](SETUP.md#scenario-c--local-http)). stdio spawns a separate subprocess per
+> client, so each one loads its own ~1.5 GB index; a single HTTP instance loads it once and serves
+> them all.
 
 ---
 
 ## D365FO context variables
 
-Set in the `env` block. The legacy `"context": {...}` block is **deprecated** — VS treats every key under `servers` as a server definition.
+Set in the `env` block. The legacy `"context": {...}` block is **deprecated** — VS treats every key
+under `servers` as a server definition.
 
 | Variable | Required | Purpose |
-|----------|----------|---------|
+|---|---|---|
 | `D365FO_WORKSPACE_PATH` | recommended | `...\PackagesLocalDirectory\<Package>\<Model>` — packagePath/packageName/modelName derived automatically |
 | `D365FO_SOLUTIONS_PATH` | recommended | folder with your `.rnrproj` files — scanned at startup for model auto-detection and project switching |
 | `D365FO_PROJECT_PATH` | optional | pin an exact `.rnrproj` (multiple projects in one solution) |
@@ -72,7 +86,7 @@ Set in the `env` block. The legacy `"context": {...}` block is **deprecated** �
 ## Server variables
 
 | Variable | Default | Purpose |
-|----------|---------|---------|
+|---|---|---|
 | `MCP_SERVER_MODE` | `full` | `full` (22 tools) / `read-only` (Azure) / `write-only` (hybrid companion) |
 | `MCP_TOOL_PROFILE` | `full` | `full` (all 22) / `core` (17-tool create-and-build loop) — shrinks the catalogue when the workspace already runs other MCP servers. `axdb_sql` and `trace_d365fo` are published in either only once configured |
 | `MCP_EXTRA_TOOLS` | — | comma-separated tool names added back on top of `core` (e.g. `security_info,run_systest_class`) |
@@ -101,15 +115,42 @@ Get-Content "C:\Temp\d365fo-bridge.log" -Encoding UTF8 -Wait -Tail 50
 
 ## Path resolution order
 
-**Write target (traditional):** tool argument `packagePath` → `D365FO_PACKAGE_PATH` → derived from `D365FO_WORKSPACE_PATH` → drive scan for `<drive>:\AosService\PackagesLocalDirectory`
+```mermaid
+flowchart LR
+    subgraph wt["Write target · traditional"]
+        direction LR
+        a1["tool argument<br/><code>packagePath</code>"] --> a2["<code>D365FO_PACKAGE_PATH</code>"] --> a3["derived from<br/><code>D365FO_WORKSPACE_PATH</code>"] --> a4["drive scan<br/><code>X:\AosService\PackagesLocalDirectory</code>"]
+    end
+    subgraph mn["Model name"]
+        direction LR
+        m1["<code>D365FO_MODEL_NAME</code>"] --> m2["last segment of<br/><code>D365FO_WORKSPACE_PATH</code>"] --> m3["auto-detected<br/>from <code>.rnrproj</code>"]
+    end
+```
 
-The drive scan walks C: to Z: and keeps every volume that has an `AosService\PackagesLocalDirectory`, preferring one that looks populated over an empty stub. That is what makes the server work unconfigured on any VM image — K: on cloud-hosted environments, C: on the downloadable VHD, J: on newer images — without a hardcoded drive letter anywhere. The scan is bounded: C:, K:, J: and I: are probed first and always, the other letters only inside a 2 s budget, because one stat on a disconnected mapped network drive stalls for the SMB timeout and the scan runs on the first tool call of a session. `D365FO_SCAN_DRIVES` (e.g. `C,K`) pins the probed letters on a machine where that happens. `d365fo-mcp doctor` prints what it found, what it skipped, and which probe was slow.
+The first source that yields a value wins.
 
-**Write target (UDE):** explicit env paths → XPP config auto-detection (`%LOCALAPPDATA%\Microsoft\Dynamics365\XPPConfig\`, selected by `XPP_CONFIG_NAME` or newest) → `D365FO_PACKAGE_PATH` fallback (the legacy `PACKAGES_PATH` spelling still works)
+**Write target (traditional):** tool argument `packagePath` → `D365FO_PACKAGE_PATH` → derived from
+`D365FO_WORKSPACE_PATH` → drive scan for `<drive>:\AosService\PackagesLocalDirectory`
 
-**Model name:** `D365FO_MODEL_NAME` → last segment of `D365FO_WORKSPACE_PATH` (AOT paths only) → auto-detected from `.rnrproj` (MCP roots / `D365FO_SOLUTIONS_PATH` scan)
+The drive scan walks C: to Z: and keeps every volume that has an `AosService\PackagesLocalDirectory`,
+preferring one that looks populated over an empty stub. That is what makes the server work
+unconfigured on any VM image — K: on cloud-hosted environments, C: on the downloadable VHD, J: on
+newer images — without a hardcoded drive letter anywhere. The scan is bounded: C:, K:, J: and I:
+are probed first and always, the other letters only inside a 2 s budget, because one stat on a
+disconnected mapped network drive stalls for the SMB timeout and the scan runs on the first tool
+call of a session. `D365FO_SCAN_DRIVES` (e.g. `C,K`) pins the probed letters on a machine where that
+happens. `d365fo-mcp doctor` prints what it found, what it skipped, and which probe was slow.
 
-A package may contain multiple models — the two-level `workspacePath` encodes both, so writes land in the right folder without descriptor scanning. Every resolved value and its source is visible in `get_workspace_info`.
+**Write target (UDE):** explicit env paths → XPP config auto-detection
+(`%LOCALAPPDATA%\Microsoft\Dynamics365\XPPConfig\`, selected by `XPP_CONFIG_NAME` or newest) →
+`D365FO_PACKAGE_PATH` fallback (the legacy `PACKAGES_PATH` spelling still works)
+
+**Model name:** `D365FO_MODEL_NAME` → last segment of `D365FO_WORKSPACE_PATH` (AOT paths only) →
+auto-detected from `.rnrproj` (MCP roots / `D365FO_SOLUTIONS_PATH` scan)
+
+A package may contain multiple models — the two-level `workspacePath` encodes both, so writes land
+in the right folder without descriptor scanning. Every resolved value and its source is visible in
+`get_workspace_info`.
 
 ---
 
@@ -118,15 +159,28 @@ A package may contain multiple models — the two-level `workspacePath` encodes 
 Two servers, one merged tool list — Copilot/Claude routes calls automatically:
 
 | Instance | Host | Mode | Exposes |
-|----------|------|------|---------|
-| `d365fo-azure` | App Service | `read-only` | search & analysis tools |
-| `d365fo-local` | Windows VM (stdio) | `write-only` | write tools + bridge-backed reads + `get_workspace_info`/`verify_d365fo_project` + `find_references` from `DYNAMICSXREFDB` |
+|---|---|---|---|
+| `d365fo-azure` | App Service | `read-only` | everything except the eight local build/verify tools |
+| `d365fo-local` | Windows VM (stdio) | `write-only` | the eight local tools + `get_object_info`, `labels`, `d365fo_file`, `find_references` |
 
-The write-only companion skips database download entirely — it starts in under a second and needs no Blob.
+The write-only companion skips database download entirely — it starts in under a second and needs
+no Blob.
 
-Both instances publish `find_references`. The companion's answers come from the developer's cross-reference database through the C# bridge (on a traditional VM set `D365FO_XREF_DB_NAME=DYNAMICSXREFDB` in its `env` block; UDE reads it from the XPP config), current as of the last Visual Studio build with cross-references. The App Service's answers come from its index, by name. To use only one, hide the other in the client: in the VS Code / Visual Studio tool picker uncheck it under that server, in Claude Code add `mcp__<server>__find_references` to `permissions.deny`.
+Both instances publish `find_references`. The companion's answers come from the developer's
+cross-reference database through the C# bridge (on a traditional VM set
+`D365FO_XREF_DB_NAME=DYNAMICSXREFDB` in its `env` block; UDE reads it from the XPP config), current
+as of the last Visual Studio build with cross-references. The App Service's answers come from its
+index, by name. To use only one, hide the other in the client: in the VS Code / Visual Studio tool
+picker uncheck it under that server, in Claude Code add `mcp__<server>__find_references` to
+`permissions.deny`.
 
-Extension name formats ([CUSTOM_EXTENSIONS.md § Extension name formats](CUSTOM_EXTENSIONS.md#extension-name-formats)) name extensions on **both** instances: the companion writes them (`d365fo_file`), the App Service names them in `generate_object` and checks them in `validate_object_naming` / `prepare`. Give both the same `EXTENSION_*_NAME_FORMAT*` values. The name never depends on the index (the companion has none), so the same environment gives the same name on both. For several customers on one machine, add one companion entry per customer (`d365fo-local-<customer>`), each with its own values.
+Extension name formats
+([CUSTOM_EXTENSIONS.md § Extension name formats](CUSTOM_EXTENSIONS.md#extension-name-formats)) name
+extensions on **both** instances: the companion writes them (`d365fo_file`), the App Service names
+them in `generate_object` and checks them in `validate_object_naming` / `prepare`. Give both the
+same `EXTENSION_*_NAME_FORMAT*` values. The name never depends on the index (the companion has
+none), so the same environment gives the same name on both. For several customers on one machine,
+add one companion entry per customer (`d365fo-local-<customer>`), each with its own values.
 
 Startup logs confirm the filtering:
 
@@ -135,24 +189,35 @@ Startup logs confirm the filtering:
 [MCP Server] Tool list filtered for write-only mode
 ```
 
-> When deploying via the Bicep template or the DevOps pipeline, `MCP_SERVER_MODE=read-only` is set automatically on the App Service, so the `LOCAL_TOOLS` set (build, DB sync, BP checks, undo, workspace inspection) is not advertised there.
+When deploying via the Bicep template or the DevOps pipeline, `MCP_SERVER_MODE=read-only` is set
+automatically on the App Service, so the `LOCAL_TOOLS` set (build, DB sync, BP checks, tests, SQL,
+trace, reindex, workspace inspection, verify) is not advertised there.
+
+> [!CAUTION]
+> **Server modes are not a security boundary.**
 >
-> Two caveats, so this is not mistaken for a security boundary:
->
-> - `ALWAYS_TOOLS` — `get_object_info`, `labels`, `d365fo_file` — are advertised in **every** mode. `labels` and `d365fo_file` carry write actions; on Azure those fail because there is no `K:\`, not because the mode blocks them.
-> - `read-only` limits *which tools* are reachable, not *who* may reach them. The full read surface returns `source_snippet` fields containing your X++. Authentication is what protects it — see [`API_KEY`](SETUP_AZURE.md#step-2--configure-app-settings), which is required in production.
+> - `ALWAYS_TOOLS` — `get_object_info`, `labels`, `d365fo_file`, `find_references` — are advertised
+>   in **every** mode. `labels` and `d365fo_file` carry write actions; on Azure those fail because
+>   there is no `K:\`, not because the mode blocks them.
+> - `read-only` limits *which tools* are reachable, not *who* may reach them. The full read surface
+>   returns `source_snippet` fields containing your X++. Authentication is what protects it — see
+>   [`API_KEY`](SETUP_AZURE.md#step-2--configure-app-settings), which is required in production.
 
 ---
 
 ## Symlink / junction layouts
 
-A common D365FO setup keeps custom metadata in a **Git working tree** and exposes it to the AOS by **junctioning** the package into `PackagesLocalDirectory`:
+A common D365FO setup keeps custom metadata in a **Git working tree** and exposes it to the AOS by
+**junctioning** the package into `PackagesLocalDirectory`:
 
 ```
 K:\AosService\PackagesLocalDirectory\MyPackage   ──junction──▶   K:\repos\MyMetadataRepo\metadata\MyPackage
 ```
 
-With this layout `create` works without extra config — it builds the target from `D365FO_PACKAGE_PATH` and writes straight through the junction. But `modify` (add field/index, edit a table) resolves the object via the C# bridge, and the write-path guard runs `realpath`, which **follows the junction to the real location**:
+With this layout `create` works without extra config — it builds the target from
+`D365FO_PACKAGE_PATH` and writes straight through the junction. But `modify` (add field/index, edit a
+table) resolves the object via the C# bridge, and the write-path guard runs `realpath`, which
+**follows the junction to the real location**:
 
 ```
 ❌ Refusing to write outside configured D365FO package roots.
@@ -161,7 +226,8 @@ With this layout `create` works without extra config — it builds the target fr
      - K:/AosService/PackagesLocalDirectory                        ← junction target is not under here
 ```
 
-This is **not** a path-separator issue, and the guard is working as intended — the junction *target* simply isn't a configured root.
+This is **not** a path-separator issue, and the guard is working as intended — the junction
+*target* simply isn't a configured root.
 
 **Fix — add the junction target (the repo metadata root) as a write root:**
 
@@ -172,19 +238,30 @@ This is **not** a path-separator issue, and the guard is working as intended —
 }
 ```
 
-Then **restart the server** — re-spawn the node process; editing `.mcp.json` alone does not reload `env`. Verify it took effect: on the next failure the `allowed roots` list must now include the repo path. In traditional mode `D365FO_CUSTOM_PACKAGES_PATH` takes precedence over `D365FO_PACKAGE_PATH` as the write root, so `create` and `modify` both target the repo — and because the junction points there, they operate on the **same physical files** (no split-brain, no orphaned copies in PLD).
+> [!IMPORTANT]
+> Then **restart the server** — re-spawn the node process; editing `.mcp.json` alone does not reload
+> `env`. Verify it took effect: on the next failure the `allowed roots` list must now include the
+> repo path.
+
+In traditional mode `D365FO_CUSTOM_PACKAGES_PATH` takes precedence over `D365FO_PACKAGE_PATH` as the
+write root, so `create` and `modify` both target the repo — and because the junction points there,
+they operate on the **same physical files** (no split-brain, no orphaned copies in PLD).
 
 Notes:
-- Confirm a path is a junction: `fsutil reparsepoint query "K:\AosService\PackagesLocalDirectory\MyPackage"` or `dir /AL K:\AosService\PackagesLocalDirectory` (shows `<JUNCTION>` / `<SYMLINKD>`).
-- One-off without restarting: pass `packagePath="K:/repos/MyMetadataRepo/metadata"` directly on the `d365fo_file` call — the error message also prints the exact value to use.
-- `add-index` runs through the C# bridge, which has its own startup roots; if it still can't resolve after the above, fall back to `overwrite=true` or an explicit `filePath`.
+
+- Confirm a path is a junction: `fsutil reparsepoint query "K:\AosService\PackagesLocalDirectory\MyPackage"`
+  or `dir /AL K:\AosService\PackagesLocalDirectory` (shows `<JUNCTION>` / `<SYMLINKD>`).
+- One-off without restarting: pass `packagePath="K:/repos/MyMetadataRepo/metadata"` directly on the
+  `d365fo_file` call — the error message also prints the exact value to use.
+- `add-index` runs through the C# bridge, which has its own startup roots; if it still can't resolve
+  after the above, fall back to `overwrite=true` or an explicit `filePath`.
 
 ---
 
 ## Common mistakes
 
 | Mistake | Fix |
-|---------|-----|
+|---|---|
 | Files land in a Microsoft model | set the two-level `D365FO_WORKSPACE_PATH` to **your** model |
 | Single backslashes in JSON | escape them: `K:\\AosService\\...` |
 | `DB_PATH` relative in stdio mode | must be absolute |
@@ -194,14 +271,34 @@ Notes:
 
 ## Automatic workspace detection
 
-When you open a D365FO solution in VS 2022/2026 over **stdio**, the server detects your model automatically — no manual config:
+When you open a D365FO solution in Visual Studio over **stdio**, the server detects your model
+automatically — no manual config:
+
+```mermaid
+sequenceDiagram
+    participant VS as Visual Studio / VS Code
+    participant SRV as d365fo-mcp (stdio)
+    VS->>SRV: initialize (handshake)
+    SRV->>VS: roots/list
+    VS-->>SRV: open folder URI
+    SRV->>SRV: nearest .rnrproj (≤ 6 levels) → read its Model element
+    Note over SRV: every write now targets that model
+```
 
 1. After the handshake the client sends a `roots/list` response with the open folder URI.
 2. The server finds the nearest `.rnrproj` (≤ 6 levels deep) and reads its `<Model>` element.
 3. All writes target that model. Fallback chain: `VSCODE_WORKSPACE_FOLDER_PATHS` → `process.cwd()`.
 
-Set `D365FO_SOLUTIONS_PATH` to the folder holding your `.rnrproj` files so the server lists every project and can switch between them without a restart — say *"switch to ContosoEDS project"* (Copilot calls `get_workspace_info` with `projectName`), or pass an exact `projectPath`. Over **HTTP** there is no subprocess, so pass the two-level `D365FO_WORKSPACE_PATH` (`…\PackagesLocalDirectory\<Package>\<Model>`) instead. Every resolved value and its source is shown by `get_workspace_info`.
+Set `D365FO_SOLUTIONS_PATH` to the folder holding your `.rnrproj` files so the server lists every
+project and can switch between them without a restart — say *"switch to ContosoEDS project"*
+(Copilot calls `get_workspace_info` with `projectName`), or pass an exact `projectPath`. Over
+**HTTP** there is no subprocess, so pass the two-level `D365FO_WORKSPACE_PATH`
+(`…\PackagesLocalDirectory\<Package>\<Model>`) instead. Every resolved value and its source is
+shown by `get_workspace_info`.
+
+---
 
 ## See also
 
-[SETUP.md](SETUP.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [SETUP_AZURE.md](SETUP_AZURE.md)
+[SETUP.md](SETUP.md) · [CONFIGURATION.md](CONFIGURATION.md) · [ARCHITECTURE.md](ARCHITECTURE.md) ·
+[SETUP_AZURE.md](SETUP_AZURE.md)

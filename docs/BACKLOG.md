@@ -1,4 +1,6 @@
-# Backlog — deferred work & future ideas
+<sub>[README](../README.md) › [Docs](README.md) › Backlog</sub>
+
+# 🗂️ Backlog — deferred work & future ideas
 
 Things we consciously decided **not** to build yet, with enough context to pick
 them up cold later. Each entry records *what*, *why deferred*, *the trigger that

@@ -1,4 +1,6 @@
-# Binary ISV models (signatures only)
+<sub>[README](../README.md) › [Docs](README.md) › Binary ISV models</sub>
+
+# 📦 Binary ISV models (signatures only)
 
 Some ISVs ship a model as compiled output only (`<Package>\bin\*.netmodule`, no `AxClass`/`AxTable`/`AxForm` XML).
 `extract-metadata` walks object XML and therefore sees nothing, so `search`, `get_object_info`, `labels`,
@@ -9,10 +11,34 @@ This path indexes such a model **signatures-only**: no method bodies and no sour
 Everything that is not code (forms, queries, views, data entities, maps, menu items, security, extensions,
 label texts) is read in full, because the compiled model still carries it.
 
-> **Windows only.** The reader is Microsoft's own runtime metadata provider (`MetadataProviderFactory.CreateRuntimeProvider`),
-> which needs the platform assemblies. Everything after the dump step runs on any OS.
+> [!IMPORTANT]
+> **The dump step is Windows only.** The reader is Microsoft's own runtime metadata provider
+> (`MetadataProviderFactory.CreateRuntimeProvider`), which needs the platform assemblies. Everything
+> after the dump step runs on any OS.
 
 ## How it works
+
+```mermaid
+flowchart LR
+    subgraph win["Windows-only extractor"]
+        prov["Runtime metadata provider<br/><code>CreateRuntimeProvider(PLD)</code>"]
+        ser["MetadataSerializer<br/>forms · queries · views · entities …"]
+        res["Resources/&lt;lang&gt;/*.resources.dll"]
+    end
+    subgraph dump["Dump folder"]
+        json["&lt;Model&gt;.binary.json<br/>classes · tables · EDTs · enums · CoC"]
+        aot["aot/…/Ax*/*.xml<br/>method names only"]
+        lbl["*.label.txt"]
+    end
+    prov --> json
+    ser --> aot
+    res --> lbl
+    json & aot & lbl --> imp["<b>npm run extract-binary-models</b><br/>compatibility check · stock parsers<br/><i>any OS</i>"]
+    imp --> db["<b>npm run build-database</b>"]
+```
+
+<details>
+<summary>The same pipeline, step by step</summary>
 
 ```
 BinaryModelExtractor.exe     (.NET Framework 4.8, Windows; needs <PLD>\bin and <PLD>\StaticMetadata)
@@ -24,6 +50,8 @@ npm run extract-binary-models -- <dump> --out <metadataDir>      (any OS)
    compatibility check -> stock extract-metadata over <dump>\aot -> class/table/EDT/enum JSON -> labels copied
 npm run build-database                                           (unchanged; also indexes <metadataDir>\<Module>\AxLabelFile)
 ```
+
+</details>
 
 The object XML goes through the **stock** `extract-metadata` parsers, so a binary form, view or security role is indexed
 exactly like a source one. Only classes, tables, EDTs and enums need the dump JSON, because the provider returns them as
@@ -111,7 +139,10 @@ The platform build (provider file version and application module versions) is pr
 - `validate_code` can ground calls into the ISV (unknown static member, arity, unknown instance method). It cannot tell that a CoC wrapper wraps a method the base does not have; for that use `extension_info(mode="coc")` or `get_object_info`.
 - Reports (SSRS designs), workflows, KPIs and tiles are not exported.
 - The class path stores `Declaration` (header and member variables) only. Nothing resembling method source is written; the serialized XML is scanned for `<Source>` text and any found is blanked.
-- Check the ISV's license before storing a dump: it contains the ISV's API surface (not its code) and should be treated as private data.
+
+> [!CAUTION]
+> Check the ISV's license before storing a dump: it contains the ISV's API surface (not its code)
+> and should be treated as private data.
 
 ## Azure DevOps pipeline
 
