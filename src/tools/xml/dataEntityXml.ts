@@ -8,6 +8,11 @@
  * properties.fields                – [{ name, dataField? }] one AxDataEntityViewMappedField
  *                                     + one query datasource field per entry, both sourced
  *                                     from primaryTable. dataField defaults to name.
+ *                                     An entry WITHOUT dataField that names a type — { name, edt?, type?,
+ *                                     enumType?, stringSize?, label?, mandatory? } (or has
+ *                                     unmapped: true) is an UNMAPPED field: AxDataEntityViewUnmappedField<Type>,
+ *                                     filled in code, not in the query, never the key. A bare { name } stays
+ *                                     a mapped field (dataField defaults to name).
  * properties.primaryKeyField       – field `name` to use as the entity key (default: fields[0].name).
  * properties.primaryKeyFields      – string[] for a composite/business key; wins over
  *                                     primaryKeyField. Each entry is an entity field name.
@@ -98,6 +103,7 @@
  * (write/stagingTableProvisioning.ts, xml/dataEntityStagingTableXml.ts).
  */
 import { escapeXml } from '../../utils/xmlEscape.js';
+import { buildEntityUnmappedFieldXml, isUnmappedEntityFieldSpec } from './entityUnmappedField.js';
 
 
 import { assertKnownEnumValue, ENTITY_CATEGORIES } from '../../utils/axEnumProperties.js';
@@ -239,7 +245,7 @@ export function buildAxDataEntityXml(entityName: string, properties?: Record<str
   const entityCategory = assertKnownEnumValue(
     `Data entity '${entityName}': entityCategory`, properties?.entityCategory, ENTITY_CATEGORIES, 'Transaction');
   const primaryTable: string | undefined = properties?.primaryTable;
-  let fields: Array<{ name: string; dataField?: string }> | undefined =
+  let fields: Array<{ name: string; dataField?: string; [k: string]: any }> | undefined =
     Array.isArray(properties?.fields) ? properties.fields : undefined;
 
   // ── Opt-in additions. Every one of these must be absent from the output when
@@ -325,24 +331,46 @@ ${stateMachinesXml}\t<ViewMetadata />
   if (surrogate && !fields.some(f => f.name === 'SourceKey')) {
     fields = [...fields, { name: 'SourceKey', dataField: 'RecId' }];
   }
+  const isUnmapped = (f: { name: string }) => isUnmappedEntityFieldSpec(f);
+  const mappedFields = fields.filter(f => !isUnmapped(f));
+  if (mappedFields.length === 0) {
+    throw new Error(
+      `Data entity '${entityName}': every field is unmapped — nothing was written. The entity needs at least one ` +
+      `mapped field ({name, dataField?}) from primaryTable for its query and key.`);
+  }
   const keyFields: string[] = surrogate
     ? ['SourceKey']
     : Array.isArray(properties?.primaryKeyFields) && properties.primaryKeyFields.length > 0
       ? properties.primaryKeyFields.map((f: any) => String(f))
-      : [properties?.primaryKeyField || fields[0].name];
+      : [properties?.primaryKeyField || mappedFields[0].name];
+  const unmappedKey = keyFields.find(k => fields!.some(f => f.name === k && isUnmapped(f)));
+  if (unmappedKey) {
+    throw new Error(`Data entity '${entityName}': key field '${unmappedKey}' is an unmapped field — an entity key needs a mapped field. Nothing was written.`);
+  }
 
-  const entityFieldsXml = fields.map(f => `\t\t<AxDataEntityViewField xmlns=""
+  const entityFieldsXml = fields.map(f => {
+    if (isUnmapped(f)) {
+      const built = buildEntityUnmappedFieldXml({
+        name: f.name, edt: f.edt ?? f.fieldType, baseType: f.type ?? f.baseType ?? f.fieldBaseType,
+        enumType: f.enumType ?? f.fieldEnumType, stringSize: f.stringSize, label: f.label,
+        helpText: f.helpText, mandatory: f.mandatory, computedFieldMethod: undefined,
+      });
+      if (!built.ok) throw new Error(`Data entity '${entityName}': unmapped field '${f.name}': ${built.message}. Nothing was written.`);
+      return built.xml;
+    }
+    return `\t\t<AxDataEntityViewField xmlns=""
 \t\t\ti:type="AxDataEntityViewMappedField">
 \t\t\t<Name>${f.name}</Name>
 \t\t\t<DataField>${f.dataField || f.name}</DataField>
 \t\t\t<DataSource>${primaryTable}</DataSource>
-\t\t</AxDataEntityViewField>`).join('\n');
+\t\t</AxDataEntityViewField>`;
+  }).join('\n');
 
   const keyFieldsXml = keyFields.map(f => `\t\t\t\t<AxDataEntityViewKeyField>
 \t\t\t\t\t<DataField>${f}</DataField>
 \t\t\t\t</AxDataEntityViewKeyField>`).join('\n');
 
-  const querySourceFieldsXml = fields.map(f => `\t\t\t\t\t<AxQuerySimpleDataSourceField>
+  const querySourceFieldsXml = mappedFields.map(f => `\t\t\t\t\t<AxQuerySimpleDataSourceField>
 \t\t\t\t\t\t<Name>${f.dataField || f.name}</Name>
 \t\t\t\t\t\t<Field>${f.dataField || f.name}</Field>
 \t\t\t\t\t</AxQuerySimpleDataSourceField>`).join('\n');

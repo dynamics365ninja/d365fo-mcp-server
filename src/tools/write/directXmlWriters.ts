@@ -55,6 +55,8 @@ import { upsertTableFieldProperty } from '../xml/tableFieldPropertyEdit.js';
 import { cleanRemovedFieldReferences, renderRemovedFieldCleanup } from '../xml/tableFieldRemoval.js';
 import type { RestructureResult } from '../xml/formRestructure.js';
 import { convertEntityFieldToComputed, type ComputedFieldType } from '../xml/entityComputedField.js';
+import { addEntityUnmappedField, type EntityUnmappedFieldSpec } from '../xml/entityUnmappedField.js';
+import type { AxFieldBaseType } from '../../utils/axFieldTypes.js';
 import {
   addModuleReference, removeModuleReference, parseModuleReferences, parseInternalsVisibleTo, invalidateModelVisibility,
   isValidModuleReferenceName,
@@ -3377,6 +3379,55 @@ export const directXmlAddDataEntityField = serializedOnFile(async (
     };
   } catch (err) {
     console.error(`[modify_d365fo_file] directXmlAddDataEntityField failed: ${err}`);
+    return null;
+  }
+});
+
+/**
+ * add-field on a data-entity or data-entity-extension: one UNMAPPED field (own type, no
+ * DataField/DataSource, no query field). With spec.computedFieldMethod the field is computed
+ * and `methodSource` (X++ static method, entity only) is upserted in the same write; null keeps
+ * an existing method of that name.
+ */
+export const directXmlAddDataEntityUnmappedField = serializedOnFile(async (
+  filePath: string,
+  spec: EntityUnmappedFieldSpec,
+  opts: { methodSource?: string | null; resolveEdtBase?: (edt: string) => AxFieldBaseType | undefined } = {},
+): Promise<{ success: boolean; message: string } | null> => {
+  try {
+    const raw = await fs.readFile(filePath, 'utf-8');
+    const content = raw.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+    const isExtension = /<AxDataEntityViewExtension[\s>]/.test(content);
+    if (!isExtension && !/<AxDataEntityView[\s>]/.test(content)) return null;
+    if (isExtension && spec.computedFieldMethod) {
+      return { success: false, message: '❌ add-field: a computed field needs its static method on the entity itself; an extension cannot carry one — nothing was written.' };
+    }
+    const r = addEntityUnmappedField(content, spec, opts.resolveEdtBase);
+    if (!r.ok) return { success: false, message: `❌ add-field: ${r.message} — nothing was written.` };
+    let xml = r.xml!;
+    if (spec.computedFieldMethod) {
+      const has = locateSourceCodeMethods(xml)?.methodSpans.some(s => s.name.toLowerCase() === spec.computedFieldMethod!.toLowerCase());
+      if (opts.methodSource == null && !has) {
+        return { success: false, message: `❌ add-field: the entity has no method '${spec.computedFieldMethod}' and no sourceCode was given — nothing was written.` };
+      }
+      if (opts.methodSource != null) {
+        const m = upsertSourceCodeMethod(xml, spec.computedFieldMethod, opts.methodSource.replace(/\r\n/g, '\n'));
+        if (!m.ok) return { success: false, message: `❌ add-field: ${m.message} — nothing was written.` };
+        xml = m.xml;
+      }
+    }
+    await writeFileAtomic(filePath, normalizeD365Xml(xml));
+    return {
+      success: true,
+      message:
+        `✅ Unmapped field '${spec.name}' added to the ${isExtension ? 'entity extension' : 'entity'} via direct XML` +
+        `${spec.computedFieldMethod ? ` (computed by '${spec.computedFieldMethod}')` : ''}. File: ${filePath}\n` +
+        `ℹ️ An unmapped field is filled in code (or computed) and is NOT in the entity query. If the entity ` +
+        `has a DMF staging table, add the same field there too (add-field on the staging table: same name, ` +
+        `EDT/type) — otherwise import/export of this column fails.`,
+    };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlAddDataEntityUnmappedField failed: ${err}`);
     return null;
   }
 });

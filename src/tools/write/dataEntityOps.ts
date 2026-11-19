@@ -7,10 +7,12 @@
 import * as fs from 'fs/promises';
 import {
   directXmlAddDataEntityDataSource, directXmlAddDataEntityField, directXmlSetTableFieldProperties,
-  directXmlMakeEntityFieldComputed, viaXmlFallback,
+  directXmlMakeEntityFieldComputed, directXmlAddDataEntityUnmappedField, viaXmlFallback,
 } from './directXmlWriters.js';
 import { renderOpSpec } from '../specs/d365foFileOpSpecs.js';
 import { z } from 'zod';
+import { normalizeFieldBaseType, type AxFieldBaseType } from '../../utils/axFieldTypes.js';
+import { resolveEdtBaseType } from '../smart/generateSmartTable.js';
 import { bridgeModifyField } from '../../bridge/index.js';
 import { findBaseObjectXml } from '../../utils/baseObjectXml.js';
 import { xppMethodSourceForXml } from '../../utils/xppFormat.js';
@@ -41,6 +43,44 @@ export async function entityAddDataSource(filePath: string, args: Args): Promise
   return r ? viaXmlFallback(r) : null;
 }
 
+/**
+ * add-field on a data-entity(-extension): true when an UNMAPPED field is meant — `unmapped: true`, a
+ * computedFieldMethod, or (no dataField / dataSource given) a type: fieldType, fieldBaseType or fieldEnumType.
+ */
+export function isUnmappedEntityField(args: Args): boolean {
+  if (args.dataField || args.dataSource) return false;
+  return args.unmapped === true || !!args.computedFieldMethod
+    || !!(args.fieldType || args.fieldBaseType || args.fieldEnumType);
+}
+
+/** add-field, unmapped: one AxDataEntityViewUnmappedField<Type> in the entity's / extension's <Fields>. */
+export async function entityAddUnmappedField(filePath: string, args: Args, symbolIndex?: any): Promise<OpResult> {
+  if (args.dataField || args.dataSource) {
+    return { success: false, message: '❌ add-field: unmapped=true cannot be combined with dataField/dataSource (a mapped field) — nothing was written.' };
+  }
+  let db: any;
+  try { db = symbolIndex?.getReadDb?.(); } catch { db = undefined; }
+  const resolveEdtBase = (edt: string): AxFieldBaseType | undefined => {
+    try { return normalizeFieldBaseType(resolveEdtBaseType(edt, db)); } catch { return undefined; }
+  };
+  const method = args.computedFieldMethod ? String(args.computedFieldMethod).trim() : undefined;
+  const r = await directXmlAddDataEntityUnmappedField(filePath, {
+    name: args.fieldName,
+    edt: args.fieldType ? String(args.fieldType) : undefined,
+    baseType: args.fieldBaseType ? String(args.fieldBaseType) : undefined,
+    enumType: args.fieldEnumType ? String(args.fieldEnumType) : undefined,
+    stringSize: args.fieldStringSize,
+    label: args.fieldLabel,
+    helpText: args.fieldHelpText,
+    mandatory: args.fieldMandatory,
+    computedFieldMethod: method,
+  }, {
+    resolveEdtBase,
+    methodSource: method && args.sourceCode ? xppMethodSourceForXml(ensureXppDocComment(String(args.sourceCode))) : null,
+  });
+  return r ? viaXmlFallback(r) : null;
+}
+
 /** add-field on a data-entity: the refusal text when the binding is half-given, else null. */
 export function entityAddFieldBindingError(args: Args): string | null {
   if (args.dataField && args.dataSource) return null;
@@ -48,7 +88,8 @@ export function entityAddFieldBindingError(args: Args): string | null {
     `❌ add-field on a data-entity needs BOTH dataField and dataSource — nothing was written.\n` +
     `An entity field is a mapped field: fieldName is the entity-facing name, dataField the ` +
     `field on dataSource, which must be a datasource of the entity's own query ` +
-    `(add it first with add-data-source).\n\n${renderOpSpec('add-field')}`
+    `(add it first with add-data-source). For an UNMAPPED field (own type, filled in code) pass ` +
+    `fieldType and/or fieldBaseType (or unmapped=true) and no dataField.\n\n${renderOpSpec('add-field')}`
   );
 }
 
@@ -174,6 +215,7 @@ export const ENTITY_AND_FIELD_ZOD_PARAMS = {
   fieldIgnoreEdtRelation: z.boolean().optional().describe('modify-field: true writes <IgnoreEDTRelation>Yes</IgnoreEDTRelation> (EDT with a relation; clears BPErrorEDTNotMigrated).'),
   joinField: z.string().optional().describe('add-data-source on a data-entity: field of the JOIN (parent) datasource the relation starts from. Required with relatedField.'),
   relatedField: z.string().optional().describe("add-data-source on a data-entity: field of the NEW datasource's table it joins to. Required with joinField."),
-  computedFieldMethod: z.string().optional().describe('modify-field on a data-entity: turn the mapped field into a computed field whose ComputedFieldMethod is this static method (sourceCode, an existing method, or a generated SysComputedColumn::returnField).'),
+  computedFieldMethod: z.string().optional().describe('modify-field on a data-entity: turn the mapped field into a computed field whose ComputedFieldMethod is this static method; on add-field it makes the new unmapped field computed (sourceCode, an existing method, or a generated SysComputedColumn::returnField).'),
+  unmapped: z.boolean().optional().describe('add-field on a data-entity(-extension): write an UNMAPPED field (own type via fieldType/fieldBaseType/fieldEnumType, no dataField/dataSource) instead of a mapped one. Implied when a type is given and dataField/dataSource are not.'),
   dataSourceReadOnly: z.boolean().optional().describe('add-data-source on a data-entity: write IsReadOnly=Yes on the new datasource.'),
 };

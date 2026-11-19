@@ -29,6 +29,22 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **Unmapped fields can be added to a data entity or entity extension without hand-edited
+  XML.** `add-field` on `data-entity` and `data-entity-extension` wrote only mapped fields
+  (`dataField` + `dataSource`), so a virtual or computed column (a Base64 content field filled
+  in code) forced a hand edit of the entity XML. Pass a type and no `dataField`/`dataSource`:
+  `fieldType` (EDT), `fieldBaseType` (String, Integer, Int64, Real, Date, Time, UtcDateTime,
+  Enum, Container, Guid) or `fieldEnumType`, optionally `unmapped=true` to say so explicitly.
+  It writes `AxDataEntityViewUnmappedField<Type>` with `<ExtendedDataType>` / `<EnumType>` and
+  `<IsComputedField>No</IsComputedField>` (the member order of shipped entities) at the end of
+  `<Fields>`; no datasource is needed and the query, keys, public names and staging reference
+  are untouched. `computedFieldMethod` (+ `sourceCode`) on a data-entity makes it a computed
+  column. `create` of a `data-entity` takes the same in `properties.fields[]`: an entry with no
+  `dataField` and a type (`edt`, `type`, `enumType`, `stringSize`, …) or `unmapped: true` is an
+  unmapped field, left out of the query and never the key (one mapped field is still
+  required; a bare `{name}` stays mapped). The result reminds that the DMF staging table
+  needs the same column (`create` with `dataManagementEnabled` already adds it; `add-field`
+  does not). Existing mapped calls behave as before.
 - **A model descriptor's `InternalsVisibleTo` and a project's .NET references can be
   edited without hand-written XML.** (#1286) The test model has to be listed in the
   product model's `<InternalsVisibleTo>`, and `System.Security` (for `ProtectedData`)

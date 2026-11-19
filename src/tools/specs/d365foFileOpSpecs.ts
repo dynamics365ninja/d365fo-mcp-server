@@ -134,6 +134,13 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
       '(e.g. "MyField"). Entities: required alongside dataSource. Views: defaults to fieldName. Used ' +
       'instead of fieldType/fieldBaseType — neither a mapped field nor a view field has an EDT of its own.',
   },
+  unmapped: {
+    type: 'boolean',
+    description:
+      'add-field on a data-entity(-extension): add an UNMAPPED field (AxDataEntityViewUnmappedField<Type>; own type via ' +
+      'fieldType / fieldBaseType / fieldEnumType, no dataField/dataSource, filled in code). Implied when a type is ' +
+      'given and dataField/dataSource are not. The staging table needs the same field.',
+  },
   dataSource: {
     type: 'string',
     description:
@@ -647,8 +654,8 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   },
   'add-field': {
     required: ['fieldName'],
-    optional: ['fieldType', 'fieldBaseType', 'fieldEnumType', 'fieldEnumValues', 'fieldStringSize', 'fieldMandatory', 'fieldLabel', 'dataField', 'dataSource', 'fieldGroupName', 'autoCorrect'],
-    mutationOneOf: ['fieldType', 'fieldEnumType', 'dataField', 'dataSource', 'fieldBaseType'],
+    optional: ['fieldType', 'fieldBaseType', 'fieldEnumType', 'fieldEnumValues', 'fieldStringSize', 'fieldMandatory', 'fieldLabel', 'fieldHelpText', 'dataField', 'dataSource', 'fieldGroupName', 'autoCorrect', 'unmapped', 'computedFieldMethod', 'sourceCode'],
+    mutationOneOf: ['fieldType', 'fieldEnumType', 'dataField', 'dataSource', 'fieldBaseType', 'unmapped'],
     note:
       'Table/table-extension: a fieldType EDT or fieldEnumType enum that does not exist is created first ' +
       '(fieldBaseType, fieldStringSize, fieldLabel and fieldEnumValues shape it), and fieldBaseType alone gets ' +
@@ -667,7 +674,23 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       'add-data-source, e.g. a DisplayValue field from an outer-joined DimensionSetEntity). ' +
       'view: pass dataSource (a data source of the view, not necessarily its table name) and dataField ' +
       '(defaults to fieldName) — writes an AxViewFieldBound, which has no EDT; fieldType does not apply. ' +
-      'fieldLabel is optional.',
+      'fieldLabel is optional. ' +
+      'UNMAPPED FIELD (data-entity AND data-entity-extension): a field with its own type that is filled in code ' +
+      '(a virtual Base64/content column set in postLoad, a derived value) instead of reading a datasource field. ' +
+      'Pass NO dataField/dataSource and a type: fieldType (EDT) and/or fieldBaseType ' +
+      '(String|Integer|Int64|Real|Date|Time|UtcDateTime|Enum|Container|Guid) or fieldEnumType; add unmapped=true ' +
+      'to say so explicitly. Writes AxDataEntityViewUnmappedField<Type> with <ExtendedDataType>/<EnumType> and ' +
+      '<IsComputedField>No</IsComputedField> at the end of <Fields>; no datasource is needed, the query, keys, ' +
+      'public names and staging reference are untouched. A String needs an EDT or fieldStringSize; the base type ' +
+      'of an EDT comes from the index when fieldBaseType is not given (else the call asks for it). ' +
+      'fieldLabel/fieldHelpText/fieldMandatory apply. COMPUTED (data-entity only): computedFieldMethod=<static ' +
+      'method> makes it a SQL computed column; pass sourceCode (the method, returning SysComputedColumn SQL) or ' +
+      'have the method already on the entity; to compute an existing MAPPED field use modify-field ' +
+      'computedFieldMethod. ⚠ DMF staging: an unmapped field is NOT copied to the entity staging table ' +
+      'automatically by add-field (create with dataManagementEnabled does include them) — add the same field ' +
+      '(name, EDT/type) to the <Entity>Staging table with add-field on that table, or import/export of the ' +
+      'column fails. Example: d365fo_file(action="modify", objectType="data-entity", objectName="ContosoMyEntity", ' +
+      'operation="add-field", fieldName="ContentBase64", fieldType="Notes", unmapped=true).',
   },
   'modify-field': {
     required: ['fieldName'],
@@ -1172,7 +1195,10 @@ export const D365FO_FILE_CREATE_PROPERTY_SPECS: Record<string, string> = {
   'menu-item-output': 'label, object, objectType, operationalDomain? (default Shared), subscriberAccessLevel? ' +
     '(default Read=Allow)',
   'data-entity':
-    'primaryTable + fields[{name,dataField?}] — BOTH REQUIRED (without them the entity has no query ' +
+    'primaryTable + fields[{name,dataField?}] (an entry with NO dataField but a type — {name, edt?, type?, ' +
+    'enumType?, stringSize?, label?, mandatory?} or unmapped:true — is an UNMAPPED field: ' +
+    'AxDataEntityViewUnmappedField<Type>, filled in code, not in the query, never the key; with ' +
+    'dataManagementEnabled it gets a staging column too; at least one mapped field is still required) — BOTH REQUIRED (without them the entity has no query ' +
     'and returns no data, which builds clean; the create is refused instead), primaryKey?, ' +
     'primaryKeyFields?[], isPublic?, entityCategory? ' +
     '(Master|Configuration|Transaction|Reference|Document|Parameters — note the plural), ' +

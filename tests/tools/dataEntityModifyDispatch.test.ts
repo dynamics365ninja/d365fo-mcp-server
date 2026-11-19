@@ -194,7 +194,7 @@ describe('add-data-source + add-field on a data-entity', () => {
   });
   it('add-field on an entity without the binding says so instead of writing an AxTableField', async () => {
     const r: any = await modifyD365FileTool(
-      req({ ...base, operation: 'add-field', fieldName: 'Foo', fieldType: 'Name' }),
+      req({ ...base, operation: 'add-field', fieldName: 'Foo', dataField: 'Foo' }),
       buildContext(),
     );
     expect(r.isError).toBe(true);

@@ -175,7 +175,9 @@ describe('layer direction', () => {
     // landed here is that module's import and ONE switch line for both operations.
     // Raised 4,830 -> 4,835 when all of them landed together (4,829 lines, local build).
     const src = readFileSync('src/tools/write/modifyD365File.ts', 'utf8');
-    expect(src.split('\n').length).toBeLessThan(4835);
+    // Raised 4,835 -> 4,840 for the unmapped-entity-field route (ONE switch line; the work is in
+    // tools/write/dataEntityOps.ts and tools/xml/entityUnmappedField.ts).
+    expect(src.split('\n').length).toBeLessThan(4840);
   });
 
   it('the dispatcher routes rather than implementing', () => {
