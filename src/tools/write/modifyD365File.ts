@@ -76,6 +76,7 @@ import {
   paramCorrectionCandidates, canonicalParamForAlias, D365FO_FILE_OP_SPECS,
 } from '../specs/d365foFileOpSpecs.js';
 import { isPublishedDefault } from '../specs/opSpecs.js';
+import { applyOperationTags, modifyObjectTagsProperty, tagsOnlyResult } from './tagsApply.js';
 import { lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import { isValidModuleReferenceName } from '../../metadata/modelDescriptor.js';
 import { decodeXmlEntitiesFromXppSource } from '../../utils/xmlEscape.js';
@@ -972,7 +973,11 @@ export const ModifyD365FileArgsSchema = z.object({
     'propertyPath="CountryRegionCodes" propertyValue="CZ,SK" (table-extension)'
   ),
   propertyValue: z.string().optional().describe('New property value'),
-  
+
+  // Tags (free-text label): tools/write/tagsApply.ts, d365fo_file op-spec "tags"
+  tags: z.union([z.string(), z.array(z.string())]).optional().describe('<Tags> for the element an add-* adds or modify-field / modify-enum-value edits; "" = none. Else D365FO_DEFAULT_TAG applies to an add-*.'),
+  tagsMode: z.enum(['replace', 'add', 'remove']).optional().describe('With an explicit tags / propertyPath="Tags".'),
+
   // Options
   autoCorrect: z.boolean().optional().default(true).describe(
     'Apply a correction the server has already fully determined (exactly one valid reading, derivable ' +
@@ -2362,7 +2367,7 @@ async function runModify(
         break;
       }
       case 'modify-field': {
-        if (args.fieldName) bridgeResult = await modifyFieldOp(context.bridge, objectName, actualFilePath, args as any, symbolIndex);
+        if (args.fieldName) bridgeResult = (await tagsOnlyResult(actualFilePath, operation, args as any)) ?? await modifyFieldOp(context.bridge, objectName, actualFilePath, args as any, symbolIndex);
         break;
       }
       case 'rename-field': {
@@ -2684,6 +2689,8 @@ async function runModify(
       }
       case 'modify-property': {
         if (args.propertyPath && args.propertyValue !== undefined) {
+          const tagsWrite = await modifyObjectTagsProperty(actualFilePath, args as any);
+          if (tagsWrite) { if (!tagsWrite.success) return { content: [{ type: 'text', text: tagsWrite.message }], isError: true }; bridgeResult = viaXmlFallback(tagsWrite); break; }
           // OperationalDomain / SubscriberAccessLevel on a table or menu item: XML only, never the bridge.
           const bpWrite = await directXmlSetBpAccessProperty(actualFilePath, objectType, objectName, args.propertyPath, args.propertyValue);
           if (bpWrite) { if (!bpWrite.success) return { content: [{ type: 'text', text: bpWrite.message }], isError: true }; bridgeResult = viaXmlFallback(bpWrite); break; }
@@ -2899,7 +2906,7 @@ async function runModify(
           if ((args as any).enumValueNewName) evProps.name = (args as any).enumValueNewName;
           if ((args as any).enumValueLabel) evProps.label = (args as any).enumValueLabel;
           if ((args as any).enumValueInt !== undefined) evProps.value = String((args as any).enumValueInt);
-          bridgeResult = await bridgeModifyEnumValue(
+          bridgeResult = (await tagsOnlyResult(actualFilePath, operation, args as any)) ?? await bridgeModifyEnumValue(
             context.bridge,
             objectName,
             (args as any).enumValueName,
@@ -3348,6 +3355,9 @@ async function runModify(
 
     console.error(`[modify_d365fo_file] ✅ Bridge ${operation}: ${bridgeResult.message}`);
 
+    // Tags on the element this operation added or edited (explicit `tags`, else D365FO_DEFAULT_TAG for an add).
+    const tagsNote = bridgeResult.skipped === true ? '' : await timer.time('tags', () => applyOperationTags(actualFilePath, operation, args as any));
+
     const bridgeValidation = '';
     // Schedule the provider rebuild so the NEXT read sees this write — toolHandler's
     // flush() settles it before the following bridge-backed call. This used to happen
@@ -3640,7 +3650,7 @@ async function runModify(
             (bridgeResult.skipped
               ? `⏭️ ${operation} on ${objectType} "${objectName}" — SKIPPED, nothing was written${crossModelNotice}${autoCorrectNote}\n`
               : `✅ ${operation} on ${objectType} "${objectName}"${crossModelNotice}${autoCorrectNote}\n`) +
-            `**File:** ${actualFilePath}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}` +
+            `**File:** ${actualFilePath}${tagsNote}${addControlNote}${generationNote}${bridgeValidation}${projectMessage}` +
             (bridgeResult.skipped ? `\n${bridgeResult.message}` : bridgeMessageNote(bridgeResult.message, actualFilePath)) +
             `${preservationNote}${changedLinesNote}${xppLintNote}${xppRuleNote}${addFieldBpNote}${fieldGroupRenderNote}${dataSourceTableNote}${backupNote}${verifyNote}${indexNote}${bpNote}${formOrderNote}${readBackNote}${timer.render()}` +
             // "Review changes in Visual Studio" is not something the caller can act

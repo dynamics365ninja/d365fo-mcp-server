@@ -71,6 +71,18 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
       'find. Optional \u2014 without it xppbp reports BPUpgradeMetadataDeleteAction ("has no ' +
       'explicit relation set").',
   },
+  // tags
+  tags: {
+    type: 'string | string[]',
+    description:
+      'Tag label (any text: ticket key, project, feature) written as <Tags> on the element an add-* adds or ' +
+      'modify-field / modify-enum-value edits. "A, B" or ["A","B"]. Omitted: D365FO_DEFAULT_TAG applies to an ' +
+      'add, never over an existing tag; "" = none (on a modify: removes). Object: modify-property propertyPath="Tags".',
+  },
+  tagsMode: {
+    type: 'string (replace | add | remove)',
+    description: 'With an explicit tags: replace (default), add to, or remove from the existing tags.',
+  },
   // table fields
   fieldName: { type: 'string', description: 'Field name.' },
   fieldNewName: {
@@ -631,7 +643,7 @@ export function canonicalParamForAlias(operation: string, key: string): string |
 export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   'add-method': {
     required: ['methodName', 'sourceCode'],
-    optional: ['methodModifiers', 'methodReturnType', 'methodParameters'],
+    optional: ['methodModifiers', 'methodReturnType', 'methodParameters', 'tags', 'tagsMode'],
     note:
       'Adds OR updates in place when the method name exists (position preserved). methodName is derived ' +
       'from the source signature when omitted. sourceCode may carry several methods at once. ' +
@@ -647,7 +659,7 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   },
   'add-field': {
     required: ['fieldName'],
-    optional: ['fieldType', 'fieldBaseType', 'fieldEnumType', 'fieldEnumValues', 'fieldStringSize', 'fieldMandatory', 'fieldLabel', 'dataField', 'dataSource', 'fieldGroupName', 'autoCorrect'],
+    optional: ['fieldType', 'fieldBaseType', 'fieldEnumType', 'fieldEnumValues', 'fieldStringSize', 'fieldMandatory', 'fieldLabel', 'dataField', 'dataSource', 'fieldGroupName', 'autoCorrect', 'tags', 'tagsMode'],
     mutationOneOf: ['fieldType', 'fieldEnumType', 'dataField', 'dataSource', 'fieldBaseType'],
     note:
       'Table/table-extension: a fieldType EDT or fieldEnumType enum that does not exist is created first ' +
@@ -671,8 +683,8 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   },
   'modify-field': {
     required: ['fieldName'],
-    optional: ['fieldType', 'fieldMandatory', 'fieldLabel', 'fieldHelpText', 'fieldEnumType', 'fieldStringSize', 'fieldAllowEdit', 'fieldIgnoreEdtRelation', 'computedFieldMethod', 'sourceCode'],
-    mutationOneOf: ['fieldType', 'fieldMandatory', 'fieldLabel', 'fieldHelpText', 'fieldEnumType', 'fieldStringSize', 'fieldAllowEdit', 'fieldIgnoreEdtRelation', 'computedFieldMethod'],
+    optional: ['fieldType', 'fieldMandatory', 'fieldLabel', 'fieldHelpText', 'fieldEnumType', 'fieldStringSize', 'fieldAllowEdit', 'fieldIgnoreEdtRelation', 'computedFieldMethod', 'sourceCode', 'tags', 'tagsMode'],
+    mutationOneOf: ['fieldType', 'fieldMandatory', 'fieldLabel', 'fieldHelpText', 'fieldEnumType', 'fieldStringSize', 'fieldAllowEdit', 'fieldIgnoreEdtRelation', 'computedFieldMethod', 'tags'],
     note:
       'DATA-ENTITY: computedFieldMethod turns the entity\'s own mapped field into a computed (unmapped) ' +
       'field of the source field\'s type and EDT (fieldType overrides the EDT), in one write with its ' +
@@ -699,21 +711,21 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   },
   'add-display-method': {
     required: ['methodName', 'sourceCode'],
-    optional: ['displayMethodReturnEdt'],
+    optional: ['displayMethodReturnEdt', 'tags', 'tagsMode'],
     note:
       'Display method with [SysClientCacheDataMethodAttribute]. Pass methodName + displayMethodReturnEdt ' +
       'to auto-generate a stub INSTEAD of sourceCode, or methodName + sourceCode for a custom body.',
   },
   'add-table-method': {
     required: ['methodName', 'sourceCode'],
-    optional: ['tableMethodType', 'tableKeyField'],
+    optional: ['tableMethodType', 'tableKeyField', 'tags', 'tagsMode'],
     note:
       'Canonical find/exist/findByRecId/validateWrite/validateDelete/initValue boilerplate. Pass ' +
       'tableMethodType (+ tableKeyField for find/exist) to auto-generate INSTEAD of methodName+sourceCode.',
   },
   'add-index': {
     required: ['indexName', 'indexFields'],
-    optional: ['indexAllowDuplicates', 'indexAlternateKey', 'indexEnabled', 'indexValidTimeStateKey', 'indexValidTimeStateMode'],
+    optional: ['indexAllowDuplicates', 'indexAlternateKey', 'indexEnabled', 'indexValidTimeStateKey', 'indexValidTimeStateMode', 'tags', 'tagsMode'],
   },
   'remove-index': { required: ['indexName'], optional: [] },
   'add-full-text-index': {
@@ -730,7 +742,7 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   'remove-table-mapping': { required: ['mapName'], optional: [] },
   'add-relation': {
     required: ['relationName', 'relatedTable'],
-    optional: ['relationConstraints', 'relationCardinality', 'relatedTableCardinality', 'relationshipType', 'relationOnDelete'],
+    optional: ['relationConstraints', 'relationCardinality', 'relatedTableCardinality', 'relationshipType', 'relationOnDelete', 'tags', 'tagsMode'],
     note:
       'relationOnDelete (None | Restricted | Cascade | CascadeRestricted) writes <OnDelete> on the relation, ' +
       'the fix for BPCheckMissingDeleteActions. When the table or table-extension ALREADY has a relation ' +
@@ -750,7 +762,7 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   'remove-delete-action': { required: ['deleteActionName'], optional: [] },
   'add-field-group': {
     required: ['fieldGroupName'],
-    optional: ['fieldGroupFields', 'fieldGroupLabel'],
+    optional: ['fieldGroupFields', 'fieldGroupLabel', 'tags', 'tagsMode'],
   },
   'remove-field-group': { required: ['fieldGroupName'], optional: [] },
   'add-field-to-field-group': {
@@ -1006,12 +1018,12 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   },
   'add-enum-value': {
     required: ['enumValueName'],
-    optional: ['enumValueLabel', 'enumValueHelpText', 'enumValueInt', 'enumValueCountryRegionCodes'],
+    optional: ['enumValueLabel', 'enumValueHelpText', 'enumValueInt', 'enumValueCountryRegionCodes', 'tags', 'tagsMode'],
   },
   'modify-enum-value': {
     required: ['enumValueName'],
-    optional: ['enumValueNewName', 'enumValueLabel', 'enumValueInt'],
-    mutationOneOf: ['enumValueNewName', 'enumValueLabel', 'enumValueInt'],
+    optional: ['enumValueNewName', 'enumValueLabel', 'enumValueInt', 'tags', 'tagsMode'],
+    mutationOneOf: ['enumValueNewName', 'enumValueLabel', 'enumValueInt', 'tags'],
   },
   'remove-enum-value': { required: ['enumValueName'], optional: [] },
   'add-menu-item-to-menu': {
@@ -1063,8 +1075,9 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   },
   'modify-property': {
     required: ['propertyPath', 'propertyValue'],
-    optional: ['controlName', 'dataSourceName'],
+    optional: ['controlName', 'dataSourceName', 'tagsMode'],
     note:
+      'propertyPath="Tags" (any object type) sets the <Tags> of the object in canonical position: replaces by default, tagsMode=add|remove combines with the existing ones, an empty propertyValue removes the element. ' +
       'dataSourceName targets a DATA SOURCE the form or form extension defines: propertyPath is ' +
       'JoinSource (must name another data source of the form), LinkType (InnerJoin | OuterJoin | ' +
       'ExistJoin | NotExistJoin | Delayed | Active | Passive), a Yes/No property (AllowCreate, ' +
@@ -1223,10 +1236,14 @@ export const D365FO_FILE_CREATE_PROPERTY_SPECS: Record<string, string> = {
  * Full `properties` contract for one [create] objectType — the create-side twin
  * of renderOpSpec(), used by the op-spec lookup and by create-path errors.
  */
+export const CREATE_TAGS_NOTE =
+  'All types: properties.tags ("INVENTORY" or a list) writes <Tags>; omitted = D365FO_DEFAULT_TAG; "" = none.';
+
 export function renderCreatePropertySpec(objectType: string): string {
   const spec = D365FO_FILE_CREATE_PROPERTY_SPECS[objectType];
   if (!spec) {
     return (
+      `${CREATE_TAGS_NOTE}\n` +
       `objectType '${objectType}' takes no extra \`properties\` beyond objectName/sourceCode ` +
       `(or is not a d365fo_file objectType). Types that do: ` +
       `${Object.keys(D365FO_FILE_CREATE_PROPERTY_SPECS).join(', ')}.`
@@ -1234,7 +1251,7 @@ export function renderCreatePropertySpec(objectType: string): string {
   }
   return (
     `d365fo_file(action="create", objectType="${objectType}") \`properties\` contract — ` +
-    `pass these NESTED inside \`properties\`:\n  ${spec}`
+    `pass these NESTED inside \`properties\`:\n  ${spec}\n  ${CREATE_TAGS_NOTE}`
   );
 }
 

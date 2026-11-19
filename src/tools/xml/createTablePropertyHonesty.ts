@@ -61,6 +61,8 @@ const STRUCTURAL_TABLE_KEYS = new Set(
     'mappings',
     'statemachines',
     'fulltextindexes',
+    // Written after the create by tools/write/tagsApply.ts, for every object type.
+    'tags',
   ].map(k => k.toLowerCase()),
 );
 
