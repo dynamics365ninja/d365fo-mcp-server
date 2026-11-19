@@ -1,4 +1,6 @@
-# Model lifecycle
+<sub>[README](../README.md) › [Docs](README.md) › Model lifecycle</sub>
+
+# 🔄 Model lifecycle
 
 A D365FO model is its descriptor: `<root>/<Package>/Descriptor/<Model>.xml`, an `AxModelInfo`
 document, plus the folder `<root>/<Package>/<Model>/` that holds its `Ax*` folders. The server
@@ -19,6 +21,21 @@ discriminators were already in the schema.
 
 The parameter contracts are served by `get_knowledge(kind="op-spec", topic="model")` (the whole
 lifecycle) and `topic="model-descriptor"` (the create contract).
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Created: create<br/>(checks name, refs, layer)
+    Created --> Created: add / remove module reference<br/>modify-property
+    Created --> [*]: undo
+    Created --> Preview: delete
+    Preview --> Created: user declines
+    Preview --> [*]: dryRun false<br/>(refused while it holds files)
+    note right of Created
+        rename / move between packages:
+        not offered — delete + create, or a planned migration
+    end note
+```
 
 ## Where a model is created
 
@@ -59,8 +76,9 @@ Checked before anything is written:
   that package's assembly, so this is held to the cross-model guard, and a Microsoft package is
   refused outright.
 
-The Id is only as unique as what is visible: a model that exists in another repository or on
-another branch cannot be seen from here. The reply says so.
+> [!WARNING]
+> The Id is only as unique as what is visible: a model that exists in another repository or on
+> another branch cannot be seen from here. The reply says so.
 
 The descriptor is written the way Visual Studio writes one — UTF-8 with BOM, CRLF, two-space
 indent, elements in the serializer's alphabetical order.
@@ -81,9 +99,10 @@ client's configuration) cannot be persisted from here — `.env` is outranked by
 change then lasts for the session only and the reply says that instead of reporting it saved.
 Deleting or undoing the model takes the entries out again.
 
-This is the one place the server edits its own write policy. It does so only for a model it
-has just created, which holds nobody's code; the allow-list for an *existing* model is still
-the user's to edit.
+> [!NOTE]
+> This is the one place the server edits its own write policy. It does so only for a model it
+> has just created, which holds nobody's code; the allow-list for an *existing* model is still
+> the user's to edit.
 
 ## Edit
 
@@ -124,8 +143,9 @@ model's VS projects are taken out of their solutions and the project files left 
 `.env` entries are removed. Other models' descriptors are never edited — with `force`, the ones
 left referencing a package that no longer exists are named in the reply.
 
-Recovery is `git restore` when the metadata is under source control, and nothing otherwise.
-A model already deployed to an environment stays installed there until it is uninstalled.
+> [!CAUTION]
+> Recovery is `git restore` when the metadata is under source control, and nothing otherwise.
+> A model already deployed to an environment stays installed there until it is uninstalled.
 
 ## Why there is no rename
 

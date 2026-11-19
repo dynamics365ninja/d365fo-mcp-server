@@ -1,13 +1,31 @@
-# Custom X++ Extensions Guide
+<sub>[README](../README.md) › [Docs](README.md) › Custom & ISV models</sub>
 
-This guide explains how to configure, extract, and index your custom X++ models and ISV packages alongside the standard Microsoft D365FO models.
+# 🧱 Custom & ISV models
 
-## What this covers
+How to configure, extract and index your custom X++ models and ISV packages alongside the standard
+Microsoft D365FO models — and how the server names what it creates in them.
 
-- How to tell the server which models are "yours" (vs. standard Microsoft models)
-- How to extract only custom models (fast, a few minutes) vs. everything (a full rebuild)
-- How the `search(scope="extensions")` mode filters to your code only
-- Multi-instance setups where each client has its own custom models
+| You want to… | Section |
+|---|---|
+| Tell the server which models are "yours" | [Configuration](#configuration) |
+| Re-index only your models after a sprint (minutes, not hours) | [Extraction](#extraction) |
+| Control the prefix on new objects | [Where the prefix comes from](#where-the-prefix-comes-from) |
+| Keep writes inside the workspace's own model | [Objects owned by another model](#objects-owned-by-another-model) |
+| Match your team's extension naming convention | [Extension naming style](#extension-naming-style) · [Extension name formats](#extension-name-formats) |
+| Search only your own code | [Searching custom extensions](#searching-custom-extensions) |
+| Serve several customers from one machine | [Multiple clients / instances](#multiple-clients--instances) |
+
+**Why it pays off:**
+
+1. **Fast incremental updates** — rebuild only custom models after a sprint, not the entire
+   Microsoft index.
+2. **Focused search** — `search(scope="extensions")` returns only your code, not noise from standard
+   models.
+3. **Correct naming validation** — the prefix keeps code-gen tools from generating objects without
+   your required prefix.
+4. **Automatic classification** — no static Microsoft model list to maintain across D365FO version
+   upgrades.
+5. **Multi-instance isolation** — each client environment has its own index, no cross-contamination.
 
 ---
 
@@ -15,7 +33,7 @@ This guide explains how to configure, extract, and index your custom X++ models 
 
 ### Traditional (PackagesLocalDirectory)
 
-The setup wizard (`npm run setup`, or later `npx d365fo-mcp config environment`) asks for all of this and writes it to `config/d365fo-mcp.json`. The keys involved — each overridable by its environment variable (a `.env` from an older installation keeps working as a fallback):
+The setup wizard (`d365fo-mcp setup`, or later `npx d365fo-mcp config environment`) asks for all of this and writes it to `config/d365fo-mcp.json`. The keys involved — each overridable by its environment variable (a `.env` from an older installation keeps working as a fallback):
 
 ```jsonc
 {
@@ -39,7 +57,8 @@ The setup wizard (`npm run setup`, or later `npx d365fo-mcp config environment`)
 
 **How custom model detection works:** Everything listed in `CUSTOM_MODELS` is treated as your code. All other models are automatically classified as Microsoft standard. The server never requires you to maintain a static list of Microsoft model names — the list auto-adapts to new D365FO versions.
 
-**What to put in `CUSTOM_MODELS`:** list **every** non-Microsoft model you have source for — both the models you author into **and** any source-ISV models you only extend (never modify) — not just the ones you actively change. The classification drives `search(scope="extensions")`, workspace context ranking, form-pattern mining (ISV objects must stay out of the mined *standard* pattern catalog), and the Azure custom-build pipeline — all of which want ISV code classified as custom. Binary-only ISV models (shipped as compiled DLLs with no object XML) are not read by `extract-metadata`; index them signatures-only with `BinaryModelExtractor` — see [BINARY_ISV_MODELS.md](BINARY_ISV_MODELS.md).
+> [!IMPORTANT]
+> **What to put in `CUSTOM_MODELS`:** list **every** non-Microsoft model you have source for — both the models you author into **and** any source-ISV models you only extend (never modify) — not just the ones you actively change. The classification drives `search(scope="extensions")`, workspace context ranking, form-pattern mining (ISV objects must stay out of the mined *standard* pattern catalog), and the Azure custom-build pipeline — all of which want ISV code classified as custom. Binary-only ISV models (shipped as compiled DLLs with no object XML) are not read by `extract-metadata`; index them signatures-only with `BinaryModelExtractor` — see [BINARY_ISV_MODELS.md](BINARY_ISV_MODELS.md).
 
 ### UDE (Unified Developer Experience / Power Platform Tools)
 
@@ -95,6 +114,19 @@ Timing depends heavily on the environment. On a single-label-language instance (
 
 Development normally spans several models, each with its own prefix, and `EXTENSION_PREFIX` is a single value chosen once during setup. So the **active model's own objects decide the prefix**, and the configured value is the fallback:
 
+```mermaid
+flowchart LR
+    src{"<code>naming.prefixSource</code>"}
+    src -- "model (default)" --> s1{"model's objects<br/>share a prefix?"}
+    s1 -- yes --> p1["use the model's<br/>own prefix"]
+    s1 -- no --> s2{"<code>EXTENSION_PREFIX</code><br/>set?"}
+    s2 -- yes --> p2["use the<br/>configured prefix"]
+    s2 -- no --> p3["use the<br/>model name"]
+    src -- "config" --> p2
+    src -- "none" --> p4["no prefix ·<br/>model name as extension token"]
+    src -- "as-given" --> p5["rename nothing"]
+```
+
 1. **The prefix the model's existing objects already use.** A model whose tables are `DEMO_ArchiveAccDocErrorLog`, `DEMO_AssetIPFairValue`… and whose extensions are `AssetBookTable.DEMOExtension` teaches the tools both tokens — `DEMO_` for new objects and members, `DEMO` as the extension infix. Switching to a sibling model whose objects say `DMC_` switches the prefix with it, with no reconfiguration.
 2. **`EXTENSION_PREFIX`** — used for a model with nothing to learn from, e.g. one that is still empty.
 3. **The model name**, when neither of the above applies.
@@ -149,7 +181,8 @@ With `prefixSource: as-given` (env `EXTENSION_PREFIX_SOURCE=as-given`), in a mod
 - `validate_object_naming` and `prepare` check that structure only. The prompt's CoC naming rule, `get_workspace_info`, `doctor` and the cross-model refusal stop naming a token and point to your instruction file.
 - Names the server would otherwise derive itself, such as the class names in a `generate_object` CoC scaffold, carry no token. Rename them before `d365fo_file(action="create")`; the reply says so.
 
-Write the convention into the project's instruction file (`AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, …). In this mode the model follows that file and nothing else.
+> [!TIP]
+> Write the convention into the project's instruction file (`AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, …). In this mode the model follows that file and nothing else.
 
 ## Objects owned by another model
 
@@ -190,9 +223,10 @@ A value set in the real environment (shell, the `.mcp.json` `env{}` block, App S
 
 The refusal deliberately offers the caller no workaround, and says outright that half-finished pieces of the same feature already sitting in the other model — a matching enum, field or label left by an earlier run — are evidence of an earlier mistake, not a reason to continue there.
 
-Writes into **standard Microsoft** models stay refused regardless — see the model-ownership guard.
+> [!CAUTION]
+> Writes into **standard Microsoft** models stay refused regardless — see the model-ownership guard.
 
-## Extension Naming Style
+## Extension naming style
 
 When code-gen tools name an **extension element** (table/form/view/etc. extension) or an **extension class** (CoC / augmentation), the token that distinguishes your extension from others is controlled by `EXTENSION_NAMING_STYLE`:
 
@@ -227,7 +261,8 @@ Unset (or `inherit`), `EXTENSION_CLASS_NAMING_STYLE` follows `EXTENSION_NAMING_S
 - An **element extension** always gets the style's token after the dot — `ProdTable.BKU_TableExtension` is written as `ProdTable.BKUExtension`.
 - An **extension class** given a bare base name gets `{Base}{Infix}_Extension` (`ProdTable` → `ProdTableBKU_Extension`). A full name whose part before `_Extension` already *ends* with the infix is kept as passed, so `ProdTable_BKU_Extension` survives — but only when the agent passes that exact name. The infix counts only as its own PascalCase word: with infix `Le`, `SalesTable_Extension` is a base that still needs it (`SalesTableLe_Extension`), not one that already ends in it. A base that itself *starts* with the infix as a word (`ProjTable` under infix `Proj`) cannot be told apart from an already-prefixed name, so pass the bare base (`objectName: "ProjTable"`, `objectType: "class-extension"`) to get `ProjTableProj_Extension`; a full `ProjTable_Extension` is kept as given.
 
-The extension patterns in `copilot-instructions.md` (or any other rules file) only *describe* this behaviour: editing them does not change what the tool writes, and it leaves the agent's instructions contradicting the tool. To switch styles, run `d365fo-mcp config naming` (or set `EXTENSION_NAMING_STYLE`) and restart the server. With `prefix`, the infix follows `EXTENSION_PREFIX`, or the spelling the model's existing extensions already use.
+> [!WARNING]
+> The extension patterns in `copilot-instructions.md` (or any other rules file) only *describe* this behaviour: editing them does not change what the tool writes, and it leaves the agent's instructions contradicting the tool. To switch styles, run `d365fo-mcp config naming` (or set `EXTENSION_NAMING_STYLE`) and restart the server. With `prefix`, the infix follows `EXTENSION_PREFIX`, or the spelling the model's existing extensions already use.
 
 ### Prefix leading the class name
 
@@ -280,7 +315,7 @@ EXTENSION_NAME_FORMAT_UNDEFINED=ask                  # everything else — ask (
 
 ---
 
-## Searching Custom Extensions
+## Searching custom extensions
 
 Use `search(scope="extensions")` to search only within your custom/ISV models:
 
@@ -300,7 +335,7 @@ search(query="CustTable extension", objectType="table-extension")
 
 ---
 
-## Multi-Model Packages
+## Multi-model packages
 
 A single D365FO package can contain multiple models (e.g. package `CompanyExtensions` may have models `CompanyCore` and `CompanyReporting`). List all model names — not just the package name — in `CUSTOM_MODELS`:
 
@@ -312,7 +347,7 @@ The server uses the two-level workspace path (`PackagesLocalDirectory\PackageNam
 
 ---
 
-## Multiple Clients / Instances
+## Multiple clients / instances
 
 If you work on several D365FO environments (different clients, different ISV prefixes), use the instance commands:
 
@@ -324,10 +359,8 @@ Each instance has its own `customModels`, `naming.prefix`, and database. The `in
 
 ---
 
-## Benefits
+## See also
 
-1. **Fast incremental updates** — rebuild only custom models after a sprint, not the entire 350-model Microsoft index
-2. **Focused search** — `search(scope="extensions")` returns only your code, not noise from standard models
-3. **Correct naming validation** — `EXTENSION_PREFIX` prevents code-gen tools from generating objects without the required ISV prefix
-4. **Automatic classification** — no static Microsoft model list to maintain across D365FO version upgrades
-5. **Multi-instance isolation** — each client environment has its own index, no cross-contamination
+[BINARY_ISV_MODELS.md](BINARY_ISV_MODELS.md) — ISV models shipped as DLLs ·
+[MODEL_LIFECYCLE.md](MODEL_LIFECYCLE.md) — create and delete models ·
+[CONFIGURATION.md](CONFIGURATION.md) — every `naming.*` setting

@@ -1,0 +1,193 @@
+<svg viewBox="0 0 1100 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="t d">
+  <title id="t">d365fo-mcp architecture</title>
+  <desc id="d">An AI agent (GitHub Copilot, Claude Code or any MCP client) calls the d365fo-mcp server over MCP. The server answers searches from two SQLite indexes (symbols and labels) and sends every write through four fail-closed grounding gates: a provenance token, reference proof, best-practice rules and form-pattern rules. A write that passes all gates goes through the C# metadata bridge into the D365FO development VM; a write that fails is blocked and the agent gets structured fixes. The indexes are built from the VM's AOT metadata.</desc>
+  <style>
+    .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; }
+    .mono { font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace; }
+    .panel  { fill: #f6f8fa; stroke: #d0d7de; }
+    .card   { fill: #ffffff; stroke: #d0d7de; }
+    .head   { fill: #59636e; font-size: 12.5px; font-weight: 700; letter-spacing: 1.4px; }
+    .h1     { fill: #1f2328; font-size: 19px; font-weight: 700; }
+    .h2     { fill: #1f2328; font-size: 15px; font-weight: 600; }
+    .txt    { fill: #59636e; font-size: 13px; }
+    .small  { fill: #59636e; font-size: 12px; }
+    .wire   { stroke: #8c959f; stroke-width: 1.6; fill: none; }
+    .wtxt   { fill: #6e7781; font-size: 12px; font-weight: 600; }
+    .blue   { stroke: #0969da; }
+    .blueT  { fill: #0969da; }
+    .gates  { fill: #fff8f2; stroke: #fb8f44; }
+    .gate   { fill: #ffffff; stroke: #fb8f44; }
+    .orangeT{ fill: #bc4c00; }
+    .orange { stroke: #bc4c00; stroke-width: 1.6; fill: none; }
+    .ok     { fill: #dafbe1; stroke: #1a7f37; }
+    .okT    { fill: #1a7f37; }
+    .okW    { stroke: #1a7f37; stroke-width: 1.6; fill: none; }
+    .bad    { fill: #ffebe9; stroke: #cf222e; }
+    .badT   { fill: #cf222e; }
+    .badW   { stroke: #cf222e; stroke-width: 1.6; fill: none; }
+    .db     { fill: #ffffff; stroke: #1b7c83; }
+    .dbTop  { fill: #d8f3f6; stroke: #1b7c83; }
+    .tealT  { fill: #1b7c83; }
+    .build  { stroke: #1a7f37; stroke-width: 1.6; stroke-dasharray: 6 5; fill: none; }
+    .vm     { fill: #ddf4ff; stroke: #0969da; }
+    .dash   { stroke-dasharray: 5 4; }
+    .arrowG { fill: #8c959f; } .arrowO { fill: #bc4c00; } .arrowK { fill: #1a7f37; } .arrowR { fill: #cf222e; }
+    @media (prefers-color-scheme: dark) {
+      .panel  { fill: #151b23; stroke: #3d444d; }
+      .card   { fill: #0d1117; stroke: #3d444d; }
+      .head   { fill: #9198a1; }
+      .h1, .h2{ fill: #f0f6fc; }
+      .txt, .small { fill: #9198a1; }
+      .wire   { stroke: #656c76; }
+      .wtxt   { fill: #9198a1; }
+      .blue   { stroke: #4493f8; } .blueT { fill: #4493f8; }
+      .gates  { fill: #21170e; stroke: #bd561d; }
+      .gate   { fill: #0d1117; stroke: #bd561d; }
+      .orangeT{ fill: #f0883e; } .orange { stroke: #f0883e; }
+      .ok     { fill: #12261e; stroke: #3fb950; } .okT { fill: #3fb950; } .okW { stroke: #3fb950; }
+      .bad    { fill: #2a1416; stroke: #f85149; } .badT { fill: #f85149; } .badW { stroke: #f85149; }
+      .db     { fill: #0d1117; stroke: #39c5cf; } .dbTop { fill: #0f2a2e; stroke: #39c5cf; } .tealT { fill: #39c5cf; }
+      .build  { stroke: #3fb950; }
+      .vm     { fill: #0c2135; stroke: #4493f8; }
+      .arrowG { fill: #656c76; } .arrowO { fill: #f0883e; } .arrowK { fill: #3fb950; } .arrowR { fill: #f85149; }
+    }
+  </style>
+  <defs>
+    <marker id="aG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowG" d="M0 0 L10 5 L0 10 z"/></marker>
+    <marker id="aO" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowO" d="M0 0 L10 5 L0 10 z"/></marker>
+    <marker id="aK" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowK" d="M0 0 L10 5 L0 10 z"/></marker>
+    <marker id="aR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowR" d="M0 0 L10 5 L0 10 z"/></marker>
+    <linearGradient id="gBridge" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8250df"/><stop offset="1" stop-color="#5a32a3"/></linearGradient>
+  </defs>
+
+  <g class="sans">
+    <!-- ───────── AI agent ───────── -->
+    <rect class="panel" x="20" y="20" width="220" height="420" rx="14"/>
+    <text class="head" x="40" y="50">AI AGENT</text>
+
+    <rect class="card blue" x="36" y="72" width="188" height="64" rx="10"/>
+    <text class="h2" x="52" y="98">GitHub Copilot</text>
+    <text class="txt" x="52" y="119">VS 2026 · VS Code</text>
+
+    <rect class="card blue" x="36" y="148" width="188" height="64" rx="10"/>
+    <text class="h2" x="52" y="174">Claude Code</text>
+    <text class="txt" x="52" y="195">CLI · desktop · IDE</text>
+
+    <rect class="card blue" x="36" y="224" width="188" height="64" rx="10"/>
+    <text class="h2" x="52" y="250">Any MCP client</text>
+    <text class="txt" x="52" y="271">Cursor · custom agents</text>
+
+    <rect class="card dash" x="36" y="300" width="188" height="64" rx="10"/>
+    <text class="h2" x="52" y="326">Instruction file</text>
+    <text class="txt" x="52" y="347">grounding workflow</text>
+
+    <text class="small" x="130" y="408" text-anchor="middle">stdio · HTTP + API key</text>
+
+    <!-- agent → server -->
+    <line class="wire" x1="240" y1="180" x2="278" y2="180" marker-end="url(#aG)"/>
+    <text class="wtxt" x="259" y="170" text-anchor="middle">MCP</text>
+
+    <!-- ───────── Server ───────── -->
+    <rect class="panel" x="280" y="20" width="520" height="420" rx="14"/>
+    <text class="h1" x="300" y="52">d365fo-mcp server</text>
+    <text class="txt" x="300" y="74">22 MCP tools · Node.js 24 · TypeScript</text>
+
+    <rect class="card" x="296" y="92" width="240" height="60" rx="10"/>
+    <text class="h2" x="312" y="116">🔍 Discover</text>
+    <text class="txt" x="312" y="138">symbols · labels · where-used</text>
+
+    <rect class="card" x="552" y="92" width="240" height="60" rx="10"/>
+    <text class="h2" x="568" y="116">🧠 Understand</text>
+    <text class="txt" x="568" y="138">X++ rules · CoC · security</text>
+
+    <rect class="card" x="296" y="162" width="240" height="60" rx="10"/>
+    <text class="h2" x="312" y="186">✍️ Generate</text>
+    <text class="txt" x="312" y="208">grounded code · form patterns</text>
+
+    <rect class="card" x="552" y="162" width="240" height="60" rx="10"/>
+    <text class="h2" x="568" y="186">🏗️ Build &amp; test</text>
+    <text class="txt" x="568" y="208">MSBuild · BP · SysTest · sync</text>
+
+    <!-- grounding gates -->
+    <rect class="gates" x="296" y="236" width="496" height="190" rx="10"/>
+    <text class="orangeT" x="312" y="260" font-size="14" font-weight="700">Write path — fail-closed grounding gates</text>
+
+    <rect class="gate" x="310" y="274" width="108" height="44" rx="8"/>
+    <text class="orangeT" x="364" y="301" text-anchor="middle" font-size="13" font-weight="600">Token</text>
+    <rect class="gate" x="430" y="274" width="108" height="44" rx="8"/>
+    <text class="orangeT" x="484" y="301" text-anchor="middle" font-size="13" font-weight="600">References</text>
+    <rect class="gate" x="550" y="274" width="108" height="44" rx="8"/>
+    <text class="orangeT" x="604" y="301" text-anchor="middle" font-size="13" font-weight="600">BP rules</text>
+    <rect class="gate" x="670" y="274" width="108" height="44" rx="8"/>
+    <text class="orangeT" x="724" y="301" text-anchor="middle" font-size="13" font-weight="600">Form rules</text>
+    <line class="orange" x1="418" y1="296" x2="428" y2="296" marker-end="url(#aO)"/>
+    <line class="orange" x1="538" y1="296" x2="548" y2="296" marker-end="url(#aO)"/>
+    <line class="orange" x1="658" y1="296" x2="668" y2="296" marker-end="url(#aO)"/>
+
+    <path class="okW" d="M544 318 L544 332 L423 332 L423 350" marker-end="url(#aK)"/>
+    <path class="badW" d="M544 332 L665 332 L665 350" marker-end="url(#aR)"/>
+    <text class="okT" x="480" y="347" text-anchor="middle" font-size="12" font-weight="600">pass</text>
+    <text class="badT" x="608" y="347" text-anchor="middle" font-size="12" font-weight="600">fail</text>
+
+    <rect class="ok" x="310" y="352" width="226" height="58" rx="9"/>
+    <text class="okT" x="423" y="376" text-anchor="middle" font-size="14" font-weight="700">✓ Written</text>
+    <text class="txt" x="423" y="397" text-anchor="middle">added to the .rnrproj</text>
+
+    <rect class="bad" x="552" y="352" width="226" height="58" rx="9"/>
+    <text class="badT" x="665" y="376" text-anchor="middle" font-size="14" font-weight="700">⛔ Blocked</text>
+    <text class="txt" x="665" y="397" text-anchor="middle">structured fixes returned</text>
+
+    <!-- server → indexes -->
+    <line class="wire" x1="800" y1="180" x2="838" y2="180" marker-end="url(#aG)"/>
+    <text class="wtxt" x="819" y="170" text-anchor="middle">read</text>
+
+    <!-- ───────── Indexes ───────── -->
+    <rect class="panel" x="840" y="20" width="240" height="420" rx="14"/>
+    <text class="head" x="860" y="50">SQLITE INDEX</text>
+
+    <path class="db" d="M864 86 a96 13 0 0 1 192 0 v130 a96 13 0 0 1 -192 0 z"/>
+    <ellipse class="dbTop" cx="960" cy="86" rx="96" ry="13"/>
+    <text class="h2 tealT" x="960" y="130" text-anchor="middle">Symbol index</text>
+    <text class="txt" x="960" y="153" text-anchor="middle">580K+ symbols</text>
+    <text class="txt" x="960" y="173" text-anchor="middle">FTS5 search &lt; 10 ms</text>
+    <text class="small" x="960" y="196" text-anchor="middle">+ mined pattern stats</text>
+
+    <path class="db" d="M864 266 a96 13 0 0 1 192 0 v130 a96 13 0 0 1 -192 0 z"/>
+    <ellipse class="dbTop" cx="960" cy="266" rx="96" ry="13"/>
+    <text class="h2 tealT" x="960" y="310" text-anchor="middle">Label index</text>
+    <text class="txt" x="960" y="333" text-anchor="middle">20M+ label rows</text>
+    <text class="txt" x="960" y="353" text-anchor="middle">70 languages</text>
+    <text class="small" x="960" y="376" text-anchor="middle">own DB · FTS5 for en-US</text>
+
+    <!-- ───────── Bridge + VM ───────── -->
+    <path class="okW" d="M423 410 L423 468" marker-end="url(#aK)"/>
+    <text class="wtxt" x="433" y="456">writes · live reads</text>
+
+    <rect x="296" y="470" width="240" height="104" rx="12" fill="url(#gBridge)"/>
+    <text x="416" y="500" text-anchor="middle" font-size="15" font-weight="700" fill="#ffffff">C# metadata bridge</text>
+    <text x="416" y="523" text-anchor="middle" font-size="13" fill="#e8dcff">IMetadataProvider · xref DB</text>
+    <text x="416" y="545" text-anchor="middle" font-size="12" fill="#d2bfff">.NET 4.8 · Windows VM only</text>
+    <text x="416" y="562" text-anchor="middle" font-size="11" fill="#d2bfff">elsewhere: SQLite fallback</text>
+
+    <line class="wire" x1="536" y1="522" x2="598" y2="522" marker-end="url(#aG)"/>
+
+    <rect class="vm" x="600" y="470" width="480" height="104" rx="12"/>
+    <text class="h2 blueT" x="620" y="500">D365FO development VM</text>
+    <text class="txt mono" x="620" y="524" font-size="12.5">PackagesLocalDirectory · DYNAMICSXREFDB · AxDB</text>
+    <text class="txt" x="620" y="548">MSBuild / xppc · DB sync · SysTestRunner · xppbp</text>
+
+    <!-- index build: VM → indexes -->
+    <path class="build" d="M1000 470 L1000 442" marker-end="url(#aK)"/>
+    <text class="okT" x="990" y="460" text-anchor="end" font-size="12" font-weight="600">index build (AOT XML → SQLite)</text>
+
+    <!-- legend -->
+    <g transform="translate(36 492)">
+      <line class="wire" x1="0" y1="6" x2="30" y2="6"/>
+      <text class="small" x="40" y="10">runtime call</text>
+      <line class="build" x1="0" y1="32" x2="30" y2="32"/>
+      <text class="small" x="40" y="36">build time</text>
+      <line class="okW" x1="0" y1="58" x2="30" y2="58"/>
+      <text class="small" x="40" y="62">grounded write</text>
+    </g>
+  </g>
+</svg>
