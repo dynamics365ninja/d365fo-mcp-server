@@ -199,7 +199,26 @@ describe('generate_code', () => {
     );
     expect(result.isError).toBeFalsy();
     const text = result.content[0].text;
-    expect(text).toMatch(/FeatureClassAttribute|isEnabledByDefault/);
+    // Registration as the shipped IFeatureMetadata classes do it: there is no FeatureClassAttribute.
+    expect(text).toContain('[ExportAttribute(identifierStr(Microsoft.Dynamics.ApplicationPlatform.FeatureExposure.IFeatureMetadata))]');
+    expect(text).toMatch(/final class \w+Feature implements IFeatureMetadata/);
+    expect(text).not.toContain('FeatureClassAttribute');
+    // All six interface members, as [Hookable(false)] instance methods with the interface's return types.
+    for (const member of [
+      'public FeatureLabelId label()',
+      'public FeatureLabelId summary()',
+      'public int module()',
+      'public WebSiteURL learnMoreUrl()',
+      'public boolean isEnabledByDefault()',
+      'public boolean canDisable()',
+    ]) {
+      expect(text).toContain(`[Hookable(false)]\n    ${member}`);
+    }
+    expect(text).not.toMatch(/\bdescription\(\)/);
+    expect(text).toMatch(/return FeatureModuleV0::\w+;/);
+    // The state check takes the feature instance, not classStr().
+    expect(text).toMatch(/FeatureStateProvider::isFeatureEnabled\(\w+Feature::instance\(\)\)/);
+    expect(text).not.toMatch(/isFeatureEnabled\(\s*classStr/);
   });
 
   it('generates a composite-entity template', async () => {

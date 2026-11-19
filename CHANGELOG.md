@@ -237,6 +237,16 @@ those are called out explicitly below.
   environment status in `get_workspace_info` is not done yet.
 
 ### Fixed
+- **`generate_object` pattern `feature-class` produces a feature class that compiles.** The
+  template used a `[FeatureClassAttribute]` that does not exist, static members, a
+  `description()` that is not part of `IFeatureMetadata`, a `module()` returning a label,
+  and `isFeatureEnabled(classStr(...))`; it had no `canDisable()` or `learnMoreUrl()`. It
+  now has the shape of the `L2-feature-management-flight` golden and the shipped feature
+  classes: `[ExportAttribute(identifierStr(...IFeatureMetadata))]` and
+  `implements IFeatureMetadata`, a singleton (`TypeNew` + `instance()`), the six interface
+  members as `[Hookable(false)]` instance methods, and a static `isEnabled()` that passes
+  `instance()` to `FeatureStateProvider::isFeatureEnabled`. The `feature-management`
+  knowledge example gains the `learnMoreUrl()` it was missing.
 - **`get_object_info(objectType:"enum")` lists the values of an enum in a binary ISV
   model.** Without the bridge it answered `Enum "X" not found` for an enum imported with
   `npm run extract-binary-models`: the reader only understood AxEnum XML, and a binary enum

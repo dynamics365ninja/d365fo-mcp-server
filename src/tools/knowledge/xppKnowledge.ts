@@ -2878,6 +2878,12 @@ public final class MyEnhancedValidationFeature implements IFeatureMetadata
     }
 
     [Hookable(false)]
+    public WebSiteURL learnMoreUrl()
+    {
+        return '';
+    }
+
+    [Hookable(false)]
     public boolean isEnabledByDefault()
     {
         return false;
