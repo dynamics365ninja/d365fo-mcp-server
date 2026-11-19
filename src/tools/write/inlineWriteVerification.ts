@@ -552,6 +552,8 @@ export function modifyIntentFor(
     if (!name || text('controlName') || /[./]/.test(name) || value === undefined || value === null) return null;
     // Written as child elements, one per permission, never as the text passed in.
     if (name.toLowerCase() === 'subscriberaccesslevel') return null;
+    // Tags: normalised ("A;B" -> "A, B") and combined by tagsMode, so the passed text is not what lands.
+    if (name.toLowerCase() === 'tags') return null;
     const requested = String(value).trim();
     // An empty value removes the property, so there is no value to find.
     return requested ? { properties: { [name]: requested } } : null;
@@ -614,6 +616,8 @@ export async function readBackAfterModify(
 const CREATE_KEYS_NOT_COMPARED = new Set([
   // Identity, and the base type the create resolves or writes into the declaration.
   'name', 'extends',
+  // Written (and normalised to "A, B") by tools/write/tagsApply.ts after the create.
+  'tags',
   // Written by the create's own best-practice defaults, which report on them.
   'operationaldomain', 'subscriberaccesslevel',
 ]);

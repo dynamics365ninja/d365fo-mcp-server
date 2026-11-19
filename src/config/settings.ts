@@ -313,6 +313,21 @@ export const SETTINGS: Setting[] = [
     placeholder: 'K:\\AosService\\PackagesLocalDirectory\\YourPackage\\YourModel',
   },
   {
+    path: 'workspace.defaultTag',
+    env: 'D365FO_DEFAULT_TAG',
+    section: 'workspace',
+    tier: 'advanced',
+    type: 'string',
+    label: 'Default <Tags> value for new objects and elements',
+    description:
+      'Written as <Tags> on every object d365fo_file creates and on every element an add-* operation adds ' +
+      '(field, relation, index, field group, enum value, method) when the call passes no tags of its own. ' +
+      'Never overrides a tag that is already there; a call opts out with tags="". Several: "ABC-1, ABC-2". ' +
+      'Leave empty to write no tag unless a call asks for one. Set it in the .env of this server instance for the work ' +
+      'in hand and change it when that changes (the .env is read at start-up: restart the server).',
+    placeholder: 'ABC-123',
+  },
+  {
     path: 'workspace.projectMembership',
     env: 'D365FO_PROJECT_MEMBERSHIP',
     section: 'workspace',

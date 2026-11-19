@@ -45,6 +45,30 @@ those are called out explicitly below.
   required; every other entry stays mapped, whatever keys it carries). The result reminds that the DMF staging table
   needs the same column (`create` with `dataManagementEnabled` already adds it; `add-field`
   does not). Existing mapped calls behave as before.
+- **Objects and elements can carry a `<Tags>` label without hand-edited XML.**
+  `Tags` was rejected by modify-property (`Unknown AxTable property 'Tags'`), unknown to
+  create, and missing from every add-* operation, so developers edited the XML by hand to
+  tag what a change added. Now: (1) `modify-property propertyPath="Tags"` works on every
+  object type that has the property (table, enum, EDT, class, form, query, view, map, data
+  entity, menus and menu items, security privilege/duty/role, services, configuration key,
+  tile and the extension types); it replaces by default, `tagsMode="add"|"remove"`
+  combines with the existing tags, and an empty value removes the element. (2)
+  `properties.tags` on create, and `tags` on add-field, add-relation (also on its
+  constraints), add-index, add-field-group, add-enum-value, add-method,
+  add-table-method and add-display-method, and on modify-field / modify-enum-value to
+  retag an existing element (a call that only carries `tags` no longer needs the bridge).
+  Several tags: `"A, B"` or `["A","B"]`. (3) New setting `D365FO_DEFAULT_TAG` (.env, or
+  `workspace.defaultTag` in the config file): written on every object created and every
+  element added when the call passes no `tags`, never over a tag that is already there;
+  `tags=""` opts out for one call. Unset (the default) changes nothing. Every result says
+  which tag was written and where it came from. The element is written in the position
+  the serializer uses (a misplaced `<Tags>` is dropped without warning): checked by
+  removing and re-inserting every tag in about 1,950 shipped objects and elements.
+  `AxTable` ordering gained `Tags` (between `TableGroup` and `TitleField1`). Written by
+  this server's XML step after the bridge, so no bridge rebuild is needed. Not covered:
+  add-control, query/data-source/mapping add-* operations, form-extension and view/map
+  fields, reports; and an object type with no verified position is refused rather than
+  guessed.
 - **A model descriptor's `InternalsVisibleTo` and a project's .NET references can be
   edited without hand-written XML.** (#1286) The test model has to be listed in the
   product model's `<InternalsVisibleTo>`, and `System.Security` (for `ProtectedData`)
@@ -258,8 +282,10 @@ those are called out explicitly below.
   into `CUSTOM_MODELS`; on UDE an empty list means "every model under the custom root", while a
   non-empty one is read by the extract and rebuild as their whole scope, so changes to all other
   custom models silently stopped reaching the index. With an empty list and the model under the
-  custom root, the create now leaves `CUSTOM_MODELS` alone (the model is custom for the session
-  and the reply says so). It also no longer creates a `.env` the server did not read, which a
+  custom root, the create now leaves `CUSTOM_MODELS` alone, and at start-up the server
+  classifies every model under the UDE custom root as custom while the list is empty (like
+  the extract does), so the new model stays writable after a restart. A hand-written list is
+  unchanged. The create also no longer creates a `.env` the server did not read, which a
   JSON-only instance would have shared with every other instance on the install.
 - **`generate_object` pattern `feature-class` produces a feature class that compiles.** The
   template used a `[FeatureClassAttribute]` that does not exist, static members, a

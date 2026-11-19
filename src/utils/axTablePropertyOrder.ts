@@ -41,6 +41,8 @@ const AX_TABLE_MANDATORY_PROPERTIES = [
   // that carry one, none places it elsewhere in the block.
   'SubscriberAccessLevel',
   'TableGroup',
+  // Free-text label; sorts between TableGroup and TitleField1 (tagsEdit.ts).
+  'Tags',
   'TitleField1',
   'TitleField2',
 ] as const;

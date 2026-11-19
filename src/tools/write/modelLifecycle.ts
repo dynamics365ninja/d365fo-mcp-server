@@ -382,7 +382,7 @@ export async function handleCreateModel(
     'Configuration:',
     ...(settings.length ? settings.map(s => settingLine(s, envFile?.envPath)) : ['  • nothing to change — the model was already covered.']),
     pathScoped
-      ? `  • ${CUSTOM_MODELS_KEY} left empty: on UDE the custom refresh finds models by path, and a list would narrow it to the listed models. "${name}" is custom for this session; after a restart it is custom once a project in it is open or its name matches EXTENSION_PREFIX.`
+      ? `  • ${CUSTOM_MODELS_KEY} left empty: on UDE the custom refresh finds models by path, and a list would narrow it to the listed models. "${name}" is custom now, and the server classifies every model under the custom root as custom at start-up while the list is empty.`
       : '',
     anchor
       ? `  This workspace still targets "${anchor}". "${name}" is on the cross-model allow-list so that objects can be ` +
