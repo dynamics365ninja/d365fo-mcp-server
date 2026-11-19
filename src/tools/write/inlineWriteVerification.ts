@@ -614,6 +614,8 @@ export async function readBackAfterModify(
 const CREATE_KEYS_NOT_COMPARED = new Set([
   // Identity, and the base type the create resolves or writes into the declaration.
   'name', 'extends',
+  // Written (and normalised to "A, B") by tools/write/tagsApply.ts after the create.
+  'tags',
   // Written by the create's own best-practice defaults, which report on them.
   'operationaldomain', 'subscriberaccesslevel',
 ]);

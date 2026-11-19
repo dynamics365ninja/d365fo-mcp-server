@@ -5,6 +5,7 @@
 
 import * as fs from 'fs/promises';
 import { directXmlSetIndexValidTimeState, coerceNoYesFlag } from './directXmlWriters.js';
+import { applyCreateTags } from './tagsApply.js';
 import { writeFileAtomic } from '../../utils/atomicFileWrite.js';
 import { XmlTemplateGenerator } from '../xml/xmlTemplateGenerator.js';
 import { findIgnoredEntityProperties } from '../xml/dataEntityXml.js';
@@ -1576,6 +1577,7 @@ export async function handleCreateD365File(
             if (smartResult?.success && smartResult.filePath) {
               console.error(`[create_d365fo_file] ✅ Created via C# bridge (BP-smart): ${smartResult.filePath}`);
               await normalizeCreatedArtifactEol(smartResult.filePath);
+              const createTagsNote = await applyCreateTags(smartResult.filePath, args.properties);
 
               let projectMsg = '';
               if (args.addToProject !== false) {
@@ -1686,7 +1688,7 @@ export async function handleCreateD365File(
                     // same text on every table create, nothing the agent acts on.
                     text: `✅ Created ${args.objectType} '${finalObjectName}'${crossModelNotice}${renameNote}${targetNote}\n` +
                       `📁 ${smartResult.filePath}${projectMsg}` +
-                      `${bpSummary}${honestyReport}${rawLabelWarning}${labelAutoNote}${verifyNote}${indexNote}${bpNote}` +
+                      `${bpSummary}${honestyReport}${createTagsNote}${rawLabelWarning}${labelAutoNote}${verifyNote}${indexNote}${bpNote}` +
                       validateWrittenXpp(sourceAsWritten(args.sourceCode, finalObjectName)),
                   },
                 ],
@@ -1709,6 +1711,7 @@ export async function handleCreateD365File(
         if (bridgeResult?.success && bridgeResult.filePath) {
           console.error(`[create_d365fo_file] ✅ Created via C# bridge: ${bridgeResult.filePath}`);
           await normalizeCreatedArtifactEol(bridgeResult.filePath);
+          const createTagsNote = await applyCreateTags(bridgeResult.filePath, args.properties);
 
           // Add to .rnrproj if requested
           let projectMsg = '';
@@ -1806,7 +1809,7 @@ export async function handleCreateD365File(
                 // restated this headline and the path below it.
                 text: `✅ Created ${args.objectType} '${finalObjectName}'${crossModelNotice}${renameNote}${targetNote}\n` +
                   `📁 ${bridgeResult.filePath}${projectMsg}` +
-                  `${bridgeMessageNote(bridgeResult.message, bridgeResult.filePath)}${honestyReport}${rawLabelWarning}${labelAutoNote}${verifyNote}${indexNote}${bpNote}${xppRuleNote}${readBackNote}${timer.render()}`,
+                  `${bridgeMessageNote(bridgeResult.message, bridgeResult.filePath)}${honestyReport}${createTagsNote}${rawLabelWarning}${labelAutoNote}${verifyNote}${indexNote}${bpNote}${xppRuleNote}${readBackNote}${timer.render()}`,
               },
             ],
           };
@@ -2108,6 +2111,8 @@ export async function handleCreateD365File(
       `[create_d365fo_file] ✅ Written: ${normalizedFullPath}  (${fileSizeKb} KB)`
     );
 
+    const createTagsNote = await applyCreateTags(normalizedFullPath, args.properties);
+
     // This path paid for the rebuild TWICE: once here on the response path, and
     // again inside the fire-and-forget bridgeValidateAfterWrite() below, which
     // already goes through the same coalescer before reading the object back.
@@ -2308,6 +2313,7 @@ export async function handleCreateD365File(
             formPatternWarnings +
             bridgeFallbackNote +
             tableHonestyReport +
+            createTagsNote +
             rawLabelBpWarning(args.properties, finalObjectName) +
             labelAutoNote +
             extensibleEnumOrderingWarning(args.objectType, args.properties, finalObjectName) +

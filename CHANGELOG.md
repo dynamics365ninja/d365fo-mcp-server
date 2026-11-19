@@ -29,6 +29,30 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **Objects and elements can carry a JIRA `<Tags>` label without hand-edited XML.**
+  `Tags` was rejected by modify-property (`Unknown AxTable property 'Tags'`), unknown to
+  create, and missing from every add-* operation, so developers edited the XML by hand to
+  tag what a ticket added. Now: (1) `modify-property propertyPath="Tags"` works on every
+  object type that has the property (table, enum, EDT, class, form, query, view, map, data
+  entity, menus and menu items, security privilege/duty/role, services, configuration key,
+  tile and the extension types); it replaces by default, `tagsMode="add"|"remove"`
+  combines with the existing tags, and an empty value removes the element. (2)
+  `properties.tags` on create, and `tags` on add-field, add-relation (also on its
+  constraints), add-index, add-field-group, add-enum-value, add-method,
+  add-table-method and add-display-method, and on modify-field / modify-enum-value to
+  retag an existing element (a call that only carries `tags` no longer needs the bridge).
+  Several tags: `"A, B"` or `["A","B"]`. (3) New setting `D365FO_DEFAULT_TAG` (.env, or
+  `workspace.defaultTag` in the config file): written on every object created and every
+  element added when the call passes no `tags`, never over a tag that is already there;
+  `tags=""` opts out for one call. Unset (the default) changes nothing. Every result says
+  which tag was written and where it came from. The element is written in the position
+  the serializer uses (a misplaced `<Tags>` is dropped without warning): checked by
+  removing and re-inserting every tag in about 1,950 shipped objects and elements.
+  `AxTable` ordering gained `Tags` (between `TableGroup` and `TitleField1`). Written by
+  this server's XML step after the bridge, so no bridge rebuild is needed. Not covered:
+  add-control, query/data-source/mapping add-* operations, form-extension and view/map
+  fields, reports; and an object type with no verified position is refused rather than
+  guessed.
 - **A model descriptor's `InternalsVisibleTo` and a project's .NET references can be
   edited without hand-written XML.** (#1286) The test model has to be listed in the
   product model's `<InternalsVisibleTo>`, and `System.Security` (for `ProtectedData`)
