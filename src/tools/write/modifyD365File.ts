@@ -47,7 +47,7 @@ import { ProjectFileFinder, registerFileInActiveProject } from '../../workspace/
 import { heuristicEdtBaseType, resolveEdtBaseType, isEnumName, resolveEdtEnumType, bridgeEdtBaseType } from '../smart/generateSmartTable.js';
 import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
 import {
-  entityAddDataSource, entityAddFieldBindingError, entityAddField, modifyFieldOp, ENTITY_AND_FIELD_ZOD_PARAMS,
+  entityAddDataSource, entityAddFieldBindingError, entityAddField, isUnmappedEntityField, entityAddUnmappedField, modifyFieldOp, ENTITY_AND_FIELD_ZOD_PARAMS,
 } from './dataEntityOps.js';
 import { formStructureOp, FORM_STRUCTURE_ZOD_PARAMS } from './formStructureOps.js';
 import { bridgeAddFormControl, pickAddControlType } from './referenceGroupControl.js';
@@ -2100,6 +2100,7 @@ async function runModify(
         // so none of the fieldType/fieldBaseType resolution below applies. It goes
         // through the same bridge op with the mapped-field binding attached; the bridge
         // routes on that binding, not on the object name.
+        if ((objectType === 'data-entity' || objectType === 'data-entity-extension') && args.fieldName && isUnmappedEntityField(args as any)) { bridgeResult = await entityAddUnmappedField(actualFilePath, args as any, symbolIndex); break; } // unmapped field
         if (objectType === 'data-entity-extension' && args.fieldName) {
           const dataField = (args as any).dataField as string | undefined;
           const dataSource = (args as any).dataSource as string | undefined;

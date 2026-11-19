@@ -400,3 +400,80 @@ describe('add-field on a same-session data-entity-extension (direct-XML fallback
     expect(call).toBeTruthy();
   });
 });
+
+describe('add-field on a data-entity-extension — UNMAPPED field', () => {
+  let ctx: XppServerContext;
+  const unmappedReq = (params: Record<string, unknown> = {}) => req({
+    objectType: 'data-entity-extension',
+    objectName: 'CustCustomerV3Entity.ConExtension',
+    operation: 'add-field',
+    filePath: EXT_FILE_PATH,
+    fieldName: 'ContosoContentBase64',
+    unmapped: true,
+    fieldBaseType: 'String',
+    fieldType: 'Notes',
+    ...params,
+  });
+  const written = () => mockWriteFile.mock.calls
+    .map((c: any[]) => c[1])
+    .find((x: unknown) => typeof x === 'string' && x.includes('ContosoContentBase64')) as string | undefined;
+
+  beforeEach(() => {
+    ctx = buildContext();
+    fixture.xml = ENTITY_EXTENSION_XML;
+    mockBridgeAddField.mockReset();
+    mockWriteFile.mockClear();
+  });
+
+  it('writes AxDataEntityViewUnmappedFieldString with the EDT and no binding, without the bridge', async () => {
+    const result = await modifyD365FileTool(unmappedReq(), ctx);
+    expect(result.isError).toBeFalsy();
+    expect(mockBridgeAddField).not.toHaveBeenCalled();
+    const xml = written()!;
+    expect(xml).toContain('i:type="AxDataEntityViewUnmappedFieldString"');
+    expect(xml).toContain('<ExtendedDataType>Notes</ExtendedDataType>');
+    expect(xml).toContain('<IsComputedField>No</IsComputedField>');
+    expect(xml).not.toMatch(/ContosoContentBase64<\/Name>[\s\S]{0,80}<DataSource>/);
+    // lands in the top-level <Fields>, after the existing mapped field
+    expect(xml.indexOf('ContosoContentBase64')).toBeGreaterThan(xml.indexOf('ConLoyaltyTier</DataField>\n\t\t\t<DataSource>'));
+    expect(result.content[0].text as string).toMatch(/staging table/i);
+  });
+
+  it('a bare fieldType (no unmapped=true, no binding) is still refused, not written as an unmapped field', async () => {
+    const result = await modifyD365FileTool(unmappedReq({ unmapped: undefined }), ctx);
+    expect(result.isError).toBe(true);
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it('unmapped=true together with a binding is refused', async () => {
+    const result = await modifyD365FileTool(unmappedReq({ dataField: 'X', dataSource: 'CustTable' }), ctx);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text as string).toMatch(/cannot be combined/);
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it('fieldGroupName is refused rather than silently ignored', async () => {
+    const result = await modifyD365FileTool(unmappedReq({ fieldGroupName: 'AutoReport' }), ctx);
+    expect(result.isError).toBe(true);
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it('unmapped=true alone is not enough without a type', async () => {
+    const result = await modifyD365FileTool(unmappedReq({ fieldType: undefined, fieldBaseType: undefined, unmapped: true }), ctx);
+    expect(result.isError).toBe(true);
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it('a mapped add-field (dataField + dataSource) still goes to the bridge', async () => {
+    mockBridgeAddField.mockResolvedValue({ success: true, message: '✅ ok' });
+    const result = await modifyD365FileTool(unmappedReq({ unmapped: false, dataField: 'X', dataSource: 'CustTable', fieldType: undefined, fieldBaseType: undefined }), ctx);
+    expect(result.isError).toBeFalsy();
+    expect(mockBridgeAddField).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a computed field on an extension', async () => {
+    const result = await modifyD365FileTool(unmappedReq({ computedFieldMethod: 'm', fieldBaseType: 'Real', fieldType: undefined }), ctx);
+    expect(result.isError).toBe(true);
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+});

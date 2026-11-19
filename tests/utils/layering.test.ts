@@ -175,9 +175,10 @@ describe('layer direction', () => {
     // landed here is that module's import and ONE switch line for both operations.
     // Raised 4,830 -> 4,835 when all of them landed together (4,829 lines, local build).
     const src = readFileSync('src/tools/write/modifyD365File.ts', 'utf8');
-    // Raised 4,835 -> 4,845 for Tags: schema entries, the modify-property intercept and ONE
-    // post-operation hook; everything else lives in write/tagsApply.ts.
-    expect(src.split('\n').length).toBeLessThan(4845);
+    // Raised 4,835 -> 4,850: Tags (+10: schema entries, the modify-property intercept and ONE hook;
+    // the work is in write/tagsApply.ts) and the unmapped-entity-field route (+5: ONE switch line; the
+    // work is in write/dataEntityOps.ts and xml/entityUnmappedField.ts).
+    expect(src.split('\n').length).toBeLessThan(4850);
   });
 
   it('the dispatcher routes rather than implementing', () => {
