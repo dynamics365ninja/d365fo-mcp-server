@@ -138,8 +138,8 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
     type: 'boolean',
     description:
       'add-field on a data-entity(-extension): add an UNMAPPED field (AxDataEntityViewUnmappedField<Type>; own type via ' +
-      'fieldType / fieldBaseType / fieldEnumType, no dataField/dataSource, filled in code). Implied when a type is ' +
-      'given and dataField/dataSource are not. The staging table needs the same field.',
+      'fieldType / fieldBaseType / fieldEnumType, no dataField/dataSource, filled in code). Required: a bare fieldType does not ' +
+      'select it. The staging table needs the same field.',
   },
   dataSource: {
     type: 'string',
@@ -677,12 +677,12 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
       'fieldLabel is optional. ' +
       'UNMAPPED FIELD (data-entity AND data-entity-extension): a field with its own type that is filled in code ' +
       '(a virtual Base64/content column set in postLoad, a derived value) instead of reading a datasource field. ' +
-      'Pass NO dataField/dataSource and a type: fieldType (EDT) and/or fieldBaseType ' +
-      '(String|Integer|Int64|Real|Date|Time|UtcDateTime|Enum|Container|Guid) or fieldEnumType; add unmapped=true ' +
-      'to say so explicitly. Writes AxDataEntityViewUnmappedField<Type> with <ExtendedDataType>/<EnumType> and ' +
+      'Pass unmapped=true, NO dataField/dataSource and a type: fieldType (EDT) and/or fieldBaseType ' +
+      '(String|Integer|Int64|Real|Date|Time|UtcDateTime|Enum|Container|Guid) or fieldEnumType (a bare fieldType without unmapped=true is NOT enough). ' +
+      'Writes AxDataEntityViewUnmappedField<Type> with <ExtendedDataType>/<EnumType> and ' +
       '<IsComputedField>No</IsComputedField> at the end of <Fields>; no datasource is needed, the query, keys, ' +
       'public names and staging reference are untouched. A String needs an EDT or fieldStringSize; the base type ' +
-      'of an EDT comes from the index when fieldBaseType is not given (else the call asks for it). ' +
+      'of an EDT comes from the index when fieldBaseType is not given (else the call asks for it); fieldStringSize is a positive integer; fieldGroupName does not apply. ' +
       'fieldLabel/fieldHelpText/fieldMandatory apply. COMPUTED (data-entity only): computedFieldMethod=<static ' +
       'method> makes it a SQL computed column; pass sourceCode (the method, returning SysComputedColumn SQL) or ' +
       'have the method already on the entity; to compute an existing MAPPED field use modify-field ' +
@@ -1195,8 +1195,8 @@ export const D365FO_FILE_CREATE_PROPERTY_SPECS: Record<string, string> = {
   'menu-item-output': 'label, object, objectType, operationalDomain? (default Shared), subscriberAccessLevel? ' +
     '(default Read=Allow)',
   'data-entity':
-    'primaryTable + fields[{name,dataField?}] (an entry with NO dataField but a type — {name, edt?, type?, ' +
-    'enumType?, stringSize?, label?, mandatory?} or unmapped:true — is an UNMAPPED field: ' +
+    'primaryTable + fields[{name,dataField?}] (an entry with unmapped:true — {name, unmapped:true, type|enumType, edt?, ' +
+    'stringSize?, label?, mandatory?}; create has no index, so give type or enumType — is an UNMAPPED field: ' +
     'AxDataEntityViewUnmappedField<Type>, filled in code, not in the query, never the key; with ' +
     'dataManagementEnabled it gets a staging column too; at least one mapped field is still required) — BOTH REQUIRED (without them the entity has no query ' +
     'and returns no data, which builds clean; the create is refused instead), primaryKey?, ' +

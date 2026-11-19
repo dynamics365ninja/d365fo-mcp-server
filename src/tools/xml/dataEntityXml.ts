@@ -8,11 +8,10 @@
  * properties.fields                – [{ name, dataField? }] one AxDataEntityViewMappedField
  *                                     + one query datasource field per entry, both sourced
  *                                     from primaryTable. dataField defaults to name.
- *                                     An entry WITHOUT dataField that names a type — { name, edt?, type?,
- *                                     enumType?, stringSize?, label?, mandatory? } (or has
- *                                     unmapped: true) is an UNMAPPED field: AxDataEntityViewUnmappedField<Type>,
- *                                     filled in code, not in the query, never the key. A bare { name } stays
- *                                     a mapped field (dataField defaults to name).
+ *                                     An entry with unmapped: true — { name, unmapped: true, edt?, type?,
+ *                                     enumType?, stringSize?, label?, mandatory? } — is an UNMAPPED field: AxDataEntityViewUnmappedField<Type>,
+ *                                     filled in code, not in the query, never the key. Without unmapped: true an
+ *                                     entry is mapped, whatever other keys it carries.
  * properties.primaryKeyField       – field `name` to use as the entity key (default: fields[0].name).
  * properties.primaryKeyFields      – string[] for a composite/business key; wins over
  *                                     primaryKeyField. Each entry is an entity field name.
@@ -332,6 +331,8 @@ ${stateMachinesXml}\t<ViewMetadata />
     fields = [...fields, { name: 'SourceKey', dataField: 'RecId' }];
   }
   const isUnmapped = (f: { name: string }) => isUnmappedEntityFieldSpec(f);
+  const mixed = fields.find(f => isUnmapped(f) && f.dataField);
+  if (mixed) throw new Error(`Data entity '${entityName}': field '${mixed.name}' has both unmapped:true and dataField — nothing was written.`);
   const mappedFields = fields.filter(f => !isUnmapped(f));
   if (mappedFields.length === 0) {
     throw new Error(

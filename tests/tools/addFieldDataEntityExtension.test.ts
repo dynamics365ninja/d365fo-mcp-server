@@ -409,6 +409,7 @@ describe('add-field on a data-entity-extension — UNMAPPED field', () => {
     operation: 'add-field',
     filePath: EXT_FILE_PATH,
     fieldName: 'ContosoContentBase64',
+    unmapped: true,
     fieldBaseType: 'String',
     fieldType: 'Notes',
     ...params,
@@ -438,6 +439,25 @@ describe('add-field on a data-entity-extension — UNMAPPED field', () => {
     expect(result.content[0].text as string).toMatch(/staging table/i);
   });
 
+  it('a bare fieldType (no unmapped=true, no binding) is still refused, not written as an unmapped field', async () => {
+    const result = await modifyD365FileTool(unmappedReq({ unmapped: undefined }), ctx);
+    expect(result.isError).toBe(true);
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it('unmapped=true together with a binding is refused', async () => {
+    const result = await modifyD365FileTool(unmappedReq({ dataField: 'X', dataSource: 'CustTable' }), ctx);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text as string).toMatch(/cannot be combined/);
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it('fieldGroupName is refused rather than silently ignored', async () => {
+    const result = await modifyD365FileTool(unmappedReq({ fieldGroupName: 'AutoReport' }), ctx);
+    expect(result.isError).toBe(true);
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
   it('unmapped=true alone is not enough without a type', async () => {
     const result = await modifyD365FileTool(unmappedReq({ fieldType: undefined, fieldBaseType: undefined, unmapped: true }), ctx);
     expect(result.isError).toBe(true);
@@ -446,7 +466,7 @@ describe('add-field on a data-entity-extension — UNMAPPED field', () => {
 
   it('a mapped add-field (dataField + dataSource) still goes to the bridge', async () => {
     mockBridgeAddField.mockResolvedValue({ success: true, message: '✅ ok' });
-    const result = await modifyD365FileTool(unmappedReq({ dataField: 'X', dataSource: 'CustTable', fieldType: undefined, fieldBaseType: undefined }), ctx);
+    const result = await modifyD365FileTool(unmappedReq({ unmapped: false, dataField: 'X', dataSource: 'CustTable', fieldType: undefined, fieldBaseType: undefined }), ctx);
     expect(result.isError).toBeFalsy();
     expect(mockBridgeAddField).toHaveBeenCalledTimes(1);
   });

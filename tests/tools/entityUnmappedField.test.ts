@@ -143,50 +143,76 @@ describe('create data-entity with unmapped fields', () => {
   const create = (fields: any[], extra: Record<string, any> = {}) => buildAxDataEntityXml('ContosoThingEntity', {
     label: '@X:Y', primaryTable: 'AssetTrans', fields, ...extra });
 
-  it('an entry with a type and no dataField is unmapped; a bare {name} stays mapped', () => {
-    const xml = create([{ name: 'AssetId' }, { name: 'Content', edt: 'Notes', type: 'String' }, { name: 'Flag', enumType: 'NoYes' }]);
+  it('only unmapped:true makes an unmapped field; a bare {name} stays mapped', () => {
+    const xml = create([{ name: 'AssetId' }, { name: 'Content', unmapped: true, edt: 'Notes', type: 'String' },
+      { name: 'Flag', unmapped: true, enumType: 'NoYes' }]);
     expect(xml).toContain('i:type="AxDataEntityViewMappedField">\n\t\t\t<Name>AssetId</Name>');
     expect(xml).toContain('UnmappedFieldString');
     expect(xml).toContain('UnmappedFieldEnum');
   });
 
+  it('a typed entry WITHOUT unmapped:true is still mapped (table-create shape, no regression)', () => {
+    const xml = create([{ name: 'AccountNum', type: 'String', edt: 'CustAccount' }, { name: 'Name' }]);
+    expect(xml).not.toContain('Unmapped');
+    expect(xml).toMatch(/<AxDataEntityViewKeyField>\s*<DataField>AccountNum</);
+  });
+
   it('unmapped fields stay out of the query and are never the default key', () => {
-    const xml = create([{ name: 'Content', edt: 'Notes', type: 'String' }, { name: 'AssetId' }]);
-    const query = xml.slice(xml.indexOf('<ViewMetadata>'));
-    expect(query).not.toContain('Content');
+    const xml = create([{ name: 'Content', unmapped: true, edt: 'Notes', type: 'String' }, { name: 'AssetId' }]);
+    expect(xml.slice(xml.indexOf('<ViewMetadata>'))).not.toContain('Content');
     expect(xml).toMatch(/<AxDataEntityViewKeyField>\s*<DataField>AssetId<\/DataField>/);
   });
 
-  it('refuses an unmapped key and an all-unmapped field list', () => {
-    expect(() => create([{ name: 'AssetId' }, { name: 'C', type: 'Real' }], { primaryKeyField: 'C' })).toThrow(/unmapped/);
-    expect(() => create([{ name: 'C', type: 'Real' }])).toThrow(/every field is unmapped/);
+  it('refuses an unmapped key, an all-unmapped list, unmapped+dataField, and an untypeable entry', () => {
+    expect(() => create([{ name: 'AssetId' }, { name: 'C', unmapped: true, type: 'Real' }], { primaryKeyField: 'C' })).toThrow(/unmapped/);
+    expect(() => create([{ name: 'C', unmapped: true, type: 'Real' }])).toThrow(/every field is unmapped/);
+    expect(() => create([{ name: 'AssetId' }, { name: 'C', unmapped: true, dataField: 'X', type: 'Real' }])).toThrow(/both unmapped/);
+    expect(() => create([{ name: 'AssetId' }, { name: 'C', unmapped: true, edt: 'SomeEdt' }])).toThrow(/cannot tell the type/);
   });
+});
 
-  it('refuses an unmapped entry whose type cannot be told', () => {
-    expect(() => create([{ name: 'AssetId' }, { name: 'C', edt: 'SomeEdt' }])).toThrow(/cannot tell the type/);
+describe('review regressions', () => {
+  it('a base-type keyword in the EDT slot is a base type, not an EDT', () => {
+    const r: any = buildEntityUnmappedFieldXml({ name: 'F', edt: 'String', stringSize: 50 });
+    expect(r.xml).toContain('UnmappedFieldString');
+    expect(r.xml).not.toContain('<ExtendedDataType>');
+    expect(r.xml).toContain('<StringSize>50</StringSize>');
+    expect((buildEntityUnmappedFieldXml({ name: 'F', edt: 'Real' }) as any).xml).toContain('UnmappedFieldReal');
   });
-
-  it('create without unmapped entries is unchanged', () => {
-    expect(create([{ name: 'AssetId' }, { name: 'Amount', dataField: 'AmountMST' }])).not.toContain('Unmapped');
+  it('refuses an XML element name as the EDT', () => {
+    expect(buildEntityUnmappedFieldXml({ name: 'F', edt: 'AxTableFieldString' }).ok).toBe(false);
+  });
+  it('validates StringSize and keeps it next to an EDT', () => {
+    expect(buildEntityUnmappedFieldXml({ name: 'F', baseType: 'String', stringSize: 'abc' }).ok).toBe(false);
+    expect(buildEntityUnmappedFieldXml({ name: 'F', baseType: 'Real', stringSize: 5 }).ok).toBe(false);
+    expect((buildEntityUnmappedFieldXml({ name: 'F', edt: 'Notes', baseType: 'String', stringSize: 30 }) as any).xml)
+      .toContain('<StringSize>30</StringSize>');
+  });
+  it('refuses a base type that contradicts the EDT', () => {
+    const r: any = buildEntityUnmappedFieldXml({ name: 'F', edt: 'CustAccount', baseType: 'Real' }, () => 'String');
+    expect(r.ok).toBe(false);
+    expect(r.message).toContain('is a String');
+  });
+  it('duplicate names are matched case-insensitively', () => {
+    expect(addEntityUnmappedField(entity(), { name: 'assetid', baseType: 'Real' }).ok).toBe(false);
   });
 });
 
 describe('selecting the unmapped path', () => {
-  it('add-field: a type without dataField/dataSource, unmapped=true, or computedFieldMethod', () => {
-    expect(isUnmappedEntityField({ fieldType: 'Notes' })).toBe(true);
-    expect(isUnmappedEntityField({ fieldBaseType: 'Real' })).toBe(true);
-    expect(isUnmappedEntityField({ fieldEnumType: 'NoYes' })).toBe(true);
-    expect(isUnmappedEntityField({ unmapped: true })).toBe(true);
+  it('add-field: only unmapped=true (or a bare computedFieldMethod) selects it', () => {
+    expect(isUnmappedEntityField({ unmapped: true, fieldType: 'Notes' })).toBe(true);
     expect(isUnmappedEntityField({ computedFieldMethod: 'm' })).toBe(true);
+    expect(isUnmappedEntityField({ fieldType: 'Notes' })).toBe(false);
+    expect(isUnmappedEntityField({ fieldBaseType: 'Real' })).toBe(false);
+    expect(isUnmappedEntityField({ unmapped: false, fieldType: 'Notes' })).toBe(false);
   });
   it('add-field: a binding keeps the mapped path exactly as before', () => {
     expect(isUnmappedEntityField({ dataField: 'F', dataSource: 'T' })).toBe(false);
     expect(isUnmappedEntityField({ dataField: 'F', dataSource: 'T', fieldType: 'Notes' })).toBe(false);
-    expect(isUnmappedEntityField({ fieldLabel: 'x' })).toBe(false);
   });
   it('create fields[]', () => {
     expect(isUnmappedEntityFieldSpec({ name: 'A' })).toBe(false);
-    expect(isUnmappedEntityFieldSpec({ name: 'A', dataField: 'B', edt: 'X' })).toBe(false);
+    expect(isUnmappedEntityFieldSpec({ name: 'A', type: 'Real', edt: 'X' })).toBe(false);
     expect(isUnmappedEntityFieldSpec({ name: 'A', unmapped: true })).toBe(true);
   });
 });
