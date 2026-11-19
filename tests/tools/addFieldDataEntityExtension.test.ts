@@ -408,14 +408,14 @@ describe('add-field on a data-entity-extension — UNMAPPED field', () => {
     objectName: 'CustCustomerV3Entity.ConExtension',
     operation: 'add-field',
     filePath: EXT_FILE_PATH,
-    fieldName: 'ConContentBase64',
+    fieldName: 'ContosoContentBase64',
     fieldBaseType: 'String',
     fieldType: 'Notes',
     ...params,
   });
   const written = () => mockWriteFile.mock.calls
     .map((c: any[]) => c[1])
-    .find((x: unknown) => typeof x === 'string' && x.includes('ConContentBase64')) as string | undefined;
+    .find((x: unknown) => typeof x === 'string' && x.includes('ContosoContentBase64')) as string | undefined;
 
   beforeEach(() => {
     ctx = buildContext();
@@ -432,9 +432,9 @@ describe('add-field on a data-entity-extension — UNMAPPED field', () => {
     expect(xml).toContain('i:type="AxDataEntityViewUnmappedFieldString"');
     expect(xml).toContain('<ExtendedDataType>Notes</ExtendedDataType>');
     expect(xml).toContain('<IsComputedField>No</IsComputedField>');
-    expect(xml).not.toMatch(/ConContentBase64<\/Name>[\s\S]{0,80}<DataSource>/);
+    expect(xml).not.toMatch(/ContosoContentBase64<\/Name>[\s\S]{0,80}<DataSource>/);
     // lands in the top-level <Fields>, after the existing mapped field
-    expect(xml.indexOf('ConContentBase64')).toBeGreaterThan(xml.indexOf('ConLoyaltyTier</DataField>\n\t\t\t<DataSource>'));
+    expect(xml.indexOf('ContosoContentBase64')).toBeGreaterThan(xml.indexOf('ConLoyaltyTier</DataField>\n\t\t\t<DataSource>'));
     expect(result.content[0].text as string).toMatch(/staging table/i);
   });
 
