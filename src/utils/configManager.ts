@@ -11,6 +11,7 @@ import * as os from 'os';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { autoDetectD365Project, detectD365Project, scanAllD365Projects, extractModelNameFromProject, detectGitBranch, isMicrosoftDemoModel, distinctCustomModels, type D365ProjectInfo } from './workspaceDetector.js';
 import { registerCustomModel } from './modelClassifier.js';
+import { scanDescriptors } from '../metadata/modelInventory.js';
 import { XppConfigProvider, type XppEnvironmentConfig } from './xppConfigProvider.js';
 import { FALLBACK_PACKAGES_ROOT, findPackagesRoot, warmPackagesRoots } from './packagesRoot.js';
 import { debugLog } from './logger.js';
@@ -1776,7 +1777,22 @@ class ConfigManager {
       console.error(`[ConfigManager] XPP config loaded: ${this.xppConfig.configName} v${this.xppConfig.version}`);
       console.error(`   Custom packages: ${this.xppConfig.customPackagesPath}`);
       console.error(`   Microsoft packages: ${this.xppConfig.microsoftPackagesPath}`);
+      this.registerCustomRootModels(this.xppConfig.customPackagesPath);
     }
+  }
+
+  /**
+   * UDE: classify by path, the way the metadata extract does. With no hand-written
+   * CUSTOM_MODELS list, every model whose descriptor sits under the custom packages root is
+   * custom — including one created by this server in an earlier session, whose name matches
+   * neither EXTENSION_PREFIX nor the configured model. A non-empty list stays the user's
+   * deliberate choice and is left alone.
+   */
+  private registerCustomRootModels(customRoot: string | null | undefined): void {
+    if (!customRoot || process.env.CUSTOM_MODELS?.split(',').some(m => m.trim())) return;
+    try {
+      for (const model of scanDescriptors([customRoot]).models) registerCustomModel(model.name);
+    } catch { /* classification falls back to the name-based sources */ }
   }
 }
 
