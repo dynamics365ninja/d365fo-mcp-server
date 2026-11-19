@@ -2377,65 +2377,101 @@ public final class ${name}Telemetry
 
 
 
-// Feature Class pattern
+// Feature Class pattern — same shape as the L2-feature-management-flight golden and the
+// shipped IFeatureMetadata classes: [ExportAttribute] + implements IFeatureMetadata, a
+// singleton, and the six interface members as [Hookable(false)] instance methods.
 function featureClassTemplate(name: string): string {
-  return `/// <summary>
-/// Feature management class for ${name}.
-/// Registers in the Feature Management workspace automatically.
-/// Enable/disable at runtime without redeployment.
+  return `using System.ComponentModel.Composition;
+using Microsoft.Dynamics.ApplicationPlatform.FeatureExposure;
+
+/// <summary>
+/// The <c>${name}Feature</c> class exposes ${name} in Feature management.
 /// </summary>
-[FeatureClassAttribute]
-public final class ${name}Feature
+[ExportAttribute(identifierStr(Microsoft.Dynamics.ApplicationPlatform.FeatureExposure.IFeatureMetadata))]
+public final class ${name}Feature implements IFeatureMetadata
 {
-    private static ${name}Feature instance = new ${name}Feature();
+    private static ${name}Feature instance;
 
-    /// <summary>
-    /// Display label shown in Feature Management workspace.
-    /// </summary>
-    public static str label()
+    private void new()
     {
-        return "@MyModel:${name}FeatureLabel";
+    }
+
+    private static void TypeNew()
+    {
+        instance = new ${name}Feature();
+    }
+
+    [Hookable(false)]
+    public static ${name}Feature instance()
+    {
+        return ${name}Feature::instance;
     }
 
     /// <summary>
-    /// Detailed description shown when expanding the feature in the workspace.
+    /// Name shown in the Feature management workspace.
     /// </summary>
-    public static str description()
+    [Hookable(false)]
+    public FeatureLabelId label()
     {
-        return "@MyModel:${name}FeatureDescription";
+        return literalStr("@MyModel:${name}FeatureLabel");
     }
 
     /// <summary>
-    /// Module this feature belongs to (shown as category in Feature Management).
+    /// Description shown in the Feature management workspace.
     /// </summary>
-    public static str module()
+    [Hookable(false)]
+    public FeatureLabelId summary()
     {
-        return "@MyModel:ModuleName";
+        return literalStr("@MyModel:${name}FeatureSummary");
     }
 
     /// <summary>
-    /// Whether this feature is enabled by default for new environments.
-    /// Return false for features that need explicit opt-in.
+    /// Module the feature is listed under: a FeatureModuleV0 value.
     /// </summary>
-    public static boolean isEnabledByDefault()
+    [Hookable(false)]
+    public int module()
+    {
+        return FeatureModuleV0::SystemAdministration;
+    }
+
+    /// <summary>
+    /// Link to the feature's documentation; '' when there is none.
+    /// </summary>
+    [Hookable(false)]
+    public WebSiteURL learnMoreUrl()
+    {
+        return '';
+    }
+
+    /// <summary>
+    /// Whether the feature is on in new environments. false = explicit opt-in.
+    /// </summary>
+    [Hookable(false)]
+    public boolean isEnabledByDefault()
     {
         return false;
     }
 
-    // ── Usage in X++ code ───────────────────────────────────────────────
-    // Cache the check result — never call isFeatureEnabled in a loop:
-    //
-    //   boolean featureEnabled = FeatureStateProvider::isFeatureEnabled(
-    //       classStr(${name}Feature));
-    //
-    //   if (featureEnabled)
-    //   {
-    //       // New behavior
-    //   }
-    //   else
-    //   {
-    //       // Legacy behavior
-    //   }
+    /// <summary>
+    /// Whether an administrator can turn the feature off again after enabling it.
+    /// </summary>
+    [Hookable(false)]
+    public boolean canDisable()
+    {
+        return true;
+    }
+
+    /// <summary>
+    /// Whether the feature is enabled. Callers use this, never FeatureStateProvider directly,
+    /// and cache the result instead of calling it in a loop:
+    ///
+    ///   boolean featureEnabled = ${name}Feature::isEnabled();
+    /// </summary>
+    [Hookable(false)]
+    public static boolean isEnabled()
+    {
+        return FeatureStateProvider::isFeatureEnabled(${name}Feature::instance());
+    }
 }`;
 }
 
