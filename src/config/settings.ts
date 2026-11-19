@@ -324,7 +324,7 @@ export const SETTINGS: Setting[] = [
       '(field, relation, index, field group, enum value, method) when the call passes no tags of its own. ' +
       'Never overrides a tag that is already there; a call opts out with tags="". Several: "ABC-1, ABC-2". ' +
       'Leave empty to write no tag unless a call asks for one. Set it in the .env of this server instance for the ticket ' +
-      'being worked on and change it when the ticket changes.',
+      'being worked on and change it when the ticket changes (the .env is read at start-up: restart the server).',
     placeholder: 'ABC-123',
   },
   {

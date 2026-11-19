@@ -98,26 +98,16 @@ export function combineTags(existing: string | undefined, incoming: string, mode
   const have = existing ? splitTags(existing) : [];
   const want = splitTags(incoming);
   if (mode === 'replace') return [...new Set(want)].join(', ');
-  if (mode === 'add') return [...new Set([...have, ...want])].join(', ');
+  if (mode === 'add') {
+    const seen = new Set<string>();
+    return [...have, ...want].filter(t => !seen.has(t.toLowerCase()) && seen.add(t.toLowerCase())).join(', ');
+  }
   const drop = new Set(want.map(t => t.toLowerCase()));
   return have.filter(t => !drop.has(t.toLowerCase())).join(', ');
 }
 
 const escapeText = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const unescapeText = (s: string) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
-
-/**
- * Tag to write when the caller passed none, from `D365FO_DEFAULT_TAG` (.env). An explicit value
- * wins; an explicit empty value opts out. `undefined` means: write nothing.
- */
-export function resolveTagsToWrite(explicit: unknown): { tags?: string; source: 'explicit' | 'default' | 'opt-out' | 'none' } {
-  if (explicit !== undefined && explicit !== null) {
-    const v = normalizeTagsInput(explicit)!;
-    return v === '' ? { source: 'opt-out' } : { tags: v, source: 'explicit' };
-  }
-  const def = normalizeTagsInput(process.env.D365FO_DEFAULT_TAG);
-  return def ? { tags: def, source: 'default' } : { source: 'none' };
-}
 
 // ── a tolerant child scanner ────────────────────────────────────────────────────────────────
 

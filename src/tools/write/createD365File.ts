@@ -736,6 +736,7 @@ async function reconcileCreatedMenuItem(filePath: string | undefined, properties
 /** Keys the bridge cannot set on this object type and this tool writes itself after the create. */
 function writtenAfterBridgeCreate(objectType: string, key: string): boolean {
   const k = key.toLowerCase();
+  if (k === 'tags') return true; // written by tagsApply.ts for every type
   if (objectType === 'table') return k === 'operationaldomain';
   if (menuItemKindOf(objectType)) return k === 'operationaldomain' || k === 'subscriberaccesslevel';
   return false;

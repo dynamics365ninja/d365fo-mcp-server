@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  applyCreateTags, applyOperationTags, methodNamesOf, modifyObjectTagsProperty, tagsOnlyResult, targetsOf,
+  applyCreateTags, applyOperationTags, methodNamesOf, modifyObjectTagsProperty, resolveTagsToWrite, tagsOnlyResult, targetsOf,
 } from '../../src/tools/write/tagsApply';
 import { readElementTags, readObjectTags } from '../../src/tools/xml/tagsEdit';
 import { D365FO_FILE_OP_SPECS, D365FO_FILE_PARAM_SPECS, renderCreatePropertySpec } from '../../src/tools/specs/d365foFileOpSpecs';
@@ -158,14 +158,56 @@ describe('add-* and modify operations', () => {
   });
 });
 
-describe('tags-only modify', () => {
-  it('skips the bridge only when nothing else is being changed', () => {
-    expect(tagsOnlyResult('modify-field', { fieldName: 'Name', tags: 'ABC-1' })?.success).toBe(true);
-    expect(tagsOnlyResult('modify-field', { fieldName: 'Name', tags: 'ABC-1', fieldLabel: 'x' })).toBeUndefined();
-    expect(tagsOnlyResult('modify-enum-value', { enumValueName: 'A', tags: 'ABC-1' })?.success).toBe(true);
-    expect(tagsOnlyResult('modify-enum-value', { enumValueName: 'A', tags: 'ABC-1', enumValueInt: 3 })).toBeUndefined();
-    expect(tagsOnlyResult('modify-field', { fieldName: 'Name' })).toBeUndefined();
-    expect(tagsOnlyResult('add-field', { fieldName: 'Name', tags: 'ABC-1' })).toBeUndefined();
+describe('default tag resolution', () => {
+  it('writes nothing without tags or a default', () => {
+    expect(resolveTagsToWrite(undefined)).toEqual({ source: 'none' });
+  });
+  it('uses the instance default, lets an explicit tag win, and tags="" opts out', () => {
+    process.env.D365FO_DEFAULT_TAG = ' ABC-9 ';
+    expect(resolveTagsToWrite(undefined)).toEqual({ tags: 'ABC-9', source: 'default' });
+    expect(resolveTagsToWrite('ABC-1')).toEqual({ tags: 'ABC-1', source: 'explicit' });
+    expect(resolveTagsToWrite('')).toEqual({ source: 'opt-out' });
+  });
+});
+
+describe('review fixes', () => {
+  const RELATION = TABLE.replace('\t</Fields>', [
+    '\t</Fields>', '\t<Relations>', '\t\t<AxTableRelation>', '\t\t\t<Name>R</Name>', '\t\t\t<Tags>OLD-1</Tags>',
+    '\t\t\t<Constraints>', '\t\t\t\t<AxTableRelationConstraint xmlns=""', '\t\t\t\t\ti:type="AxTableRelationConstraintField">',
+    '\t\t\t\t\t<Name>C</Name>', '\t\t\t\t\t<Tags>OLD-1</Tags>', '\t\t\t\t\t<Field>Name</Field>',
+    '\t\t\t\t</AxTableRelationConstraint>', '\t\t\t</Constraints>', '\t\t</AxTableRelation>', '\t</Relations>',
+  ].join('\r\n'));
+
+  it('the default never replaces an existing constraint tag', async () => {
+    fs.writeFileSync(file, RELATION);
+    process.env.D365FO_DEFAULT_TAG = 'NEW-2';
+    await applyOperationTags(file, 'add-relation', { relationName: 'R' });
+    expect(readElementTags(read(), 'relation', 'R')).toBe('OLD-1');
+    expect(readElementTags(read(), 'constraint', 'C', 'R')).toBe('OLD-1');
+  });
+
+  it('an explicit "" on a modify removes the tag; on an add it only opts out', async () => {
+    await applyOperationTags(file, 'modify-field', { fieldName: 'Note', tags: '' });
+    expect(readElementTags(read(), 'field', 'Note')).toBeUndefined();
+    fs.writeFileSync(file, TABLE);
+    await applyOperationTags(file, 'add-field', { fieldName: 'Note', tags: '' });
+    expect(readElementTags(read(), 'field', 'Note')).toBe('OLD-1');
+  });
+
+  it('a tags-only modify of a missing element fails instead of reporting success', async () => {
+    expect((await tagsOnlyResult(file, 'modify-field', { fieldName: 'Nope', tags: 'ABC-1' }))?.success).toBe(false);
+    expect((await tagsOnlyResult(file, 'modify-field', { fieldName: 'Name', tags: 'ABC-1' }))?.success).toBe(true);
+    expect(await tagsOnlyResult(file, 'modify-field', { fieldName: 'Name', tags: 'ABC-1', fieldLabel: 'x' })).toBeUndefined();
+    expect(await tagsOnlyResult(file, 'modify-field', { fieldName: 'Name' })).toBeUndefined();
+    expect(await tagsOnlyResult(file, 'add-field', { fieldName: 'Name', tags: 'ABC-1' })).toBeUndefined();
+  });
+
+  it('does not tag a form data source / control override as the root method of the same name', () => {
+    expect(targetsOf('add-method', { methodName: 'DS.init', sourceCode: 'public void init() { }' })).toBeNull();
+  });
+
+  it('names a generated table method after tableMethodType', () => {
+    expect(targetsOf('add-table-method', { tableMethodType: 'find' })?.names).toEqual(['find']);
   });
 });
 

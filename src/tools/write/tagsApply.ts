@@ -15,7 +15,7 @@ import fs from 'fs/promises';
 import { withFileLock, writeFileAtomic } from '../../utils/atomicFileWrite.js';
 import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
 import {
-  constraintNamesOf, normalizeTagsInput, readElementTags, readObjectTags, resolveTagsToWrite,
+  constraintNamesOf, normalizeTagsInput, readElementTags, readObjectTags,
   setElementTags, setObjectTags, type TagsElementKind, type TagsMode, type TagsEditResult,
 } from '../xml/tagsEdit.js';
 
@@ -23,6 +23,19 @@ export interface TagArgs {
   tags?: unknown;
   tagsMode?: unknown;
   [key: string]: unknown;
+}
+
+/**
+ * Tag to write when the caller passed none: the instance default D365FO_DEFAULT_TAG. An explicit value
+ * wins; an explicit empty value opts out. No tag and no default: write nothing.
+ */
+export function resolveTagsToWrite(explicit: unknown): { tags?: string; source: 'explicit' | 'default' | 'opt-out' | 'none' } {
+  if (explicit !== undefined && explicit !== null) {
+    const v = normalizeTagsInput(explicit)!;
+    return v === '' ? { source: 'opt-out' } : { tags: v, source: 'explicit' };
+  }
+  const def = normalizeTagsInput(process.env.D365FO_DEFAULT_TAG);
+  return def ? { tags: def, source: 'default' } : { source: 'none' };
 }
 
 const str = (v: unknown): string | undefined =>
@@ -86,9 +99,12 @@ export function targetsOf(operation: string, a: TagArgs): Target | null {
     case 'add-method':
     case 'add-table-method':
     case 'add-display-method': {
-      const names = [...methodNames];
       const explicit = str(a.methodName);
-      if (names.length === 0 && explicit) names.push(explicit);
+      // A form data source / control override lives outside <SourceCode><Methods>; not tagged here.
+      if (explicit?.includes('.')) return null;
+      const names = [...methodNames];
+      // add-table-method with a generated body: the method is named after tableMethodType.
+      if (names.length === 0 && (explicit ?? str(a.tableMethodType))) names.push((explicit ?? str(a.tableMethodType))!);
       return names.length ? { kind: 'method', names, adds: true } : null;
     }
     default: return null;
@@ -103,10 +119,17 @@ const MODIFY_ENUM_VALUE_PARAMS = ['enumValueNewName', 'enumValueLabel', 'enumVal
  * tag is written afterwards by applyOperationTags. Returns the result to use instead of a bridge call,
  * or undefined when the operation also changes something else.
  */
-export function tagsOnlyResult(operation: string, a: TagArgs): { success: boolean; message: string } | undefined {
+export async function tagsOnlyResult(filePath: string, operation: string, a: TagArgs): Promise<{ success: boolean; message: string } | undefined> {
   if (a.tags === undefined || a.tags === null) return undefined;
   const others = operation === 'modify-field' ? MODIFY_FIELD_PARAMS : operation === 'modify-enum-value' ? MODIFY_ENUM_VALUE_PARAMS : null;
   if (!others || others.some(k => a[k] !== undefined)) return undefined;
+  const t = targetsOf(operation, a);
+  if (t) {
+    // The bridge would have refused an unknown element; so must this.
+    const xml = (await fs.readFile(filePath, 'utf-8')).replace(/^\uFEFF/, '');
+    const probe = setElementTags(xml, t.kind, t.names[0], null);
+    if (!probe.ok) return { success: false, message: `${t.kind} '${t.names[0]}' not found: ${probe.message}` };
+  }
   return { success: true, message: 'Tags only; no other property changed' };
 }
 
@@ -116,7 +139,7 @@ async function editFile(
 ): Promise<TagsEditResult> {
   return withFileLock(filePath, async () => {
     const raw = await fs.readFile(filePath, 'utf-8');
-    const xml = raw.replace(/^﻿/, '');
+    const xml = raw.replace(/^\uFEFF/, '');
     const r = edit(xml);
     if (r.ok && r.changed) await writeFileAtomic(filePath, normalizeD365Xml(r.xml));
     return r;
@@ -169,6 +192,15 @@ export async function applyOperationTags(
   const { tags, source } = resolveTagsToWrite(args.tags);
   // A modify only retags on request; the default is for what an operation ADDS.
   if (!explicitGiven && !target.adds) return '';
+  // An explicit "" on a modify removes the element's tag; on an add it only opts out of tagging.
+  if (!tags && source === 'opt-out' && !target.adds) {
+    const notes: string[] = [];
+    for (const name of target.names) {
+      const r = await editFile(filePath, xml => setElementTags(xml, target.kind, name, null));
+      if (!r.ok) notes.push(`Tags not removed for ${target.kind} ${name}: ${r.message}`);
+    }
+    return banner(notes.length ? notes : [`Tags removed from ${target.kind} ${target.names.join(', ')}`]);
+  }
   if (!tags) return source === 'opt-out' ? banner(['Tags: none (opted out with tags="")']) : '';
 
   const mode = explicitGiven ? parseTagsMode(args.tagsMode) : 'replace';
@@ -183,13 +215,22 @@ export async function applyOperationTags(
         }
         return setElementTags(xml, target.kind, name, tags, mode);
       });
-      if (!r.ok) notes.push(`Tags not written for ${target.kind} ${name}: ${r.message}`);
+      // The default is silent where this object type cannot carry the element's tag (view / map fields, …).
+      if (!r.ok && !(source === 'default' && r.message.includes('not supported'))) {
+        notes.push(`Tags not written for ${target.kind} ${name}: ${r.message}`);
+      }
     }
     // A relation carries its constraints' tags too (the shipped convention).
     if (target.kind === 'relation') {
       const raw = await fs.readFile(filePath, 'utf-8');
       for (const c of constraintNamesOf(raw, target.names[0])) {
-        await editFile(filePath, xml => setElementTags(xml, 'constraint', c, tags, mode, target.names[0]));
+        const cr = await editFile(filePath, xml => {
+          if (!explicitGiven && readElementTags(xml, 'constraint', c, target.names[0]) !== undefined) {
+            return { ok: true, xml, changed: false, message: 'already tagged' };
+          }
+          return setElementTags(xml, 'constraint', c, tags, mode, target.names[0]);
+        });
+        if (!cr.ok) notes.push(`Tags not written for constraint ${c}: ${cr.message}`);
       }
     }
   } catch (e) {

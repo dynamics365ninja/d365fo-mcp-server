@@ -8,9 +8,9 @@
  * documented in tagsEdit.ts).
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
-  combineTags, normalizeTagsInput, readElementTags, readObjectTags, resolveTagsToWrite,
+  combineTags, normalizeTagsInput, readElementTags, readObjectTags,
   setElementTags, setObjectTags,
 } from '../../src/tools/xml/tagsEdit';
 
@@ -96,30 +96,6 @@ describe('value handling', () => {
     expect(combineTags('A, B', 'B, C', 'add')).toBe('A, B, C');
     expect(combineTags('A, B', 'a', 'remove')).toBe('B');
     expect(combineTags('A', 'A', 'remove')).toBe('');
-  });
-});
-
-describe('default tag resolution', () => {
-  const saved = process.env.D365FO_DEFAULT_TAG;
-  afterEach(() => {
-    if (saved === undefined) delete process.env.D365FO_DEFAULT_TAG;
-    else process.env.D365FO_DEFAULT_TAG = saved;
-  });
-
-  it('writes nothing when neither an argument nor a default is set', () => {
-    delete process.env.D365FO_DEFAULT_TAG;
-    expect(resolveTagsToWrite(undefined)).toEqual({ source: 'none' });
-  });
-
-  it('uses the instance default when no tags are passed', () => {
-    process.env.D365FO_DEFAULT_TAG = ' ABC-9 ';
-    expect(resolveTagsToWrite(undefined)).toEqual({ tags: 'ABC-9', source: 'default' });
-  });
-
-  it('lets an explicit tag win and tags="" opt out', () => {
-    process.env.D365FO_DEFAULT_TAG = 'ABC-9';
-    expect(resolveTagsToWrite('ABC-1')).toEqual({ tags: 'ABC-1', source: 'explicit' });
-    expect(resolveTagsToWrite('')).toEqual({ source: 'opt-out' });
   });
 });
 

@@ -2367,7 +2367,7 @@ async function runModify(
         break;
       }
       case 'modify-field': {
-        if (args.fieldName) bridgeResult = tagsOnlyResult(operation, args as any) ?? await modifyFieldOp(context.bridge, objectName, actualFilePath, args as any, symbolIndex);
+        if (args.fieldName) bridgeResult = (await tagsOnlyResult(actualFilePath, operation, args as any)) ?? await modifyFieldOp(context.bridge, objectName, actualFilePath, args as any, symbolIndex);
         break;
       }
       case 'rename-field': {
@@ -2906,7 +2906,7 @@ async function runModify(
           if ((args as any).enumValueNewName) evProps.name = (args as any).enumValueNewName;
           if ((args as any).enumValueLabel) evProps.label = (args as any).enumValueLabel;
           if ((args as any).enumValueInt !== undefined) evProps.value = String((args as any).enumValueInt);
-          bridgeResult = tagsOnlyResult(operation, args as any) ?? await bridgeModifyEnumValue(
+          bridgeResult = (await tagsOnlyResult(actualFilePath, operation, args as any)) ?? await bridgeModifyEnumValue(
             context.bridge,
             objectName,
             (args as any).enumValueName,
