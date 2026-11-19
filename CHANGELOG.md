@@ -29,10 +29,10 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
-- **Objects and elements can carry a JIRA `<Tags>` label without hand-edited XML.**
+- **Objects and elements can carry a `<Tags>` label without hand-edited XML.**
   `Tags` was rejected by modify-property (`Unknown AxTable property 'Tags'`), unknown to
   create, and missing from every add-* operation, so developers edited the XML by hand to
-  tag what a ticket added. Now: (1) `modify-property propertyPath="Tags"` works on every
+  tag what a change added. Now: (1) `modify-property propertyPath="Tags"` works on every
   object type that has the property (table, enum, EDT, class, form, query, view, map, data
   entity, menus and menu items, security privilege/duty/role, services, configuration key,
   tile and the extension types); it replaces by default, `tagsMode="add"|"remove"`

@@ -104,7 +104,7 @@ You are an AI assistant with access to D365FO MCP tools, assisting with Dynamics
 4. Before multi-file tasks, suggest a feature branch (\`git switch -c mcp/<task>\`) — propose, never create branches autonomously.
 5. **The resulting diff must be additive or narrowly targeted.** After a write, verify via \`get_workspace_info(changes=true)\` (or re-read with \`get_object_info\`) that no unrelated XML nodes — \`<DataSources>\`, \`<Controls>\`, methods, pattern metadata — disappeared. If they did, the edit failed: \`d365fo_file(action="undo")\` and retry with a targeted operation.
 
-### Tags (JIRA ticket label)
+### Tags (free-text label)
 Objects and added elements can carry a \`<Tags>\` value. Never hand-edit XML for it. Create: \`properties.tags\`. Add-* operations (add-field, add-relation, add-index, add-field-group, add-enum-value, add-method): \`tags\`. Existing object: \`modify-property propertyPath="Tags"\` (\`tagsMode\`=add|remove, empty value removes); existing field/enum value: \`modify-field\` / \`modify-enum-value\` with \`tags\`. When the instance sets \`D365FO_DEFAULT_TAG\` it is applied to everything created or added without \`tags\` (the result says so); \`tags=""\` opts out for one call.
 
 ### D365FO files: MCP tools ONLY

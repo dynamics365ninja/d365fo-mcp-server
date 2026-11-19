@@ -974,7 +974,7 @@ export const ModifyD365FileArgsSchema = z.object({
   ),
   propertyValue: z.string().optional().describe('New property value'),
 
-  // Tags (JIRA ticket label): tools/write/tagsApply.ts, d365fo_file op-spec "tags"
+  // Tags (free-text label): tools/write/tagsApply.ts, d365fo_file op-spec "tags"
   tags: z.union([z.string(), z.array(z.string())]).optional().describe('<Tags> for the element an add-* adds or modify-field / modify-enum-value edits; "" = none. Else D365FO_DEFAULT_TAG applies to an add-*.'),
   tagsMode: z.enum(['replace', 'add', 'remove']).optional().describe('With an explicit tags / propertyPath="Tags".'),
 

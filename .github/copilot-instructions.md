@@ -57,7 +57,7 @@ PowerShell / any terminal command **WILL HANG** in VS 2022 / VS 2026 MCP integra
 2. **`d365fo_file` (action=create/modify) applies immediately** (no dry-run / preview). Describe the change in chat and wait for explicit user confirmation ("apply", "ok", "yes") before calling. Revert with `d365fo_file(action="undo")` (or pass `createBackup=true` to keep a `.bak`).
 3. **Never** use `replace_string_in_file`, `edit_file`, `apply_patch`, or any built-in file-write tool on `.xml` or `.xpp` files — **not even as a fallback** when `d365fo_file(action="modify")` fails. These bypass `IMetadataProvider` and corrupt VS 2022's in-memory model. If `d365fo_file(action="modify")` errors, STOP and report the error verbatim.
 
-4. **Tags (JIRA label):** never hand-edit `<Tags>`. `properties.tags` on create, `tags` on add-*/modify-field/modify-enum-value, `modify-property propertyPath="Tags"` on an existing object (`tagsMode`=add|remove, empty value removes). `D365FO_DEFAULT_TAG` in the instance `.env` is applied to creates/adds without `tags`; `tags=""` opts out for one call.
+4. **Tags (free-text label, e.g. a ticket key or a project name):** never hand-edit `<Tags>`. `properties.tags` on create, `tags` on add-*/modify-field/modify-enum-value, `modify-property propertyPath="Tags"` on an existing object (`tagsMode`=add|remove, empty value removes). `D365FO_DEFAULT_TAG` in the instance `.env` is applied to creates/adds without `tags`; `tags=""` opts out for one call.
 
 ### Build automation
 

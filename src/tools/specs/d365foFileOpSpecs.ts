@@ -75,15 +75,13 @@ export const D365FO_FILE_PARAM_SPECS: Record<string, { type: string; description
   tags: {
     type: 'string | string[]',
     description:
-      'Tags (a JIRA key) written as <Tags> on the element the operation adds (add-field, add-relation + its ' +
-      'constraints, add-index, add-field-group, add-enum-value, add-method / add-table-method / add-display-method) ' +
-      'or edits (modify-field, modify-enum-value). Several: "A, B" or ["A","B"]. Omitted: D365FO_DEFAULT_TAG from ' +
-      'the instance .env applies to an add (never over a tag the element already has); tags="" = no tag for this call. ' +
-      'The object itself: modify-property propertyPath="Tags". Create: properties.tags.',
+      'Tag label (any text: ticket key, project, feature) written as <Tags> on the element an add-* adds or ' +
+      'modify-field / modify-enum-value edits. "A, B" or ["A","B"]. Omitted: D365FO_DEFAULT_TAG applies to an ' +
+      'add, never over an existing tag; "" = none (on a modify: removes). Object: modify-property propertyPath="Tags".',
   },
   tagsMode: {
     type: 'string (replace | add | remove)',
-    description: 'With an explicit tags (or propertyPath="Tags"): replace the existing tags (default), add to them, or remove the given ones.',
+    description: 'With an explicit tags: replace (default), add to, or remove from the existing tags.',
   },
   // table fields
   fieldName: { type: 'string', description: 'Field name.' },
@@ -1239,7 +1237,7 @@ export const D365FO_FILE_CREATE_PROPERTY_SPECS: Record<string, string> = {
  * of renderOpSpec(), used by the op-spec lookup and by create-path errors.
  */
 export const CREATE_TAGS_NOTE =
-  'All types: properties.tags ("JIRA-1" or ["A","B"]) writes <Tags>; omitted = D365FO_DEFAULT_TAG; "" = none.';
+  'All types: properties.tags ("INVENTORY" or a list) writes <Tags>; omitted = D365FO_DEFAULT_TAG; "" = none.';
 
 export function renderCreatePropertySpec(objectType: string): string {
   const spec = D365FO_FILE_CREATE_PROPERTY_SPECS[objectType];

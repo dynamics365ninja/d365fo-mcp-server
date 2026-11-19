@@ -152,7 +152,7 @@ const banner = (lines: string[]) => (lines.length ? `\n🏷️ ${lines.join('\n�
  * Tag the object just created. `properties.tags` (or the default) goes on the object itself, and
  * on its own members that a create writes in the same call are NOT touched: members created with
  * the object are covered by the object's own tag only when the caller lists them (fields[].tags is
- * not supported), because the shipped convention tags elements the ticket adds.
+ * not supported), because the shipped convention tags the elements a change adds.
  */
 export async function applyCreateTags(filePath: string | undefined, properties: unknown): Promise<string> {
   if (!filePath) return '';
@@ -209,7 +209,7 @@ export async function applyOperationTags(
     for (const name of target.names) {
       const r = await editFile(filePath, xml => {
         // The default never overrides a tag the element already carries (an add-method that
-        // updates an existing method keeps the ticket that created it).
+        // updates an existing method keeps the tag it was created with).
         if (!explicitGiven && readElementTags(xml, target.kind, name) !== undefined) {
           return { ok: true, xml, changed: false, message: 'already tagged' };
         }

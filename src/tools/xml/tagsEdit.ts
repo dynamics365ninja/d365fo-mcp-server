@@ -1,5 +1,5 @@
 /**
- * `<Tags>` (the free-text label D365FO objects and elements carry, used for a JIRA ticket) written
+ * `<Tags>` (the free-text label D365FO objects and elements carry, any label: a ticket key, a project or feature name) written
  * to AOT XML as pure string in / string out, for every object type and for the elements that
  * carry the property.
  *
