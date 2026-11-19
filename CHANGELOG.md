@@ -237,6 +237,14 @@ those are called out explicitly below.
   environment status in `get_workspace_info` is not done yet.
 
 ### Fixed
+- **Creating a model on UDE no longer narrows every later `custom` refresh to that model**
+  (#1310). `d365fo_file(action="create", objectType="model-descriptor")` wrote the new model
+  into `CUSTOM_MODELS`; on UDE an empty list means "every model under the custom root", while a
+  non-empty one is read by the extract and rebuild as their whole scope, so changes to all other
+  custom models silently stopped reaching the index. With an empty list and the model under the
+  custom root, the create now leaves `CUSTOM_MODELS` alone (the model is custom for the session
+  and the reply says so). It also no longer creates a `.env` the server did not read, which a
+  JSON-only instance would have shared with every other instance on the install.
 - **`generate_object` pattern `feature-class` produces a feature class that compiles.** The
   template used a `[FeatureClassAttribute]` that does not exist, static members, a
   `description()` that is not part of `IFeatureMetadata`, a `module()` returning a label,

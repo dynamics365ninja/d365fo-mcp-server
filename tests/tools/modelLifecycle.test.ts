@@ -145,6 +145,25 @@ describe('create', () => {
     expect(text(res)).toContain('still targets "ContosoCore"');
   });
 
+  it('on UDE with an empty CUSTOM_MODELS it does not write the list, so a custom refresh is not narrowed', async () => {
+    await fs.writeFile(envPath, '', 'utf-8');
+    delete process.env.CUSTOM_MODELS;
+    const res = await create({ objectName: 'ContosoScripts' });
+    expect(res.isError, text(res)).toBeFalsy();
+    const env = await fs.readFile(envPath, 'utf-8');
+    expect(env).not.toContain('CUSTOM_MODELS');
+    expect(process.env.CUSTOM_MODELS).toBeUndefined();
+    expect(text(res)).toContain('CUSTOM_MODELS left empty');
+  });
+
+  it('never creates a .env the server did not read', async () => {
+    const missing = path.join(state.root, '..', `${path.basename(state.root)}-absent.env`);
+    // No deps.envFile: loadedEnvFile() is null in tests, so nothing may be persisted anywhere.
+    const res = await handleCreateModel({ objectType: 'model-descriptor', objectName: 'ContosoScripts' }, undefined, { random: () => 0 });
+    expect(res.isError, text(res)).toBeFalsy();
+    await expect(fs.stat(missing)).rejects.toThrow();
+  });
+
   it('dryRun writes nothing at all', async () => {
     const res = await create({ objectName: 'ContosoScripts', dryRun: true });
     expect(text(res)).toMatch(/DRY RUN/);
