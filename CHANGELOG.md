@@ -28,6 +28,8 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+## [1.25.0] — 2026-11-20
+
 ### Added
 - **`d365fo-mcp session` reads Claude Code transcripts too.** The command only understood
   Copilot Chat's `main.jsonl`, so sessions on Claude Code (the README's other host, and the one
