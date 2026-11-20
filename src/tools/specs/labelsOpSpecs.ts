@@ -24,9 +24,9 @@
  *  rather than to it (the payload had 124 chars of headroom). */
 export const LABELS_OVERRIDE_PARAMS: Record<string, string> = {
   packageName:
-    '[create|rename] Package name for the model. Auto-resolved if omitted.',
+    '[create|rename|delete] Package name for the model. Auto-resolved if omitted.',
   packagePath:
-    '[create|rename] Root packages path. Auto-detected from environment config if omitted.',
+    '[create|rename|delete] Root packages path. Auto-detected from environment config if omitted.',
   projectPath:
     '[create] Path to the .rnrproj project file. Auto-detected from .mcp.json if omitted.',
   solutionPath:
@@ -59,12 +59,15 @@ export const LABELS_OVERRIDE_PARAMS: Record<string, string> = {
     '[create] Label description (comment line in .label.txt). Defaults to the VS project name from ' +
     '.rnrproj when omitted, then falls back to labelFileId. Per-translation comment and ' +
     'defaultComment take priority.',
+  force:
+    '[delete] Delete the label even though X++ / XML still references it (default false: the delete is ' +
+    'refused and the references are listed). The references then no longer resolve.',
   searchPaths:
-    '[rename] string[] — additional absolute directory paths to scan for X++ / XML references.',
+    '[rename|delete] string[] — additional absolute directory paths to scan for X++ / XML references.',
   updateIndex:
     '[create|rename] Update the MCP label index after writing (default: true).',
   allowExtensionLabelFile:
-    '[create|rename] Allow writing to a label file EXTENSION ("_Extension" marker). Default false — ' +
+    '[create|rename|delete] Allow writing to a label file EXTENSION ("_Extension" marker). Default false — ' +
     "new labels belong in the model's ORIGINAL label file.",
   exact:
     '[search] true = exact lookup: the labels whose TEXT equals the given text after normalising both ' +
@@ -95,7 +98,7 @@ export const LABELS_OVERRIDE_PARAMS: Record<string, string> = {
 /** The contract rendered for get_knowledge(kind="op-spec", topic="labels"). */
 export function renderLabelsOpSpec(): string {
   return [
-    'labels — write plumbing (action=create / action=rename) and exact search (action=search, exact=true)',
+    'labels — write plumbing (action=create / rename / delete) and exact search (action=search, exact=true)',
     '',
     'Exact lookup — "which label\'s text is exactly X?", one call per label is fine:',
     '  labels(action="search", exact=true, query="Posting")',
@@ -118,6 +121,13 @@ export function renderLabelsOpSpec(): string {
     '  • best of all, no `labels` call at all: d365fo_file create/modify resolve a',
     '    raw-text label / fieldLabel to an existing or new @Ref by themselves and',
     '    report which one they used (autoCorrect=false opts out).',
+    '',
+    'Delete — labels(action="delete", labelId="MyLabel" | "@MyFile:MyLabel", labelFileId, model):',
+    '  removes the label line and its " ;comment" line(s) from the .label.txt of EVERY language of the',
+    '  label file (encoding, line endings and order kept) and from the index. X++ and AOT XML of the',
+    '  model (+ searchPaths) are scanned for "@File:Id" first; any reference refuses the delete and is',
+    '  listed, unless force=true. dryRun=true shows what would be removed and writes nothing. A label',
+    '  file EXTENSION is refused unless allowExtensionLabelFile=true.',
     '',
     'These are accepted flat or nested in `params`; all are optional and',
     'auto-resolved when omitted, which is why they are not in the wire schema.',

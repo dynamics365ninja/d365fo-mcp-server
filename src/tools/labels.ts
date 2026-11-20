@@ -26,10 +26,11 @@ import { exactLabelLookupTool, isExactLookup } from './analysis/exactLabelLookup
 import { getLabelInfoTool } from './readers/getLabelInfo.js';
 import { createLabelTool } from './write/createLabel.js';
 import { renameLabelTool } from './write/renameLabel.js';
+import { deleteLabelTool } from './write/deleteLabel.js';
 
 export type LabelsTool = (request: CallToolRequest, context: XppServerContext) => Promise<any>;
 
-export const LABEL_ACTIONS = ['search', 'info', 'create', 'update', 'rename'] as const;
+export const LABEL_ACTIONS = ['search', 'info', 'create', 'update', 'rename', 'delete'] as const;
 export type LabelAction = (typeof LABEL_ACTIONS)[number];
 
 interface LabelDispatch {
@@ -44,6 +45,7 @@ export const LABEL_DISPATCH: Record<LabelAction, LabelDispatch> = {
   // update reuses create with overwriteExisting forced true (see below); same args as create.
   update: { tool: createLabelTool,  toolName: 'create_label' },
   rename: { tool: renameLabelTool,  toolName: 'rename_label' },
+  delete: { tool: deleteLabelTool,  toolName: 'delete_label' },
 };
 
 const LabelsArgsSchema = z
@@ -52,7 +54,7 @@ const LabelsArgsSchema = z
       'Which label operation to run: ' +
       'search (full-text query, read), info (translations for a label ID or list of label files, read), ' +
       'create (add a NEW label to an AxLabelFile, write), update (overwrite the text of an EXISTING label, ' +
-      'e.g. fix a wrong translation; languages without a supplied translation keep their text, write), rename (rename a label ID across .label.txt + X++ + XML, write).',
+      'e.g. fix a wrong translation; languages without a supplied translation keep their text, write), rename (rename a label ID across .label.txt + X++ + XML, write), delete (remove a label from every language; refused while referenced unless force, write).',
     ),
   })
   .passthrough();
@@ -64,6 +66,7 @@ const ACTION_ALIASES: Record<string, LabelAction> = {
   add: 'create', 'create-label': 'create', 'new': 'create',
   edit: 'update', 'update-label': 'update', 'set': 'update', 'overwrite': 'update',
   'rename-label': 'rename',
+  remove: 'delete', 'delete-label': 'delete', 'remove-label': 'delete',
 };
 
 /** There is no dedicated "create label file" action — action=create auto-creates a missing AxLabelFile as a side effect. */
@@ -113,7 +116,7 @@ export async function labelsTool(request: CallToolRequest, context: XppServerCon
         text:
           `❌ labels: invalid arguments — action must be one of: ${LABEL_ACTIONS.join(', ')} ` +
           `(got "${rawArgs.action ?? ''}"). search=find labels, info=translations / list label files, ` +
-          `create=add a new label, update=fix an existing label's text, rename=rename a label ID.`,
+          `create=add a new label, update=fix an existing label's text, rename=rename a label ID, delete=remove a label.`,
       }],
       isError: true,
     };

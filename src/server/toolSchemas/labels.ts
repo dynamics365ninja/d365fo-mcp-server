@@ -27,16 +27,16 @@ export const labelsTool = {
         // and restating it here was ~45 chars of the payload per session.
         action: {
           type: 'string',
-          enum: ['search', 'info', 'create', 'update', 'rename'],
+          enum: ['search', 'info', 'create', 'update', 'rename', 'delete'],
         },
         // shared filters
         model: {
           type: 'string',
-          description: '[search|info|create|update|rename] Model that owns the label file (e.g. ContosoExt).',
+          description: '[search|info|create|update|rename|delete] Model that owns the label file (e.g. ContosoExt).',
         },
         labelFileId: {
           type: 'string',
-          description: '[search|info|create|update|rename] AxLabelFile ID (e.g. ContosoExt, SYS). For a NEW label file this ID is the MODEL name, never the bare EXTENSION_PREFIX.',
+          description: '[search|info|create|update|rename|delete] AxLabelFile ID (e.g. ContosoExt, SYS). For a NEW label file this ID is the MODEL name, never the bare EXTENSION_PREFIX.',
         },
         language: {
           type: 'string',
@@ -60,7 +60,7 @@ export const labelsTool = {
         labelId: {
           type: 'string',
           description:
-            '[info] Label ID, any spelling: SYS67433, @SYS67433, @ContosoExt:MyLabel ' +
+            '[info|delete] Label ID, any spelling: SYS67433, @SYS67433, @ContosoExt:MyLabel ' +
             '(paste search output). labelFileId/model optional. Omit to list label files.',
         },
         // action=create
@@ -100,7 +100,7 @@ export const labelsTool = {
         },
         dryRun: {
           type: 'boolean',
-          description: '[rename] Preview changes without writing anything.',
+          description: '[rename|delete] Preview changes without writing anything.',
         },
       },
       required: ['action'],

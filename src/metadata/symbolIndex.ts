@@ -5655,4 +5655,14 @@ export class XppSymbolIndex {
         AND model = ?
     `).run(newLabelId, oldLabelId, labelFileId, model);
   }
+
+  /**
+   * Remove one label (every language) of a label file from the index. The labels_ad
+   * trigger prunes the FTS rows, so no rebuild is needed. Returns deleted rows.
+   */
+  removeLabelFromIndex(labelId: string, labelFileId: string, model: string): number {
+    return this.labelsDb.prepare(
+      `DELETE FROM labels WHERE label_id = ? AND label_file_id = ? AND model = ?`
+    ).run(labelId, labelFileId, model).changes;
+  }
 }

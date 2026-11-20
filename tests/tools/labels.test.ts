@@ -1922,7 +1922,7 @@ describe('labels dispatcher: action aliases + errors', () => {
       ctx,
     );
     expect(r.isError).toBe(true);
-    expect(r.content[0].text).toContain('search, info, create, update, rename');
+    expect(r.content[0].text).toContain('search, info, create, update, rename, delete');
   });
 
   // A model whose en-US label file already contains MyExistingLabel.
