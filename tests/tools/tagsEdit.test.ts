@@ -100,6 +100,18 @@ describe('value handling', () => {
 });
 
 describe('object-level position', () => {
+  it('AxQuery: right after SourceCode, ahead of the scalars that sort before "Tags"', () => {
+    const t = String.fromCharCode(9);
+    const q = ['<AxQuery>', t + '<Name>ContosoQuery</Name>', t + '<SourceCode>', t + t + '<Declaration />', t + '</SourceCode>',
+      t + '<AllowCrossCompany>Yes</AllowCrossCompany>', t + '<Interactive>No</Interactive>', t + '<Title>@Contoso:Q</Title>',
+      t + '<DataSources />', '</AxQuery>'].join(String.fromCharCode(10));
+    const r = setObjectTags(q, 'Contoso');
+    expect(r.ok && r.changed).toBe(true);
+    const lf = String.fromCharCode(10);
+    expect(r.xml).toContain('</SourceCode>' + lf + t + '<Tags>Contoso</Tags>' + lf + t + '<AllowCrossCompany>');
+    expect(setObjectTags(r.xml, null).xml).toBe(q);
+  });
+
   it('AxTable: after TableGroup, before TitleField1, with the other scalars and collections undisturbed', () => {
     const r = setObjectTags(table, 'ABC-1');
     expect(r.ok && r.changed).toBe(true);
