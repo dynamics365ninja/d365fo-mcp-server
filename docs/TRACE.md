@@ -141,10 +141,33 @@ its callers. What it cannot know is stated, not guessed:
   which an idle pool thread would dilute. In a capture taken mid-run, time in the outer method's own
   code before its first traced callee is not seen, so busy time is a lower bound.
 
+## Analysing a trace from another environment
+
+A trace recorded elsewhere, for example in a customer's production environment, where no
+`logman` capture can run, is analysed without `start` and `stop`:
+
+1. The customer records it in the D365FO client: **Settings → Trace**, start the trace,
+   reproduce the scenario, stop it and download the `.etl`. Ask them **not** to include SQL
+   bind parameter values.
+2. Copy the `.etl` into the trace folder on the VM (`status` shows the folder). `analyze`
+   refuses files anywhere else.
+3. `trace_d365fo(action: "analyze", file: "E:\\Traces\\customer-slow-posting.etl", focus: [...])`.
+
+Limits:
+
+- Such a trace usually holds only the session of the user who recorded it: batch tasks running
+  in Batch.exe are normally not in it.
+- Method names are decoded with the event manifests registered on the VM. If the other
+  environment runs a platform version whose events changed, they are counted as unreadable (the
+  result says so), not as zero time. Analyse it on a VM with the same or a close platform version.
+- The [accuracy notes](#accuracy) apply unchanged.
+
 ## Customer data
 
 > [!CAUTION]
-> A capture contains SQL parameter values, user ids and machine names. The tool never returns
-> parameter values (bind events are only counted). Keep captures on the VM, do not copy them
-> elsewhere, and delete them when the analysis is done: `trace_d365fo(action: "delete", file)`
-> removes a capture and its analyses (only inside the trace folder).
+> A capture contains SQL statements, user ids, machine names and, when recorded with them, SQL
+> parameter values. The tool never returns parameter values (bind events are only counted). The
+> agent never copies captures off the VM; a trace from another environment is copied onto it by
+> you, with the customer's consent. Delete every capture when the analysis is done:
+> `trace_d365fo(action: "delete", file)` removes a capture and its analyses (only inside the trace
+> folder).

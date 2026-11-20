@@ -129,7 +129,7 @@ If configured, use \`axdb_sql\` on the development VM to debug: inspect persiste
 
 ### Optional performance trace (only when configured)
 
-To find why something is slow, use \`trace_d365fo\` if it is published (fetch its contract first) instead of adding timer code, CoC wrappers or info() calls: start, reproduce the scenario (yourself, or ask the user in manual mode), stop, analyze. Captures hold customer data: never copy them off the VM; delete them when done.
+To find why something is slow, use \`trace_d365fo\` if it is published (fetch its contract first) instead of adding timer code, CoC wrappers or info() calls: start, reproduce the scenario (yourself, or ask the user in manual mode), stop, analyze. A trace the user brings from another environment (a customer's production) is analysed with analyze and file, after they copy it into the trace folder. Captures hold customer data: never copy them off the VM; delete them when done.
 
 ## Non-Negotiable Code Rules (always enforced)
 
