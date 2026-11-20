@@ -29,6 +29,26 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`d365fo-mcp session` reads Claude Code transcripts too.** The command only understood
+  Copilot Chat's `main.jsonl`, so sessions on Claude Code (the README's other host, and the one
+  the eval loop's implementer runs on) could not be measured. It now sniffs
+  `~/.claude/projects/<project>/<sessionId>.jsonl` by content and reports round trips, per-tool
+  result size and carry, and where the prompt tokens went. One response that Claude Code writes
+  as several lines is counted once (by `message.id`), and a tool call copied into a resumed
+  file is counted once (by `tool_use_id`). Failures come from the log's own `is_error`, and
+  results are never truncated, so carry is exact rather than a lower bound. The transcript
+  records no cost, so without `--rates` the report is tokens only and exits 0 (not the
+  fit-refused exit 1). New options: `--rates <cached>,<uncached>,<cacheWrite>,<output>` takes
+  your own price per million tokens and adds the cost attribution (the repo keeps no price
+  table), and `--no-subagents` leaves out the helper agents. Helper agents the session started
+  (`<sessionId>/subagents/agent-*.jsonl`, typed from `agent-*.meta.json`) are read by default:
+  the report covers the whole session, round trips and carry are counted per agent, and a
+  per-agent table shows requests, calls, single-call turns and average prompt size. Tool time is
+  the gap between the call and its result, labelled as wall time because it includes any
+  permission prompt. `--json` gains `costMode`, `durationKind`, `agents`, per-tool
+  `carryTokens` and `totals.cacheWriteTokens`; `schemaVersion` stays 1 because nothing was
+  removed or renamed. Copilot output is unchanged. No tool and nothing in `tools/list`
+  changes (#1318).
 - **`labels` can delete a label (`action="delete"`).** Removing an unused label meant
   hand-editing every language's .label.txt. `labels(action="delete", labelId, labelFileId,
   model)` (`labelId` plain or as `@File:Id`) removes the label line and its ` ;comment`

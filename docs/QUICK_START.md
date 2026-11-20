@@ -346,9 +346,25 @@ npx d365fo-mcp session $log.FullName          # human-readable
 npx d365fo-mcp session $log.FullName --json   # for tracking across releases
 ```
 
-GitHub Copilot Chat's `main.jsonl` is the format it reads today; the log only exists while chat
-debug logging is on. The command fits the host's own billing to the token counts and **refuses to
-print any attribution when that fit is poor** — a bad residual means the log is not what the tool
+It reads GitHub Copilot Chat's `main.jsonl` (the log only exists while chat debug logging is on) and
+Claude Code's transcript, `~/.claude/projects/<project>/<sessionId>.jsonl`:
+
+```powershell
+npx d365fo-mcp session "$env:USERPROFILE\.claude\projects\<project>\<sessionId>.jsonl"
+npx d365fo-mcp session <transcript> --rates 0.5,5,6.25,25   # price the tokens, per million
+npx d365fo-mcp session <transcript> --no-subagents         # main conversation only
+```
+
+Claude Code records tokens but no cost, so without `--rates` the report is tokens only (where the
+prompt tokens went, round trips, per-tool result size and carry in tokens) and exits 0.
+`--rates <cached>,<uncached>,<cacheWrite>,<output>` takes your own price per million tokens and adds
+the cost attribution; nothing in the repo holds a price table. Helper agents the session started
+(`<sessionId>/subagents/agent-*.jsonl`) are read too: the report covers the whole session, counts
+round trips per agent, and adds one row per agent. Tool time in that format is wall time between the
+call and its result, so it includes any permission prompt.
+
+Where the host records a cost (Copilot), the command fits that billing to the token counts and
+**refuses to print any attribution when that fit is poor** — a bad residual means the log is not what the tool
 assumes, and it exits 1 rather than printing a confident number. Round-trip counts do not depend on
 the fit and are printed either way.
 
