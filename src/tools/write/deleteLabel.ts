@@ -234,8 +234,13 @@ export async function deleteLabelTool(request: CallToolRequest, context: XppServ
     const scanRoots = [modelDir, ...(args.searchPaths ?? [])];
     const unique = (files: string[]) => [...new Map(files.map(f => [path.resolve(f).toLowerCase(), f])).values()];
     const files = unique((await Promise.all(scanRoots.map(d => collectFiles(d, ['.xpp', '.xml'])))).flat())
-      .filter(f => !f.includes('AxLabelFile'));
-    const pattern = new RegExp(`@${escapeRegex(labelFileId)}:${escapeRegex(labelId)}(?![A-Za-z0-9_])`, 'g');
+      .filter(f => !f.split(/[\/]/).includes('AxLabelFile'));
+    // Case-insensitive: Windows resolves a mis-cased labelFileId to the real file, and the
+    // references in code carry the real casing. A legacy id stored with its sigil
+    // (@ABC123) is referenced bare as @ABC123 as well as @File:@ABC123.
+    const alternatives = [`@${escapeRegex(labelFileId)}:${escapeRegex(labelId)}`];
+    if (labelId.startsWith('@')) alternatives.push(escapeRegex(labelId));
+    const pattern = new RegExp(`(?:${alternatives.join('|')})(?![A-Za-z0-9_])`, 'gi');
     const references: Array<{ file: string; count: number }> = [];
     for (const f of files) {
       let text: string;
@@ -267,7 +272,30 @@ export async function deleteLabelTool(request: CallToolRequest, context: XppServ
     }
 
     if (!dryRun) {
-      for (const p of pending) await writeFileAtomic(p.file, p.content);
+      const written: string[] = [];
+      for (const p of pending) {
+        try {
+          await writeFileAtomic(p.file, p.content);
+          written.push(p.lang);
+        } catch (err: any) {
+          const rest = pending.map(x => x.lang).filter(l => !written.includes(l));
+          if (written.length > 0 && updateIndex) {
+            // Keep the index honest for what is already gone.
+            context.symbolIndex.removeLabelFromIndex(labelId, labelFileId, model);
+          }
+          return {
+            content: [{
+              type: 'text',
+              text:
+                `❌ Delete of "${labelRef}" stopped at [${p.lang}]: ${err.message}
+` +
+                `Already removed: ${written.length ? written.join(', ') : 'none'}. Still present: ${rest.join(', ')}. ` +
+                `Fix the cause (read-only or locked file?) and run the delete again — it is safe to repeat.`,
+            }],
+            isError: true,
+          };
+        }
+      }
       if (updateIndex) context.symbolIndex.removeLabelFromIndex(labelId, labelFileId, model);
     }
 
@@ -285,7 +313,8 @@ export async function deleteLabelTool(request: CallToolRequest, context: XppServ
       lines.push(referenceList());
     } else {
       lines.push('');
-      lines.push(`ℹ️  No X++ or XML references to "${labelRef}" found in scanned directories.`);
+      lines.push(`ℹ️  No X++ or XML references to "${labelRef}" found in the model directory${args.searchPaths?.length ? ' and searchPaths' : ''}. ` +
+        `Other models of the package that use this label file are only scanned when passed in searchPaths.`);
     }
     if (!dryRun) lines.push('', '💡 Rebuild your D365FO project to verify no compile errors.');
     if (dryRun) lines.push('', '💡 Remove dryRun=true to apply the delete.');

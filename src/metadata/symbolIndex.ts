@@ -5662,7 +5662,7 @@ export class XppSymbolIndex {
    */
   removeLabelFromIndex(labelId: string, labelFileId: string, model: string): number {
     return this.labelsDb.prepare(
-      `DELETE FROM labels WHERE label_id = ? AND label_file_id = ? AND model = ?`
+      `DELETE FROM labels WHERE label_id = ? AND label_file_id = ? COLLATE NOCASE AND model = ?`
     ).run(labelId, labelFileId, model).changes;
   }
 }

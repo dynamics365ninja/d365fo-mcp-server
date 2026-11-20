@@ -122,6 +122,12 @@ describe('labels(action="delete")', () => {
       expect((await call({ labelId: 'Gone', labelFileId: 'ContosoExt' })).isError).toBeFalsy();
     });
 
+    it('still finds the reference when labelFileId is mis-cased', async () => {
+      const r = await call({ labelId: 'Gone', labelFileId: 'contosoext' });
+      expect(r.isError).toBe(true);
+      expect(out(r)).toContain('Foo.xml');
+    });
+
     it('deletes anyway with force=true and reports the dangling reference', async () => {
       const r = await call({ labelId: 'Gone', labelFileId: 'ContosoExt', force: true });
       expect(r.isError).toBeFalsy();
@@ -145,5 +151,19 @@ describe('labels(action="delete")', () => {
   it('is reachable through the action aliases', async () => {
     const r = await call({ action: 'remove-label', labelId: 'Gone', labelFileId: 'ContosoExt', dryRun: true });
     expect(out(r)).toContain('DRY RUN');
+  });
+});
+
+describe('legacy @-keyed labels', () => {
+  it('scans for the bare @ID reference when the label is addressed as @File:@ID', async () => {
+    for (const lang of ['en-US', 'cs']) {
+      await fs.writeFile(txt(lang), `${BOM}@ABC123=Legacy\r\n`, 'utf-8');
+    }
+    const cls = path.join(root, 'ContosoExt', 'ContosoExt', 'AxClass', 'Bar.xml');
+    await fs.mkdir(path.dirname(cls), { recursive: true });
+    await fs.writeFile(cls, '<Source>info("@ABC123");</Source>', 'utf-8');
+    const r = await call({ labelId: '@ContosoExt:@ABC123' });
+    expect(r.isError).toBe(true);
+    expect(out(r)).toContain('Bar.xml');
   });
 });
