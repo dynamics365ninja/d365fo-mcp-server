@@ -24,7 +24,7 @@ import {
 type Args = Record<string, any>;
 export type OpResult = { success: boolean; message: string; viaXmlFallback?: boolean } | null;
 
-/** remove-field on a data-entity: the field plus its data-source field entries (all data sources unless dataSourceName). */
+/** remove-field on a data-entity: the field plus the data-source field entry it reads (only in dataSourceName, if given). */
 export async function entityRemoveField(filePath: string, args: Args): Promise<OpResult> {
   if (!args.fieldName) return null;
   const r = await directXmlRemoveDataEntityField(filePath, args.fieldName, args.dataSourceName);

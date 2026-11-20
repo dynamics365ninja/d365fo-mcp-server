@@ -729,7 +729,7 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
   'remove-field': {
     required: ['fieldName'],
     optional: ['dataSourceName'],
-    note: 'data-entity: also removes the field entry in the view data-source field list (all data sources, or only dataSourceName).',
+    note: 'data-entity: also removes the field entry it reads in the view data-source field list (only in dataSourceName, if given).',
   },
   'replace-all-fields': {
     required: ['fields'],
