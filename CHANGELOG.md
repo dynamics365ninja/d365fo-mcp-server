@@ -320,8 +320,8 @@ those are called out explicitly below.
   the data-source entry of the column it read (in `dataSourceName` only, if given), unless
   another entity field still reads that column; an unmapped or computed field has no entry.
   When only a leftover entry remains, the call removes entries named after the field in every
-  data source and says the field was already removed; with nothing left it reports "not found". Fields still named by keys, field groups,
-  ranges or mappings are listed in the reply.
+  data source and says the field was already removed; with nothing left it reports "not
+  found". Fields still named by keys, field groups, ranges or mappings are listed in the reply.
 - **`labels` `action=create` with `addToProject=true` no longer fails with `EISDIR` when the
   project path auto-detects to a folder.** A path that is not a `.rnrproj` file is now searched
   for the model's project; if none is found the label is still created and the reply says the
