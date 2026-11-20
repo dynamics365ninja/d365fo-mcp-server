@@ -43,6 +43,13 @@ const ROOT_BEFORE_ANCHOR: Record<string, string> = {
   AxEnumExtension: 'PropertyModifications',
 };
 
+/**
+ * Roots whose `Tags` comes right after `Name` / `SourceCode`, before every other scalar. Measured
+ * on shipped XML: all 5 AxQuery files that carry Tags have it ahead of QueryType, AllowCrossCompany,
+ * Interactive and UserUpdate, which the alphabetical rule would put in front of it.
+ */
+const ROOT_TAGS_FIRST: ReadonlySet<string> = new Set(['AxQuery']);
+
 /** Roots whose scalar order is not alphabetical (measured on shipped XML). */
 const ROOT_ORDER: Record<string, readonly string[]> = {
   AxTable: AX_TABLE_ELEMENT_ORDER,
@@ -185,6 +192,7 @@ const isCollection = (c: Child) =>
 
 type Placement =
   | { kind: 'alpha'; anchor?: string }
+  | { kind: 'after-leading' }
   | { kind: 'order'; order: readonly string[] }
   | { kind: 'after-name' };
 
@@ -193,6 +201,10 @@ function insertionIndex(children: Child[], place: Placement): number {
   if (place.kind === 'after-name') {
     const n = children.findIndex(c => c.name === 'Name');
     return n + 1 < children.length ? n + 1 : -1;
+  }
+  if (place.kind === 'after-leading') {
+    const i = children.findIndex(c => !LEADING.has(c.name));
+    return i;
   }
   if (place.kind === 'order') {
     const tagsAt = place.order.indexOf('Tags');
@@ -329,7 +341,8 @@ export function setObjectTags(xml: string, value: string | null, mode: TagsMode 
   if (!TAGGABLE_ROOTS.has(root.name)) return failure(xml, `unsupported: Tags position is not known for ${root.name}`);
   // An object-level property of a data entity is written by upsertDataEntityProperty; same position.
   const order = ROOT_ORDER[root.name];
-  const place: Placement = order ? { kind: 'order', order } : { kind: 'alpha', anchor: ROOT_BEFORE_ANCHOR[root.name] };
+  const place: Placement = ROOT_TAGS_FIRST.has(root.name) ? { kind: 'after-leading' }
+    : order ? { kind: 'order', order } : { kind: 'alpha', anchor: ROOT_BEFORE_ANCHOR[root.name] };
   const r = applyToElement(xml, root.node, place, value, mode);
   if (!r) return failure(xml, `${root.name} has no content`);
   return { ok: true, ...r, message: describeResult(root.name, r) };

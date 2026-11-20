@@ -344,6 +344,14 @@ those are called out explicitly below.
   environment status in `get_workspace_info` is not done yet.
 
 ### Fixed
+- **A `tags` value on a query is written where the platform reads it.** `tags` on an `AxQuery`
+  was placed alphabetically, after `AllowCrossCompany`, `Interactive`, `QueryType` or
+  `UserUpdate` when the query has one of them. The platform serialises a query's `<Tags>`
+  right after `SourceCode`, before those properties (all 5 shipped queries that carry a tag),
+  and a property out of serialised order is dropped without a word, so the call reported the
+  tag as applied while the file could lose it. `<Tags>` now goes right after `SourceCode`.
+  Other object types are unchanged. All 5 shipped queries with a tag now reproduce byte for
+  byte when their tag is removed and set again.
 - **`remove-field` on a data entity also removes the field's entry in the view's data-source
   field list.** It took out the entity field only and left the matching
   `AxQuerySimpleDataSourceField` under `ViewMetadata`, so the build failed with "Field 'X' does
