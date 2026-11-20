@@ -247,7 +247,7 @@ export async function deleteLabelTool(request: CallToolRequest, context: XppServ
     const scanRoots = [modelDir, ...(args.searchPaths ?? [])];
     const unique = (files: string[]) => [...new Map(files.map(f => [path.resolve(f).toLowerCase(), f])).values()];
     const files = unique((await Promise.all(scanRoots.map(d => collectFiles(d, ['.xpp', '.xml'])))).flat())
-      .filter(f => !f.split(/[\/]/).includes('AxLabelFile'));
+      .filter(f => !f.split(/[\\/]/).includes('AxLabelFile'));
     // Case-insensitive: Windows resolves a mis-cased labelFileId to the real file, and the
     // references in code carry the real casing. A legacy id stored with its sigil
     // (@ABC123) is referenced bare as @ABC123 as well as @File:@ABC123.
