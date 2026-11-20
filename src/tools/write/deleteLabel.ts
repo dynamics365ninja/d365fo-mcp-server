@@ -118,7 +118,7 @@ export async function deleteLabelTool(request: CallToolRequest, context: XppServ
 
     const ref = parseLabelReference(args.labelId);
     const labelId = ref.labelId;
-    const labelFileId = args.labelFileId ?? ref.labelFileId;
+    let labelFileId = (args.labelFileId ?? ref.labelFileId) as string;
     if (!labelFileId) {
       return {
         content: [{ type: 'text', text: '❌ labelFileId is required (or pass labelId as @LabelFile:LabelId).' }],
@@ -173,7 +173,7 @@ export async function deleteLabelTool(request: CallToolRequest, context: XppServ
       resolvedPackageName = model;
     }
 
-    const labelRef = `@${labelFileId}:${labelId}`;
+    let labelRef = `@${labelFileId}:${labelId}`;
 
     // Same cross-model guard as rename/create; also applied to a dry run.
     const crossModelCheck = {
@@ -209,7 +209,20 @@ export async function deleteLabelTool(request: CallToolRequest, context: XppServ
     // Compute every change before writing anything.
     const pending: Array<{ lang: string; file: string; content: string; removed: string[] }> = [];
     for (const lang of languages) {
-      const file = path.join(labelResourcesDir, lang, `${labelFileId}.${lang}.label.txt`);
+      // Match the file name case-insensitively on every platform (Windows already does), and
+      // adopt the casing on disk: references in code and the index carry that spelling.
+      const suffix = `.${lang}.label.txt`;
+      let fileName = `${labelFileId}${suffix}`;
+      try {
+        const names = await fs.readdir(path.join(labelResourcesDir, lang));
+        const hit = names.find(n => n.toLowerCase() === fileName.toLowerCase());
+        if (hit) fileName = hit;
+      } catch { continue; }
+      if (fileName !== `${labelFileId}${suffix}`) {
+        labelFileId = fileName.slice(0, -suffix.length);
+        labelRef = `@${labelFileId}:${labelId}`;
+      }
+      const file = path.join(labelResourcesDir, lang, fileName);
       let content: string;
       try {
         content = await fs.readFile(file, 'utf-8');
