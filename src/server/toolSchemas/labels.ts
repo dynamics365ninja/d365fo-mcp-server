@@ -27,7 +27,7 @@ export const labelsTool = {
         // and restating it here was ~45 chars of the payload per session.
         action: {
           type: 'string',
-          enum: ['search', 'info', 'create', 'update', 'rename'],
+          enum: ['search', 'info', 'create', 'update', 'rename', 'delete'],
         },
         // shared filters
         model: {
@@ -60,7 +60,7 @@ export const labelsTool = {
         labelId: {
           type: 'string',
           description:
-            '[info] Label ID, any spelling: SYS67433, @SYS67433, @ContosoExt:MyLabel ' +
+            '[info|delete] Label ID, any spelling: SYS67433, @SYS67433, @ContosoExt:MyLabel ' +
             '(paste search output). labelFileId/model optional. Omit to list label files.',
         },
         // action=create

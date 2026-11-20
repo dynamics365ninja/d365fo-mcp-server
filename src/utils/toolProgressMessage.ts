@@ -147,6 +147,8 @@ export function buildProgressMessage(toolName: string, args: Record<string, any>
           return `🏷️ Creating label ${a.labelId ?? ''}`;
         case 'rename':
           return `🏷️ Renaming label ${a.oldLabelId ?? ''} → ${a.newLabelId ?? ''}`;
+        case 'delete':
+          return `🏷️ Deleting label ${a.labelId ?? ''}`;
         default:
           return `🏷️ Label operation${action ? ` (${action})` : ''}`;
       }

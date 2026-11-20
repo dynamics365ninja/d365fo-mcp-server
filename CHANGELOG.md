@@ -29,6 +29,16 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`labels` can delete a label (`action="delete"`).** Removing an unused label meant
+  hand-editing every language's .label.txt. `labels(action="delete", labelId, labelFileId,
+  model)` (`labelId` plain or as `@File:Id`) removes the label line and its ` ;comment`
+  line(s) from the .label.txt of every language of the label file, keeping encoding, line
+  endings and order, and drops the label from the search index. X++ sources and AOT XML of
+  the model (plus `searchPaths`) are scanned for `@File:Id` first: a reference refuses the
+  delete and is listed, unless `force=true`. `dryRun=true` previews and writes nothing; a
+  missing label gets a clear message; a label file `_Extension` is refused unless
+  `allowExtensionLabelFile=true`. `force` and `searchPaths` are documented in
+  `get_knowledge(kind="op-spec", topic="labels")`.
 - **Unmapped fields can be added to a data entity or entity extension without hand-edited
   XML.** `add-field` on `data-entity` and `data-entity-extension` wrote only mapped fields
   (`dataField` + `dataSource`), so a virtual or computed column (a Base64 content field filled
