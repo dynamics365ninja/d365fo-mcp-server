@@ -250,6 +250,17 @@ those are called out explicitly below.
   in the Report Designer.
 
 ### Changed
+- **`trace_d365fo` now tells agents how to analyse a trace a customer recorded in another
+  environment, such as production.** The contract and the system prompt described only
+  captures made on the VM, and their rule "never copy captures elsewhere" made agents hesitate
+  over an `.etl` the user brought in. `analyze` with `file` already read such a trace; a new
+  contract rule and a section in docs/TRACE.md now describe the workflow: the customer
+  downloads the trace from the D365FO client (without SQL parameter values), you copy it into
+  the trace folder, and the agent calls `analyze` with `file`, without `start` and `stop`. They
+  also state the limits: the trace usually holds only the recording user's session, not batch
+  tasks, and events from a platform version the VM cannot decode are reported as unreadable.
+  The customer-data rule now says the agent never copies captures off the VM, while you may
+  copy one onto it with the customer's consent.
 - **The README is reorganised around what a new user needs first, with a redrawn
   architecture diagram that is readable in GitHub's dark theme.** The old diagram was one
   dense, light-only SVG whose figures had drifted from the server (it still said 20 tools
