@@ -47,7 +47,7 @@ import { ProjectFileFinder, registerFileInActiveProject } from '../../workspace/
 import { heuristicEdtBaseType, resolveEdtBaseType, isEnumName, resolveEdtEnumType, bridgeEdtBaseType } from '../smart/generateSmartTable.js';
 import { normalizeD365Xml } from '../../utils/d365XmlNormalizer.js';
 import {
-  entityAddDataSource, entityAddFieldBindingError, entityAddField, isUnmappedEntityField, entityAddUnmappedField, modifyFieldOp, ENTITY_AND_FIELD_ZOD_PARAMS,
+  entityAddDataSource, entityRemoveField, entityAddFieldBindingError, entityAddField, isUnmappedEntityField, entityAddUnmappedField, modifyFieldOp, ENTITY_AND_FIELD_ZOD_PARAMS,
 } from './dataEntityOps.js';
 import { formStructureOp, FORM_STRUCTURE_ZOD_PARAMS } from './formStructureOps.js';
 import { bridgeAddFormControl, pickAddControlType } from './referenceGroupControl.js';
@@ -2383,6 +2383,7 @@ async function runModify(
         break;
       }
       case 'remove-field': {
+        if (objectType === 'data-entity') { bridgeResult = await entityRemoveField(actualFilePath, args as any); break; }
         if (args.fieldName) {
           bridgeResult = await withRemovedFieldCleanup(await bridgeRemoveField(
             context.bridge,

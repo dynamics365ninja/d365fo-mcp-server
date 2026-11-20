@@ -46,7 +46,7 @@ import { addFormControlMethod, renderSourceMethod } from '../../utils/formContro
 import { resolveControlPropertyTarget } from '../../utils/formExtensionControlModifications.js';
 import { buildAxDataEntityViewFieldXml } from '../xml/dataEntityViewExtensionXml.js';
 import {
-  upsertDataEntityProperty, addDataEntityDataSource, addDataEntityMappedField,
+  upsertDataEntityProperty, addDataEntityDataSource, addDataEntityMappedField, removeDataEntityField,
   type EntityDataSourceSpec, type EntityMappedFieldSpec,
 } from '../xml/dataEntityViewEdit.js';
 import { escapeXml } from '../../utils/xmlEscape.js';
@@ -3561,5 +3561,29 @@ export const directXmlMakeEntityFieldComputed = serializedOnFile(async (
   } catch (err) {
     console.error(`[modify_d365fo_file] directXmlMakeEntityFieldComputed failed: ${err}`);
     return null;
+  }
+});
+
+/** remove-field on a data-entity: the entity field and the query data-source field entry that feeds it. */
+export const directXmlRemoveDataEntityField = serializedOnFile(async (
+  filePath: string,
+  fieldName: string,
+  dataSourceName?: string,
+): Promise<{ success: boolean; message: string } | null> => {
+  try {
+    const raw = await fs.readFile(filePath, 'utf-8');
+    const content = raw.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+    if (!/<AxDataEntityView[\s>]/.test(content)) return { success: false, message: `❌ remove-field: ${filePath} is not an AxDataEntityView file — nothing was written.` };
+    const r = removeDataEntityField(content, fieldName, dataSourceName);
+    if (!r.ok) return { success: false, message: `❌ remove-field: ${r.message} — nothing was written.` };
+    await writeFileAtomic(filePath, normalizeD365Xml(r.xml!));
+    const warn = r.remaining?.length
+      ? `
+⚠️ Still named in: ${r.remaining.join('; ')}. Fix those or the entity will not build.`
+      : '';
+    return { success: true, message: `✅ ${r.message} via direct XML. File: ${filePath}${warn}` };
+  } catch (err) {
+    console.error(`[modify_d365fo_file] directXmlRemoveDataEntityField failed: ${err}`);
+    return { success: false, message: `❌ remove-field: could not edit ${filePath}: ${err instanceof Error ? err.message : err} — nothing was written.` };
   }
 });

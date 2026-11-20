@@ -726,7 +726,11 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
     optional: [],
     note: 'Also fixes index DataField refs and TitleField1/2.',
   },
-  'remove-field': { required: ['fieldName'], optional: [] },
+  'remove-field': {
+    required: ['fieldName'],
+    optional: ['dataSourceName'],
+    note: 'data-entity: also removes the field entry in the view data-source field list (all data sources, or only dataSourceName).',
+  },
   'replace-all-fields': {
     required: ['fields'],
     optional: [],

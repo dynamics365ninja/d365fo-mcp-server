@@ -16,6 +16,8 @@ import { escapeXml } from '../../utils/xmlEscape.js';
 import { ENTITY_CATEGORIES } from '../../utils/axEnumProperties.js';
 import { buildAxDataEntityViewFieldXml } from './dataEntityViewExtensionXml.js';
 import { yesNo, detectIndentUnit } from './tableFieldPropertyEdit.js';
+import { createXmlTokenScanner } from '../../utils/xmlScan.js';
+import { lineStartBefore } from './tableFieldRemoval.js';
 
 /**
  * Top-level elements of an AxDataEntityView in serialised order, measured over the ~5,800
@@ -312,4 +314,130 @@ export function addDataEntityMappedField(xml: string, spec: EntityMappedFieldSpe
   if (!close) return fail('unbalanced <Fields>');
   const at = open.index + close.index;
   return { ok: true, xml: `${xml.slice(0, at)}${element}\n${xml.slice(at)}`, message: `field ${spec.name} added` };
+}
+
+export interface RemoveEntityFieldResult extends EditResult {
+  /** The entity's own <AxDataEntityViewField> was removed. */
+  removedEntityField?: boolean;
+  /** "DataSource.Field" of every query data-source field entry removed. */
+  removedDataSourceFields?: string[];
+  /** Places that still name the field and were left alone. */
+  remaining?: string[];
+}
+
+interface ScanElement {
+  name: string;
+  at: number;
+  leaves: Record<string, string>;
+}
+
+/**
+ * remove-field on an AxDataEntityView: the entity's field AND the query data-source field entry
+ * that feeds it. The bridge removes only the former, leaving `<AxQuerySimpleDataSourceField>` in
+ * ViewMetadata, and the build then fails with "Field 'X' does not exist".
+ *
+ * - A mapped field takes its (DataSource, DataField) entry with it, unless another remaining
+ *   mapped field still reads the same column. An unmapped / computed field has no entry.
+ * - When the entity field is already gone (a previous remove-field left the entry behind) the
+ *   leftover entries named `fieldName` are removed instead; "not found" only when there is none.
+ * - `dataSourceName` limits the data-source cleanup to that data source.
+ */
+export function removeDataEntityField(xml: string, fieldName: string, dataSourceName?: string): RemoveEntityFieldResult {
+  if (!isEntity(xml)) return fail('not an AxDataEntityView document');
+  const wanted = fieldName.trim().toLowerCase();
+  const onlyDs = dataSourceName?.trim().toLowerCase();
+  const stack: ScanElement[] = [];
+  let open: { contentAt: number } | null = null;
+
+  const entityFields: Array<{ at: number; end: number; name: string; dataField?: string; dataSource?: string }> = [];
+  const dsFields: Array<{ at: number; end: number; name?: string; field?: string; ds: string }> = [];
+  const remaining: string[] = [];
+  const viewRefs: Array<{ text: string; what: string }> = [];
+
+  const scanner = createXmlTokenScanner();
+  let token: RegExpExecArray | null;
+  while ((token = scanner.exec(xml)) !== null) {
+    const closing = token[1];
+    const starting = token[2];
+    if (!closing && !starting) continue;
+    if (starting) {
+      if (token[4] === '/') { open = null; continue; }
+      stack.push({ name: starting, at: token.index, leaves: {} });
+      open = { contentAt: token.index + token[0].length };
+      continue;
+    }
+    const depth = stack.length;
+    const el = stack[depth - 1];
+    if (!el || el.name !== closing) { open = null; stack.pop(); continue; }
+    const parent = stack[depth - 2];
+    const end = token.index + token[0].length;
+    if (open) {
+      const text = xml.slice(open.contentAt, token.index).trim();
+      if (parent) parent.leaves[closing] = text;
+      const section = stack[1]?.name;
+      if (section === 'ViewMetadata') {
+        // Query ranges, group-by and order-by name a data-source COLUMN; judged against it below.
+        const holder = stack.find(e => /Range|GroupBy|OrderBy|Having/.test(e.name));
+        if (holder && /Field/.test(closing)) {
+          viewRefs.push({ text: text.toLowerCase(), what: `${holder.name.replace(/^AxQuerySimple/, '')} in the view query (<${closing}>)` });
+        }
+      } else if (
+        (section === 'FieldGroups' || section === 'Keys' || section === 'Ranges') && /Field$/.test(closing) ||
+        (section === 'Mappings' && closing === 'MapFieldTo')
+      ) {
+        if (text.toLowerCase() === wanted) remaining.push(`${section} '${stack[2]?.leaves.Name ?? '(unnamed)'}' (<${closing}>)`);
+      }
+    }
+    if (el.name === 'AxDataEntityViewField' && depth === 3 && stack[1]?.name === 'Fields') {
+      entityFields.push({ at: el.at, end, name: el.leaves.Name ?? '', dataField: el.leaves.DataField, dataSource: el.leaves.DataSource });
+    } else if (el.name === 'AxQuerySimpleDataSourceField' && stack.some(s => s.name === 'ViewMetadata')) {
+      const owner = [...stack].reverse().find(s => /^AxQuerySimple(Root|Embedded|Derived)DataSource$/.test(s.name));
+      dsFields.push({ at: el.at, end, name: el.leaves.Name, field: el.leaves.Field, ds: owner?.leaves.Name ?? '' });
+    }
+    open = null;
+    stack.pop();
+  }
+
+  const target = entityFields.find(f => f.name.toLowerCase() === wanted);
+  const others = entityFields.filter(f => f !== target);
+  const stillRead = (ds: string, col: string) => others.some(f =>
+    f.dataSource?.toLowerCase() === ds.toLowerCase() && f.dataField?.toLowerCase() === col.toLowerCase());
+  const inScope = (ds: string) => !onlyDs || ds.toLowerCase() === onlyDs;
+
+  // With the entity field present, only the (data source, column) it read is orphaned. When it
+  // is already gone, an entry named after it is a leftover, in whichever data source it sits.
+  const cols = new Set([wanted, (target?.dataField ?? '').toLowerCase()].filter(Boolean));
+  const cuts: Array<[number, number]> = [];
+  const removedDs: string[] = [];
+  if (target) cuts.push([lineStartBefore(xml, target.at), target.end]);
+  for (const d of dsFields) {
+    const col = (d.field ?? d.name ?? '').toLowerCase();
+    if (!inScope(d.ds)) continue;
+    const feeds = target
+      ? !!target.dataField && !!target.dataSource && d.ds.toLowerCase() === target.dataSource.toLowerCase() && col === target.dataField.toLowerCase()
+      : col === wanted || (d.name ?? '').toLowerCase() === wanted;
+    if (!feeds || stillRead(d.ds, d.field ?? d.name ?? '')) continue;
+    cuts.push([lineStartBefore(xml, d.at), d.end]);
+    removedDs.push(`${d.ds}.${d.field ?? d.name}`);
+  }
+  if (cuts.length === 0) {
+    return fail(`field '${fieldName}' not found on this entity${onlyDs ? ` (data source '${dataSourceName}')` : ''}, and no data-source field entry names it`);
+  }
+
+  let out = xml;
+  for (const [start, end] of cuts.sort((a, b) => b[0] - a[0])) {
+    let before = out.slice(0, start);
+    let after = out.slice(end);
+    if (/<Fields>[ \t\r\n]*$/.test(before) && /^[ \t\r\n]*<\/Fields>/.test(after)) {
+      before = before.replace(/<Fields>[ \t\r\n]*$/, '<Fields />');
+      after = after.replace(/^[ \t\r\n]*<\/Fields>/, '');
+    }
+    out = before + after;
+  }
+  const parts = [
+    target ? `field '${fieldName}' removed` : `field '${fieldName}' was already removed from the entity`,
+    removedDs.length ? `data-source field entr${removedDs.length === 1 ? 'y' : 'ies'} removed: ${removedDs.join(', ')}` : '',
+  ].filter(Boolean);
+  for (const v of viewRefs) if (cols.has(v.text) && !remaining.includes(v.what)) remaining.push(v.what);
+  return { ok: true, xml: out, message: parts.join('; '), removedEntityField: !!target, removedDataSourceFields: removedDs, remaining };
 }

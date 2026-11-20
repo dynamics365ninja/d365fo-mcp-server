@@ -52,7 +52,7 @@ function isFieldReferenceLeaf(leaf: string): boolean {
 }
 
 /** Where the removal of an element starts: its own line's indentation and line break. */
-function lineStartBefore(xml: string, at: number): number {
+export function lineStartBefore(xml: string, at: number): number {
   let i = at;
   while (i > 0 && (xml[i - 1] === ' ' || xml[i - 1] === '\t')) i--;
   if (i > 0 && xml[i - 1] === '\n') {
