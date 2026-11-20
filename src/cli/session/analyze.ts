@@ -60,6 +60,42 @@ export interface CostRates {
   cached: number;
   uncached: number;
   output: number;
+  /** Cache writes. Only rates given with `--rates` carry it; a fit has no such column to solve for. */
+  cacheWrite?: number;
+}
+
+/**
+ * Where the rates come from. 'fitted' solves them from the host's recorded
+ * cost; 'given' takes them from the caller (`--rates`) and prices the tokens
+ * itself; 'none' is a host that records no cost and a caller who gave none —
+ * the analysis is then tokens only, which is a complete answer, not a failure.
+ */
+export type CostMode = 'fitted' | 'given' | 'none';
+
+export interface AnalyzeOptions {
+  rates?: CostRates;
+}
+
+/** Prompt tokens that were neither read from nor written to the cache. */
+function uncachedOf(r: SessionRequest): number {
+  return r.inputTokens - r.cachedTokens - (r.cacheWriteTokens ?? 0);
+}
+
+/** Same tokens, priced with the given rates: the cost a host that records none would have charged. */
+export function priceSession(session: AgentSession, rates: CostRates): AgentSession {
+  return {
+    ...session,
+    costUnit: 'units',
+    requests: session.requests.map(r => ({
+      ...r,
+      cost: (
+        r.cachedTokens * rates.cached
+        + uncachedOf(r) * rates.uncached
+        + (r.cacheWriteTokens ?? 0) * (rates.cacheWrite ?? 0)
+        + r.outputTokens * rates.output
+      ) / TOKENS_PER_MTOK,
+    })),
+  };
 }
 
 export interface CostFit {
@@ -77,11 +113,13 @@ export interface CostFit {
 export interface CostAttribution {
   cachedInput: number;
   uncachedInput: number;
+  /** Cache writes, priced above plain input. 0 for hosts that report none. */
+  cacheWrite: number;
   output: number;
   total: number;
   /** Tokens re-sent on every request — measured as the first billed request's whole input. */
   prefixTokens: number;
-  /** prefixTokens × billed requests × cached rate. */
+  /** prefixTokens × billed requests × cached rate; with several agents, each agent's own first request over its own requests. */
   fixedPrefix: number;
   /** Σ over tool results of result tokens × later billed requests × cached rate. */
   carry: number;
@@ -109,18 +147,43 @@ export interface RoundTripStats {
 export interface ToolStat {
   name: string;
   calls: number;
+  /** Time in the tool; `SessionAnalysis.durationKind` says whether that is server time or wall time. */
   serverMs: number;
   resultTokens: number;
-  /** Null when the fit was refused — carry cost is priced with the fitted cached rate. */
+  /** Result tokens × later requests of the same agent that had to carry them. Needs no rates. */
+  carryTokens: number;
+  /** Null when no rates are available — carry cost is priced with the cached rate. */
   carry: number | null;
   truncatedResults: number;
   failures: number;
 }
 
+/** One row per agent of a multi-agent session; empty when the log cannot tell agents apart. */
+export interface AgentStat {
+  id: string;
+  type: string;
+  spawnDepth: number | null;
+  requests: number;
+  toolCalls: number;
+  /** Round trips are counted per agent: each helper has its own turns. */
+  toolTurns: number;
+  singleCallTurns: number;
+  inputTokens: number;
+  cachedTokens: number;
+  cacheWriteTokens: number;
+  outputTokens: number;
+  /** Null in tokens-only mode. */
+  cost: number | null;
+}
+
 export interface SessionAnalysis {
   format: string;
   sessionId: string | null;
-  costUnit: string;
+  /** Null in tokens-only mode. */
+  costUnit: string | null;
+  costMode: CostMode;
+  /** What `ToolStat.serverMs` measures — 'wall' includes any permission prompt. */
+  durationKind: 'server' | 'wall';
   totals: {
     cost: number;
     requests: number;
@@ -128,6 +191,7 @@ export interface SessionAnalysis {
     unbilledRequests: number;
     inputTokens: number;
     cachedTokens: number;
+    cacheWriteTokens: number;
     outputTokens: number;
     wallMs: number;
   };
@@ -136,6 +200,8 @@ export interface SessionAnalysis {
   /** Null exactly when `fit.usable` is false. */
   attribution: CostAttribution | null;
   roundTrips: RoundTripStats;
+  /** Only with more than one agent. */
+  agents: AgentStat[];
   tools: ToolStat[];
   truncation: { cap: number | null; results: number };
   failures: Array<{ name: string; count: number }>;
@@ -203,7 +269,7 @@ export function fitCostModel(requests: SessionRequest[]): CostFit {
   const rows = billed.map(r => ({
     x: [
       r.cachedTokens / TOKENS_PER_MTOK,
-      (r.inputTokens - r.cachedTokens) / TOKENS_PER_MTOK,
+      uncachedOf(r) / TOKENS_PER_MTOK,
       r.outputTokens / TOKENS_PER_MTOK,
     ] as [number, number, number],
     y: r.cost!,
@@ -287,7 +353,8 @@ export function groupToolCallsByRequest(
 
 /** Strip the host's `mcp_<server>_` prefix so tool names match our own schema names. */
 function bareToolName(name: string): string {
-  return name.replace(/^mcp_[A-Za-z0-9-]+_/, '');
+  // Copilot writes `mcp_<server>_<tool>`, Claude Code `mcp__<server>__<tool>`.
+  return name.replace(/^mcp_{1,2}[A-Za-z0-9-]+__?/, '');
 }
 
 /**
@@ -325,37 +392,63 @@ function pluralOpportunities(turnGroups: SessionToolCall[][]): RoundTripStats['p
   return runs;
 }
 
-export function analyzeSession(session: AgentSession): SessionAnalysis {
+const agentKey = (x: { agent?: string }): string => x.agent ?? 'main';
+
+export function analyzeSession(input: AgentSession, opts: AnalyzeOptions = {}): SessionAnalysis {
+  // Given rates price every request themselves and replace whatever the host
+  // recorded — the only way to get a cost out of a host that records none.
+  const session = opts.rates ? priceSession(input, opts.rates) : input;
+  const costMode: CostMode = opts.rates ? 'given' : session.costUnit === null ? 'none' : 'fitted';
   const { requests, toolCalls } = session;
-  const billed = billedRequests(requests);
+  // With no cost there is no "billed" subset: every request is a round trip
+  // that re-read the context, which is what the token figures count.
+  const billed = costMode === 'none' ? requests : billedRequests(requests);
   const warnings: string[] = [];
 
   const totalCost = requests.reduce((sum, r) => sum + (r.cost ?? 0), 0);
   const timestamps = [...requests.map(r => r.ts), ...toolCalls.map(t => t.ts)];
   const wallMs = timestamps.length > 0 ? Math.max(...timestamps) - Math.min(...timestamps) : 0;
 
-  const fit = fitCostModel(requests);
-  const billedModels = [...new Set(billed.map(r => r.model))];
-  if (billedModels.length > 1) {
-    warnings.push(
-      `${billedModels.length} billed models in one session (${billedModels.join(', ')}) — ` +
-      'the fitted rates are a blend, so per-model figures cannot be read off them',
-    );
-  }
-  const unbilled = requests.length - billed.length;
-  if (unbilled > 0) {
-    const unbilledModels = [...new Set(requests.filter(r => !(r.cost !== null && r.cost > 0)).map(r => r.model))];
-    warnings.push(
-      `${unbilled} request(s) cost nothing (${unbilledModels.join(', ')}) — excluded from the fit, ` +
-      'they carry no price information but do still consume wall time',
-    );
+  let fit: CostFit;
+  if (costMode === 'given') {
+    fit = { usable: true, rates: opts.rates!, rmse: 0, relativeRmse: 0, sampleSize: billed.length, refusal: null };
+  } else if (costMode === 'none') {
+    fit = {
+      usable: false, rates: null, rmse: null, relativeRmse: null, sampleSize: 0,
+      refusal: 'this host records no cost — pass --rates <cached>,<uncached>,<cacheWrite>,<output> to price the tokens',
+    };
+  } else {
+    fit = fitCostModel(requests);
   }
 
-  // Attribution — only when the rates can be trusted.
-  let attribution: CostAttribution | null = null;
-  const billedTs = billed.map(r => r.ts).sort((a, b) => a - b);
-  /** How many billed requests still had to carry this result in their prompt. */
-  const laterBilled = (ts: number): number => {
+  const unbilled = requests.length - billed.length;
+  if (costMode === 'fitted') {
+    const billedModels = [...new Set(billed.map(r => r.model))];
+    if (billedModels.length > 1) {
+      warnings.push(
+        `${billedModels.length} billed models in one session (${billedModels.join(', ')}) — ` +
+        'the fitted rates are a blend, so per-model figures cannot be read off them',
+      );
+    }
+    if (unbilled > 0) {
+      const unbilledModels = [...new Set(requests.filter(r => !(r.cost !== null && r.cost > 0)).map(r => r.model))];
+      warnings.push(
+        `${unbilled} request(s) cost nothing (${unbilledModels.join(', ')}) — excluded from the fit, ` +
+        'they carry no price information but do still consume wall time',
+      );
+    }
+  }
+
+  // Which requests still had to carry a tool result. Per agent: a helper's
+  // results live in the helper's context, not in the orchestrator's.
+  const billedTsByAgent = new Map<string, number[]>();
+  for (const r of billed) {
+    const list = billedTsByAgent.get(agentKey(r));
+    if (list) list.push(r.ts); else billedTsByAgent.set(agentKey(r), [r.ts]);
+  }
+  for (const list of billedTsByAgent.values()) list.sort((a, b) => a - b);
+  const laterBilled = (agent: string, ts: number): number => {
+    const billedTs = billedTsByAgent.get(agent) ?? [];
     let lo = 0, hi = billedTs.length;
     while (lo < hi) {
       const mid = (lo + hi) >> 1;
@@ -366,30 +459,42 @@ export function analyzeSession(session: AgentSession): SessionAnalysis {
 
   const resultTokens = (call: SessionToolCall) => Math.ceil(call.resultChars / CHARS_PER_TOKEN);
 
+  // Attribution — only when the rates can be trusted.
+  let attribution: CostAttribution | null = null;
   if (fit.usable && fit.rates) {
     const rate = fit.rates;
-    let cachedInput = 0, uncachedInput = 0, output = 0;
+    let cachedInput = 0, uncachedInput = 0, cacheWrite = 0, output = 0;
     for (const r of billed) {
       cachedInput += (r.cachedTokens / TOKENS_PER_MTOK) * rate.cached;
-      uncachedInput += ((r.inputTokens - r.cachedTokens) / TOKENS_PER_MTOK) * rate.uncached;
+      uncachedInput += (uncachedOf(r) / TOKENS_PER_MTOK) * rate.uncached;
+      cacheWrite += ((r.cacheWriteTokens ?? 0) / TOKENS_PER_MTOK) * (rate.cacheWrite ?? 0);
       output += (r.outputTokens / TOKENS_PER_MTOK) * rate.output;
     }
     // The prompt prefix is measured as the FIRST billed request's whole input:
     // system prompt + tool schemas + the opening message, before any tool
     // result exists to inflate it. It cannot be split into system vs tools —
     // the host logs the tool catalogue as an opaque blob and does not record
-    // how much of it was actually sent.
+    // how much of it was actually sent. Each agent has a prefix of its own.
     const prefixTokens = billed[0]?.inputTokens ?? 0;
-    const fixedPrefix = (prefixTokens / TOKENS_PER_MTOK) * rate.cached * billed.length;
+    let fixedPrefix = 0;
+    const firstByAgent = new Map<string, { input: number; count: number }>();
+    for (const r of billed) {
+      const seen = firstByAgent.get(agentKey(r));
+      if (seen) seen.count++; else firstByAgent.set(agentKey(r), { input: r.inputTokens, count: 1 });
+    }
+    for (const { input: first, count } of firstByAgent.values()) {
+      fixedPrefix += (first / TOKENS_PER_MTOK) * rate.cached * count;
+    }
     let carry = 0;
     for (const call of toolCalls) {
-      carry += (resultTokens(call) / TOKENS_PER_MTOK) * rate.cached * laterBilled(call.ts);
+      carry += (resultTokens(call) / TOKENS_PER_MTOK) * rate.cached * laterBilled(agentKey(call), call.ts);
     }
     attribution = {
       cachedInput,
       uncachedInput,
+      cacheWrite,
       output,
-      total: cachedInput + uncachedInput + output,
+      total: cachedInput + uncachedInput + cacheWrite + output,
       prefixTokens,
       fixedPrefix,
       carry,
@@ -398,8 +503,18 @@ export function analyzeSession(session: AgentSession): SessionAnalysis {
     };
   }
 
-  // Round trips.
-  const turnGroups = groupToolCallsByRequest(requests, toolCalls);
+  // Round trips — per agent, because each agent has its own request sequence
+  // and one global timestamp grouping would pool concurrent helpers' calls
+  // into whichever request happened to start last.
+  const agentKeys = [...new Set([...requests, ...toolCalls].map(agentKey))];
+  const groupsByAgent = new Map<string, SessionToolCall[][]>();
+  for (const key of agentKeys) {
+    groupsByAgent.set(key, groupToolCallsByRequest(
+      requests.filter(r => agentKey(r) === key),
+      toolCalls.filter(c => agentKey(c) === key),
+    ));
+  }
+  const turnGroups = [...groupsByAgent.values()].flat();
   const singleCallTurns = turnGroups.filter(g => g.length === 1).length;
   const roundTrips: RoundTripStats = {
     toolCalls: toolCalls.length,
@@ -410,27 +525,57 @@ export function analyzeSession(session: AgentSession): SessionAnalysis {
     parallelTurns: turnGroups.length - singleCallTurns,
     parallelShare: turnGroups.length > 0 ? (turnGroups.length - singleCallTurns) / turnGroups.length : 0,
     callsPerToolTurn: turnGroups.length > 0 ? toolCalls.length / turnGroups.length : 0,
-    pluralOpportunities: pluralOpportunities(turnGroups),
+    pluralOpportunities: [...groupsByAgent.values()].flatMap(g => pluralOpportunities(g)),
   };
+
+  // Per-agent table.
+  const agents: AgentStat[] = [];
+  if (session.agents && session.agents.length > 1) {
+    for (const agent of session.agents) {
+      const reqs = requests.filter(r => agentKey(r) === agent.id);
+      const calls = toolCalls.filter(c => agentKey(c) === agent.id);
+      const groups = groupToolCallsByRequest(reqs, calls);
+      agents.push({
+        id: agent.id,
+        type: agent.type,
+        spawnDepth: agent.spawnDepth,
+        requests: reqs.length,
+        toolCalls: calls.length,
+        toolTurns: groups.length,
+        singleCallTurns: groups.filter(g => g.length === 1).length,
+        inputTokens: reqs.reduce((s, r) => s + r.inputTokens, 0),
+        cachedTokens: reqs.reduce((s, r) => s + r.cachedTokens, 0),
+        cacheWriteTokens: reqs.reduce((s, r) => s + (r.cacheWriteTokens ?? 0), 0),
+        outputTokens: reqs.reduce((s, r) => s + r.outputTokens, 0),
+        cost: costMode === 'none' ? null : reqs.reduce((s, r) => s + (r.cost ?? 0), 0),
+      });
+    }
+  }
 
   // Per-tool table.
   const byTool = new Map<string, ToolStat>();
   for (const call of toolCalls) {
     let stat = byTool.get(call.name);
     if (!stat) {
-      stat = { name: call.name, calls: 0, serverMs: 0, resultTokens: 0, carry: fit.usable ? 0 : null, truncatedResults: 0, failures: 0 };
+      stat = {
+        name: call.name, calls: 0, serverMs: 0, resultTokens: 0, carryTokens: 0,
+        carry: fit.usable ? 0 : null, truncatedResults: 0, failures: 0,
+      };
       byTool.set(call.name, stat);
     }
+    const later = laterBilled(agentKey(call), call.ts);
     stat.calls++;
     stat.serverMs += call.durationMs;
     stat.resultTokens += resultTokens(call);
+    stat.carryTokens += resultTokens(call) * later;
     if (stat.carry !== null && fit.rates) {
-      stat.carry += (resultTokens(call) / TOKENS_PER_MTOK) * fit.rates.cached * laterBilled(call.ts);
+      stat.carry += (resultTokens(call) / TOKENS_PER_MTOK) * fit.rates.cached * later;
     }
     if (session.resultTruncationCap !== null && call.resultChars >= session.resultTruncationCap) stat.truncatedResults++;
     if (call.failed) stat.failures++;
   }
-  const tools = [...byTool.values()].sort((a, b) => (b.carry ?? b.resultTokens) - (a.carry ?? a.resultTokens));
+  const sortKey = (t: ToolStat): number => costMode === 'none' ? t.carryTokens : (t.carry ?? t.resultTokens);
+  const tools = [...byTool.values()].sort((a, b) => sortKey(b) - sortKey(a));
 
   const truncatedResults = tools.reduce((sum, t) => sum + t.truncatedResults, 0);
   if (truncatedResults > 0) {
@@ -449,13 +594,16 @@ export function analyzeSession(session: AgentSession): SessionAnalysis {
     format: session.format,
     sessionId: session.sessionId,
     costUnit: session.costUnit,
+    costMode,
+    durationKind: session.toolDurationKind,
     totals: {
       cost: totalCost,
       requests: requests.length,
-      billedRequests: billed.length,
-      unbilledRequests: unbilled,
+      billedRequests: costMode === 'none' ? 0 : billed.length,
+      unbilledRequests: costMode === 'none' ? 0 : unbilled,
       inputTokens: requests.reduce((s, r) => s + r.inputTokens, 0),
       cachedTokens: requests.reduce((s, r) => s + r.cachedTokens, 0),
+      cacheWriteTokens: requests.reduce((s, r) => s + (r.cacheWriteTokens ?? 0), 0),
       outputTokens: requests.reduce((s, r) => s + r.outputTokens, 0),
       wallMs,
     },
@@ -463,6 +611,7 @@ export function analyzeSession(session: AgentSession): SessionAnalysis {
     fit,
     attribution,
     roundTrips,
+    agents,
     tools,
     truncation: { cap: session.resultTruncationCap, results: truncatedResults },
     failures,

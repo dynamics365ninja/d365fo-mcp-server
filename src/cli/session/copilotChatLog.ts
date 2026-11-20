@@ -158,6 +158,7 @@ export function readCopilotChatLog(lines: string[]): AgentSession {
     format: 'copilot-chat/main.jsonl',
     sessionId,
     costUnit: 'AIU',
+    toolDurationKind: 'server',
     requests,
     toolCalls,
     turns,

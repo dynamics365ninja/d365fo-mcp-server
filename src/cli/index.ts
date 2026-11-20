@@ -66,12 +66,14 @@ program.command('doctor')
   .action(doctorCommand);
 
 program.command('session')
-  .argument('[log]', 'agent-host debug log (Copilot Chat: …/GitHub.copilot-chat/debug-logs/<id>/main.jsonl)')
+  .argument('[log]', 'agent-host log (Copilot Chat: …/debug-logs/<id>/main.jsonl; Claude Code: ~/.claude/projects/<project>/<id>.jsonl)')
   .option('--json', 'machine-readable output, for tracking the number across releases')
   .option('--format <id>', `force a log format instead of sniffing it (${KNOWN_FORMATS.join(', ')})`)
   .option('--top <n>', 'rows of the per-tool table to print (default 10)')
+  .option('--rates <list>', 'price the tokens: <cached>,<uncached>,<cacheWrite>,<output> per million (for hosts that record no cost)')
+  .option('--no-subagents', "Claude Code: leave out the helper agents' files next to the log")
   .description('Round-trip cost analysis of an agent session: fitted rates, attribution, wasted round trips')
-  .action((log: string | undefined, opts: { json?: boolean; format?: string; top?: string }) => sessionCommand(log, opts));
+  .action((log: string | undefined, opts: { json?: boolean; format?: string; top?: string; rates?: string; subagents?: boolean }) => sessionCommand(log, opts));
 
 program.command('start')
   .argument('[instance]', "instance name, or 'root' for the repo-level .env")

@@ -101,6 +101,12 @@ identifies where context actually accumulates.
 #   %APPDATA%/Code/User/workspaceStorage/*/GitHub.copilot-chat/debug-logs/<id>/main.jsonl
 npm run cli -- session <path-to-main.jsonl>
 npm run cli -- session <path-to-main.jsonl> --json   # for tracking across releases
+
+# Claude Code writes ~/.claude/projects/<project>/<sessionId>.jsonl, helper agents next to it
+# in <sessionId>/subagents/. It records tokens but no cost: tokens-only report, or add your own prices.
+npm run cli -- session <path-to-transcript.jsonl>
+npm run cli -- session <path-to-transcript.jsonl> --rates <cached>,<uncached>,<cacheWrite>,<output>
+npm run cli -- session <path-to-transcript.jsonl> --no-subagents
 ```
 
 ### The committed baseline
