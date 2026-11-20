@@ -356,7 +356,7 @@ describe('modify: an added child that is not in the saved file', () => {
 describe('modify: a removed child that is still in the saved file', () => {
   const removeField = () => modifyD365FileTool(
     modifyReq({
-      objectType: 'data-entity',
+      objectType: 'table',
       objectName: 'ContosoRentEquipmentEntity',
       operation: 'remove-field',
       fieldName: 'EquipmentId',

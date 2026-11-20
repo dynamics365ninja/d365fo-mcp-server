@@ -1405,6 +1405,15 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
         }
       }
 
+      // A project path that is not a .rnrproj file (auto-detection can resolve to the
+      // solution folder) is searched for the model's project instead of being read as a file.
+      if (projectPath && !/\.rnrproj$/i.test(projectPath)) {
+        const dir = projectPath;
+        const isDir = await fs.stat(dir).then(st => st.isDirectory(), () => false);
+        projectPath = isDir ? await ProjectFileFinder.findProjectInSolution(dir, model) : null;
+        if (!projectPath) console.error(`[create_label] no .rnrproj for model ${model} under ${dir}`);
+      }
+
       if (projectPath) {
         const pfm = new ProjectFileManager({ withinSolutionRoots: true });
         // Collect all languages that have an XML descriptor

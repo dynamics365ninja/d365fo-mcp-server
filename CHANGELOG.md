@@ -314,6 +314,19 @@ those are called out explicitly below.
   environment status in `get_workspace_info` is not done yet.
 
 ### Fixed
+- **`remove-field` on a data entity also removes the field's entry in the view's data-source
+  field list.** It took out the entity field only and left the matching
+  `AxQuerySimpleDataSourceField` under `ViewMetadata`, so the build failed with "Field 'X' does
+  not exist" and a second call said the field was not found. It now removes the entity field and
+  the data-source entry of the column it read (in `dataSourceName` only, if given), unless
+  another entity field still reads that column; an unmapped or computed field has no entry.
+  When only a leftover entry remains, the call removes entries named after the field in every
+  data source and says the field was already removed; with nothing left it reports "not
+  found". Fields still named by keys, field groups, ranges or mappings are listed in the reply.
+- **`labels` `action=create` with `addToProject=true` no longer fails with `EISDIR` when the
+  project path auto-detects to a folder.** A path that is not a `.rnrproj` file is now searched
+  for the model's project; if none is found the label is still created and the reply says the
+  project was not updated.
 - **Creating a model on UDE no longer narrows every later `custom` refresh to that model**
   (#1310). `d365fo_file(action="create", objectType="model-descriptor")` wrote the new model
   into `CUSTOM_MODELS`; on UDE an empty list means "every model under the custom root", while a

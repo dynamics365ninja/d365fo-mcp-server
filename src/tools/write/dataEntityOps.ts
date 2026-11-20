@@ -7,7 +7,7 @@
 import * as fs from 'fs/promises';
 import {
   directXmlAddDataEntityDataSource, directXmlAddDataEntityField, directXmlSetTableFieldProperties,
-  directXmlMakeEntityFieldComputed, directXmlAddDataEntityUnmappedField, viaXmlFallback,
+  directXmlMakeEntityFieldComputed, directXmlRemoveDataEntityField, directXmlAddDataEntityUnmappedField, viaXmlFallback,
 } from './directXmlWriters.js';
 import { renderOpSpec } from '../specs/d365foFileOpSpecs.js';
 import { z } from 'zod';
@@ -23,6 +23,13 @@ import {
 
 type Args = Record<string, any>;
 export type OpResult = { success: boolean; message: string; viaXmlFallback?: boolean } | null;
+
+/** remove-field on a data-entity: the field plus the data-source field entry it reads (only in dataSourceName, if given). */
+export async function entityRemoveField(filePath: string, args: Args): Promise<OpResult> {
+  if (!args.fieldName) return null;
+  const r = await directXmlRemoveDataEntityField(filePath, args.fieldName, args.dataSourceName);
+  return r ? viaXmlFallback(r) : null;
+}
 
 /** add-data-source on a data-entity: an embedded, joined query datasource. */
 export async function entityAddDataSource(filePath: string, args: Args): Promise<OpResult> {
