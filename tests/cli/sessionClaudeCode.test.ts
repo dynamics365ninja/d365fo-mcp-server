@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { analyzeSession, priceSession } from '../../src/cli/session/analyze.js';
+import { analyzeSession, mcpServerOf, priceSession } from '../../src/cli/session/analyze.js';
 import { readSessionLog } from '../../src/cli/session/sessionLog.js';
 import { parseRates } from '../../src/cli/commands/session.js';
 
@@ -140,7 +140,7 @@ describe('claude code reader', () => {
     expect(session.requests).toHaveLength(3);
   });
 
-  it('counts a tool call copied into a resumed file once, across the main file and a helper file', () => {
+  it('counts a tool call once when it appears on several lines, across the main file and a helper file', () => {
     const copiedCall = assistantLine('msg_1', 1, toolUse('tu_1'), { input: 10, read: 1000, out: 50 });
     const copiedResult = resultLine('tu_1', 3, 'x'.repeat(400));
     const main = writeMain([...basicSession(), copiedCall, copiedResult]);
@@ -210,6 +210,17 @@ describe('claude code reader', () => {
     expect(session.turns).toBe(1);
   });
 
+  it('ignores the request copies Claude Code writes as api-request-blob lines', () => {
+    // The copy repeats the tool calls and results of a request in one line of its own.
+    const blob = JSON.stringify({
+      type: 'api-request-blob', sessionId: 'session-1', hash: 'h1',
+      message: { content: [toolUse('tu_1'), toolUse('tu_9'), { type: 'tool_result', tool_use_id: 'tu_9', content: 'zz' }] },
+    });
+    const session = readSessionLog(writeMain([...basicSession(), blob]));
+    expect(session.requests).toHaveLength(3);
+    expect(session.toolCalls).toHaveLength(2);
+  });
+
   it('refuses a file that is not a transcript', () => {
     const file = writeMain([JSON.stringify({ hello: 'world' })]);
     expect(() => readSessionLog(file)).toThrow(/Unrecognised session log/);
@@ -258,7 +269,11 @@ describe('--rates', () => {
     expect(parseRates('0.5, 5,6.25,25')).toEqual({ cached: 0.5, uncached: 5, cacheWrite: 6.25, output: 25 });
   });
 
-  it.each(['1,2,3', '1,2,3,4,5', 'a,b,c,d', '1,2,,4', '1,2,3,-4', ''])('rejects %j', raw => {
+  it('takes an optional fifth number as the 1-hour cache-write rate', () => {
+    expect(parseRates('0.5,5,6.25,25,10')).toEqual({ cached: 0.5, uncached: 5, cacheWrite: 6.25, output: 25, cacheWrite1h: 10 });
+  });
+
+  it.each(['1,2,3', '1,2,3,4,5,6', 'a,b,c,d', '1,2,,4', '1,2,3,-4', '1,2,3,4,-5', ''])('rejects %j', raw => {
     expect(() => parseRates(raw)).toThrow(/Invalid --rates/);
   });
 
@@ -269,6 +284,27 @@ describe('--rates', () => {
     const priced = priceSession(session, { cached: 1, uncached: 10, cacheWrite: 20, output: 100 });
     // (2000×1 + 100×10 + 300×20 + 40×100) per Mtok
     expect(priced.requests[0].cost).toBeCloseTo((2000 + 1000 + 6000 + 4000) / 1e6, 10);
+  });
+
+  it('prices 1-hour cache writes at the fifth rate, and at the cache-write rate without one', () => {
+    const line = JSON.stringify({
+      type: 'assistant', sessionId: 'session-1', timestamp: iso(1),
+      message: {
+        id: 'msg_1', model: 'claude-test-model', role: 'assistant', content: [{ type: 'text', text: 'hi' }],
+        usage: {
+          ...usage({ input: 0, read: 0, write: 300, out: 0 }),
+          cache_creation: { ephemeral_5m_input_tokens: 100, ephemeral_1h_input_tokens: 200 },
+        },
+      },
+    });
+    const session = readSessionLog(writeMain([line]));
+    expect(session.requests[0].cacheWriteTokens).toBe(300);
+    expect(session.requests[0].cacheWrite1hTokens).toBe(200);
+    expect(analyzeSession(session).totals.cacheWrite1hTokens).toBe(200);
+
+    const base = { cached: 1, uncached: 10, cacheWrite: 20, output: 100 };
+    expect(priceSession(session, { ...base, cacheWrite1h: 32 }).requests[0].cost).toBeCloseTo((100 * 20 + 200 * 32) / 1e6, 10);
+    expect(priceSession(session, base).requests[0].cost).toBeCloseTo((300 * 20) / 1e6, 10);
   });
 
   it('turns a tokens-only session into a priced one with a full attribution', () => {
@@ -357,6 +393,113 @@ describe('helper agents', () => {
   });
 });
 
+describe('round trips per MCP server', () => {
+  it.each([
+    ['mcp__d365fo__search', 'd365fo'],
+    ['mcp__d365fo-mcp-tools__get_object_info', 'd365fo-mcp-tools'],
+    ['mcp__plugin_contoso-agents_microsoft-learn__microsoft_docs_search', 'plugin_contoso-agents_microsoft-learn'],
+    ['mcp_d365fo-mcp-tools_get_object_info', 'd365fo-mcp-tools'],
+    ['Read', null],
+    ['Agent', null],
+  ])('names the server of %j', (name, server) => {
+    expect(mcpServerOf(name)).toBe(server);
+  });
+
+  it("counts only the turns that called the server, single meaning one call in the whole turn", () => {
+    const a = analyzeSession(readSessionLogOf([
+      promptLine(0),
+      // Two host-only single-call turns: they count in the overall figure, not the server's.
+      assistantLine('msg_1', 1, toolUse('tu_1', 'Read'), { input: 1, read: 100, out: 5 }),
+      resultLine('tu_1', 2, 'a'),
+      assistantLine('msg_2', 3, toolUse('tu_2', 'Grep'), { input: 1, read: 100, out: 5 }),
+      resultLine('tu_2', 4, 'b'),
+      // A server call on its own: single.
+      assistantLine('msg_3', 5, toolUse('tu_3'), { input: 1, read: 100, out: 5 }),
+      resultLine('tu_3', 6, 'c'),
+      // A server call next to a file read: one turn, not single.
+      assistantLine('msg_4', 7, toolUse('tu_4'), { input: 1, read: 100, out: 5 }),
+      assistantLine('msg_4', 7, toolUse('tu_5', 'Read'), { input: 1, read: 100, out: 5 }),
+      resultLine('tu_4', 8, 'd'),
+      resultLine('tu_5', 8, 'e'),
+      // Two server calls batched: not single.
+      assistantLine('msg_5', 9, toolUse('tu_6'), { input: 1, read: 100, out: 5 }),
+      assistantLine('msg_5', 9, toolUse('tu_7'), { input: 1, read: 100, out: 5 }),
+      resultLine('tu_6', 10, 'f'),
+      resultLine('tu_7', 10, 'g'),
+    ]));
+    expect(a.roundTrips.toolTurns).toBe(5);
+    expect(a.roundTrips.singleCallTurns).toBe(3);
+    expect(a.roundTrips.byServer).toEqual([
+      { server: 'd365fo', calls: 4, toolTurns: 3, singleCallTurns: 1, singleCallShare: 1 / 3 },
+    ]);
+  });
+
+  it('is empty when no MCP server was called', () => {
+    const a = analyzeSession(readSessionLogOf([
+      assistantLine('msg_1', 1, toolUse('tu_1', 'Read'), { input: 1, read: 100, out: 5 }),
+      resultLine('tu_1', 2, 'a'),
+    ]));
+    expect(a.roundTrips.byServer).toEqual([]);
+  });
+});
+
+describe("the host's recorded session total (cost-state)", () => {
+  /** A running total, as Claude Code writes it: `inputTokens` is the uncached part only. */
+  const costState = (cost: number, u: { input: number; read: number; write: number; write1h?: number; out: number }) =>
+    JSON.stringify({
+      type: 'cost-state', sessionId: 'session-1', totalCostUSD: cost,
+      modelUsage: {
+        'claude-test-model': {
+          inputTokens: u.input, outputTokens: u.out, cacheReadInputTokens: u.read,
+          cacheCreationInputTokens: u.write, cacheCreationEphemeral1hInputTokens: u.write1h ?? 0, costUSD: cost,
+        },
+      },
+    });
+
+  it('reads the last cost-state line as the recorded total, prompt rebuilt as a whole', () => {
+    const session = readSessionLog(writeMain([
+      ...basicSession(),
+      costState(0.5, { input: 1, read: 10, write: 1, out: 1 }),
+      costState(1.25, { input: 40, read: 4200, write: 200, write1h: 50, out: 150 }),
+    ]));
+    expect(session.recorded).toEqual({
+      cost: 1.25, unit: 'USD',
+      inputTokens: 40 + 4200 + 200, cachedTokens: 4200, cacheWriteTokens: 200, cacheWrite1hTokens: 50, outputTokens: 150,
+    });
+    // Not per request: the requests stay unpriced and the report stays tokens only.
+    expect(session.requests.every(r => r.cost === null)).toBe(true);
+    expect(analyzeSession(session).costMode).toBe('none');
+  });
+
+  it('reports full coverage and no warning when the requests account for the whole total', () => {
+    const a = analyzeSession(readSessionLogOf([...basicSession(), costState(1.25, { input: 35, read: 4200, write: 200, out: 150 })]));
+    expect(a.recorded!.coverage).toEqual({ cachedTokens: 1, cacheWriteTokens: 1, outputTokens: 1 });
+    expect(a.warnings).toEqual([]);
+  });
+
+  it('warns when the host recorded more than the requests in the log show', () => {
+    const a = analyzeSession(readSessionLogOf([...basicSession(), costState(2, { input: 500, read: 6000, write: 200, out: 150 })]));
+    expect(a.recorded!.coverage.cachedTokens).toBeCloseTo(4200 / 6000, 10);
+    expect(a.warnings).toHaveLength(1);
+    expect(a.warnings[0]).toMatch(/70 % of the cache reads the host recorded .*2\.00 USD.*understate/);
+  });
+
+  it('is left out when the helpers are left out, because the total includes them', () => {
+    const main = writeMain([...basicSession(), costState(1, { input: 1, read: 1, write: 1, out: 1 })]);
+    expect(readSessionLog(main, undefined, { subagents: false }).recorded).toBeUndefined();
+    expect(analyzeSession(readSessionLog(main, undefined, { subagents: false })).recorded).toBeNull();
+  });
+
+  it("ignores a helper file's cost-state line: the main file's total already covers it", () => {
+    const main = writeMain(basicSession());
+    writeHelper(main, 'dddd4444', [
+      assistantLine('msg_h1', 2, { type: 'text', text: 'x' }, { input: 1, read: 10, out: 1 }),
+      costState(9, { input: 1, read: 10, write: 0, out: 1 }),
+    ]);
+    expect(readSessionLog(main).recorded).toBeUndefined();
+  });
+});
+
 describe('copilot logs are unchanged by the new fields', () => {
   it('still reads as server-timed, with no agents and no cache writes', () => {
     const session = readSessionLog(path.resolve(__dirname, 'fixtures/copilot-session.redacted.jsonl'));
@@ -366,6 +509,8 @@ describe('copilot logs are unchanged by the new fields', () => {
     expect(a.costMode).toBe('fitted');
     expect(a.agents).toEqual([]);
     expect(a.totals.cacheWriteTokens).toBe(0);
+    expect(a.totals.cacheWrite1hTokens).toBe(0);
+    expect(a.recorded).toBeNull();
     expect(a.attribution!.cacheWrite).toBe(0);
   });
 });

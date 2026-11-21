@@ -14,6 +14,9 @@
  * produce is unavailable, which a release-tracking script must notice. A host
  * that records no cost at all (Claude Code) and a run without --rates is not a
  * refusal: it is a tokens-only report, complete as far as it goes, exit 0.
+ * Claude Code does keep a session total (`cost-state`); it is shown next to
+ * the report as the host's recorded figure, not fitted, so the exit code does
+ * not depend on it.
  */
 import { basename } from 'node:path';
 import { p } from '../ui.js';
@@ -25,7 +28,7 @@ interface SessionOptions {
   format?: string;
   /** How many rows of the per-tool table to print. */
   top?: string;
-  /** '<cached>,<uncached>,<cacheWrite>,<output>' per Mtok. */
+  /** '<cached>,<uncached>,<cacheWrite>,<output>[,<cacheWrite1h>]' per Mtok. */
   rates?: string;
   /** Commander sets false for --no-subagents. */
   subagents?: boolean;
@@ -33,19 +36,21 @@ interface SessionOptions {
 
 /**
  * Parse --rates. Strict on purpose: a silently misread rate is a confident
- * wrong cost, and with four positional numbers a missing one shifts the rest.
+ * wrong cost, and with positional numbers a missing one shifts the rest. The
+ * optional fifth is the 1-hour cache write; without it every cache write is
+ * priced at `<cacheWrite>`, as before.
  */
 export function parseRates(raw: string): CostRates {
   const parts = raw.split(',').map(x => x.trim());
   const values = parts.map(x => (x === '' ? NaN : Number(x)));
-  if (parts.length !== 4 || values.some(v => !Number.isFinite(v) || v < 0)) {
+  if ((parts.length !== 4 && parts.length !== 5) || values.some(v => !Number.isFinite(v) || v < 0)) {
     throw new Error(
-      `Invalid --rates '${raw}': expected four non-negative numbers, ` +
-      '<cached>,<uncached>,<cacheWrite>,<output> per million tokens, e.g. --rates 0.5,5,6.25,25',
+      `Invalid --rates '${raw}': expected four or five non-negative numbers, ` +
+      '<cached>,<uncached>,<cacheWrite>,<output>[,<cacheWrite1h>] per million tokens, e.g. --rates 0.5,5,6.25,25,10',
     );
   }
-  const [cached, uncached, cacheWrite, output] = values;
-  return { cached, uncached, cacheWrite, output };
+  const [cached, uncached, cacheWrite, output, cacheWrite1h] = values;
+  return { cached, uncached, cacheWrite, output, ...(cacheWrite1h !== undefined ? { cacheWrite1h } : {}) };
 }
 
 const DEFAULT_TOP = 10;
@@ -62,6 +67,13 @@ function int(value: number): string {
   return Math.round(value).toLocaleString('en-US');
 }
 
+/** The host's own session total, and how much of its cache reads the log's requests show. */
+function recordedLine(r: NonNullable<SessionAnalysis['recorded']>): string {
+  const reads = r.coverage.cachedTokens;
+  return `recorded      ${r.cost.toFixed(2)} ${r.unit} by the host` +
+    (reads !== null ? ` (log holds ${(reads * 100).toFixed(0)} % of its cache reads)` : '');
+}
+
 function overviewNote(a: SessionAnalysis): string {
   const lines = [
     `format        ${a.format}`,
@@ -76,6 +88,7 @@ function overviewNote(a: SessionAnalysis): string {
     `prompt sent   ${int(a.totals.inputTokens)} tokens, ${int(a.totals.cachedTokens)} of them from cache` +
       (a.totals.cacheWriteTokens > 0 ? `, ${int(a.totals.cacheWriteTokens)} cache-written` : ''),
     `written       ${int(a.totals.outputTokens)} tokens`,
+    ...(a.recorded ? [recordedLine(a.recorded)] : []),
     `wall time     ${(a.totals.wallMs / 60000).toFixed(1)} min`,
     ...(a.agents.length > 1 ? [`agents        ${a.agents.length} (main + ${a.agents.length - 1} helper(s))`] : []),
   ];
@@ -86,7 +99,9 @@ function fitNote(a: SessionAnalysis): string {
   const r = a.fit.rates;
   if (a.costMode === 'given' && r) {
     return [
-      `rates         ${r.cached} cached / ${r.uncached} uncached / ${r.cacheWrite ?? 0} cache write / ${r.output} output per Mtok (--rates)`,
+      `rates         ${r.cached} cached / ${r.uncached} uncached / ${r.cacheWrite ?? 0} cache write` +
+        (r.cacheWrite1h !== undefined ? ` (${r.cacheWrite1h} for 1-hour)` : '') +
+        ` / ${r.output} output per Mtok (--rates)`,
       'cost          priced from these rates — no fit, so no residual to check',
     ].join('\n');
   }
@@ -130,12 +145,14 @@ function tokenNote(a: SessionAnalysis): string {
   return [
     `prompt total ${int(t.inputTokens).padStart(12)}  every request re-sends its context`,
     `  cache read ${share(t.cachedTokens)}  context re-read from the cache`,
-    `  cache write${share(t.cacheWriteTokens)}`,
+    `  cache write${share(t.cacheWriteTokens)}` +
+      (t.cacheWrite1hTokens > 0 ? `  ${int(t.cacheWrite1hTokens)} of them 1-hour` : ''),
     `  uncached   ${share(uncached)}  genuinely new prompt tokens`,
     `output       ${int(t.outputTokens).padStart(12)}  tokens the model wrote`,
     '',
-    'No cost is recorded by this host. Pass --rates <cached>,<uncached>,<cacheWrite>,<output>',
-    '(per million tokens) to price these tokens.',
+    'No cost per request is recorded by this host. Pass',
+    '--rates <cached>,<uncached>,<cacheWrite>,<output>[,<cacheWrite1h>] (per million tokens)',
+    'to price these tokens.',
   ].join('\n');
 }
 
@@ -165,6 +182,14 @@ function roundTripNote(a: SessionAnalysis): string {
     `single-call  ${rt.singleCallTurns} of ${rt.toolTurns} turns (${pct(rt.singleCallShare)}) issued exactly ONE call`,
     `parallel     ${rt.parallelTurns} of ${rt.toolTurns} turns (${pct(rt.parallelShare)}) batched 2+ calls`,
   ];
+  // The lines above count the host's own tools too; these are the turns each
+  // MCP server was part of, which is what a change to that server can move.
+  if (rt.byServer.length > 0) {
+    lines.push('per MCP server, single-call among the turns that called it:');
+    for (const s of rt.byServer) {
+      lines.push(`  ${s.server.slice(0, 30).padEnd(30)} ${s.singleCallTurns} of ${s.toolTurns} (${pct(s.singleCallShare)})`);
+    }
+  }
   if (a.attribution) {
     // The single-call turns are the round-trip waste #824 named; pricing them
     // at the floor says what batching them would have been worth.
@@ -277,7 +302,7 @@ function printHuman(a: SessionAnalysis, logPath: string, top: number): void {
 
 export async function sessionCommand(logPath: string | undefined, opts: SessionOptions = {}): Promise<void> {
   if (!logPath) {
-    p.log.error('Usage: d365fo-mcp session <log> [--json] [--format <id>] [--rates <cached>,<uncached>,<cacheWrite>,<output>] [--no-subagents]');
+    p.log.error('Usage: d365fo-mcp session <log> [--json] [--format <id>] [--rates <cached>,<uncached>,<cacheWrite>,<output>[,<cacheWrite1h>]] [--no-subagents]');
     p.log.info(`Known formats: ${KNOWN_FORMATS.join(', ')}`);
     process.exitCode = 1;
     return;
