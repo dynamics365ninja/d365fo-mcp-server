@@ -14,7 +14,7 @@
  * attribution at all. `CostFit.refusal` carries the reason and every consumer
  * must check `usable` before reading rates.
  */
-import type { AgentSession, SessionRequest, SessionToolCall } from './sessionLog.js';
+import type { AgentSession, RecordedTotals, SessionRequest, SessionToolCall } from './sessionLog.js';
 
 /** Rates are expressed per million tokens, which is how every provider quotes them. */
 const TOKENS_PER_MTOK = 1e6;
@@ -62,7 +62,15 @@ export interface CostRates {
   output: number;
   /** Cache writes. Only rates given with `--rates` carry it; a fit has no such column to solve for. */
   cacheWrite?: number;
+  /** 1-hour cache writes, where the host splits them out. Absent: priced at `cacheWrite`. */
+  cacheWrite1h?: number;
 }
+
+/**
+ * Below this share of a recorded total, the per-request figures leave out
+ * enough of the session to say so. Rounding alone stays well inside it.
+ */
+const MIN_RECORDED_COVERAGE = 0.95;
 
 /**
  * Where the rates come from. 'fitted' solves them from the host's recorded
@@ -81,6 +89,14 @@ function uncachedOf(r: SessionRequest): number {
   return r.inputTokens - r.cachedTokens - (r.cacheWriteTokens ?? 0);
 }
 
+/** Cache-write cost per Mtok-scaled token count: 1-hour writes at their own rate when one is given. */
+function cacheWriteCost(r: SessionRequest, rates: CostRates): number {
+  const all = r.cacheWriteTokens ?? 0;
+  const oneHour = Math.min(r.cacheWrite1hTokens ?? 0, all);
+  const rate = rates.cacheWrite ?? 0;
+  return (all - oneHour) * rate + oneHour * (rates.cacheWrite1h ?? rate);
+}
+
 /** Same tokens, priced with the given rates: the cost a host that records none would have charged. */
 export function priceSession(session: AgentSession, rates: CostRates): AgentSession {
   return {
@@ -91,7 +107,7 @@ export function priceSession(session: AgentSession, rates: CostRates): AgentSess
       cost: (
         r.cachedTokens * rates.cached
         + uncachedOf(r) * rates.uncached
-        + (r.cacheWriteTokens ?? 0) * (rates.cacheWrite ?? 0)
+        + cacheWriteCost(r, rates)
         + r.outputTokens * rates.output
       ) / TOKENS_PER_MTOK,
     })),
@@ -142,6 +158,27 @@ export interface RoundTripStats {
   callsPerToolTurn: number;
   /** Runs of consecutive turns that each reached for the same pluralisable tool. */
   pluralOpportunities: Array<{ tool: string; turns: number; calls: number; wastedRoundTrips: number }>;
+  /**
+   * The same counts for the tool-turns that called each MCP server. The figures
+   * above include the host's own tools (file reads, searches, helper agents),
+   * which in a Claude Code session are most of the calls; this is the part a
+   * server's own changes can move.
+   */
+  byServer: ServerRoundTrips[];
+}
+
+/**
+ * Round trips for one MCP server: the tool-turns that called it at least once.
+ * A single-call turn here is the same as above — the turn issued exactly one
+ * call in total — so a turn that called this server alongside a file read is
+ * not counted as single.
+ */
+export interface ServerRoundTrips {
+  server: string;
+  calls: number;
+  toolTurns: number;
+  singleCallTurns: number;
+  singleCallShare: number;
 }
 
 export interface ToolStat {
@@ -156,6 +193,19 @@ export interface ToolStat {
   carry: number | null;
   truncatedResults: number;
   failures: number;
+}
+
+/**
+ * The host's own session total, and how much of it the per-request figures
+ * account for. Coverage is per-request tokens ÷ recorded tokens, per class;
+ * null for a class the host recorded none of.
+ */
+export interface RecordedSummary extends RecordedTotals {
+  coverage: {
+    cachedTokens: number | null;
+    cacheWriteTokens: number | null;
+    outputTokens: number | null;
+  };
 }
 
 /** One row per agent of a multi-agent session; empty when the log cannot tell agents apart. */
@@ -192,9 +242,13 @@ export interface SessionAnalysis {
     inputTokens: number;
     cachedTokens: number;
     cacheWriteTokens: number;
+    /** The 1-hour part of `cacheWriteTokens`; 0 when the host does not split them. */
+    cacheWrite1hTokens: number;
     outputTokens: number;
     wallMs: number;
   };
+  /** The host's own session total (Claude Code's `cost-state`); null when it keeps none. */
+  recorded: RecordedSummary | null;
   models: string[];
   fit: CostFit;
   /** Null exactly when `fit.usable` is false. */
@@ -351,6 +405,44 @@ export function groupToolCallsByRequest(
   return [...groups.entries()].sort((a, b) => a[0] - b[0]).map(e => e[1]);
 }
 
+/**
+ * The MCP server a tool belongs to, from the name the host logged; null for the
+ * host's own tools. Claude Code writes `mcp__<server>__<tool>`, where a
+ * plugin-bundled server's name itself has single underscores
+ * (`mcp__plugin_<plugin>_<server>__<tool>`); Copilot writes `mcp_<server>_<tool>`.
+ */
+export function mcpServerOf(name: string): string | null {
+  const claude = /^mcp__(.+?)__./.exec(name);
+  if (claude) return claude[1];
+  const copilot = /^mcp_([A-Za-z0-9-]+)_./.exec(name);
+  return copilot ? copilot[1] : null;
+}
+
+/** Round trips per MCP server, over the tool-turns already grouped per agent. */
+function roundTripsByServer(turnGroups: SessionToolCall[][]): ServerRoundTrips[] {
+  const byServer = new Map<string, ServerRoundTrips>();
+  for (const group of turnGroups) {
+    const servers = new Map<string, number>();
+    for (const call of group) {
+      const server = mcpServerOf(call.name);
+      if (server) servers.set(server, (servers.get(server) ?? 0) + 1);
+    }
+    for (const [server, calls] of servers) {
+      let stat = byServer.get(server);
+      if (!stat) {
+        stat = { server, calls: 0, toolTurns: 0, singleCallTurns: 0, singleCallShare: 0 };
+        byServer.set(server, stat);
+      }
+      stat.calls += calls;
+      stat.toolTurns++;
+      if (group.length === 1) stat.singleCallTurns++;
+    }
+  }
+  const out = [...byServer.values()];
+  for (const s of out) s.singleCallShare = s.toolTurns > 0 ? s.singleCallTurns / s.toolTurns : 0;
+  return out.sort((a, b) => b.calls - a.calls);
+}
+
 /** Strip the host's `mcp_<server>_` prefix so tool names match our own schema names. */
 function bareToolName(name: string): string {
   // Copilot writes `mcp_<server>_<tool>`, Claude Code `mcp__<server>__<tool>`.
@@ -394,6 +486,8 @@ function pluralOpportunities(turnGroups: SessionToolCall[][]): RoundTripStats['p
 
 const agentKey = (x: { agent?: string }): string => x.agent ?? 'main';
 
+const pct0 = (value: number): string => `${Math.round(value * 100)} %`;
+
 export function analyzeSession(input: AgentSession, opts: AnalyzeOptions = {}): SessionAnalysis {
   // Given rates price every request themselves and replace whatever the host
   // recorded — the only way to get a cost out of a host that records none.
@@ -415,7 +509,7 @@ export function analyzeSession(input: AgentSession, opts: AnalyzeOptions = {}): 
   } else if (costMode === 'none') {
     fit = {
       usable: false, rates: null, rmse: null, relativeRmse: null, sampleSize: 0,
-      refusal: 'this host records no cost — pass --rates <cached>,<uncached>,<cacheWrite>,<output> to price the tokens',
+      refusal: 'this host records no cost per request — pass --rates <cached>,<uncached>,<cacheWrite>,<output>[,<cacheWrite1h>] to price the tokens',
     };
   } else {
     fit = fitCostModel(requests);
@@ -467,7 +561,7 @@ export function analyzeSession(input: AgentSession, opts: AnalyzeOptions = {}): 
     for (const r of billed) {
       cachedInput += (r.cachedTokens / TOKENS_PER_MTOK) * rate.cached;
       uncachedInput += (uncachedOf(r) / TOKENS_PER_MTOK) * rate.uncached;
-      cacheWrite += ((r.cacheWriteTokens ?? 0) / TOKENS_PER_MTOK) * (rate.cacheWrite ?? 0);
+      cacheWrite += cacheWriteCost(r, rate) / TOKENS_PER_MTOK;
       output += (r.outputTokens / TOKENS_PER_MTOK) * rate.output;
     }
     // The prompt prefix is measured as the FIRST billed request's whole input:
@@ -526,6 +620,7 @@ export function analyzeSession(input: AgentSession, opts: AnalyzeOptions = {}): 
     parallelShare: turnGroups.length > 0 ? (turnGroups.length - singleCallTurns) / turnGroups.length : 0,
     callsPerToolTurn: turnGroups.length > 0 ? toolCalls.length / turnGroups.length : 0,
     pluralOpportunities: [...groupsByAgent.values()].flatMap(g => pluralOpportunities(g)),
+    byServer: roundTripsByServer(turnGroups),
   };
 
   // Per-agent table.
@@ -590,6 +685,37 @@ export function analyzeSession(input: AgentSession, opts: AnalyzeOptions = {}): 
     .map(t => ({ name: t.name, count: t.failures }))
     .sort((a, b) => b.count - a.count);
 
+  const totalCached = requests.reduce((s, r) => s + r.cachedTokens, 0);
+  const totalCacheWrite = requests.reduce((s, r) => s + (r.cacheWriteTokens ?? 0), 0);
+  const totalOutput = requests.reduce((s, r) => s + r.outputTokens, 0);
+  let recorded: RecordedSummary | null = null;
+  if (session.recorded) {
+    const rec = session.recorded;
+    const share = (mine: number, theirs: number): number | null => (theirs > 0 ? mine / theirs : null);
+    recorded = {
+      ...rec,
+      coverage: {
+        cachedTokens: share(totalCached, rec.cachedTokens),
+        cacheWriteTokens: share(totalCacheWrite, rec.cacheWriteTokens),
+        outputTokens: share(totalOutput, rec.outputTokens),
+      },
+    };
+    // The host counts requests the log does not show; say so rather than let
+    // the per-request totals pass for the whole session.
+    const short = ([
+      ['cache reads', recorded.coverage.cachedTokens],
+      ['cache writes', recorded.coverage.cacheWriteTokens],
+      ['output', recorded.coverage.outputTokens],
+    ] as const).filter(([, c]) => c !== null && c < MIN_RECORDED_COVERAGE);
+    if (short.length > 0) {
+      warnings.push(
+        `the log's requests hold ${short.map(([name, c]) => `${pct0(c!)} of the ${name}`).join(', ')} ` +
+        `the host recorded for this session (${rec.cost.toFixed(2)} ${rec.unit}) — ` +
+        'token figures here, and any cost priced from them, understate the session',
+      );
+    }
+  }
+
   return {
     format: session.format,
     sessionId: session.sessionId,
@@ -602,11 +728,13 @@ export function analyzeSession(input: AgentSession, opts: AnalyzeOptions = {}): 
       billedRequests: costMode === 'none' ? 0 : billed.length,
       unbilledRequests: costMode === 'none' ? 0 : unbilled,
       inputTokens: requests.reduce((s, r) => s + r.inputTokens, 0),
-      cachedTokens: requests.reduce((s, r) => s + r.cachedTokens, 0),
-      cacheWriteTokens: requests.reduce((s, r) => s + (r.cacheWriteTokens ?? 0), 0),
-      outputTokens: requests.reduce((s, r) => s + r.outputTokens, 0),
+      cachedTokens: totalCached,
+      cacheWriteTokens: totalCacheWrite,
+      cacheWrite1hTokens: requests.reduce((s, r) => s + (r.cacheWrite1hTokens ?? 0), 0),
+      outputTokens: totalOutput,
       wallMs,
     },
+    recorded,
     models: [...new Set(requests.map(r => r.model))],
     fit,
     attribution,

@@ -70,7 +70,7 @@ program.command('session')
   .option('--json', 'machine-readable output, for tracking the number across releases')
   .option('--format <id>', `force a log format instead of sniffing it (${KNOWN_FORMATS.join(', ')})`)
   .option('--top <n>', 'rows of the per-tool table to print (default 10)')
-  .option('--rates <list>', 'price the tokens: <cached>,<uncached>,<cacheWrite>,<output> per million (for hosts that record no cost)')
+  .option('--rates <list>', 'price the tokens: <cached>,<uncached>,<cacheWrite>,<output>[,<cacheWrite1h>] per million (for hosts that record no cost per request)')
   .option('--no-subagents', "Claude Code: leave out the helper agents' files next to the log")
   .description('Round-trip cost analysis of an agent session: fitted rates, attribution, wasted round trips')
   .action((log: string | undefined, opts: { json?: boolean; format?: string; top?: string; rates?: string; subagents?: boolean }) => sessionCommand(log, opts));

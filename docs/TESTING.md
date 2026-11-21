@@ -103,9 +103,10 @@ npm run cli -- session <path-to-main.jsonl>
 npm run cli -- session <path-to-main.jsonl> --json   # for tracking across releases
 
 # Claude Code writes ~/.claude/projects/<project>/<sessionId>.jsonl, helper agents next to it
-# in <sessionId>/subagents/. It records tokens but no cost: tokens-only report, or add your own prices.
+# in <sessionId>/subagents/. No cost per request: tokens-only report, or add your own prices
+# (the session total Claude Code records, if any, is shown as "recorded").
 npm run cli -- session <path-to-transcript.jsonl>
-npm run cli -- session <path-to-transcript.jsonl> --rates <cached>,<uncached>,<cacheWrite>,<output>
+npm run cli -- session <path-to-transcript.jsonl> --rates <cached>,<uncached>,<cacheWrite>,<output>[,<cacheWrite1h>]
 npm run cli -- session <path-to-transcript.jsonl> --no-subagents
 ```
 
