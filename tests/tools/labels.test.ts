@@ -1922,7 +1922,7 @@ describe('labels dispatcher: action aliases + errors', () => {
       ctx,
     );
     expect(r.isError).toBe(true);
-    expect(r.content[0].text).toContain('search, info, create, update, rename, delete');
+    expect(r.content[0].text).toContain('search, info, list, create, update, rename, delete');
   });
 
   // A model whose en-US label file already contains MyExistingLabel.
@@ -2088,9 +2088,9 @@ describe('labels dispatcher: action aliases + errors', () => {
     expect(r.content[0].text).toContain('labelFileId');
   });
 
-  it('aliases action="list" to info (not rejected as invalid)', async () => {
-    // "list" is not a canonical action; the alias map rewrites it to "info" so
-    // safeParse succeeds and it dispatches instead of failing validation.
+  it('accepts action="list" (a real action now, no longer an alias of info)', async () => {
+    // "list" dispatches to list_labels; it must pass
+    // argument validation instead of failing it.
     let r: any;
     try {
       r = await labelsTool(
@@ -2103,6 +2103,8 @@ describe('labels dispatcher: action aliases + errors', () => {
       return;
     }
     expect(r.content?.[0]?.text ?? '').not.toContain('invalid arguments');
+    // Without labelFileId it explains how to list label files instead of a raw schema error.
+    expect(r.content?.[0]?.text ?? '').toContain('action="info"');
   });
 
   it('aliases search param searchText → query (does not fail as missing query)', async () => {

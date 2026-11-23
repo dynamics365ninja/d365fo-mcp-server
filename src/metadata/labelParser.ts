@@ -94,7 +94,8 @@ export function parseLabelFile(
 ): ParsedLabel[] {
   const labels: ParsedLabel[] = [];
   // Normalise line endings
-  const lines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  // A UTF-8 BOM (what Visual Studio writes) would otherwise become part of the first label's id.
+  const lines = content.replace(/^﻿/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
 
   let current: ParsedLabel | null = null;
 

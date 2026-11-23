@@ -76,7 +76,7 @@ import {
   paramCorrectionCandidates, canonicalParamForAlias, D365FO_FILE_OP_SPECS,
 } from '../specs/d365foFileOpSpecs.js';
 import { isPublishedDefault } from '../specs/opSpecs.js';
-import { applyOperationTags, modifyObjectTagsProperty, tagsOnlyResult } from './tagsApply.js';
+import { applyOperationTags, modifyObjectTagsProperty, securityPropertyRefusal, tagsOnlyResult } from './tagsApply.js';
 import { lookupSymbolNocase } from '../../utils/symbolLookup.js';
 import { isValidModuleReferenceName } from '../../metadata/modelDescriptor.js';
 import { decodeXmlEntitiesFromXppSource } from '../../utils/xmlEscape.js';
@@ -2693,6 +2693,8 @@ async function runModify(
         if (args.propertyPath && args.propertyValue !== undefined) {
           const tagsWrite = await modifyObjectTagsProperty(actualFilePath, args as any);
           if (tagsWrite) { if (!tagsWrite.success) return { content: [{ type: 'text', text: tagsWrite.message }], isError: true }; bridgeResult = viaXmlFallback(tagsWrite); break; }
+          const secRefusal = securityPropertyRefusal(objectType, args.propertyPath, args as any);
+          if (secRefusal) return { content: [{ type: 'text', text: secRefusal }], isError: true };
           // OperationalDomain / SubscriberAccessLevel on a table or menu item: XML only, never the bridge.
           const bpWrite = await directXmlSetBpAccessProperty(actualFilePath, objectType, objectName, args.propertyPath, args.propertyValue);
           if (bpWrite) { if (!bpWrite.success) return { content: [{ type: 'text', text: bpWrite.message }], isError: true }; bridgeResult = viaXmlFallback(bpWrite); break; }

@@ -1612,6 +1612,12 @@ const XML_ONLY_MODIFY_PAIRS: Record<string, ReadonlySet<string>> = {
   'remove-duty': new Set(['security-role', 'security-role-extension']),
   'add-privilege': new Set(['security-role', 'security-role-extension', 'security-duty', 'security-duty-extension']),
   'remove-privilege': new Set(['security-role', 'security-role-extension', 'security-duty', 'security-duty-extension']),
+  // Only propertyPath="Tags" is served (modifyObjectTagsProperty); the dispatcher refuses any
+  // other property on these types, since the bridge has no write path for security objects.
+  'modify-property': new Set([
+    'security-privilege', 'security-duty', 'security-role',
+    'security-duty-extension', 'security-role-extension',
+  ]),
   'remove-diagnostic-suppression': new Set(['ignore-diagnostic-list']),
   'add-diagnostic-suppression': new Set(['ignore-diagnostic-list']),
   'add-module-reference': new Set(['model-descriptor']),
