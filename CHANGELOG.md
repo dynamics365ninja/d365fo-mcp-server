@@ -29,6 +29,26 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`d365fo-mcp session` shows the session total Claude Code records, and prices 1-hour cache
+  writes at their own rate.** Newer Claude Code versions keep a running total for the whole
+  session, helper agents included: a `cost-state` line in the main transcript with the cost in
+  USD and the tokens per model. The report now shows it as the host's recorded figure, next to
+  the per-request figures and never mixed into them, with how much of it the requests in the log
+  account for. That total also counts requests the transcript does not write as assistant
+  messages, so when the log holds less than 95 % of a token class the report warns that its
+  figures understate the session. It is left out with `--no-subagents`, since it covers the
+  helpers. Cache writes have two lifetimes, 5 minutes and 1 hour, at different prices:
+  `--rates` takes an optional fifth value for 1-hour writes (read from each response's
+  `usage.cache_creation`); without it every write is priced at `<cacheWrite>`, as before.
+  `--json` gains `recorded` and `totals.cacheWrite1hTokens`; `schemaVersion` stays 1. Cost mode
+  and exit codes are unchanged (#1318).
+- **`d365fo-mcp session` counts round trips per MCP server.** The single-call share covers every
+  tool, the host's own included, and in a Claude Code session most calls are file reads,
+  searches and helper agents, which no server change can move. The round-trip section now adds
+  one line per MCP server: of the tool-turns that called it, how many issued exactly one call
+  (the same definition as the overall figure). The server is read from the logged tool name
+  (`mcp__<server>__<tool>`, `mcp_<server>_<tool>`). `--json` gains `roundTrips.byServer`;
+  `schemaVersion` stays 1. Copilot reports gain the same lines (#1318).
 - **`d365fo-mcp call` and `d365fo-mcp tools` run the server's tools from a shell.** Agents that
   work through a terminal instead of an MCP client, and scripts, had no way to reach the tools.
   `d365fo-mcp tools` lists a running server's tools, one line each, and `d365fo-mcp tools <name>`
@@ -57,6 +77,11 @@ those are called out explicitly below.
   `list-files` still is.
 
 ### Fixed
+- **Two statements about Claude Code transcripts in the 1.25.0 notes and docs.** A tool call that
+  appears on more than one line comes from the request copies Claude Code writes
+  (`api-request-blob` lines, already skipped), not from resumed sessions; and newer Claude Code
+  versions do record a session total (above), only no cost per request. The reader comment,
+  `docs/QUICK_START.md`, `docs/TESTING.md` and the CLI help now say so (#1318).
 - **`labels(action="search")` finds a label by a developer comment that contains a hyphen,
   such as a ticket tag (`TICKET-101`).** FTS5 rejects an unquoted hyphenated word, the search
   fell back to a LIKE scan, and that scan only compared label text and id, so the comment

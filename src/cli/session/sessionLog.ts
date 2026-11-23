@@ -30,6 +30,11 @@ export interface SessionRequest {
    * report it, Copilot among them.
    */
   cacheWriteTokens?: number;
+  /**
+   * The part of `cacheWriteTokens` written with the 1-hour lifetime, which is
+   * priced above a 5-minute write. Absent (= 0) when the host does not split them.
+   */
+  cacheWrite1hTokens?: number;
   outputTokens: number;
   /**
    * What the host says it was billed, in `costUnit`. `null` when the host
@@ -52,6 +57,23 @@ export interface SessionToolCall {
   resultChars: number;
   /** Content-based, deliberately narrow — see copilotChatLog.ts for why. */
   failed: boolean;
+}
+
+/**
+ * The host's own running total for the whole session, where it keeps one.
+ * It is one figure for the session, not per request, so it cannot be fitted;
+ * it is reported next to the per-request figures, and comparing the two shows
+ * how much of the session the log's requests account for.
+ */
+export interface RecordedTotals {
+  cost: number;
+  unit: string;
+  /** Whole prompt, as in `SessionRequest.inputTokens`: uncached + cache reads + cache writes. */
+  inputTokens: number;
+  cachedTokens: number;
+  cacheWriteTokens: number;
+  cacheWrite1hTokens: number;
+  outputTokens: number;
 }
 
 /** One agent of a multi-agent session: the main agent or a helper it started. */
@@ -86,6 +108,11 @@ export interface AgentSession {
    * is a LOWER BOUND once this is set.
    */
   resultTruncationCap: number | null;
+  /**
+   * The host's session total, when it keeps one and the whole session was read.
+   * Absent for Copilot (its cost is per request) and for a partial read.
+   */
+  recorded?: RecordedTotals;
 }
 
 export interface ReadOptions {

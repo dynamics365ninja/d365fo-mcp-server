@@ -16,31 +16,50 @@
  *     counted once per id. Where the repeats differ (a streamed response whose
  *     early lines carry a partial output count) the largest value per field is
  *     the final one.
- *  2. A resumed or continued session copies earlier tool calls and results into
- *     the new file. A tool call is counted once per `tool_use_id`, across the
- *     main file and every helper file.
+ *  2. The same tool call can appear on more than one line: Claude Code also
+ *     writes a copy of each request body (`api-request-blob` lines, ignored here
+ *     like every other bookkeeping line). A tool call is counted once per
+ *     `tool_use_id`, across the main file and every helper file.
  *  3. `input_tokens` is the UNCACHED part only. The shared shape's `inputTokens`
  *     is the whole prompt, so it is rebuilt as input + cache reads + cache
  *     writes — the other readers' definition, which analyze.ts relies on.
- *  4. The transcript records no cost and no server-side tool duration. Cost is
+ *  4. No cost per request, and no server-side tool duration. Request cost is
  *     left null (analyze.ts then reports tokens only, or prices them from
  *     `--rates`); the duration is the gap between the `tool_use` line and its
  *     `tool_result` line, which includes any permission prompt, hence the
- *     'wall' duration kind.
+ *     'wall' duration kind. Newer versions do keep a running total for the
+ *     whole session, helpers included: a `cost-state` line in the main file
+ *     (the last one wins) with the cost in USD and the tokens per model. It
+ *     also counts requests that are not written as assistant messages, so it
+ *     is reported as `recorded`, next to the per-request figures, never mixed
+ *     into them.
  *  5. Tool results are not truncated, so `resultTruncationCap` is null and
  *     carry figures are exact rather than lower bounds.
+ *  6. Cache writes have two lifetimes, 5 minutes and 1 hour, priced differently.
+ *     `usage.cache_creation` splits them; the 1-hour part is kept separately so
+ *     `--rates` can price it at its own rate.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type {
-  AgentSession, ReadContext, SessionAgent, SessionRequest, SessionToolCall,
+  AgentSession, ReadContext, RecordedTotals, SessionAgent, SessionRequest, SessionToolCall,
 } from './sessionLog.js';
 
 interface Usage {
   input_tokens?: unknown;
   cache_read_input_tokens?: unknown;
   cache_creation_input_tokens?: unknown;
+  cache_creation?: { ephemeral_1h_input_tokens?: unknown };
   output_tokens?: unknown;
+}
+
+/** Per-model totals in a `cost-state` line. `inputTokens` is the uncached part only, as in `usage`. */
+interface ModelUsage {
+  inputTokens?: unknown;
+  cacheReadInputTokens?: unknown;
+  cacheCreationInputTokens?: unknown;
+  cacheCreationEphemeral1hInputTokens?: unknown;
+  outputTokens?: unknown;
 }
 
 interface Block {
@@ -59,6 +78,9 @@ interface TranscriptLine {
   sessionId?: string;
   isMeta?: boolean;
   isSidechain?: boolean;
+  /** `cost-state` lines only. */
+  totalCostUSD?: unknown;
+  modelUsage?: Record<string, ModelUsage>;
   message?: {
     id?: string;
     model?: string;
@@ -161,7 +183,27 @@ interface RawRequest {
   input: number;
   cacheRead: number;
   cacheWrite: number;
+  cacheWrite1h: number;
   output: number;
+}
+
+/** The session total from a `cost-state` line, or null when the line is not usable. */
+function recordedTotals(line: TranscriptLine): RecordedTotals | null {
+  if (typeof line.totalCostUSD !== 'number' || !Number.isFinite(line.totalCostUSD)) return null;
+  const models = line.modelUsage && typeof line.modelUsage === 'object' ? Object.values(line.modelUsage) : [];
+  const sum = (field: keyof ModelUsage): number => models.reduce((s, m) => s + num(m?.[field]), 0);
+  const uncached = sum('inputTokens');
+  const cached = sum('cacheReadInputTokens');
+  const cacheWrite = sum('cacheCreationInputTokens');
+  return {
+    cost: line.totalCostUSD,
+    unit: 'USD',
+    inputTokens: uncached + cached + cacheWrite,
+    cachedTokens: cached,
+    cacheWriteTokens: cacheWrite,
+    cacheWrite1hTokens: sum('cacheCreationEphemeral1hInputTokens'),
+    outputTokens: sum('outputTokens'),
+  };
 }
 
 export function readClaudeCodeLog(lines: string[], ctx: ReadContext): AgentSession {
@@ -181,11 +223,18 @@ export function readClaudeCodeLog(lines: string[], ctx: ReadContext): AgentSessi
   const results = new Map<string, { ts: number; chars: number; failed: boolean }>();
   let sessionId: string | null = null;
   let turns = 0;
+  let recorded: RecordedTotals | null = null;
 
   for (const [sourceIndex, source] of sources.entries()) {
     const agent = source.agent.id;
     for (const [lineIndex, line] of parseLines(source.lines).entries()) {
       if (!sessionId && typeof line.sessionId === 'string') sessionId = line.sessionId;
+      // A running total: each line replaces the one before. Only the main file
+      // keeps it, and it already includes the helpers.
+      if (line.type === 'cost-state' && agent === 'main') {
+        recorded = recordedTotals(line) ?? recorded;
+        continue;
+      }
       const ts = time(line.timestamp);
       const msg = line.message;
       if (!msg || typeof msg !== 'object') continue;
@@ -201,6 +250,7 @@ export function readClaudeCodeLog(lines: string[], ctx: ReadContext): AgentSessi
             input: num(u.input_tokens),
             cacheRead: num(u.cache_read_input_tokens),
             cacheWrite: num(u.cache_creation_input_tokens),
+            cacheWrite1h: num(u.cache_creation?.ephemeral_1h_input_tokens),
             output: num(u.output_tokens),
           };
           if (seen) {
@@ -208,6 +258,7 @@ export function readClaudeCodeLog(lines: string[], ctx: ReadContext): AgentSessi
             seen.input = Math.max(seen.input, next.input);
             seen.cacheRead = Math.max(seen.cacheRead, next.cacheRead);
             seen.cacheWrite = Math.max(seen.cacheWrite, next.cacheWrite);
+            seen.cacheWrite1h = Math.max(seen.cacheWrite1h, next.cacheWrite1h);
             seen.output = Math.max(seen.output, next.output);
           } else {
             requests.set(key, { agent, ts, model: typeof msg.model === 'string' ? msg.model : 'unknown', ...next });
@@ -245,6 +296,7 @@ export function readClaudeCodeLog(lines: string[], ctx: ReadContext): AgentSessi
     inputTokens: r.input + r.cacheRead + r.cacheWrite,
     cachedTokens: r.cacheRead,
     cacheWriteTokens: r.cacheWrite,
+    cacheWrite1hTokens: Math.min(r.cacheWrite1h, r.cacheWrite),
     outputTokens: r.output,
     cost: null,
   }));
@@ -275,5 +327,7 @@ export function readClaudeCodeLog(lines: string[], ctx: ReadContext): AgentSessi
     toolCalls,
     turns,
     resultTruncationCap: null,
+    // The total covers the helpers too, so it only matches a read that includes them.
+    ...(recorded && ctx.subagents ? { recorded } : {}),
   };
 }
