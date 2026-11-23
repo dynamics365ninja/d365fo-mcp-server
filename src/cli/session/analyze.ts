@@ -155,6 +155,14 @@ export interface RoundTripStats {
   singleCallShare: number;
   parallelTurns: number;
   parallelShare: number;
+  /**
+   * Single-call turns whose arguments contain a value (a GUID, a number of four or more
+   * digits) that first appeared in the result of the turn right before it — so they could not
+   * have been issued in that turn. A LOWER BOUND on the dependent turns: a result the host cut
+   * off, or a dependency that is not a literal value, goes uncounted. Null when the log has no
+   * call arguments to compare.
+   */
+  chainedSingleCallTurns: number | null;
   callsPerToolTurn: number;
   /** Runs of consecutive turns that each reached for the same pluralisable tool. */
   pluralOpportunities: Array<{ tool: string; turns: number; calls: number; wastedRoundTrips: number }>;
@@ -406,6 +414,33 @@ export function groupToolCallsByRequest(
 }
 
 /**
+ * How many single-call turns visibly depend on the turn before them. Turn i depends on
+ * turn i-1 when one of its arguments is a value that turn i-1's results showed for the first
+ * time: had it been issued alongside i-1, the model could not have known it yet. A value that
+ * any earlier call already carried, in arguments or results, is not counted — the model could
+ * have used it a turn sooner.
+ */
+function sumChained(perAgent: Array<number | null>): number | null {
+  const known = perAgent.filter((n): n is number => n !== null);
+  return known.length === 0 ? null : known.reduce((a, b) => a + b, 0);
+}
+
+export function chainedSingleCallTurns(groups: SessionToolCall[][]): number | null {
+  if (!groups.some(g => g.some(c => c.argTokens !== undefined))) return null;
+  const seenEarlier = new Set<string>();
+  let previousResults = new Set<string>();
+  let chained = 0;
+  groups.forEach((group, i) => {
+    const args = group.flatMap(c => c.argTokens ?? []);
+    if (i > 0 && group.length === 1 && args.some(t => previousResults.has(t) && !seenEarlier.has(t))) chained++;
+    for (const t of previousResults) seenEarlier.add(t);
+    for (const t of args) seenEarlier.add(t);
+    previousResults = new Set(group.flatMap(c => c.resultTokens ?? []));
+  });
+  return chained;
+}
+
+/**
  * The MCP server a tool belongs to, from the name the host logged; null for the
  * host's own tools. Claude Code writes `mcp__<server>__<tool>`, where a
  * plugin-bundled server's name itself has single underscores
@@ -618,6 +653,7 @@ export function analyzeSession(input: AgentSession, opts: AnalyzeOptions = {}): 
     singleCallShare: turnGroups.length > 0 ? singleCallTurns / turnGroups.length : 0,
     parallelTurns: turnGroups.length - singleCallTurns,
     parallelShare: turnGroups.length > 0 ? (turnGroups.length - singleCallTurns) / turnGroups.length : 0,
+    chainedSingleCallTurns: sumChained([...groupsByAgent.values()].map(chainedSingleCallTurns)),
     callsPerToolTurn: turnGroups.length > 0 ? toolCalls.length / turnGroups.length : 0,
     pluralOpportunities: [...groupsByAgent.values()].flatMap(g => pluralOpportunities(g)),
     byServer: roundTripsByServer(turnGroups),

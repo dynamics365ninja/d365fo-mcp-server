@@ -57,6 +57,21 @@ export interface SessionToolCall {
   resultChars: number;
   /** Content-based, deliberately narrow — see copilotChatLog.ts for why. */
   failed: boolean;
+  /** `valueTokens` of the call's arguments. Absent when the host log has none. */
+  argTokens?: string[];
+  /** `valueTokens` of the logged result — of the cut-off text when the host truncated it. */
+  resultTokens?: string[];
+}
+
+/**
+ * The values in a call's arguments or result that one call can hand to the next:
+ * GUIDs and numbers of four or more digits (line numbers, ids, record numbers).
+ * Words and paths are left out on purpose — they recur in unrelated calls, and a
+ * dependency that is not there would make batching look harder than it is.
+ */
+export function valueTokens(text: string): string[] {
+  const found = text.match(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|\d{4,}/g);
+  return found ? [...new Set(found.map(t => t.toLowerCase()))] : [];
 }
 
 /**

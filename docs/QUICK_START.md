@@ -340,11 +340,14 @@ every round trip, and — the number that matters most — how many tool-turns i
 tool call. Each of those is a full round trip paying the whole prompt again before it does any work.
 
 ```powershell
-$log = Get-ChildItem "$env:APPDATA\Code\User\workspaceStorage\*\GitHub.copilot-chat\debug-logs\*\main.jsonl" |
-       Sort-Object LastWriteTime -Descending | Select-Object -First 1
-npx d365fo-mcp session $log.FullName          # human-readable
-npx d365fo-mcp session $log.FullName --json   # for tracking across releases
+npx d365fo-mcp session --host copilot            # the newest session of the current folder
+npx d365fo-mcp session --host claude --last 5    # the five newest, newest first, plus a summary table
+npx d365fo-mcp session --host copilot --project K:\repos\ContosoApp --json   # for tracking across releases
+npx d365fo-mcp session <path-to-log>             # or name the file yourself
 ```
+
+`--host` finds the log for the current folder, or for `--project <folder>`; the folder must be the
+one the host was opened on. Logs under 2 KB (an empty chat) are skipped.
 
 It reads GitHub Copilot Chat's `main.jsonl` (the log only exists while chat debug logging is on) and
 Claude Code's transcript, `~/.claude/projects/<project>/<sessionId>.jsonl`:

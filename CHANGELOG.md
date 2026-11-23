@@ -29,6 +29,23 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`d365fo-mcp session --host claude|copilot` finds the log for you, and `--last <n>` reads the
+  n most recent sessions (#1329).** The command used to need the full path of one log file, and
+  both hosts hide it: Copilot Chat keeps it under a workspace hash, Claude Code under the
+  project's path with every character that is not a letter or digit turned into `-`. With
+  `--host` the command looks in the current folder (or the one given with `--project` /
+  `--workspace`), takes the newest logs, and skips any under 2 KB (an empty or abandoned chat).
+  The folder must be the one the host was opened on: a workspace opened on a sub-folder is a
+  different workspace and is not swept in. With more than one session the output is a report
+  each plus a one-line-per-session table, and `--json` prints an array of the usual objects
+  (one session is still one object). A log that cannot be read or fitted is named and makes
+  the exit code 1, as before. An explicit `<log>` wins over `--host`.
+- **`d365fo-mcp session` says how many single-call turns visibly depended on the turn before.**
+  When a call's arguments contain a value (a GUID, a number of four or more digits, such as a
+  line number) that the previous turn's result was the first to show, that turn could not have
+  been batched with it. The report gives the count as a lower bound and `--json` carries it as
+  `roundTrips.chainedSingleCallTurns` (null when the log has no call arguments). It is a weak
+  bound: what a model decides to look for after reading a result leaves no trace in a log.
 - **`d365fo-mcp session` shows the session total Claude Code records, and prices 1-hour cache
   writes at their own rate.** Newer Claude Code versions keep a running total for the whole
   session, helper agents included: a `cost-state` line in the main transcript with the cost in
@@ -75,6 +92,13 @@ those are called out explicitly below.
   indexer's parser, so labels the index does not hold yet, and languages left out of
   `LABEL_LANGUAGES`, are covered. `action="list"` used to be silently treated as `info`;
   `list-files` still is.
+
+### Changed
+- **`d365fo-mcp session` calls its `floor there` figure an upper bound.** It prices every
+  single-call turn at the cost of one empty round trip and described that as what batching them
+  would have been worth. That holds only if none of those turns needed the result of the one
+  before, which a log cannot show; the line now says "up to" and "upper bound", and sits next to
+  the new `chained` line. The number itself is unchanged.
 
 ### Fixed
 - **Two statements about Claude Code transcripts in the 1.25.0 notes and docs.** A tool call that

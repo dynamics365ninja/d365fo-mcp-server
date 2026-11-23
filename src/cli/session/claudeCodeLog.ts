@@ -41,8 +41,9 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type {
-  AgentSession, ReadContext, RecordedTotals, SessionAgent, SessionRequest, SessionToolCall,
+import {
+  valueTokens,
+  type AgentSession, type ReadContext, type RecordedTotals, type SessionAgent, type SessionRequest, type SessionToolCall,
 } from './sessionLog.js';
 
 interface Usage {
@@ -66,6 +67,7 @@ interface Block {
   type?: string;
   id?: string;
   name?: string;
+  input?: unknown;
   tool_use_id?: string;
   content?: unknown;
   text?: string;
@@ -130,9 +132,9 @@ function blocks(content: unknown): Block[] {
 }
 
 /** A tool result's content is a string, or an array of blocks whose text parts are what the model reads. */
-function resultChars(content: unknown): number {
-  if (typeof content === 'string') return content.length;
-  return blocks(content).reduce((sum, b) => sum + (typeof b.text === 'string' ? b.text.length : 0), 0);
+function resultText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  return blocks(content).map(b => (typeof b.text === 'string' ? b.text : '')).join('');
 }
 
 interface Source {
@@ -219,8 +221,8 @@ export function readClaudeCodeLog(lines: string[], ctx: ReadContext): AgentSessi
   }
 
   const requests = new Map<string, RawRequest>();
-  const calls = new Map<string, { agent: string; ts: number; name: string }>();
-  const results = new Map<string, { ts: number; chars: number; failed: boolean }>();
+  const calls = new Map<string, { agent: string; ts: number; name: string; args: string[] }>();
+  const results = new Map<string, { ts: number; chars: number; failed: boolean; tokens: string[] }>();
   let sessionId: string | null = null;
   let turns = 0;
   let recorded: RecordedTotals | null = null;
@@ -266,7 +268,7 @@ export function readClaudeCodeLog(lines: string[], ctx: ReadContext): AgentSessi
         }
         for (const b of blocks(msg.content)) {
           if (b.type === 'tool_use' && typeof b.id === 'string' && !calls.has(b.id)) {
-            calls.set(b.id, { agent, ts, name: typeof b.name === 'string' ? b.name : 'unknown' });
+            calls.set(b.id, { agent, ts, name: typeof b.name === 'string' ? b.name : 'unknown', args: valueTokens(JSON.stringify(b.input ?? '')) });
           }
         }
       } else if (line.type === 'user') {
@@ -276,7 +278,8 @@ export function readClaudeCodeLog(lines: string[], ctx: ReadContext): AgentSessi
           if (b.type === 'tool_result' && typeof b.tool_use_id === 'string') {
             hasResult = true;
             if (!results.has(b.tool_use_id)) {
-              results.set(b.tool_use_id, { ts, chars: resultChars(b.content), failed: b.is_error === true });
+              const text = resultText(b.content);
+              results.set(b.tool_use_id, { ts, chars: text.length, failed: b.is_error === true, tokens: valueTokens(text) });
             }
           }
         }
@@ -311,6 +314,8 @@ export function readClaudeCodeLog(lines: string[], ctx: ReadContext): AgentSessi
       durationMs: result ? Math.max(0, result.ts - call.ts) : 0,
       resultChars: result?.chars ?? 0,
       failed: result?.failed ?? false,
+      argTokens: call.args,
+      resultTokens: result?.tokens ?? [],
     };
   });
 

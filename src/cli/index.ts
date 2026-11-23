@@ -69,14 +69,18 @@ program.command('doctor')
   .action(doctorCommand);
 
 program.command('session')
-  .argument('[log]', 'agent-host log (Copilot Chat: …/debug-logs/<id>/main.jsonl; Claude Code: ~/.claude/projects/<project>/<id>.jsonl)')
+  .argument('[log]', 'agent-host log (Copilot Chat: …/debug-logs/<id>/main.jsonl; Claude Code: ~/.claude/projects/<project>/<id>.jsonl); omit it with --host')
+  .option('--host <host>', 'find the log instead of taking its path: claude | copilot, for the current folder or --project')
+  .option('--last <n>', 'with --host: analyse the n most recent sessions, newest first (default 1)')
+  .option('--project <folder>', 'with --host: the folder whose sessions to find (default: the current directory)')
+  .option('--workspace <folder>', 'same as --project')
   .option('--json', 'machine-readable output, for tracking the number across releases')
   .option('--format <id>', `force a log format instead of sniffing it (${KNOWN_FORMATS.join(', ')})`)
   .option('--top <n>', 'rows of the per-tool table to print (default 10)')
   .option('--rates <list>', 'price the tokens: <cached>,<uncached>,<cacheWrite>,<output>[,<cacheWrite1h>] per million (for hosts that record no cost per request)')
   .option('--no-subagents', "Claude Code: leave out the helper agents' files next to the log")
   .description('Round-trip cost analysis of an agent session: fitted rates, attribution, wasted round trips')
-  .action((log: string | undefined, opts: { json?: boolean; format?: string; top?: string; rates?: string; subagents?: boolean }) => sessionCommand(log, opts));
+  .action((log: string | undefined, opts: { json?: boolean; format?: string; top?: string; rates?: string; subagents?: boolean; host?: string; last?: string; project?: string; workspace?: string }) => sessionCommand(log, opts));
 
 // `tools` and `call` reach a server that is already running in HTTP mode, so the
 // index loads once instead of once per command (see commands/call.ts).
