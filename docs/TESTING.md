@@ -97,6 +97,9 @@ that issued exactly ONE call, and lists the per-tool carry cost — the number t
 identifies where context actually accumulates.
 
 ```bash
+# Let the command find the newest log(s) of the current folder instead of passing a path:
+npm run cli -- session --host copilot            # or --host claude; --last 5 for the five newest
+
 # Copilot Chat writes one directory per session:
 #   %APPDATA%/Code/User/workspaceStorage/*/GitHub.copilot-chat/debug-logs/<id>/main.jsonl
 npm run cli -- session <path-to-main.jsonl>

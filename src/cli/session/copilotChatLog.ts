@@ -25,7 +25,7 @@
  *     cannot be split into system-prompt vs tool-schema tokens from this log.
  *     analyze.ts measures the prefix as one total instead.
  */
-import type { AgentSession, SessionRequest, SessionToolCall } from './sessionLog.js';
+import { valueTokens, type AgentSession, type SessionRequest, type SessionToolCall } from './sessionLog.js';
 
 /** Copilot bills in AIU; `copilotUsageNanoAiu` records it in billionths. */
 const NANO_PER_AIU = 1e9;
@@ -97,6 +97,14 @@ function resultText(attrs: Record<string, unknown> | undefined): string {
   return JSON.stringify(raw);
 }
 
+/** The call's arguments as text, however the host wrote them. */
+function argsText(attrs: Record<string, unknown> | undefined): string {
+  const raw = attrs?.args;
+  if (typeof raw === 'string') return raw;
+  if (raw === undefined || raw === null) return '';
+  return JSON.stringify(raw);
+}
+
 /**
  * The length at which the host cut results off, inferred from the data.
  *
@@ -149,6 +157,8 @@ export function readCopilotChatLog(lines: string[]): AgentSession {
     durationMs: num(span.dur),
     resultChars: text.length,
     failed: FAILURE_MARKERS.some(re => re.test(text)),
+    argTokens: valueTokens(argsText(span.attrs)),
+    resultTokens: valueTokens(text),
   }));
 
   requests.sort((a, b) => a.ts - b.ts);

@@ -18,10 +18,11 @@
  * the report as the host's recorded figure, not fitted, so the exit code does
  * not depend on it.
  */
-import { basename } from 'node:path';
+import * as path from 'node:path';
 import { p } from '../ui.js';
 import { analyzeSession, type CostRates, type SessionAnalysis } from '../session/analyze.js';
 import { KNOWN_FORMATS, readSessionLog } from '../session/sessionLog.js';
+import { locateSessionLogs, MIN_LOG_BYTES, SESSION_HOSTS, type SessionHost } from '../session/locate.js';
 
 interface SessionOptions {
   json?: boolean;
@@ -32,6 +33,14 @@ interface SessionOptions {
   rates?: string;
   /** Commander sets false for --no-subagents. */
   subagents?: boolean;
+  /** Find the log(s) ourselves: 'claude' | 'copilot'. An explicit <log> wins. */
+  host?: string;
+  /** How many sessions to read with --host, newest first. */
+  last?: string;
+  /** Folder to find sessions for with --host; default the current directory. */
+  project?: string;
+  /** Same as --project; reads better for Copilot, whose logs belong to a workspace. */
+  workspace?: string;
 }
 
 /**
@@ -190,11 +199,21 @@ function roundTripNote(a: SessionAnalysis): string {
       lines.push(`  ${s.server.slice(0, 30).padEnd(30)} ${s.singleCallTurns} of ${s.toolTurns} (${pct(s.singleCallShare)})`);
     }
   }
+  if (rt.chainedSingleCallTurns !== null) {
+    // A lower bound, and a weak one: a log only shows a dependency when a literal value
+    // (a line number, an id) travelled from one result to the next call. Most dependencies
+    // are the model deciding what to look for after reading a result, which leaves no trace.
+    lines.push(`chained      at least ${rt.chainedSingleCallTurns} of those ${rt.singleCallTurns} single-call turns used a value first`);
+    lines.push('             printed by the turn before (a lower bound: dependencies the model reasons');
+    lines.push('             out from a result leave no trace in the log)');
+  }
   if (a.attribution) {
-    // The single-call turns are the round-trip waste #824 named; pricing them
-    // at the floor says what batching them would have been worth.
-    const wasted = rt.singleCallTurns * a.attribution.floorPerRequest;
-    lines.push(`floor there  ~${aiu(wasted, a.costUnit)} sits in those single-call turns`);
+    // The single-call turns are the round-trip waste #824 named. Pricing them at
+    // the floor is an UPPER bound on what batching would be worth: it assumes none
+    // of them needed the result of the one before.
+    const upper = rt.singleCallTurns * a.attribution.floorPerRequest;
+    lines.push(`floor there  up to ~${aiu(upper, a.costUnit)} sits in those single-call turns (upper bound: assumes`);
+    lines.push('             none of them needed the result of the turn before)');
   }
   return lines.join('\n');
 }
@@ -225,8 +244,14 @@ function toolTable(a: SessionAnalysis, top: number): string {
   return [header, '-'.repeat(header.length), ...rows].join('\n');
 }
 
+/** Copilot names every log main.jsonl; the folder above it is the session. */
+function logLabel(logPath: string): string {
+  const base = path.basename(logPath);
+  return base === 'main.jsonl' ? `${path.basename(path.dirname(logPath))}/${base}` : base;
+}
+
 function printHuman(a: SessionAnalysis, logPath: string, top: number): void {
-  p.intro(`d365fo-mcp session — ${basename(logPath)}`);
+  p.intro(`d365fo-mcp session — ${logLabel(logPath)}`);
   p.note(overviewNote(a), 'Session');
 
   for (const w of a.warnings) p.log.warn(w);
@@ -300,35 +325,116 @@ function printHuman(a: SessionAnalysis, logPath: string, top: number): void {
     : 'Cost model did not fit — see above.');
 }
 
+const USAGE =
+  'Usage: d365fo-mcp session <log> [--json] [--format <id>] [--rates <cached>,<uncached>,<cacheWrite>,<output>[,<cacheWrite1h>]] [--no-subagents]\n' +
+  '       d365fo-mcp session --host claude|copilot [--last <n>] [--project <folder>] [...same options]';
+
+type Outcome = { log: string; analysis: SessionAnalysis } | { log: string; error: string };
+
+function analyseLog(logPath: string, opts: SessionOptions, rates: CostRates | undefined): Outcome {
+  try {
+    return { log: logPath, analysis: analyzeSession(readSessionLog(logPath, opts.format, { subagents: opts.subagents }), { rates }) };
+  } catch (err) {
+    return { log: logPath, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+function fail(message: string, opts: SessionOptions, log = ''): void {
+  if (opts.json) process.stdout.write(`${JSON.stringify({ schemaVersion: 1, log, error: message }, null, 2)}\n`);
+  else p.log.error(message);
+  process.exitCode = 1;
+}
+
+/** One line per session, so several runs can be compared without reading each report. */
+function summaryTable(outcomes: Outcome[]): string {
+  const rows = outcomes.map(o => {
+    const name = path.basename(path.dirname(o.log)).slice(0, 8);
+    if ('error' in o) return `${name.padEnd(9)}unreadable`;
+    const a = o.analysis;
+    const total = a.costMode === 'none' ? 'tokens only' : a.fit.usable ? aiu(a.totals.cost, a.costUnit) : 'no fit';
+    return name.padEnd(9)
+      + String(a.totals.requests).padStart(6)
+      + `${a.roundTrips.singleCallTurns}/${a.roundTrips.toolTurns}`.padStart(9)
+      + total.padStart(14);
+  });
+  const header = 'session'.padEnd(9) + 'reqs'.padStart(6) + '1-call'.padStart(9) + 'total'.padStart(14);
+  return [header, '-'.repeat(header.length), ...rows].join('\n');
+}
+
 export async function sessionCommand(logPath: string | undefined, opts: SessionOptions = {}): Promise<void> {
-  if (!logPath) {
-    p.log.error('Usage: d365fo-mcp session <log> [--json] [--format <id>] [--rates <cached>,<uncached>,<cacheWrite>,<output>[,<cacheWrite1h>]] [--no-subagents]');
-    p.log.info(`Known formats: ${KNOWN_FORMATS.join(', ')}`);
-    process.exitCode = 1;
+  let logs: string[];
+
+  if (logPath) {
+    logs = [logPath];
+  } else if (opts.host !== undefined) {
+    const host = opts.host.toLowerCase();
+    if (!SESSION_HOSTS.includes(host as SessionHost)) {
+      fail(`Unknown --host '${opts.host}'. Known hosts: ${SESSION_HOSTS.join(', ')}`, opts);
+      return;
+    }
+    const last = opts.last === undefined ? 1 : Number(opts.last);
+    if (!Number.isInteger(last) || last < 1) {
+      fail(`Invalid --last '${opts.last}': expected a whole number of 1 or more`, opts);
+      return;
+    }
+    const project = path.resolve(opts.project ?? opts.workspace ?? process.cwd());
+    const found = locateSessionLogs({ host: host as SessionHost, project, last });
+    if (found.files.length === 0) {
+      const small = found.skippedSmall > 0 ? ` (${found.skippedSmall} log(s) under ${MIN_LOG_BYTES} bytes were skipped as empty)` : '';
+      fail(
+        `No ${host} session logs found for ${project}${small}.\n` +
+        `Looked in: ${found.searched.join(', ')}\n` +
+        'The folder must match the one the host was opened on exactly; pass --project <folder> for another one, ' +
+        'or give the log file itself.',
+        opts,
+      );
+      return;
+    }
+    if (found.skippedSmall > 0 && !opts.json) {
+      p.log.info(`${found.skippedSmall} log(s) under ${MIN_LOG_BYTES} bytes were skipped as empty.`);
+    }
+    logs = found.files;
+  } else {
+    if (opts.json) {
+      fail(`${USAGE}\nKnown formats: ${KNOWN_FORMATS.join(', ')}`, opts);
+    } else {
+      p.log.error(USAGE);
+      p.log.info(`Known formats: ${KNOWN_FORMATS.join(', ')}`);
+      process.exitCode = 1;
+    }
     return;
   }
 
-  let analysis: SessionAnalysis;
+  let rates: CostRates | undefined;
   try {
-    const rates = opts.rates !== undefined ? parseRates(opts.rates) : undefined;
-    analysis = analyzeSession(readSessionLog(logPath, opts.format, { subagents: opts.subagents }), { rates });
+    rates = opts.rates !== undefined ? parseRates(opts.rates) : undefined;
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (opts.json) process.stdout.write(`${JSON.stringify({ schemaVersion: 1, log: logPath, error: message }, null, 2)}\n`);
-    else p.log.error(message);
-    process.exitCode = 1;
+    fail(err instanceof Error ? err.message : String(err), opts, logs[0]);
     return;
   }
+
+  const outcomes = logs.map(l => analyseLog(l, opts, rates));
 
   if (opts.json) {
     // Shape is the tracking contract: schemaVersion changes when a consumer
     // would have to be updated, so a release-over-release comparison can fail
-    // loudly instead of silently comparing different things.
-    process.stdout.write(`${JSON.stringify({ schemaVersion: 1, log: logPath, ...analysis }, null, 2)}\n`);
+    // loudly instead of silently comparing different things. Several sessions
+    // are an array of the same objects.
+    const objects = outcomes.map(o => ('error' in o
+      ? { schemaVersion: 1, log: o.log, error: o.error }
+      : { schemaVersion: 1, log: o.log, ...o.analysis }));
+    process.stdout.write(`${JSON.stringify(objects.length === 1 ? objects[0] : objects, null, 2)}\n`);
   } else {
     const requested = opts.top ? parseInt(opts.top, 10) : NaN;
-    printHuman(analysis, logPath, Number.isFinite(requested) && requested > 0 ? requested : DEFAULT_TOP);
+    const top = Number.isFinite(requested) && requested > 0 ? requested : DEFAULT_TOP;
+    for (const o of outcomes) {
+      if ('error' in o) p.log.error(`${o.log}\n${o.error}`);
+      else printHuman(o.analysis, o.log, top);
+    }
+    if (outcomes.length > 1) p.note(summaryTable(outcomes), `${outcomes.length} sessions, newest first`);
   }
 
-  if (analysis.costMode !== 'none' && !analysis.fit.usable) process.exitCode = 1;
+  if (outcomes.some(o => 'error' in o || (o.analysis.costMode !== 'none' && !o.analysis.fit.usable))) {
+    process.exitCode = 1;
+  }
 }

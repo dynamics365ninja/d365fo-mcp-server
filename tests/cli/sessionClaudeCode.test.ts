@@ -191,6 +191,19 @@ describe('claude code reader', () => {
     expect(session.toolCalls[0].resultChars).toBe(7);
   });
 
+  it('keeps the values a call was given and a result printed, so chained turns can be counted (#1329)', () => {
+    const readCall = { type: 'tool_use', id: 'tu_2', name: 'Read', input: { file_path: 'a.xml', offset: 40189 } };
+    const session = readSessionLog(writeMain([
+      assistantLine('msg_1', 1, toolUse('tu_1', 'Grep'), { input: 1, read: 100, out: 5 }),
+      resultLine('tu_1', 2, 'a.xml\n40189: <Node/>'),
+      assistantLine('msg_2', 3, readCall, { input: 1, read: 200, out: 5 }),
+      resultLine('tu_2', 4, 'ok'),
+    ]));
+    expect(session.toolCalls[0].resultTokens).toEqual(['40189']);
+    expect(session.toolCalls[1].argTokens).toEqual(['40189']);
+    expect(analyzeSession(session).roundTrips.chainedSingleCallTurns).toBe(1);
+  });
+
   it('survives a session with no tool calls at all', () => {
     const session = readSessionLog(writeMain([
       promptLine(0),
