@@ -119,7 +119,7 @@ export async function labelsTool(request: CallToolRequest, context: XppServerCon
         type: 'text',
         text:
           `❌ labels: invalid arguments — action must be one of: ${LABEL_ACTIONS.join(', ')} ` +
-          `(got "${rawArgs.action ?? ''}"). search=find labels, info=translations / list label files, list=page one label file,` +
+          `(got "${rawArgs.action ?? ''}"). search=find labels, info=translations / list label files, list=page one label file, ` +
           `create=add a new label, update=fix an existing label's text, rename=rename a label ID, delete=remove a label.`,
       }],
       isError: true,

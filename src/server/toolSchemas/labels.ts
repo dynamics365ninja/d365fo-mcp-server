@@ -10,7 +10,7 @@ export const labelsTool = {
       'Unified label operations — read and write. Writing an object? d365fo_file create/modify already turn a raw-text label/fieldLabel into a real @Ref by themselves; no call here is needed. Choose an `action`:\n' +
       '• search → full-text query across indexed label files. Never needed before a create.\n' +
       '• info → all translations for a labelId; without labelId lists label files (with labelFileId: physical .label.txt path per language).\n' +
-      '• list → page one label file\'s labels ; idPrefix/comment/missingLanguage/offset go in params.\n' +
+      '• list → page one label file\'s labels; idPrefix/comment/missingLanguage/offset go in params.\n' +
       '• create → add a label to an AxLabelFile across every language .label.txt (write). ALWAYS pass createIfMissing=true: it creates when absent and reuses when present, so this ONE call replaces search-then-create. Bulk: labels:[{labelId, translations}, …] with shared labelFileId/model at top level does a whole object in one call. Label IDs describe MEANING — never a model prefix; target the model\'s ORIGINAL label file, never an …_Extension… one.\n' +
       '• update → overwrite the text of an EXISTING label; same args as create with corrected translations[] (write).\n' +
       '• rename → rename a label ID across .label.txt + X++ + XML + index. Use dryRun=true first (write).\n' +
