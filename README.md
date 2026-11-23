@@ -267,6 +267,9 @@ Workspaces that already run other MCP servers can set `MCP_TOOL_PROFILE=core` to
 17-tool create-and-build loop. Every tool, parameter and example prompt:
 **[docs/MCP_TOOLS.md](docs/MCP_TOOLS.md)**.
 
+No MCP client, or a script? `d365fo-mcp call <tool> key=value …` runs any of them from a shell
+against a running server: [Tools from a shell](docs/QUICK_START.md#tools-from-a-shell).
+
 ---
 
 ## 🧪 How we keep it honest

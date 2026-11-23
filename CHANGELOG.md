@@ -29,6 +29,18 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`d365fo-mcp call` and `d365fo-mcp tools` run the server's tools from a shell.** Agents that
+  work through a terminal instead of an MCP client, and scripts, had no way to reach the tools.
+  `d365fo-mcp tools` lists a running server's tools, one line each, and `d365fo-mcp tools <name>`
+  prints one tool's full description and arguments. `d365fo-mcp call <tool> key=value …` calls
+  one and prints its answer exactly as an HTTP client receives it; values are typed from the
+  tool's schema (`a.b=…` sets a nested field, or pass one JSON object), and a key the schema
+  does not list is refused with the ones it does. Both reach a server already running in HTTP
+  mode (`d365fo-mcp start`): the root server's port on this machine by default, `--instance`,
+  or `--url` / `D365FO_MCP_URL`. They never start one, so the index loads once rather than on
+  every call. Exit code 0 when the tool answered, 1 when it answered with an error or not in
+  time, 2 when nothing was called. The configured API key is sent only to the local server; for
+  another URL pass `--api-key` / `D365FO_MCP_API_KEY`.
 - **`labels` can list the labels of a label file (`action="list"`).** There was no way to
   audit a label file: `search` needs a text, `info` needs an id. `labels(action="list",
   model, labelFileId)` returns one line per label (`@File:Id — "text"  ;comment`, text in
