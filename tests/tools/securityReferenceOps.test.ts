@@ -559,7 +559,7 @@ describe('modify-property Tags on security objects', () => {
     expect(xml.match(/<Tags>/g)).toHaveLength(1);
   });
 
-  it('is idempotent, and add mode combines with the existing tags', async () => {
+  it('add mode combines with the existing tags', async () => {
     files.value.AxSecurityPrivilege = files.value.AxSecurityPrivilege.replace('<EntryPoints', '<Tags>OLD-1</Tags><EntryPoints');
     const r = await modifyD365FileTool(req({
       objectType: 'security-privilege', objectName: 'ContosoRentMaintain', filePath: PRIV_PATH,
@@ -567,6 +567,25 @@ describe('modify-property Tags on security objects', () => {
     }), ctx);
     expect(r.isError).toBeFalsy();
     expect(written('AxSecurityPrivilege')).toContain('<Tags>OLD-1, ABC-1</Tags>');
+  });
+
+  it('writes nothing when the object already carries exactly that tag', async () => {
+    files.value.AxSecurityPrivilege = files.value.AxSecurityPrivilege.replace('<EntryPoints', '<Tags>ABC-1</Tags><EntryPoints');
+    const r = await modifyD365FileTool(req({
+      objectType: 'security-privilege', objectName: 'ContosoRentMaintain', filePath: PRIV_PATH,
+      operation: 'modify-property', propertyPath: 'Tags', propertyValue: 'ABC-1',
+    }), ctx);
+    expect(r.isError).toBeFalsy();
+    expect(written('AxSecurityPrivilege')).toBeUndefined();
+  });
+
+  it('names the stray controlName instead of contradicting itself', async () => {
+    const r = await modifyD365FileTool(req({
+      objectType: 'security-role', objectName: 'ContosoRentClerk', filePath: ROLE_PATH,
+      operation: 'modify-property', propertyPath: 'Tags', propertyValue: 'ABC-1', controlName: 'X',
+    }), ctx);
+    expect(r.isError).toBe(true);
+    expect(text(r)).toContain('controlName');
   });
 
   it('refuses any other property on a security object', async () => {

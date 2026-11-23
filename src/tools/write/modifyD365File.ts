@@ -2693,7 +2693,7 @@ async function runModify(
         if (args.propertyPath && args.propertyValue !== undefined) {
           const tagsWrite = await modifyObjectTagsProperty(actualFilePath, args as any);
           if (tagsWrite) { if (!tagsWrite.success) return { content: [{ type: 'text', text: tagsWrite.message }], isError: true }; bridgeResult = viaXmlFallback(tagsWrite); break; }
-          const secRefusal = securityPropertyRefusal(objectType, args.propertyPath);
+          const secRefusal = securityPropertyRefusal(objectType, args.propertyPath, args as any);
           if (secRefusal) return { content: [{ type: 'text', text: secRefusal }], isError: true };
           // OperationalDomain / SubscriberAccessLevel on a table or menu item: XML only, never the bridge.
           const bpWrite = await directXmlSetBpAccessProperty(actualFilePath, objectType, objectName, args.propertyPath, args.propertyValue);
