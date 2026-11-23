@@ -13,6 +13,7 @@ import { canBridgeModify } from '../../src/bridge/bridgeAdapter';
 import { D365FO_FILE_CREATE_PROPERTY_SPECS, D365FO_FILE_OP_SPECS, getRequiredParams } from '../../src/tools/specs/d365foFileOpSpecs';
 import { d365foFileTool } from '../../src/server/toolSchemas/d365foFile';
 import { preserveDroppedProperties } from '../../src/tools/write/preserveMetadataElements';
+import { buildAxSecurityPrivilegeXml } from '../../src/tools/xml/securityPrivilegeXml';
 import { extractModelFromFilePath } from '../../src/utils/configManager';
 import { isStandardModel } from '../../src/utils/modelClassifier';
 import {
@@ -37,7 +38,8 @@ const { mockWriteFile, mockAccess, mockCopyFile, files } = vi.hoisted(() => ({
   files: { value: {} as Record<string, string> },
 }));
 
-vi.mock('fs/promises', () => ({
+vi.mock('fs/promises', () => {
+  const fsMock = {
   readFile: vi.fn(async (p: string) => {
     const folder = String(p).split(/[\\/]/).at(-2) ?? '';
     if (String(p).endsWith('.xml') && folder in files.value) return files.value[folder];
@@ -52,7 +54,10 @@ vi.mock('fs/promises', () => ({
   copyFile: mockCopyFile,
   rename: vi.fn(async () => {}),
   rm: vi.fn(async () => {}),
-}));
+};
+  // tagsApply imports the default export
+  return { ...fsMock, default: fsMock };
+});
 
 vi.mock('../../src/utils/configManager', () => ({
   getConfigManager: vi.fn(() => ({
@@ -152,6 +157,7 @@ beforeEach(() => {
   ];
   files.value = {
     AxSecurityRole: buildAxSecurityRoleXml('ContosoRentClerk', { duties: ['ContosoOtherDuty'] }),
+    AxSecurityPrivilege: buildAxSecurityPrivilegeXml('ContosoRentMaintain'),
     AxSecurityDuty: buildAxSecurityDutyXml('ContosoRentDuty'),
     AxSecurityRoleExtension: buildAxSecurityRoleExtensionXml('SystemUser.ContosoExtension'),
     AxSecurityDutyExtension: buildAxSecurityDutyExtensionXml('BatchJobMaintain.ContosoExtension'),
@@ -184,9 +190,16 @@ describe('the four operations are reachable', () => {
   });
 
   it('the extension types stay closed to every other operation', () => {
-    for (const op of ['add-method', 'modify-property', 'add-entry-point']) {
+    for (const op of ['add-method', 'add-entry-point']) {
       expect(canBridgeModify('security-role-extension', op), op).toBe(false);
     }
+  });
+
+  it('modify-property clears the gate for the security types (Tags only, enforced by the dispatcher)', () => {
+    for (const t of ['security-privilege', 'security-duty', 'security-role', 'security-duty-extension', 'security-role-extension']) {
+      expect(canBridgeModify(t, 'modify-property'), t).toBe(true);
+    }
+    expect(canBridgeModify('report', 'modify-property')).toBe(false);
   });
 
   it('the create specs point at the operations', () => {
@@ -521,5 +534,67 @@ describe('a standard role or duty', () => {
 
     expect(r.isError).toBe(true);
     expect(text(r)).toContain('security-role-extension');
+  });
+});
+
+describe('modify-property Tags on security objects', () => {
+  const PRIV_PATH = `${ROOT}\\AxSecurityPrivilege\\ContosoRentMaintain.xml`;
+  const CASES: Array<[string, string, string, string, string]> = [
+    ['security-privilege', 'ContosoRentMaintain', PRIV_PATH, 'AxSecurityPrivilege', '<EntryPoints'],
+    ['security-duty', 'ContosoRentDuty', DUTY_PATH, 'AxSecurityDuty', '<Privileges'],
+    ['security-role', 'ContosoRentClerk', ROLE_PATH, 'AxSecurityRole', '<Duties'],
+    ['security-duty-extension', 'BatchJobMaintain.ContosoExtension', DUTY_EXT_PATH, 'AxSecurityDutyExtension', '<Privileges'],
+    ['security-role-extension', 'SystemUser.ContosoExtension', ROLE_EXT_PATH, 'AxSecurityRoleExtension', '<Duties'],
+  ];
+
+  it.each(CASES)('sets Tags on a %s ahead of its collections', async (objectType, objectName, filePath, root, collection) => {
+    const r = await modifyD365FileTool(req({
+      objectType, objectName, filePath, operation: 'modify-property', propertyPath: 'Tags', propertyValue: 'ABC-1',
+    }), ctx);
+
+    expect(r.isError).toBeFalsy();
+    const xml = written(root)!;
+    expect(xml).toContain('<Tags>ABC-1</Tags>');
+    expect(xml.indexOf('<Tags>')).toBeLessThan(xml.indexOf(collection));
+    expect(xml.match(/<Tags>/g)).toHaveLength(1);
+  });
+
+  it('add mode combines with the existing tags', async () => {
+    files.value.AxSecurityPrivilege = files.value.AxSecurityPrivilege.replace('<EntryPoints', '<Tags>OLD-1</Tags><EntryPoints');
+    const r = await modifyD365FileTool(req({
+      objectType: 'security-privilege', objectName: 'ContosoRentMaintain', filePath: PRIV_PATH,
+      operation: 'modify-property', propertyPath: 'Tags', propertyValue: 'ABC-1', tagsMode: 'add',
+    }), ctx);
+    expect(r.isError).toBeFalsy();
+    expect(written('AxSecurityPrivilege')).toContain('<Tags>OLD-1, ABC-1</Tags>');
+  });
+
+  it('writes nothing when the object already carries exactly that tag', async () => {
+    files.value.AxSecurityPrivilege = files.value.AxSecurityPrivilege.replace('<EntryPoints', '<Tags>ABC-1</Tags><EntryPoints');
+    const r = await modifyD365FileTool(req({
+      objectType: 'security-privilege', objectName: 'ContosoRentMaintain', filePath: PRIV_PATH,
+      operation: 'modify-property', propertyPath: 'Tags', propertyValue: 'ABC-1',
+    }), ctx);
+    expect(r.isError).toBeFalsy();
+    expect(written('AxSecurityPrivilege')).toBeUndefined();
+  });
+
+  it('names the stray controlName instead of contradicting itself', async () => {
+    const r = await modifyD365FileTool(req({
+      objectType: 'security-role', objectName: 'ContosoRentClerk', filePath: ROLE_PATH,
+      operation: 'modify-property', propertyPath: 'Tags', propertyValue: 'ABC-1', controlName: 'X',
+    }), ctx);
+    expect(r.isError).toBe(true);
+    expect(text(r)).toContain('controlName');
+  });
+
+  it('refuses any other property on a security object', async () => {
+    const r = await modifyD365FileTool(req({
+      objectType: 'security-privilege', objectName: 'ContosoRentMaintain', filePath: PRIV_PATH,
+      operation: 'modify-property', propertyPath: 'Label', propertyValue: 'x',
+    }), ctx);
+    expect(r.isError).toBe(true);
+    expect(text(r)).toContain('only propertyPath="Tags"');
+    expect(written('AxSecurityPrivilege')).toBeUndefined();
   });
 });

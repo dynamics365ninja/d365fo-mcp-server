@@ -13,12 +13,15 @@
  *   d365fo-mcp config [section] change settings after setup
  *   d365fo-mcp doctor           environment & installation health check
  *   d365fo-mcp session <log>    round-trip cost analysis of an agent session
+ *   d365fo-mcp tools [name]     a running server's tools, or one tool's arguments
+ *   d365fo-mcp call <tool> …    call one tool from a shell and print its answer
  *   d365fo-mcp start [name]     run the root server or an instance
  *   d365fo-mcp update [--yes]   git pull + npm install + build (+ bridge/index)
  *   d365fo-mcp index [name]     rebuild the metadata index (--all: all instances)
  *   d365fo-mcp instance …       add | list | run | rebuild | upgrade
  */
 import { Command } from 'commander';
+import { callCommand, toolsCommand, type ToolClientOptions } from './commands/call.js';
 import { configCommand } from './commands/config.js';
 import { connectCommand } from './commands/connect.js';
 import { doctorCommand } from './commands/doctor.js';
@@ -74,6 +77,31 @@ program.command('session')
   .option('--no-subagents', "Claude Code: leave out the helper agents' files next to the log")
   .description('Round-trip cost analysis of an agent session: fitted rates, attribution, wasted round trips')
   .action((log: string | undefined, opts: { json?: boolean; format?: string; top?: string; rates?: string; subagents?: boolean }) => sessionCommand(log, opts));
+
+// `tools` and `call` reach a server that is already running in HTTP mode, so the
+// index loads once instead of once per command (see commands/call.ts).
+const SERVER_URL_HELP = 'server endpoint, e.g. http://127.0.0.1:8080/mcp (default: this machine, port from the configuration; env D365FO_MCP_URL)';
+
+program.command('tools')
+  .argument('[name]', 'a tool name: print its full description and arguments')
+  .option('--url <url>', SERVER_URL_HELP)
+  .option('-i, --instance <name>', "use an instance's port and API key instead of the root server's")
+  .option('-k, --api-key <key>', 'API key, when the server enforces one (env D365FO_MCP_API_KEY)')
+  .option('--json', 'print the raw tools/list entries')
+  .description('List the tools of a running server (d365fo-mcp start), one line each, or show one tool in full')
+  .action((name: string | undefined, opts: ToolClientOptions) => toolsCommand(name, opts));
+
+program.command('call')
+  .argument('[tool]', 'tool name (d365fo-mcp tools lists them)')
+  .argument('[args...]', "arguments as key=value (a.b=value for a nested field), or one JSON object")
+  .option('--url <url>', SERVER_URL_HELP)
+  .option('-i, --instance <name>', "use an instance's port and API key instead of the root server's")
+  .option('-k, --api-key <key>', 'API key, when the server enforces one (env D365FO_MCP_API_KEY)')
+  .option('--workspace <path>', 'workspace folder to send, as an IDE client does (default: none)')
+  .option('--timeout <seconds>', 'give up after this long (default 660, just above the server\'s own limit)')
+  .option('--json', 'print the raw tool result as JSON')
+  .description('Call one tool on a running server and print its answer, for agents and scripts that work through a shell')
+  .action((tool: string | undefined, args: string[], opts: ToolClientOptions) => callCommand(tool, args, opts));
 
 program.command('start')
   .argument('[instance]', "instance name, or 'root' for the repo-level .env")

@@ -49,6 +49,32 @@ those are called out explicitly below.
   (the same definition as the overall figure). The server is read from the logged tool name
   (`mcp__<server>__<tool>`, `mcp_<server>_<tool>`). `--json` gains `roundTrips.byServer`;
   `schemaVersion` stays 1. Copilot reports gain the same lines (#1318).
+- **`d365fo-mcp call` and `d365fo-mcp tools` run the server's tools from a shell.** Agents that
+  work through a terminal instead of an MCP client, and scripts, had no way to reach the tools.
+  `d365fo-mcp tools` lists a running server's tools, one line each, and `d365fo-mcp tools <name>`
+  prints one tool's full description and arguments. `d365fo-mcp call <tool> key=value …` calls
+  one and prints its answer exactly as an HTTP client receives it; values are typed from the
+  tool's schema (`a.b=…` sets a nested field, or pass one JSON object), and a key the schema
+  does not list is refused with the ones it does. Both reach a server already running in HTTP
+  mode (`d365fo-mcp start`): the root server's port on this machine by default, `--instance`,
+  or `--url` / `D365FO_MCP_URL`. They never start one, so the index loads once rather than on
+  every call. Exit code 0 when the tool answered, 1 when it answered with an error or not in
+  time, 2 when nothing was called. The configured API key is sent only to the local server; for
+  another URL pass `--api-key` / `D365FO_MCP_API_KEY`.
+- **`labels` can list the labels of a label file (`action="list"`).** There was no way to
+  audit a label file: `search` needs a text, `info` needs an id. `labels(action="list",
+  model, labelFileId)` returns one line per label (`@File:Id — "text"  ;comment`, text in
+  `language`, default en-US); `verbose=true` shows all languages. Optional filters, passed
+  in `params` and documented in `get_knowledge(kind="op-spec", topic="labels")` (this keeps
+  the published schema inside its size budget): `idPrefix`, `comment` (case-insensitive
+  substring of the developer comment, any language) and `missingLanguage` (no non-empty
+  translation in that language; a translation that merely equals en-US is not detected).
+  Paged with `maxResults` (default 50, max 500) and `offset`; a page is also cut at about
+  10,000 characters, and the footer always says how many more matched, the total and the
+  exact next call. It reads the .label.txt files of every language on disk with the
+  indexer's parser, so labels the index does not hold yet, and languages left out of
+  `LABEL_LANGUAGES`, are covered. `action="list"` used to be silently treated as `info`;
+  `list-files` still is.
 
 ### Fixed
 - **Two statements about Claude Code transcripts in the 1.25.0 notes and docs.** A tool call that
@@ -56,6 +82,28 @@ those are called out explicitly below.
   (`api-request-blob` lines, already skipped), not from resumed sessions; and newer Claude Code
   versions do record a session total (above), only no cost per request. The reader comment,
   `docs/QUICK_START.md`, `docs/TESTING.md` and the CLI help now say so (#1318).
+- **`labels(action="search")` finds a label by a developer comment that contains a hyphen,
+  such as a ticket tag (`TICKET-101`).** FTS5 rejects an unquoted hyphenated word, the search
+  fell back to a LIKE scan, and that scan only compared label text and id, so the comment
+  was never looked at and the answer was "No labels found". Hyphenated words are now quoted
+  for FTS5 (phrase match, still on the index), and the LIKE fallback (queries with `_` or
+  `%`, or only punctuation) also searches the comment.
+  A hyphenated word now matches as a whole word ("e-mail" no longer finds "e-mails" through the
+  hyphen path).
+- **A `labels` result is no longer cut at 5,000 characters.** `labels` had the default cap,
+  with advice naming parameters it does not have. The cap is now 12,000, with advice that
+  names `maxResults` and `offset`.
+- **The first label of a .label.txt that starts with a UTF-8 BOM is parsed with its real
+  id.** The BOM used to become part of the id, so that label was indexed under a wrong id;
+  re-index to correct existing rows.
+- **`modify-property` with `propertyPath="Tags"` now works on security privileges, duties,
+  roles and their extensions.** The call was refused up front ("not supported by the bridge")
+  because those object types were not admitted to the modify gate, although the Tags editor
+  already knew their element position. Same semantics as for menu items: replace by default,
+  `tagsMode=add|remove`, empty value removes, idempotent, element written ahead of
+  `<EntryPoints>` / `<Privileges>` / `<Duties>`. Any other property on a security object is
+  refused with a message naming the supported one. The `modify-property` op-spec lists the
+  types.
 
 ## [1.25.0] — 2026-11-20
 

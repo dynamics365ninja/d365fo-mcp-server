@@ -380,6 +380,36 @@ Where the host records a cost (Copilot), the command fits that billing to the to
 assumes, and it exits 1 rather than printing a confident number. Round-trip counts do not depend on
 the fit and are printed either way.
 
+### Tools from a shell
+
+For an agent that works through a terminal instead of an MCP client, or for a script,
+`npx d365fo-mcp call` runs one tool on a server that is already running in HTTP mode and prints its
+answer:
+
+```powershell
+npx d365fo-mcp start                                          # once, in its own terminal: loads the index and stays up
+npx d365fo-mcp tools                                          # one line per tool
+npx d365fo-mcp tools get_object_info                          # one tool's description and arguments
+npx d365fo-mcp call search query=CustTable                    # key=value, typed from the tool's schema
+npx d365fo-mcp call get_object_info objectType=table name=CustTable
+npx d365fo-mcp call search '{"query":"CustTable"}' --json     # one JSON object in, the raw result out
+```
+
+It never starts a server itself: a stdio server loads its own copy of the index (~1.5 GB) before
+its first answer, and a command that did that would pay it on every call. By default it reaches the
+root server's port on this machine; `--instance <name>` picks an instance's, and `--url` (or
+`D365FO_MCP_URL`) any other server, with `--api-key` (or `D365FO_MCP_API_KEY`) when that server
+wants a key. The key in your configuration is only sent to the local server.
+
+`a.b=value` sets a field of a nested object, arrays take comma-separated values, and a key the tool
+does not have is refused with the list of the ones it has, so a misspelt argument is not silently
+dropped. Where the schema gives no type, as for the fields of a free-form `options` object,
+`true`/`false` and numbers are sent as JSON values and anything else as text
+(`options.compact=true options.methodOffset=25`). The answer goes to stdout as an HTTP client receives it, progress line included. Exit code
+0 means the tool answered, 1 that it answered with an error or not within `--timeout` (default
+660 s), 2 that nothing was called: an unknown tool, a bad argument, or no server. No workspace is
+sent unless you pass `--workspace <path>`, because the server derives the package and model from it.
+
 ---
 
 ## Next steps
