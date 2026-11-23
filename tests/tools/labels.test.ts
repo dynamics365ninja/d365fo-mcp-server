@@ -2103,6 +2103,8 @@ describe('labels dispatcher: action aliases + errors', () => {
       return;
     }
     expect(r.content?.[0]?.text ?? '').not.toContain('invalid arguments');
+    // Without labelFileId it explains how to list label files instead of a raw schema error.
+    expect(r.content?.[0]?.text ?? '').toContain('action="info"');
   });
 
   it('aliases search param searchText → query (does not fail as missing query)', async () => {

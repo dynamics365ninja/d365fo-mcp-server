@@ -109,6 +109,29 @@ describe('labels(action="list")', () => {
     expect(out(await call({ comment: 'nothing like this' }))).toContain('No labels match');
   });
 
+  it('without labelFileId it points at action="info" instead of a schema error', async () => {
+    const r = await labelsTool(
+      { method: 'tools/call', params: { name: 'labels', arguments: { action: 'list', model: 'ContosoCore' } } } as CallToolRequest,
+      { symbolIndex: index } as any,
+    );
+    expect(r.isError).toBe(true);
+    expect(out(r)).toContain('labels(action="info", model="<model>")');
+  });
+
+  it('a fractional maxResults still returns a row and advances the offset', async () => {
+    const text = out(await call({ maxResults: 0.5 }));
+    expect(ids(text)).toEqual(['AlphaOne']);
+    expect(text).toContain('params={offset:1}');
+  });
+
+  it('labelFileId matches case-insensitively', async () => {
+    expect(ids(out(await call({ labelFileId: 'contosocore' })))).toHaveLength(4);
+  });
+
+  it('lists in the file order of the requested language, labels it lacks last', async () => {
+    expect(ids(out(await call({ language: 'fi' })))).toEqual(['AlphaOne', 'AlphaTwo', 'BetaNoComment', 'BetaOne']);
+  });
+
   it('an unindexed label file is an error that points at info', async () => {
     const r = await call({ labelFileId: 'Nope' });
     expect(r.isError).toBe(true);

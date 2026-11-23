@@ -51,6 +51,8 @@ those are called out explicitly below.
   was never looked at and the answer was "No labels found". Hyphenated words are now quoted
   for FTS5 (phrase match, still on the index), and the LIKE fallback (queries with `_` or
   `%`, or only punctuation) also searches the comment.
+  A hyphenated word now matches as a whole word ("e-mail" no longer finds "e-mails" through the
+  hyphen path).
 - **A `labels` result is no longer cut at 5,000 characters.** `labels` had the default cap,
   with advice naming parameters it does not have. The cap is now 12,000, with advice that
   names `maxResults` and `offset`.

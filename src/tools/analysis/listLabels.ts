@@ -47,14 +47,35 @@ const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
 
 export async function listLabelsTool(request: CallToolRequest, context: XppServerContext) {
   try {
-    const args = ListLabelsArgsSchema.parse(request.params.arguments);
-    const { model, labelFileId, idPrefix, verbose } = args;
+    const given = (request.params.arguments ?? {}) as Record<string, unknown>;
+    if (!given.model || !given.labelFileId) {
+      return {
+        content: [{
+          type: 'text',
+          text: '❌ labels(action="list") needs model and labelFileId. To see which label files a model has, ' +
+            'use labels(action="info", model="<model>") (without labelId).',
+        }],
+        isError: true,
+      };
+    }
+    const args = ListLabelsArgsSchema.parse(given);
+    const { model, idPrefix, verbose } = args;
+    let labelFileId = args.labelFileId;
     const requested = args.maxResults ?? args.limit;
     const pageSize = requested !== undefined && requested > 0
-      ? Math.min(MAX_MAX_RESULTS, Math.floor(requested)) : DEFAULT_MAX_RESULTS;
+      ? Math.min(MAX_MAX_RESULTS, Math.max(1, Math.floor(requested))) : DEFAULT_MAX_RESULTS;
     const offset = args.offset !== undefined && args.offset > 0 ? Math.floor(args.offset) : 0;
 
-    const paths = context.symbolIndex.getLabelFilePaths(labelFileId, model);
+    let paths = context.symbolIndex.getLabelFilePaths(labelFileId, model);
+    if (paths.length === 0) {
+      // The path lookup is case-sensitive; getLabelFileIds falls back to NOCASE and
+      // returns the stored spelling.
+      const canonical = context.symbolIndex.getLabelFileIds(model, labelFileId)[0];
+      if (canonical && canonical.labelFileId !== labelFileId) {
+        labelFileId = canonical.labelFileId;
+        paths = context.symbolIndex.getLabelFilePaths(labelFileId, model);
+      }
+    }
     if (paths.length === 0) {
       return {
         content: [{
@@ -80,6 +101,10 @@ export async function listLabelsTool(request: CallToolRequest, context: XppServe
       const hit = names.find(n => n.toLowerCase() === wantedName(dir));
       if (hit) files.push({ language: dir, file: path.join(resourcesDir, dir, hit) });
     }
+    // Requested language first, then en-US, then the rest: rows are added in this order, so
+    // "file order" is the order of that language's file, with labels it lacks after.
+    const rank = (l: string) => (norm(l) === norm(args.language) ? 0 : norm(l) === 'en-us' ? 1 : 2);
+    files.sort((a, b) => rank(a.language) - rank(b.language) || a.language.localeCompare(b.language));
     if (files.length === 0) {
       return {
         content: [{
@@ -165,9 +190,13 @@ export async function listLabelsTool(request: CallToolRequest, context: XppServe
     let used = head.length;
     let shown = 0;
     for (const r of matched.slice(offset, offset + pageSize)) {
-      const line = render(r);
-      // Always show at least one row, so a single huge label cannot yield an empty page.
+      let line = render(r);
+      // Always show at least one row so the offset advances; a single row that alone
+      // exceeds the budget (verbose, dozens of languages) is shortened, never cut by the cap.
       if (shown > 0 && used + line.length + 1 > OUTPUT_BUDGET_CHARS) break;
+      if (shown === 0 && line.length > OUTPUT_BUDGET_CHARS - 1_500) {
+        line = `${line.slice(0, OUTPUT_BUDGET_CHARS - 1_500)} … (row shortened)`;
+      }
       lines.push(line);
       used += line.length + 1;
       shown++;

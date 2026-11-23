@@ -11,7 +11,7 @@ import { XppSymbolIndex } from '../../src/metadata/symbolIndex';
 let index: XppSymbolIndex;
 const row = (labelId: string, language: string, text: string, comment?: string) => ({
   labelId, labelFileId: 'ContosoExt', model: 'ContosoExt', language, text, comment,
-  filePath: `C:\pkg\ContosoExt\AxLabelFile\LabelResources\${language}\ContosoExt.${language}.label.txt`,
+  filePath: `C:\\pkg\\ContosoExt\\AxLabelFile\\LabelResources\\${language}\\ContosoExt.${language}.label.txt`,
 });
 
 beforeEach(() => {
