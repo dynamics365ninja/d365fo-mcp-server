@@ -69,6 +69,18 @@ export const LABELS_OVERRIDE_PARAMS: Record<string, string> = {
   allowExtensionLabelFile:
     '[create|rename|delete] Allow writing to a label file EXTENSION ("_Extension" marker). Default false — ' +
     "new labels belong in the model's ORIGINAL label file.",
+  idPrefix:
+    '[list] Only labels whose id starts with this text (case-insensitive).',
+  comment:
+    '[list] Only labels whose developer comment (the " ;text" line under the label, any language) contains ' +
+    'this text, case-insensitive substring — e.g. a ticket tag "TICKET-101". (search matches comments too, ' +
+    'through the index.)',
+  missingLanguage:
+    '[list] Only labels with no non-empty translation in this language, e.g. "fi" (exact code, case-insensitive). ' +
+    'Judged from the .label.txt files on disk, so a language left out of LABEL_LANGUAGES is not "missing". ' +
+    'Labels whose translation merely equals en-US are NOT detected.',
+  offset:
+    '[list] Labels to skip (default 0). The answer names the next offset; repeat the same filters with it.',
   exact:
     '[search] true = exact lookup: the labels whose TEXT equals the given text after normalising both ' +
     'sides (Unicode NFC, trimmed, inner whitespace runs as one space, case-insensitive incl. umlauts). ' +
@@ -98,7 +110,7 @@ export const LABELS_OVERRIDE_PARAMS: Record<string, string> = {
 /** The contract rendered for get_knowledge(kind="op-spec", topic="labels"). */
 export function renderLabelsOpSpec(): string {
   return [
-    'labels — write plumbing (action=create / rename / delete) and exact search (action=search, exact=true)',
+    'labels — list filters (action=list), write plumbing (create / rename / delete) and exact search (action=search, exact=true)',
     '',
     'Exact lookup — "which label\'s text is exactly X?", one call per label is fine:',
     '  labels(action="search", exact=true, query="Posting")',
@@ -121,6 +133,14 @@ export function renderLabelsOpSpec(): string {
     '  • best of all, no `labels` call at all: d365fo_file create/modify resolve a',
     '    raw-text label / fieldLabel to an existing or new @Ref by themselves and',
     '    report which one they used (autoCorrect=false opts out).',
+    '',
+    'List — labels(action="list", model, labelFileId [, language, maxResults, verbose, params={idPrefix, comment, missingLanguage, offset}]):',
+    '  the labels of ONE label file, read from its .label.txt files on disk (every language, not only the indexed ones),',
+    '  in file order: one line per label, `@File:Id — "text"  ;comment` (text and comment in `language`, default en-US),',
+    '  verbose=true = every language per label. Filters combine (AND). Paged: maxResults default 50, max 500, and the',
+    '  page is also cut at ~10,000 characters; the footer then reports how many more matched, the total and the exact',
+    '  next call (params={offset:N}). Example — labels of one ticket still missing Finnish:',
+    '    labels(action="list", model="ContosoExt", labelFileId="ContosoExt", params={comment:"TICKET-101", missingLanguage:"fi"})',
     '',
     'Delete — labels(action="delete", labelId="MyLabel" | "@MyFile:MyLabel", labelFileId, model):',
     '  removes the label line and its " ;comment" line(s) from the .label.txt of EVERY language of the',

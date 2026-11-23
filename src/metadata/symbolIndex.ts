@@ -5261,7 +5261,15 @@ export class XppSymbolIndex {
     const { language = 'en-US', model, labelFileId, limit = 30 } = opts;
 
     // Sanitize query for FTS5 (strip chars that would cause a syntax error)
-    const ftsQuery = query.replace(/['"*()]/g, ' ').trim();
+    // A chunk with a hyphen between letters/digits ("TICKET-101", "non-posted") is NOT a
+    // valid FTS5 bareword: unquoted it raised a syntax error, the catch below sent it to
+    // the LIKE scan, and that scan did not read the comment column — so a ticket tag in
+    // a developer comment was never found. Quoted, FTS5 tokenises it as the phrase
+    // "ticket 101" (adjacent tokens), which is exact enough and stays on the index.
+    const ftsQuery = query.replace(/['"*()]/g, ' ').trim()
+      .split(/\s+/)
+      .map(chunk => (/[\p{L}\p{N}]-[\p{L}\p{N}]/u.test(chunk) ? `"${chunk}"` : chunk))
+      .join(' ');
     // Route to LIKE when FTS5 would silently return 0 results:
     // • '_' and '%' — word separators in the unicode61 tokenizer (also LIKE wildcards);
     //   literal underscore/percent searches must go through LIKE with proper escaping.
@@ -5339,7 +5347,7 @@ export class XppSymbolIndex {
                l.text, l.comment, lf.file_path AS filePath, 0 as rank
         FROM labels l
         JOIN label_files lf ON lf.id = l.file_path_id
-        WHERE (l.text LIKE ? ESCAPE '\\' OR l.label_id LIKE ? ESCAPE '\\')
+        WHERE (l.text LIKE ? ESCAPE '\\' OR l.label_id LIKE ? ESCAPE '\\' OR l.comment LIKE ? ESCAPE '\\')
           AND LOWER(l.language) = ?`;
       if (model)       sql += `\n          AND l.model = ?`;
       if (labelFileId) sql += `\n          AND l.label_file_id = ?`;
@@ -5350,7 +5358,7 @@ export class XppSymbolIndex {
 
     // Lowercased here, not as LOWER(?) in SQL: the expression index is on
     // LOWER(language), and matching it requires the bound side to be a plain value.
-    const params: any[] = [pattern, pattern, language.toLowerCase()];
+    const params: any[] = [pattern, pattern, pattern, language.toLowerCase()];
     if (model)       params.push(model);
     if (labelFileId) params.push(labelFileId);
     params.push(limit);
