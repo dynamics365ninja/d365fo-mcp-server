@@ -39,6 +39,9 @@ const TOOL_CAP_SIZES: Record<string, number | 'uncapped'> = {
   get_object_info:                  'uncapped', // can return reports (RDL) and full class bodies
   get_method:                       'uncapped', // partial method source is useless
   build_d365fo_project:             'uncapped', // compiler errors can appear late in long logs
+  // list pages itself (~10,000 chars, then reports the next offset); the old 5,000 default cut a page
+  // mid-row with advice naming parameters labels does not have.
+  labels:                           12000,
   security_info:                    8000,
   extension_info:                   6000,
   prepare:                          12000,
@@ -101,6 +104,8 @@ const TRUNCATION_ADVICE: Record<string, string> = {
   object_patterns:
     'Ask for one thing at a time: pass `pattern` to get a single recipe instead of the domain index, ' +
     'and `domain` to stay in one toolkit. For form work, `action="spec"` with one pattern is the narrow call.',
+  labels:
+    'Ask for less: labels(action="list") pages with maxResults and params={offset}; search takes maxResults and a narrower query.',
   security_info:
     'Narrow it: one artifact per call (mode="artifact", name, artifactType), ' +
     'includeChain=false to skip the hierarchy walk, or mode="coverage" with a single objectName.',

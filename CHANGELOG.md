@@ -28,7 +28,37 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Added
+- **`labels` can list the labels of a label file (`action="list"`).** There was no way to
+  audit a label file: `search` needs a text, `info` needs an id. `labels(action="list",
+  model, labelFileId)` returns one line per label (`@File:Id — "text"  ;comment`, text in
+  `language`, default en-US); `verbose=true` shows all languages. Optional filters, passed
+  in `params` and documented in `get_knowledge(kind="op-spec", topic="labels")` (this keeps
+  the published schema inside its size budget): `idPrefix`, `comment` (case-insensitive
+  substring of the developer comment, any language) and `missingLanguage` (no non-empty
+  translation in that language; a translation that merely equals en-US is not detected).
+  Paged with `maxResults` (default 50, max 500) and `offset`; a page is also cut at about
+  10,000 characters, and the footer always says how many more matched, the total and the
+  exact next call. It reads the .label.txt files of every language on disk with the
+  indexer's parser, so labels the index does not hold yet, and languages left out of
+  `LABEL_LANGUAGES`, are covered. `action="list"` used to be silently treated as `info`;
+  `list-files` still is.
+
 ### Fixed
+- **`labels(action="search")` finds a label by a developer comment that contains a hyphen,
+  such as a ticket tag (`TICKET-101`).** FTS5 rejects an unquoted hyphenated word, the search
+  fell back to a LIKE scan, and that scan only compared label text and id, so the comment
+  was never looked at and the answer was "No labels found". Hyphenated words are now quoted
+  for FTS5 (phrase match, still on the index), and the LIKE fallback (queries with `_` or
+  `%`, or only punctuation) also searches the comment.
+  A hyphenated word now matches as a whole word ("e-mail" no longer finds "e-mails" through the
+  hyphen path).
+- **A `labels` result is no longer cut at 5,000 characters.** `labels` had the default cap,
+  with advice naming parameters it does not have. The cap is now 12,000, with advice that
+  names `maxResults` and `offset`.
+- **The first label of a .label.txt that starts with a UTF-8 BOM is parsed with its real
+  id.** The BOM used to become part of the id, so that label was indexed under a wrong id;
+  re-index to correct existing rows.
 - **`modify-property` with `propertyPath="Tags"` now works on security privileges, duties,
   roles and their extensions.** The call was refused up front ("not supported by the bridge")
   because those object types were not admitted to the modify gate, although the Tags editor
