@@ -265,3 +265,13 @@ export async function modifyObjectTagsProperty(
   });
   return { success: r.ok, message: r.ok ? `${r.message} (in canonical element order). File: ${filePath}` : `❌ Tags not written: ${r.message}` };
 }
+
+/**
+ * Security objects have no bridge write path: modify-property serves only Tags on them (the gate
+ * admits the pair, this refuses every other property). Null when the type is not a security type.
+ */
+export function securityPropertyRefusal(objectType: string, propertyPath: string): string | null {
+  if (!/^security-(privilege|duty|role)(-extension)?$/i.test(objectType)) return null;
+  return `❌ modify-property on '${objectType}' supports only propertyPath="Tags" (got "${propertyPath}"). ` +
+    'Use add-/remove-privilege, add-/remove-duty or add-/remove-entry-point for the other contents.';
+}
