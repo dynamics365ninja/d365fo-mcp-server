@@ -28,6 +28,8 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+## [1.25.1] — 2026-11-23
+
 ### Added
 - **`d365fo-mcp session --host claude|copilot` finds the log for you, and `--last <n>` reads the
   n most recent sessions (#1329).** The command used to need the full path of one log file, and
