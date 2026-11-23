@@ -28,6 +28,16 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Fixed
+- **`modify-property` with `propertyPath="Tags"` now works on security privileges, duties,
+  roles and their extensions.** The call was refused up front ("not supported by the bridge")
+  because those object types were not admitted to the modify gate, although the Tags editor
+  already knew their element position. Same semantics as for menu items: replace by default,
+  `tagsMode=add|remove`, empty value removes, idempotent, element written ahead of
+  `<EntryPoints>` / `<Privileges>` / `<Duties>`. Any other property on a security object is
+  refused with a message naming the supported one. The `modify-property` op-spec lists the
+  types.
+
 ## [1.25.0] — 2026-11-20
 
 ### Added

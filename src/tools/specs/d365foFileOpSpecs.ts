@@ -1104,7 +1104,7 @@ export const D365FO_FILE_OP_SPECS: Record<string, D365FileOpSpec> = {
     required: ['propertyPath', 'propertyValue'],
     optional: ['controlName', 'dataSourceName', 'tagsMode'],
     note:
-      'propertyPath="Tags" (any object type) sets the <Tags> of the object in canonical position: replaces by default, tagsMode=add|remove combines with the existing ones, an empty propertyValue removes the element. ' +
+      'propertyPath="Tags" (any object type, including security-privilege, security-duty, security-role and their extensions, where Tags is the only property modify-property accepts) sets the <Tags> of the object in canonical position: replaces by default, tagsMode=add|remove combines with the existing ones, an empty propertyValue removes the element. ' +
       'dataSourceName targets a DATA SOURCE the form or form extension defines: propertyPath is ' +
       'JoinSource (must name another data source of the form), LinkType (InnerJoin | OuterJoin | ' +
       'ExistJoin | NotExistJoin | Delayed | Active | Passive), a Yes/No property (AllowCreate, ' +
