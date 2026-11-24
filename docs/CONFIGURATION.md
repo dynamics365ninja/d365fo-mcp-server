@@ -118,6 +118,8 @@ What gets extracted into the SQLite index and where it is stored.
 | `index.extractMode` | setup | `EXTRACT_MODE` | `all` | Scope of the metadata extraction. "all" gives full cross-reference search over the standard application but takes 1–2 hours and produces a multi-GB database; "custom" indexes only your own models and finishes in minutes. Values: `all` — standard + custom — full search, 1–2 h build; `custom` — custom models only — minutes; `standard` — Microsoft models only. |
 | `index.includeLabels` | setup | `INCLUDE_LABELS` | `true` | Builds the labels database so labels(action="search") and label reuse work. Disabling it speeds up the build and shrinks the index, at the cost of label lookup. |
 | `index.labelLanguages` | setup | `LABEL_LANGUAGES` | `en-US` | Comma-separated language codes, or `all` for every language shipped with the model. Each extra language multiplies the label table (~125 MB apiece) — indexing only the languages you actually ship keeps the database small. `labels(action="create")` follows the same list: a translation for a language the label file does not have yet is written only when it is listed here (or passed in `languages`), and a new label file starts with every listed language. |
+| `index.binaryIsvModels` | advanced | `BINARY_ISV_MODELS` | — | ISV models shipped as compiled output only (bin\\*.dll, no object XML), as names or masks by module or model name (`ContosoIsv*,!ContosoIsvDemo`). `d365fo-mcp index` then dumps them with BinaryModelExtractor (Windows, built on first use with the .NET SDK) from the packages path and imports their signatures, forms, security and labels after the normal extraction, so a full rebuild no longer drops them. Empty = off. See docs/BINARY_ISV_MODELS.md. |
+| `index.binaryIsvDumpPath` | advanced | `BINARY_ISV_DUMP_PATH` | — | A folder written by BinaryModelExtractor on another Windows machine or in a pipeline. When set, `d365fo-mcp index` imports it as it is instead of dumping on this machine, so it also works on Linux, macOS and UDE. Relative paths resolve from the installation (or instance) directory. |
 | `index.dbPath` | advanced | `DB_PATH` | `./data/xpp-metadata.db` | SQLite file holding the indexed X++ metadata. Relative paths resolve from the config file directory. |
 | `index.labelsDbPath` | advanced | `LABELS_DB_PATH` | `./data/xpp-metadata-labels.db` | Second SQLite file for labels (dual-database architecture keeps label writes from locking metadata reads). Defaults to <dbPath>-labels.db. |
 | `index.xrefSqlitePath` | advanced | `D365FO_XREF_SQLITE_PATH` | — | A SQLite export of DYNAMICSXREFDB (tables Modules, Names, References; meta.schema 1) for a server without the C# bridge, e.g. a shared read-only server. find_references and the extension/event/API-usage lookups then answer from it instead of a name-based search; the bridge still takes precedence when it has the database. Opened read-only and immutable on first use: replace the file by rename, never in place (on Windows an open file cannot be renamed over: stop the server, replace the file, start it again). A missing or invalid file is logged and ignored. get_workspace_info shows its export date. |
@@ -264,6 +266,8 @@ Downloading a pre-built index from blob storage instead of building it locally.
     "labelLanguages": [
       "en-US"
     ],
+    "binaryIsvModels": "ContosoIsv*",
+    "binaryIsvDumpPath": "",
     "dbPath": "./data/xpp-metadata.db",
     "labelsDbPath": "./data/xpp-metadata-labels.db",
     "xrefSqlitePath": "",

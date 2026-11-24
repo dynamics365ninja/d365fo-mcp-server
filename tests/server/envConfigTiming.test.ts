@@ -170,6 +170,7 @@ describe('entry points load configuration before their other imports', () => {
     'scripts/build-database.ts',
     'scripts/build-fts.ts',
     'scripts/extract-metadata.ts',
+    'scripts/extract-binary-models.ts',
     'scripts/azure-blob-manager.ts',
     'scripts/purge-property-stats.ts',
   ];

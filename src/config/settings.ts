@@ -623,6 +623,33 @@ export const SETTINGS: Setting[] = [
     placeholder: 'en-US,cs,de',
   },
   {
+    path: 'index.binaryIsvModels',
+    env: 'BINARY_ISV_MODELS',
+    section: 'index',
+    tier: 'advanced',
+    type: 'list',
+    label: 'Binary ISV models to index (signatures only)',
+    description:
+      'ISV models shipped as compiled output only (bin\\*.dll, no object XML), as names or masks by module or ' +
+      'model name (`ContosoIsv*,!ContosoIsvDemo`). `d365fo-mcp index` then dumps them with BinaryModelExtractor ' +
+      '(Windows, built on first use with the .NET SDK) from the packages path and imports their signatures, ' +
+      'forms, security and labels after the normal extraction, so a full rebuild no longer drops them. ' +
+      'Empty = off. See docs/BINARY_ISV_MODELS.md.',
+    placeholder: 'ContosoIsv*',
+  },
+  {
+    path: 'index.binaryIsvDumpPath',
+    env: 'BINARY_ISV_DUMP_PATH',
+    section: 'index',
+    tier: 'advanced',
+    type: 'path',
+    label: 'Prepared binary ISV dump folder',
+    description:
+      'A folder written by BinaryModelExtractor on another Windows machine or in a pipeline. When set, ' +
+      '`d365fo-mcp index` imports it as it is instead of dumping on this machine, so it also works on Linux, ' +
+      'macOS and UDE. Relative paths resolve from the installation (or instance) directory.',
+  },
+  {
     path: 'index.dbPath',
     env: 'DB_PATH',
     section: 'index',

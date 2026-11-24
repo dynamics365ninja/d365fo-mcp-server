@@ -52,6 +52,15 @@ export function writeExtractManifest(metadataDir: string, manifest: ExtractManif
   fs.writeFileSync(manifestPath(metadataDir), JSON.stringify(manifest, null, 2));
 }
 
+/** The whole manifest, or `undefined` when there is none or it cannot be parsed. */
+export function readExtractManifest(metadataDir: string): Partial<ExtractManifest> | undefined {
+  try {
+    return JSON.parse(fs.readFileSync(manifestPath(metadataDir), 'utf-8')) as Partial<ExtractManifest>;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Read the list of custom models recorded by the last extract run.
  * Returns `undefined` when no manifest exists (older extract, or none run yet), so callers
