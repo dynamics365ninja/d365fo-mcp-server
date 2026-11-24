@@ -68,6 +68,7 @@ import { upsertWrittenFileIntoIndex } from './inlineIndexUpsert.js';
 import { applySecurityReferenceOperation, securityReferenceTypeRefusal } from './securityReferences.js';
 import { verifyWrittenFile, renderWriteVerification, runInlineBpCheck, membershipOf, bridgeMessageNote, renderBatchEditHint, verifyFormElementOrder, readBackAfterModify } from './inlineWriteVerification.js';
 import { lintXppSelect } from '../../utils/xppSelectLint.js';
+import { scanXpp } from '../../utils/xppLexer.js';
 import { validateWrittenXpp } from './inlineXppValidation.js';
 import { createPhaseTimer } from '../../utils/phaseTimer.js';
 import {
@@ -170,34 +171,20 @@ export function assertCleanXppSource(source: string | undefined, paramName: stri
   }
 }
 
-/** Strip X++ line/block/doc comments and string literals so their braces/parens
- *  don't skew structural scans. Returns a same-ish-length cleaned string. */
-function stripXppCommentsAndStrings(s: string): string {
-  let out = '';
-  let i = 0;
-  while (i < s.length) {
-    const two = s.slice(i, i + 2);
-    if (two === '//') {                       // line comment (incl. /// doc comments)
-      const nl = s.indexOf('\n', i);
-      i = nl === -1 ? s.length : nl;
-      continue;
-    }
-    if (two === '/*') {                        // block comment
-      const end = s.indexOf('*/', i + 2);
-      i = end === -1 ? s.length : end + 2;
-      continue;
-    }
-    if (s[i] === '"') {                         // string literal
-      i++;
-      while (i < s.length && s[i] !== '"') { if (s[i] === '\\') i++; i++; }
-      i++;
-      out += '""';
-      continue;
-    }
-    out += s[i];
-    i++;
+/** X++ source with comments and string-literal content blanked, so their braces
+ *  and parens don't skew structural scans. Built on the shared lexer (maskXpp's
+ *  scan): this used to be its own scanner that knew only double-quoted strings,
+ *  so the '{' in strScan(message, '{4:', ...) opened a block and add-method
+ *  merged every method after it into one. Unlike maskXpp, the `//` of a line
+ *  comment is blanked too, so `public void a() // note` still ends in ')'.
+ *  Same length as the source, so offsets address the original. */
+function maskXppForStructure(s: string): string {
+  const { masked, spans } = scanXpp(s);
+  const out = masked.split('');
+  for (const span of spans) {
+    if (span.kind === 'line-comment') out[span.start] = out[span.start + 1] = ' ';
   }
-  return out;
+  return out.join('');
 }
 
 /** Count top-level X++ method bodies: a `{` opened at brace-depth 0 immediately
@@ -205,7 +192,7 @@ function stripXppCommentsAndStrings(s: string): string {
  *  body (depth > 0) and a class wrapper opens after an identifier, so neither is
  *  miscounted. */
 export function countTopLevelMethodBodies(source: string): number {
-  const cleaned = stripXppCommentsAndStrings(source);
+  const cleaned = maskXppForStructure(source);
   let depth = 0;
   let count = 0;
   let prevSignificant = '';
@@ -228,21 +215,18 @@ export function countTopLevelMethodBodies(source: string): number {
  *  one <Method> at a time. */
 export function splitTopLevelMethodBodies(source: string): string[] {
   const s = source;
+  // Braces are read from the masked copy, the slices are cut from the original.
+  const masked = maskXppForStructure(s);
   const methods: string[] = [];
   let depth = 0;
   let methodStart = -1;
-  let i = 0;
-  while (i < s.length) {
-    const ch = s[i];
+  for (let i = 0; i < s.length; i++) {
     // Start a method slice at the first significant char (incl. leading /// doc
-    // comments and [Attribute] blocks) after the previous method closed.
-    if (methodStart === -1 && !/\s/.test(ch)) methodStart = i;
+    // comments and [Attribute] blocks) after the previous method closed. Checked
+    // on the original, where a comment is not blank.
+    if (methodStart === -1 && !/\s/.test(s[i])) methodStart = i;
 
-    const two = s.slice(i, i + 2);
-    if (two === '//') { const nl = s.indexOf('\n', i); i = nl === -1 ? s.length : nl; continue; }
-    if (two === '/*') { const end = s.indexOf('*/', i + 2); i = end === -1 ? s.length : end + 2; continue; }
-    if (ch === '"') { i++; while (i < s.length && s[i] !== '"') { if (s[i] === '\\') i++; i++; } i++; continue; }
-
+    const ch = masked[i];
     if (ch === '{') {
       depth++;
     } else if (ch === '}') {
@@ -252,7 +236,6 @@ export function splitTopLevelMethodBodies(source: string): string[] {
         methodStart = -1;
       }
     }
-    i++;
   }
   // Trailing brace-less content (e.g. an interface/abstract method declaration).
   if (methodStart !== -1) {
@@ -291,7 +274,7 @@ export function assertSingleMethodSource(source: string | undefined): void {
  */
 export function extractMethodNameFromSource(source: string | undefined): string | null {
   if (!source) return null;
-  const cleaned = stripXppCommentsAndStrings(source).replace(/\[[^\]]*\]/g, ' ');
+  const cleaned = maskXppForStructure(source).replace(/\[[^\]]*\]/g, ' ');
   const m = cleaned.match(/\b([A-Za-z_]\w*)\s*\(/);
   return m ? m[1] : null;
 }

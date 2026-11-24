@@ -39,6 +39,12 @@ those are called out explicitly below.
   and nothing is written; a table extension is no longer written without its methods.
   When the object already exists, the suggested `modify` call reports the same problem
   instead of leaving the methods out without a word.
+- **`add-method` with several methods no longer merges them at a `{` in a single-quoted
+  string.** `d365fo_file(action="modify")` splits a `sourceCode` holding several methods
+  into one `add-method` each, but its splitter recognized only double-quoted strings. A
+  brace in a single-quoted or verbatim string, such as `'{4:'`, opened a block that never
+  closed, so every method after it was added as part of the one before. It now uses the
+  same X++ lexer as the rest of the server.
 
 ## [1.25.1] — 2026-11-23
 

@@ -1506,6 +1506,37 @@ describe('modify_d365fo_file', () => {
     expect(countTopLevelMethodBodies(two)).toBe(2);
   });
 
+  // The splitter used to know only double-quoted strings, so the '{' in a
+  // single-quoted string literal (e.g. '{4:') opened a block that never closed,
+  // and every method after it was merged into the first one.
+  it('splitTopLevelMethodBodies ignores braces in single-quoted, verbatim and escaped strings', () => {
+    const src =
+      `public int textBlockStart(str message)\n{\n    return strScan(message, '{4:', 1, strLen(message));\n}\n\n` +
+      `public str closing()\n{\n    return '}';\n}\n\n` +
+      `public str path()\n{\n    return @'C:\\temp\\{' + "\\"{";\n}\n\n` +
+      `public void last()\n{\n}`;
+    const parts = splitTopLevelMethodBodies(src);
+    expect(parts.map(extractMethodNameFromSource)).toEqual(['textBlockStart', 'closing', 'path', 'last']);
+    expect(parts[0]).toContain(`strScan(message, '{4:', 1, strLen(message));`);
+    expect(countTopLevelMethodBodies(src)).toBe(4);
+  });
+
+  it('splitTopLevelMethodBodies keeps a leading block comment and handles a comment after the signature', () => {
+    const src =
+      `/* parses block 4 */\npublic int a() // see '{4:'\n{\n    return 0;\n}\n\n` +
+      `public int b()\n{\n    return 1;\n}`;
+    const parts = splitTopLevelMethodBodies(src);
+    expect(parts).toHaveLength(2);
+    expect(parts[0].startsWith('/* parses block 4 */')).toBe(true);
+    expect(countTopLevelMethodBodies(src)).toBe(2);
+  });
+
+  // Passed before the lexer switch too; pins that the switch keeps it working.
+  it('extractMethodNameFromSource skips a ( in a comment or in an attribute string', () => {
+    expect(extractMethodNameFromSource(`// 'x(' in a comment\npublic void run()\n{\n}`)).toBe('run');
+    expect(extractMethodNameFromSource(`[SysObsolete('use foo()')]\npublic void run()\n{\n}`)).toBe('run');
+  });
+
   it('resolves an unprefixed objectName via the model prefix (RentEquipmentTable → ContosoRentEquipmentTable)', async () => {
     const fsMod = await import('fs/promises');
     const mc = await import('../../src/utils/modelClassifier');
