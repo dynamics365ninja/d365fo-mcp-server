@@ -28,6 +28,18 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Fixed
+- **A `{` inside a string no longer drops the methods after it.** Creating a class, table
+  or table extension from `sourceCode` split it into methods by counting braces in the raw
+  text, so an unbalanced brace in a string literal or comment — such as the `'{4:'` an
+  MT940 parser searches for — left a method body open, and every method after it was
+  dropped while the create reported success.
+  Braces are now matched with string and comment content ignored. A `{` that really is
+  never closed fails the create with its line number and the line that opens the block,
+  and nothing is written; a table extension is no longer written without its methods.
+  When the object already exists, the suggested `modify` call reports the same problem
+  instead of leaving the methods out without a word.
+
 ## [1.25.1] — 2026-11-23
 
 ### Added

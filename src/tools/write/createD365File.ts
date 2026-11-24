@@ -7,7 +7,7 @@ import * as fs from 'fs/promises';
 import { directXmlSetIndexValidTimeState, coerceNoYesFlag } from './directXmlWriters.js';
 import { applyCreateTags } from './tagsApply.js';
 import { writeFileAtomic } from '../../utils/atomicFileWrite.js';
-import { XmlTemplateGenerator } from '../xml/xmlTemplateGenerator.js';
+import { XmlTemplateGenerator, XppSplitError } from '../xml/xmlTemplateGenerator.js';
 import { findIgnoredEntityProperties } from '../xml/dataEntityXml.js';
 import { provisionStagingTable } from './stagingTableProvisioning.js';
 import { fieldPropertiesFromSpecs, applyFieldPropertyPatches } from '../xml/tableFieldPropertyEdit.js';
@@ -215,8 +215,20 @@ export function renderEquivalentModifyCall(
     ops.push(op);
   }
 
+  // Source with an unclosed '{' cannot be split into methods. Nothing is written
+  // on this path, so nothing else reports it: say so in the hint instead of
+  // failing the reply or silently offering a call without the methods.
+  let splitError: XppSplitError | undefined;
   if (args.sourceCode?.trim()) {
-    const { methods } = XmlTemplateGenerator.splitXppClassSource(args.sourceCode);
+    let methods: Array<{ name: string }> = [];
+    try {
+      // parseSourceForBridge, not the bare split: it decodes &apos; etc. first,
+      // as the create and modify paths do, so the hint splits the same text.
+      methods = XmlTemplateGenerator.parseSourceForBridge(args.sourceCode).methods;
+    } catch (e) {
+      if (!(e instanceof XppSplitError)) throw e;
+      splitError = e;
+    }
     for (const m of methods) {
       ops.push({ operation: 'add-method', methodName: m.name, sourceCode: `<the X++ you passed for ${m.name}>` });
     }
@@ -246,8 +258,13 @@ export function renderEquivalentModifyCall(
     ops.push({ operation: 'modify-property', propertyPath: element, propertyValue: v });
   }
 
-  if (ops.length === 0) return '';
-  return `\n\nApply what you passed to the object that is already there — ONE call:\n` +
+  const splitNote = splitError
+    ? `\n\nYour sourceCode could not be split into methods` +
+      (ops.length > 0 ? ', so the call below has no add-method operations' : '') +
+      `: ${splitError.detail}`
+    : '';
+  if (ops.length === 0) return splitNote;
+  return `${splitNote}\n\nApply what you passed to the object that is already there — ONE call:\n` +
     `d365fo_file(action="modify", objectType="${objectType}", objectName="${objectName}", operations=${JSON.stringify(ops)})\n`;
 }
 
@@ -1818,6 +1835,10 @@ export async function handleCreateD365File(
         // If bridge returned null or success=false, fall through to XML generation
         console.error(`[create_d365fo_file] Bridge returned ${JSON.stringify(bridgeResult)} — falling back to XML generation`);
       } catch (bridgeErr) {
+        // Source that cannot be split is the caller's error, not the bridge's: the
+        // XML fallback cannot split it either, and for a table extension it ignores
+        // sourceCode and would write the object without its methods.
+        if (bridgeErr instanceof XppSplitError) throw bridgeErr;
         console.error(`[create_d365fo_file] Bridge create failed, falling back to XML: ${bridgeErr}`);
       }
     }
