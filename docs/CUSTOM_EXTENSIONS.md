@@ -186,9 +186,27 @@ With `prefixSource: as-given` (env `EXTENSION_PREFIX_SOURCE=as-given`), in a mod
 
 ## Objects owned by another model
 
-A customer solution is commonly split across several **custom** models — a shared `ContosoFinanceCore` plus country models `ContosoFinanceSK` / `ContosoFinanceCZ` that extend it. The workspace targets exactly one of them; every other model is code this workspace only consumes.
+### The models a workspace develops
 
-So any write — `d365fo_file(action="modify")`, `action="create"`, a scaffold from `generate_object(mode="scaffold")`, or a new label — that resolves into a model other than the workspace's own is **refused**. Asked to "add a field to `ContosoCore_TaxTransReportChangeLog`", the tools would otherwise resolve that table by name, land in the Core model that owns it, and edit it in place — the field would never appear in the active model's project or version control, and every other model built on Core would inherit it. What was wanted is a table extension in the active model:
+A workspace rarely develops just one model. A model comes with its test model, a partner solution is split across several models, and a customer may develop the models it took over from several partners. The server treats all of these as the workspace's own models:
+
+- the model of the workspace's project (the *write anchor*),
+- the model of every project in the same Visual Studio solution (`.sln` or `.slnx`) as that project,
+- the models listed in `workspace.models` in the server's config file (`D365FO_WORKSPACE_MODELS`; the older name `D365FO_CROSS_MODEL_WRITE_MODELS` still works).
+
+A write into any of them is an ordinary write. `d365fo_file(action="create", modelName="ContosoFinanceTests", …)` creates the object in `ContosoFinanceTests` and adds it to the project that builds `ContosoFinanceTests`. The same goes for `modify` and new labels. An object is never added to a project of another model, because that project's build would then fail. When no project of the model can be found, the reply says so and the object is not registered anywhere. `get_workspace_info` lists the other models on its `Also models` line.
+
+```json
+{ "workspace": { "models": ["ContosoFinanceTests", "ContosoFinanceCore"] } }
+```
+
+The setting is re-read before every write, from the config file and from `.env`, so an edit applies to the next attempt without a restart. Put it in the config file: in an npm installation the `.env` sits in the package folder, and an update replaces it.
+
+### Other custom models are refused
+
+Any other custom model is code this workspace only consumes — for example a shared `ContosoFinanceCore` that the country model `ContosoFinanceSK` extends, when the workspace's solution holds only the country model.
+
+So any write — `d365fo_file(action="modify")`, `action="create"`, a scaffold from `generate_object(mode="scaffold")`, or a new label — that resolves into a custom model the workspace does not develop is **refused**. Asked to "add a field to `ContosoCore_TaxTransReportChangeLog`", the tools would otherwise resolve that table by name, land in the Core model that owns it, and edit it in place — the field would never appear in the active model's project or version control, and every other model built on Core would inherit it. What was wanted is a table extension in the active model:
 
 ```
 d365fo_file(action="create", objectType="table-extension",
@@ -202,22 +220,23 @@ d365fo_file(action="create", objectType="table-extension",
 
 `get_workspace_info(projectName=…)` changes which project is **active** — what gets built, BP-checked and written into. It is not a way to reach another model's code: `get_object_info`, `search`, `find_references` and the rest query the index across every model, switched or not.
 
-Writes therefore stay anchored to the model the workspace resolved on its own, and a create/modify/scaffold into the switched-to model is refused like any other cross-model write. Otherwise the switch would be self-served consent: refused write → switch project → same write, no refusal. The anchor is dropped when the user genuinely moves — the client reports a different workspace root, or a git branch that resolves to another project — because then the workspace really did change.
+Writes therefore stay anchored to the model the workspace resolved on its own, and a create/modify/scaffold into the switched-to model is refused like any other cross-model write, unless that model is one of the workspace's models anyway. The solution is read from the project the server detected or you configured, never from a switched-to one, so a switch cannot add models either. Otherwise the switch would be self-served consent: refused write → switch project → same write, no refusal. The anchor is dropped when the user genuinely moves — the client reports a different workspace root, or a git branch that resolves to another project — because then the workspace really did change.
 
-If the switch is what the user wanted and the writes belong in the other model, that is the allow-list below, not the switch.
+If the switch is what the user wanted and the writes belong in the other model, that is `workspace.models` (below), not the switch.
 
 ### Consent lives in configuration, not in the call
 
 The first version of this guard accepted `modelName="<owning model>"` on the call as consent. For a human that is a reasonable "I know what I'm doing"; for an agent it is not — the refusal text named the parameter, so the agent added the parameter and wrote into the shared model anyway, then explained why afterwards. A bypass the caller can mint for itself is not a bypass.
 
-Allowing a cross-model write is therefore a **configuration** change — a file the user edits and the agent has no tool to write:
+Adding a model to the workspace is therefore a change to the **solution or the configuration**, made by the user; the agent has no tool that writes either:
 
-```env
-D365FO_CROSS_MODEL_WRITE_MODELS=ContosoFinanceCore   # allow these models (comma-separated)
-D365FO_ALLOW_CROSS_MODEL_WRITE=true                  # allow any model
+```json
+{ "workspace": { "models": ["ContosoFinanceCore"], "allowCrossModelWrite": false } }
 ```
 
-These two settings are re-read from `.env` before every decision, so an answer given mid-task applies to the **next attempt** — no restart, no lost session. That matters for the guard rather than against it: while the only sanctioned route cost the user their session, all the pressure was on finding a cheaper one. Nothing else is re-read; this is a policy refresh, not a configuration reload.
+`workspace.allowCrossModelWrite: true` (`D365FO_ALLOW_CROSS_MODEL_WRITE`) allows writes into **any** model. Each such write into a model the workspace does not develop carries a one-line note naming that model. The refusal names the config file to edit.
+
+These settings are re-read from the config file and from `.env` before every decision, so an answer given mid-task applies to the **next attempt** — no restart, no lost session. That matters for the guard rather than against it: while the only sanctioned route cost the user their session, all the pressure was on finding a cheaper one. Nothing else is re-read; this is a policy refresh, not a configuration reload.
 
 A value set in the real environment (shell, the `.mcp.json` `env{}` block, App Settings) still outranks the file, exactly as at boot.
 

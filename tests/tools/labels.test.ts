@@ -1766,7 +1766,10 @@ describe('rename_label', () => {
   });
 
   describe('cross-model guard', () => {
-    afterEach(() => { delete process.env.D365FO_CROSS_MODEL_WRITE_MODELS; });
+    afterEach(() => {
+      delete process.env.D365FO_CROSS_MODEL_WRITE_MODELS;
+      delete process.env.D365FO_ALLOW_CROSS_MODEL_WRITE;
+    });
 
     // labels(create) refused a label in another model's file, while a rename of a
     // label in that same file went through and rewrote it.
@@ -1875,8 +1878,8 @@ describe('rename_label', () => {
       });
     });
 
-    it('lets configuration allow it, and says so on the result', async () => {
-      process.env.D365FO_CROSS_MODEL_WRITE_MODELS = 'ForeignModel';
+    it('lets the blanket switch allow it, and says so on the result', async () => {
+      process.env.D365FO_ALLOW_CROSS_MODEL_WRITE = 'true';
       const fsMock = await import('fs');
       (fsMock.promises.readdir as any).mockResolvedValueOnce(['en-US']);
       (fsMock.promises.readFile as any).mockResolvedValue('﻿OldName=Old text\r\n');
@@ -1895,7 +1898,7 @@ describe('rename_label', () => {
       expect(result.isError).toBeFalsy();
       expect(result.content[0].text).toContain('DRY RUN');
       expect(result.content[0].text).toContain('ForeignModel');
-      expect(result.content[0].text).toMatch(/D365FO_CROSS_MODEL_WRITE_MODELS|configuration/);
+      expect(result.content[0].text).toContain('D365FO_ALLOW_CROSS_MODEL_WRITE=true');
       // A dry run wrote nothing, so the notice must not report a write.
       expect(result.content[0].text).toContain('would be modified');
       expect(result.content[0].text).not.toContain('was modified');

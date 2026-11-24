@@ -16,7 +16,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { loadEnv, reloadWritePolicy } from '../../src/utils/loadEnv';
+import { loadEnv, reloadWritePolicy, writePolicyFiles } from '../../src/utils/loadEnv';
 import { crossModelWriteAllowedByConfig } from '../../src/utils/crossModelWriteGuard';
 
 let dir: string;
@@ -42,6 +42,8 @@ beforeEach(() => {
   envPath = path.join(dir, '.env');
   delete process.env.D365FO_ALLOW_CROSS_MODEL_WRITE;
   delete process.env.D365FO_CROSS_MODEL_WRITE_MODELS;
+  delete process.env.D365FO_WORKSPACE_MODELS;
+  delete process.env.D365FO_CONFIG;
 });
 
 afterEach(() => {
@@ -100,6 +102,38 @@ describe('reloadWritePolicy', () => {
 
     expect(process.env.D365FO_MODEL_NAME).toBe(bootModel);
     expect(process.env.DB_PATH).not.toBe('/edited/db');
+  });
+
+  // #1332: in an npm installation the .env sits in the package folder and an
+  // update replaces it. The config file next to D365FO_CONFIG does not move.
+  it('reads workspace.models from the JSON config, live', () => {
+    const configPath = path.join(dir, 'instance.json');
+    fs.writeFileSync(configPath, JSON.stringify({ workspace: { modelName: 'DemoSK' } }), 'utf-8');
+    process.env.D365FO_CONFIG = configPath;
+    bootWith('');
+    expect(crossModelWriteAllowedByConfig('DemoSKTests')).toBe(false);
+
+    fs.writeFileSync(configPath, JSON.stringify({ workspace: { modelName: 'DemoSK', models: ['DemoSKTests'] } }), 'utf-8');
+    const future = new Date(Date.now() + 5_000);
+    fs.utimesSync(configPath, future, future);
+
+    expect(crossModelWriteAllowedByConfig('DemoSKTests')).toBe(true);
+    expect(crossModelWriteAllowedByConfig('DemoOther')).toBe(false);
+    expect(writePolicyFiles()?.configPath).toBe(configPath);
+  });
+
+  it('keeps the policy it has while the config file is half-saved', () => {
+    const configPath = path.join(dir, 'instance.json');
+    fs.writeFileSync(configPath, JSON.stringify({ workspace: { models: ['DemoSKTests'] } }), 'utf-8');
+    process.env.D365FO_CONFIG = configPath;
+    bootWith('');
+    expect(crossModelWriteAllowedByConfig('DemoSKTests')).toBe(true);
+
+    fs.writeFileSync(configPath, '{ "workspace": { "mod', 'utf-8');
+    const future = new Date(Date.now() + 5_000);
+    fs.utimesSync(configPath, future, future);
+
+    expect(crossModelWriteAllowedByConfig('DemoSKTests')).toBe(true);
   });
 
   it('is a no-op when loadEnv never ran', () => {

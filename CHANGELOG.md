@@ -47,6 +47,37 @@ those are called out explicitly below.
   index is still built without the models and the warning names the command to retry. Nothing
   changes until the setting is set. See docs/BINARY_ISV_MODELS.md.
 
+
+### Changed
+- **A workspace can develop several models: its test model, or a solution split across
+  models, is written into like its main model (#1332).** The server treated the model of
+  the workspace's project as the only one it develops. `create` replaced an explicit
+  `modelName` with the project's model, so `create(modelName="ContosoTests")` quietly wrote
+  into the main model. `modify` and new labels registered objects of another model into the
+  active project, whose build then fails on them. Each write that configuration allowed into
+  another model carried a note telling the agent to undo it. Now a model belongs to the
+  workspace when it is the project's model, when a project of the same `.sln`/`.slnx`
+  builds it, when the main model's descriptor names it in `<InternalsVisibleTo>`, or when
+  the new setting `workspace.models` (`D365FO_WORKSPACE_MODELS`) lists it.
+  `D365FO_CROSS_MODEL_WRITE_MODELS` is its older name and still works. Writes into these
+  models are neither refused nor flagged. `create` honours `modelName`, and refuses a
+  `modelName` that names a Microsoft model or a `projectPath` of another model. Objects and
+  label files go into the project of their own model. When there is no such project, or
+  several, the reply says so and the object goes into no project. `get_workspace_info`
+  lists the other models. Writes into any other custom model are still refused, and a
+  refused `create` of a new object now names the workspace's models to use instead of
+  suggesting an extension. With `workspace.allowCrossModelWrite`
+  (`D365FO_ALLOW_CROSS_MODEL_WRITE`) each write outside these models carries a one-line,
+  factual note. Nothing to do when the test model's project is in the same solution.
+  Otherwise add the models to `workspace.models`.
+- **The write policy is read from the config file too, and the refusal names that file.**
+  `D365FO_CROSS_MODEL_WRITE_MODELS` and `D365FO_ALLOW_CROSS_MODEL_WRITE` could only be set
+  in the `.env` the server loads, which in an npm installation sits in the package folder:
+  an update deleted them, and the refusal did not say which file it meant.
+  `workspace.models` and `workspace.allowCrossModelWrite` now go into the JSON config next
+  to `D365FO_CONFIG`. They are re-read from it before every write, like the `.env`, so an
+  edit applies without a restart, and the refusal names the config file's path.
+
 ### Fixed
 - **An unreadable configuration file stops `d365fo-mcp index` instead of rebuilding
   everything on defaults.** A `config/d365fo-mcp.json` that is not valid JSON (most often a

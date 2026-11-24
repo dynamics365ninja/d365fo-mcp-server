@@ -18,6 +18,7 @@
 import { crossModelWriteRefusal } from '../../utils/crossModelWriteGuard.js';
 import { getConfigManager } from '../../utils/configManager.js';
 import { resolveModelDependency } from './modelDependencyResolver.js';
+import { refreshWorkspaceModels, type WorkspaceModelsConfig } from '../../workspace/workspaceModels.js';
 
 // Re-exported so each writer takes both guard inputs from one place.
 export { resolveModelDependency };
@@ -32,18 +33,24 @@ export { resolveModelDependency };
  * Defensive on purpose: a ConfigManager without the async method falls back to
  * the sync getter, and one with neither yields '' — the guard's own "nothing to
  * compare against" case, not a crash inside a write.
+ *
+ * Also brings the workspace's OTHER models up to date — the models of the anchor
+ * project's solution (workspace/workspaceModels.ts) — because this is the one
+ * call every writer awaits before its synchronous guard runs (#1332).
  */
 export async function resolveAnchorModel(cm: {
   resolveWriteAnchorModel?: () => Promise<string | null>;
   getWriteAnchorModel?: () => string | null;
-}): Promise<string> {
+} & WorkspaceModelsConfig): Promise<string> {
+  let anchor = '';
   try {
-    const resolved = await cm.resolveWriteAnchorModel?.();
-    if (resolved) return resolved;
+    anchor = (await cm.resolveWriteAnchorModel?.()) ?? '';
   } catch {
     /* fall through to the sync getter */
   }
-  return cm.getWriteAnchorModel?.() ?? '';
+  if (!anchor) anchor = cm.getWriteAnchorModel?.() ?? '';
+  await refreshWorkspaceModels(cm);
+  return anchor;
 }
 
 export interface ScaffoldWriteTarget {

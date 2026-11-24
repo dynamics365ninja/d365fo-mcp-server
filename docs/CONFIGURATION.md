@@ -89,8 +89,9 @@ The model/project the server writes to. Auto-detected from the IDE when left emp
 | `workspace.solutionsPath` | setup | `D365FO_SOLUTIONS_PATH` | — | Scanned once at startup so the server can switch model automatically when you open another solution or git branch. Optional, but it is what makes multi-project workspaces work without reconfiguring. The scan resolves the MODEL; it does not pick a project when several .rnrproj under it build that model — get_workspace_info then reports `Project : (not selected)` and names them, and anything that registers a file needs an explicit projectName/projectPath. Picking one meant every write landed in whichever project the scan saw first. With `workspace.modelName` set, only projects of that model are candidates. It is also the bound on which .rnrproj the server may write: `d365fo_file(action="project")` and the project registration done by create, modify, labels and generate_object all refuse a project that is not under this folder, the IDE's workspace/solution path, `workspace.solutionPath`, or the folder of `workspace.projectPath`. A project activated with `get_workspace_info(projectPath=…)` does not extend the bound — set this to the folder that holds your projects instead. |
 | `workspace.projectPath` | advanced | `D365FO_PROJECT_PATH` | — | Forces one specific project instead of auto-detection. Rarely needed outside CI. Its folder counts as a solution root for project writes (see `workspace.solutionsPath`). |
 | `workspace.solutionPath` | advanced | `D365FO_SOLUTION_PATH` | — | Forces one specific solution instead of auto-detection. Rarely needed outside CI. |
-| — | — | `D365FO_CROSS_MODEL_WRITE_MODELS` | — | Comma-separated models this workspace may write into besides its own. By default any create/modify/label write into another custom model is refused and the extension route in the active model is offered instead — see [Objects owned by another model](CUSTOM_EXTENSIONS.md#objects-owned-by-another-model). Consent lives here, in configuration, because a tool parameter is something the agent can grant itself. Re-read from `.env` before every decision, so an edit applies to the next attempt without a restart. |
-| — | — | `D365FO_ALLOW_CROSS_MODEL_WRITE` | `false` | Set to `true` to allow writes into **any** other custom model — the blanket form of the setting above. |
+| `workspace.models` | advanced | `D365FO_WORKSPACE_MODELS` | — | Comma-separated models this workspace develops besides the one its project targets — a test model, or the other models of a solution split into several. Writes into them are made, and registered in the project of that model, like writes into the main model. The models of every project in the active project's `.sln` count already, so this is for models whose projects are not in that solution. Any other custom model is refused and the extension route is offered instead — see [Objects owned by another model](CUSTOM_EXTENSIONS.md#objects-owned-by-another-model). Re-read from the config file (or `.env`) before every write, so an edit applies without a restart. |
+| — | — | `D365FO_CROSS_MODEL_WRITE_MODELS` | — | The older environment name of `workspace.models`, still honoured with the same meaning. Re-read from `.env` before every write. Creating a model with `d365fo_file` adds the new model here. |
+| `workspace.allowCrossModelWrite` | advanced | `D365FO_ALLOW_CROSS_MODEL_WRITE` | `false` | Set to `true` to allow writes into **any** other custom model — the blanket form of `workspace.models`. Each such write carries a one-line note naming the model it went into. |
 
 ### Naming convention
 
@@ -246,7 +247,9 @@ Downloading a pre-built index from blob storage instead of building it locally.
     "projectMembership": "active",
     "solutionsPath": "K:\\repos\\MySolution\\projects",
     "projectPath": "",
-    "solutionPath": ""
+    "solutionPath": "",
+    "models": "ContosoCore,ContosoCoreTests",
+    "allowCrossModelWrite": false
   },
   "naming": {
     "prefix": "ISV_",
