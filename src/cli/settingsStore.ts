@@ -15,6 +15,7 @@ import {
   writeConfigFile,
   writeSecretsFile,
   type ConfigObject,
+  type UnreadableConfigFile,
 } from '../config/configFile.js';
 import { SETTINGS, parseValue, type Setting } from '../config/settings.js';
 import { readEnvValue } from './envFile.js';
@@ -30,6 +31,12 @@ export interface SettingsStore {
   secrets: ConfigObject;
   /** Legacy .env consulted as a fallback when a value is missing from the JSON. */
   legacyEnvFile: string | null;
+  /**
+   * Config files that exist but could not be read. The store then holds none
+   * of their settings, so reading it gives defaults and saving it would replace
+   * the user's file with whatever this run happened to write.
+   */
+  unreadable: UnreadableConfigFile[];
 }
 
 /**
@@ -48,7 +55,25 @@ export function openStore(baseDir: string, legacyEnvFile: string | null, fallbac
     config: files.config ?? {},
     secrets: files.secrets ?? {},
     legacyEnvFile: legacyEnvFile && fs.existsSync(legacyEnvFile) ? legacyEnvFile : null,
+    unreadable: files.unreadable,
   };
+}
+
+/**
+ * Why nothing may be done with `store`, or null when its files were read.
+ *
+ * Every command that rebuilds the index or saves settings checks this first.
+ * Running on the defaults of an unreadable config is how a custom rebuild
+ * became a full extraction of the whole packages path, and saving would
+ * overwrite the file the user still has to repair.
+ */
+export function unreadableConfigRefusal(store: SettingsStore): string | null {
+  const unreadable = store.unreadable ?? []; // stores built by hand (tests) predate the field
+  if (unreadable.length === 0) return null;
+  const files = unreadable.map(u => `   ${u.file}: ${u.error}`).join('\n');
+  return `The configuration cannot be read, so nothing was changed:\n${files}\n` +
+    '   Fix the file and run the command again. In JSON, a Windows path needs \\\\ or / ' +
+    '(K:/AosService/PackagesLocalDirectory).';
 }
 
 /** Store rooted at an instance folder: instances/<name>/d365fo-mcp.json. */
@@ -113,6 +138,10 @@ export function writeSetting(store: SettingsStore, setting: Setting, value: unkn
 }
 
 export function saveStore(store: SettingsStore): void {
+  // Last line of defence for callers that did not check unreadableConfigRefusal:
+  // the in-memory store lacks every setting of the unreadable file.
+  const refusal = unreadableConfigRefusal(store);
+  if (refusal) throw new Error(refusal);
   writeConfigFile(store.configPath, store.config);
   writeSecretsFile(store.secretsPath, store.secrets);
 }

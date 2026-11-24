@@ -16,7 +16,7 @@
  * Refuses to import a model whose references mostly do not resolve against the platform it was read with
  * (built for another application version) unless --force is given.
  */
-import '../src/bootstrapEnv.js';
+import '../src/bootstrapIndexEnv.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawnSync } from 'child_process';

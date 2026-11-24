@@ -7,7 +7,7 @@
  */
 import { SECTIONS, settingByPath, settingsInSection, type SectionId, type Setting } from '../../config/settings.js';
 import { askSecrets, askSetting, askSettings } from '../settingsPrompt.js';
-import { readSetting, saveStore, writeSetting, type SettingsStore } from '../settingsStore.js';
+import { readSetting, saveStore, unreadableConfigRefusal, writeSetting, type SettingsStore } from '../settingsStore.js';
 import { pickTarget } from '../target.js';
 import { askSelect, p } from '../ui.js';
 import { listXppConfigs, xppConfigDir } from '../xppConfig.js';
@@ -53,6 +53,12 @@ export async function configCommand(
   const target = await pickTarget(opts.instance, 'Which configuration do you want to edit?');
   const store = target.store;
   p.log.info(`Editing ${target.label}: ${store.configPath}`);
+  const unreadable = unreadableConfigRefusal(store);
+  if (unreadable) {
+    p.log.error(unreadable);
+    process.exitCode = 1;
+    return;
+  }
 
   if (opts.xppConfig) {
     if (!await selectXppConfig(store)) process.exitCode = 1;

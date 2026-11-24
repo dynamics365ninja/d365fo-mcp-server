@@ -48,6 +48,20 @@ those are called out explicitly below.
   changes until the setting is set. See docs/BINARY_ISV_MODELS.md.
 
 ### Fixed
+- **An unreadable configuration file stops `d365fo-mcp index` instead of rebuilding
+  everything on defaults.** A `config/d365fo-mcp.json` that is not valid JSON (most often a
+  Windows path written with single backslashes, `"K:\AosService\..."`) used to cost one
+  "[config] Cannot parse" line, after which every setting fell back to its default. For an
+  index build that default is `extractMode: "all"`: a custom rebuild of a few minutes became
+  a full extraction of the whole packages path that emptied the metadata folder and the
+  database. Now `extract-metadata`, `build-database`, `build-fts` and
+  `extract-binary-models` exit with code 1 and name the file. `d365fo-mcp index`, `setup`,
+  `config` and `instance upgrade` refuse before doing anything. No save overwrites the broken
+  file any more (one would have replaced it with only the values that run wrote).
+  `d365fo-mcp doctor` reports it as a failure. The same applies to an unreadable
+  `secrets.json` and to a `D365FO_CONFIG` that names a missing file. The MCP server still
+  starts on defaults and logs the error, as before. Fix the file (use `\\` or `/` in paths)
+  and run the command again.
 - **`extract-binary-models` keeps the extract mode and environment of the extraction it adds
   to.** The import rewrote the extract manifest as `extractMode: "all"`,
   `environment: "traditional"` whatever the extraction before it recorded; only the list of

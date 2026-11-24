@@ -14,7 +14,7 @@ import { listInstances } from '../instances.js';
 import { instanceTarget, pickTarget, rootTarget, targetEnv, Target } from '../target.js';
 import { askSelect, p, requireFullInstall } from '../ui.js';
 import { isXppConfigStale, normalizeXppConfigName, xppConfigDir } from '../xppConfig.js';
-import { readSetting, readSettingOrDefault } from '../settingsStore.js';
+import { readSetting, readSettingOrDefault, unreadableConfigRefusal } from '../settingsStore.js';
 import { settingByPath } from '../../config/settings.js';
 
 /**
@@ -99,6 +99,14 @@ export async function rebuildIndex(target: Target, opts: RebuildOptions = {}): P
   // cwd of runNode is repoRoot — which for an npm install is the package npm
   // replaces on every update, on whatever drive npm happens to live on.
   const cwd = target.instance?.dir ?? dataRoot();
+
+  // Before anything else: on an unreadable config every setting below reads as
+  // its default, and the default extract mode rebuilds the whole packages path.
+  const unreadable = unreadableConfigRefusal(target.store);
+  if (unreadable) {
+    p.log.error(`${target.label}: ${unreadable}`);
+    return false;
+  }
 
   if (isWindows) {
     const expanded = normalizeXppConfigName(target.store);

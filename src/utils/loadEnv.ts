@@ -29,7 +29,7 @@ import dotenv from 'dotenv';
 import { existsSync, readFileSync, statSync } from 'fs';
 import { dirname, isAbsolute, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
-import { defaultPathEnv, resolveConfigFiles, toEnvRecord } from '../config/configFile.js';
+import { defaultPathEnv, resolveConfigFiles, toEnvRecord, type UnreadableConfigFile } from '../config/configFile.js';
 
 /** Env vars whose relative paths should resolve from the .env file directory. */
 const PATH_VARS = ['DB_PATH', 'LABELS_DB_PATH', 'METADATA_PATH', 'BP_CATALOG_PATH'] as const;
@@ -53,6 +53,19 @@ const WRITE_POLICY_VARS = [
  * and non-server callers want.
  */
 let writePolicySource: { envPath: string; pinned: Set<string> } | null = null;
+
+/** Config files the last loadEnv() could not read. See unreadableConfigFiles(). */
+let unreadableConfig: UnreadableConfigFile[] = [];
+
+/**
+ * The config files the last loadEnv() found but could not use: unparseable
+ * JSON, or a D365FO_CONFIG naming a missing file. The server starts anyway and
+ * only logs them. The index scripts must not: they run on defaults, and the
+ * defaults wipe the metadata folder and the database (src/bootstrapIndexEnv.ts).
+ */
+export function unreadableConfigFiles(): readonly UnreadableConfigFile[] {
+  return unreadableConfig;
+}
 
 /** mtime of the file as of the last read, so an unchanged file costs one stat. */
 let writePolicyStamp = '';
@@ -249,6 +262,7 @@ export function loadEnv(callerImportMetaUrl: string): void {
     : new Set<string>();
 
   const files = resolveConfigFiles(envDir);
+  unreadableConfig = files.unreadable;
 
   // Remember where the custom-models list may be edited while the server runs.
   // See reloadCustomModels(). When dotenv fell back to the working directory's
