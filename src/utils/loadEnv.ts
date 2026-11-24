@@ -44,6 +44,7 @@ const PATH_VARS = ['DB_PATH', 'LABELS_DB_PATH', 'METADATA_PATH', 'BP_CATALOG_PAT
 const WRITE_POLICY_VARS = [
   'D365FO_ALLOW_CROSS_MODEL_WRITE',
   'D365FO_CROSS_MODEL_WRITE_MODELS',
+  'D365FO_WORKSPACE_MODELS',
 ] as const;
 
 /**
@@ -52,7 +53,30 @@ const WRITE_POLICY_VARS = [
  * loadEnv() has run — reloadWritePolicy() is then a no-op, which is what tests
  * and non-server callers want.
  */
-let writePolicySource: { envPath: string; pinned: Set<string> } | null = null;
+let writePolicySource: {
+  envPath: string;
+  pinned: Set<string>;
+  /** Directory the config file is resolved from (resolveConfigFiles). */
+  envDir: string;
+  /** The JSON config file loadEnv() read, or would read once it exists. */
+  configPath: string;
+  /** True when the .env outranks the JSON config (ENV_FILE without D365FO_CONFIG). */
+  envFileWins: boolean;
+} | null = null;
+
+/**
+ * The files the write policy (workspace models, cross-model consent) is read
+ * from, for messages that tell the user where to change it. Null before
+ * loadEnv() has run.
+ *
+ * The JSON config comes first: it is the file `setup` writes, it sits next to
+ * D365FO_CONFIG when one is given, and a package update leaves it alone, where
+ * the .env of an npm installation lives inside the package folder (#1332).
+ */
+export function writePolicyFiles(): { configPath: string; envPath: string } | null {
+  const src = writePolicySource;
+  return src ? { configPath: src.configPath, envPath: src.envPath } : null;
+}
 
 /** Config files the last loadEnv() could not read. See unreadableConfigFiles(). */
 let unreadableConfig: UnreadableConfigFile[] = [];
@@ -85,15 +109,20 @@ export function loadedEnvFile(): { envPath: string; ownedByRealEnv(key: string):
 }
 
 /**
- * Re-read ONLY the cross-model write policy from the .env loadEnv() used.
+ * Re-read ONLY the write policy — the workspace models and the cross-model
+ * consent — from the files loadEnv() used: the .env and the JSON config.
  *
- * The guard consults this before every decision, so a user who edits .env to
- * authorise a write sees it take effect on the next attempt instead of having to
- * restart the server and lose the session. That matters because this is the one
- * consent the agent must not be able to grant itself: it has no tool that writes
- * .env (the one exception: creating a model adds that NEW model's name, see
- * utils/envListSetting.ts), so the file stays the user's, while "restart first" was pushing everyone
- * towards granting it some easier — and self-servable — way.
+ * The guard consults this before every decision, so a user who edits either file
+ * to authorise a write sees it take effect on the next attempt instead of having
+ * to restart the server and lose the session. It has no tool that writes these
+ * files (the one exception: creating a model adds that NEW model's name, see
+ * utils/envListSetting.ts), so they stay the user's.
+ *
+ * The JSON config used not to be read here at all, which left the .env the only
+ * place for this — and the .env of an npm installation sits in the package
+ * folder, which every update replaces (#1332). Precedence is the boot order
+ * (see the top of this file): the real environment, then whichever of the two
+ * files outranks the other.
  *
  * Nothing else is re-read. This is a policy refresh, not a configuration reload;
  * re-projecting paths or credentials under a running index is a different and
@@ -103,17 +132,22 @@ export function reloadWritePolicy(): void {
   const src = writePolicySource;
   if (!src) return;
 
-  let stamp: string;
-  try { stamp = String(statSync(src.envPath).mtimeMs); } catch { stamp = '-'; }
+  const stamp = `${mtimeOf(src.envPath)}|${mtimeOf(src.configPath)}`;
   if (stamp === writePolicyStamp) return;
-  writePolicyStamp = stamp;
 
-  let parsed: Record<string, string> = {};
-  try { parsed = dotenv.parse(readFileSync(src.envPath, 'utf-8')); } catch { /* no file, no policy */ }
+  let fromEnvFile: Record<string, string> = {};
+  try { fromEnvFile = dotenv.parse(readFileSync(src.envPath, 'utf-8')); } catch { /* no file, no policy */ }
+
+  const files = resolveConfigFiles(src.envDir);
+  // A config file caught half-saved does not parse. Keep the current policy and
+  // try again on the next call, rather than dropping it until the next save.
+  if (files.config === null && existsSync(files.configPath)) return;
+  writePolicyStamp = stamp;
+  const fromConfig = toEnvRecord(files);
 
   for (const key of WRITE_POLICY_VARS) {
     if (src.pinned.has(key)) continue;   // real environment still wins
-    const value = parsed[key];
+    const value = src.envFileWins ? fromEnvFile[key] ?? fromConfig[key] : fromConfig[key] ?? fromEnvFile[key];
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }
@@ -223,13 +257,6 @@ export function loadEnv(callerImportMetaUrl: string): void {
   // env{} block, App Settings) and outranks both files below.
   const fromRealEnv = new Set(Object.keys(process.env));
 
-  // Remember where the write policy may be edited while the server runs, and
-  // which of its keys the real environment owns. See reloadWritePolicy().
-  writePolicySource = {
-    envPath,
-    pinned: new Set(WRITE_POLICY_VARS.filter(k => fromRealEnv.has(k))),
-  };
-  try { writePolicyStamp = String(statSync(envPath).mtimeMs); } catch { writePolicyStamp = '-'; }
   loadedEnv = { envPath, fromRealEnv };
 
   // quiet: true suppresses dotenv v17's stdout logging, which would otherwise
@@ -263,6 +290,17 @@ export function loadEnv(callerImportMetaUrl: string): void {
 
   const files = resolveConfigFiles(envDir);
   unreadableConfig = files.unreadable;
+
+  // Remember where the write policy may be edited while the server runs, and
+  // which of its keys the real environment owns. See reloadWritePolicy().
+  writePolicySource = {
+    envPath,
+    pinned: new Set(WRITE_POLICY_VARS.filter(k => fromRealEnv.has(k))),
+    envDir,
+    configPath: files.configPath,
+    envFileWins: Boolean(process.env.ENV_FILE && !process.env.D365FO_CONFIG),
+  };
+  writePolicyStamp = `${mtimeOf(envPath)}|${mtimeOf(files.configPath)}`;
 
   // Remember where the custom-models list may be edited while the server runs.
   // See reloadCustomModels(). When dotenv fell back to the working directory's

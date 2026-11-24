@@ -50,13 +50,28 @@
  * truncated on every restart, including the one the settings edit triggers.
  *
  * The guard cannot tell which hand wrote its configuration. What it can do is
- * refuse to be quiet: every path that lets a cross-model write through returns a
- * note the caller prints on its result (standDownNotice), so it reaches the
- * transcript rather than a log nobody opens.
+ * refuse to be quiet: the blanket switch, which lets a write through into ANY
+ * model, returns a note the caller prints on its result (standDownNotice), so it
+ * reaches the transcript rather than a log nobody opens.
+ *
+ * ## A workspace develops a SET of models (#1332)
+ *
+ * The guard first measured every write against one model, the anchor, and
+ * treated every other custom model as foreign. That premise is wrong for most
+ * real workspaces: a model comes with its test model, a partner solution spans
+ * several models, a customer inherits the models of several partners. Writes
+ * into a model of the workspace (workspace/workspaceModels.ts: the anchor, the
+ * models of the anchor project's solution, `workspace.models`) are ordinary
+ * writes now. They are neither refused nor flagged: a note on every write into
+ * the test model told the agent to undo correct work.
+ *
+ * What stays refused is what this guard was written for: a custom model the
+ * workspace neither builds in its solution nor lists, i.e. code it consumes.
  */
 
 import { resolveObjectPrefix, applyObjectPrefix, isAsGivenNamingMode, isNoPrefixMode } from './modelClassifier.js';
-import { reloadWritePolicy } from './loadEnv.js';
+import { reloadWritePolicy, writePolicyFiles } from './loadEnv.js';
+import { isWorkspaceModel, workspaceModels } from '../workspace/workspaceModels.js';
 import { resolveFormattedExtensionName } from './objectNaming.js';
 import type { ModelDependency } from '../metadata/modelDescriptor.js';
 
@@ -117,27 +132,66 @@ export interface CrossModelWriteCheck {
    * means "not known", and the usual advice stands.
    */
   dependency?: ModelDependency | null;
+  /**
+   * The workspace's other models (besides `activeModel`). Absent means "ask
+   * workspace/workspaceModels.ts", which is what every writer wants; tests pass
+   * it to state the workspace outright.
+   */
+  workspaceModels?: readonly string[];
+}
+
+/** True when the write stays inside the models this workspace develops. */
+function staysInWorkspace(check: CrossModelWriteCheck): boolean {
+  const { owningModel, activeModel, owningPackage } = check;
+  if (activeModel && (eq(owningModel, activeModel) || eq(owningPackage, activeModel))) return true;
+  // The anchor's own descriptor names it in <InternalsVisibleTo>: by the anchor
+  // model's own declaration, its test model, developed with it.
+  if (check.dependency?.testModelOfBase === true) return true;
+  if (check.workspaceModels) {
+    return check.workspaceModels.some(m => eq(m, owningModel) || eq(m, owningPackage));
+  }
+  return isWorkspaceModel(owningModel) || isWorkspaceModel(owningPackage);
+}
+
+/** True when D365FO_ALLOW_CROSS_MODEL_WRITE allows a write into any model. */
+function blanketAllowance(): boolean {
+  reloadWritePolicy();
+  const blanket = process.env.D365FO_ALLOW_CROSS_MODEL_WRITE?.trim().toLowerCase();
+  return blanket === 'true' || blanket === '1' || blanket === 'yes';
+}
+
+/** The workspace's models for a message: the anchor first, then the rest. */
+function ownModelsOf(check: CrossModelWriteCheck): string[] {
+  if (!check.workspaceModels) return workspaceModels(check.activeModel).map(m => m.name);
+  const out = check.activeModel ? [check.activeModel] : [];
+  for (const m of check.workspaceModels) if (!out.some(o => eq(o, m))) out.push(m);
+  return out;
+}
+
+/**
+ * Where the user adds a model to the workspace, for the refusal. The JSON
+ * config first: it survives a package update, where the .env of an npm
+ * installation does not (#1332).
+ */
+function whereToConfigure(model: string): string {
+  const files = writePolicyFiles();
+  const where = files
+    ? `the server's config file ${files.configPath} (or D365FO_WORKSPACE_MODELS in ${files.envPath})`
+    : `the server's config file (or D365FO_WORKSPACE_MODELS in its .env)`;
+  return `"${model}" to \`workspace.models\` in ${where}`;
 }
 
 /**
  * A description of the cross-model allowance currently in force, or null.
  *
  * Surfaced by get_workspace_info so the state is visible without performing a
- * write to discover it. An allowance nobody remembers granting is the dangerous
- * kind — see the header.
+ * write to discover it. Only the blanket switch is reported here: the models
+ * listed in `workspace.models` are the workspace's own, and get_workspace_info
+ * lists them as such.
  */
 export function activeCrossModelAllowance(): string | null {
-  reloadWritePolicy();
-  const blanket = process.env.D365FO_ALLOW_CROSS_MODEL_WRITE?.trim().toLowerCase();
-  if (blanket === 'true' || blanket === '1' || blanket === 'yes') {
-    return 'D365FO_ALLOW_CROSS_MODEL_WRITE=true — writes into ANY model are allowed';
-  }
-  const models = (process.env.D365FO_CROSS_MODEL_WRITE_MODELS ?? '')
-    .split(',')
-    .map(m => m.trim())
-    .filter(Boolean);
-  return models.length > 0
-    ? `D365FO_CROSS_MODEL_WRITE_MODELS=${models.join(',')} — writes into ${models.length === 1 ? 'that model' : 'those models'} are allowed`
+  return blanketAllowance()
+    ? 'D365FO_ALLOW_CROSS_MODEL_WRITE=true — writes into ANY model are allowed'
     : null;
 }
 
@@ -167,7 +221,7 @@ export function standDownNotice(check: CrossModelWriteCheck): string {
   const verb = check.action ?? 'modify';
   const happened = check.dryRun ? 'would be' : 'was';
   if (!owningModel) return '';
-  if (activeModel && (eq(owningModel, activeModel) || eq(check.owningPackage, activeModel))) return '';
+  if (staysInWorkspace(check)) return '';
 
   if (!activeModel) {
     return (
@@ -178,14 +232,14 @@ export function standDownNotice(check: CrossModelWriteCheck): string {
     );
   }
 
-  if (crossModelWriteAllowedByConfig(owningModel)) {
+  // Facts only. The note used to end with "if you did not intend to grant that,
+  // undo this write", which reads as an instruction to an agent that did nothing
+  // wrong (#1332). Whether the setting was meant is the user's question.
+  if (blanketAllowance()) {
     return (
-      `\n\n⚠️ **Cross-model write permitted by configuration.** "${objectName}" ${happened} ${PAST_TENSE[verb]} ` +
-      `in model "${owningModel}", not in "${activeModel}" which this workspace targets. ` +
-      `D365FO_ALLOW_CROSS_MODEL_WRITE / D365FO_CROSS_MODEL_WRITE_MODELS is what allowed it. ` +
-      `The change will not appear in this workspace's project or version control, and every model ` +
-      `built on "${owningModel}" inherits it. If you did not intend to grant that, remove the ` +
-      `setting from the server's environment and undo this write.`
+      `\n\nℹ️ "${objectName}" ${happened} ${PAST_TENSE[verb]} in model "${owningModel}", which is not one of ` +
+      `this workspace's models (${ownModelsOf(check).join(', ')}). ` +
+      `D365FO_ALLOW_CROSS_MODEL_WRITE=true allows writes into any model.`
     );
   }
 
@@ -213,21 +267,16 @@ function eq(a: string | null | undefined, b: string | null | undefined): boolean
 }
 
 /**
- * True when the OPERATOR has allowed writes into `owningModel` from another
- * workspace — a blanket opt-out, or an explicit per-model allow-list. Both live
- * in the environment: a caller cannot grant this to itself mid-conversation.
+ * True when writes into `owningModel` are allowed from this workspace: it is one
+ * of the workspace's models (its solution, or `workspace.models` and the older
+ * D365FO_CROSS_MODEL_WRITE_MODELS), or the blanket switch is on. Both live in
+ * configuration or in the user's solution: a caller cannot grant this to itself
+ * mid-conversation through any tool this server publishes.
  */
 export function crossModelWriteAllowedByConfig(owningModel: string): boolean {
-  // Pick up an edit the user made after the refusal, without a restart. The read
-  // is mtime-gated to a single stat, and only these two keys are refreshed.
-  reloadWritePolicy();
-
-  const blanket = process.env.D365FO_ALLOW_CROSS_MODEL_WRITE?.trim().toLowerCase();
-  if (blanket === 'true' || blanket === '1' || blanket === 'yes') return true;
-
-  return (process.env.D365FO_CROSS_MODEL_WRITE_MODELS ?? '')
-    .split(',')
-    .some(m => eq(m, owningModel));
+  // Picks up an edit the user made after the refusal, without a restart. The
+  // read is mtime-gated, and only the policy keys are refreshed.
+  return blanketAllowance() || isWorkspaceModel(owningModel);
 }
 
 /** The base object an extension extends: "CustTable.FooExtension" → "CustTable". */
@@ -283,14 +332,18 @@ export function crossModelWriteRefusal(check: CrossModelWriteCheck): string | nu
   // segment could not be determined. Never block on a guess (but say so: see
   // standDownNotice, which the caller prints on its result).
   if (!owningModel || !activeModel) return null;
-  if (eq(owningModel, activeModel) || eq(check.owningPackage, activeModel)) return null;
-  if (crossModelWriteAllowedByConfig(owningModel)) {
+  if (staysInWorkspace(check)) return null;
+  if (blanketAllowance()) {
     console.error(
-      `[crossModelWriteGuard] configuration allows cross-model writes to "${owningModel}" ` +
+      `[crossModelWriteGuard] D365FO_ALLOW_CROSS_MODEL_WRITE allows writes to "${owningModel}" ` +
       `— proceeding with ${verb} of "${objectName}" (active model "${activeModel}")`,
     );
     return null;
   }
+  const ownModels = ownModelsOf(check);
+  const targets = ownModels.length > 1
+    ? `this workspace develops ${ownModels.map(m => `"${m}"`).join(', ')}`
+    : `this workspace targets model "${activeModel}"`;
 
   const isExtension = objectType.endsWith('-extension');
   const baseObject = baseObjectOf(objectName, objectType);
@@ -298,8 +351,7 @@ export function crossModelWriteRefusal(check: CrossModelWriteCheck): string | nu
   const extType = EXTENSION_TYPE_OF[baseType];
 
   const lines = [
-    `⛔ Refusing to ${verb} "${objectName}" in model "${owningModel}" — this workspace ` +
-    `targets model "${activeModel}".`,
+    `⛔ Refusing to ${verb} "${objectName}" in model "${owningModel}" — ${targets}.`,
     '',
   ];
 
@@ -323,26 +375,37 @@ export function crossModelWriteRefusal(check: CrossModelWriteCheck): string | nu
     lines.push(
       `"${owningModel}" is built on "${activeModel}": its descriptor references "${activeModel}", so ` +
       `"${activeModel}" cannot see "${owningModel}", and nothing in "${activeModel}" can extend ` +
-      `${baseObject} — such an extension would not compile.` +
-      (check.dependency?.testModelOfBase
-        ? ` "${activeModel}" lists "${owningModel}" in <InternalsVisibleTo>: it is this workspace's test model.`
-        : ''),
+      `${baseObject} — such an extension would not compile.`,
       '',
       `There is no in-model route for this ${verb}.`,
       '',
     );
   } else {
     lines.push(
-      `"${owningModel}" is a different model: the change would land in code that "${activeModel}" ` +
-      `only consumes, it would not appear in this workspace's project or version control, and every ` +
-      `other model built on "${owningModel}" would inherit it.`,
+      `"${owningModel}" is not one of this workspace's models: no project of its solution builds it, ` +
+      `and \`workspace.models\` does not list it. The change would land in code that "${activeModel}" ` +
+      `only consumes, outside this workspace's projects and version control, and every other model ` +
+      `built on "${owningModel}" would inherit it.`,
       '',
     );
   }
 
+  // A NEW object has nothing to extend: the remedy is to create it where this
+  // workspace builds. Offering "extend it" here sent the caller off to extend an
+  // object that does not exist yet. Not for a label (labels take `model`, and a
+  // label file has no extension form either) or a model added to a package.
+  const isNewObject = verb === 'create' && !isExtension && objectType !== 'label' && objectType !== 'model-descriptor';
+
   // No remedy block for a model built on the active one: neither an extension nor a
   // delete has an in-model equivalent there.
-  if (!buildsOnActive && verb === 'delete') {
+  if (isNewObject) {
+    lines.push(
+      `To create it in this workspace, pass the model it belongs in: ` +
+      ownModels.map(m => `modelName="${m}"`).join(' or ') +
+      (ownModels.length > 1 ? '.' : ` (or omit modelName).`),
+      '',
+    );
+  } else if (!buildsOnActive && verb === 'delete') {
     // The extension remedy below answers "I need this object to behave
     // differently". It is not an answer to "I need this object gone" — an
     // extension cannot un-define its base — so offering it here would send the
@@ -376,18 +439,18 @@ export function crossModelWriteRefusal(check: CrossModelWriteCheck): string | nu
   }
 
   lines.push(
-    `Do NOT route around this guard: no retry with a different modelName, filePath, ` +
+    `Do NOT route around this guard: no retry with a different filePath, ` +
     `packagePath, or a get_workspace_info project switch.` +
-    (buildsOnActive
+    (buildsOnActive || isNewObject
       ? ''
       : ` Half-finished pieces of this very feature sitting in ` +
         `"${owningModel}" — a matching enum, field, label or scaffold — are evidence that an ` +
         `earlier run made this same mistake, NOT evidence that the feature belongs there.`),
     '',
-    `Writing into "${owningModel}" is the user's decision, not yours. If they want it, they add ` +
-    `D365FO_CROSS_MODEL_WRITE_MODELS=${owningModel} (or D365FO_ALLOW_CROSS_MODEL_WRITE=true) to the ` +
-    `server's .env — it applies to your next attempt, no restart and no lost session. Ask them, wait ` +
-    `for their answer, and report this refusal instead of working past it.`,
+    `Whether "${owningModel}" is developed in this workspace is the user's decision, not yours. If it ` +
+    `is, they add ${whereToConfigure(owningModel)}, or add its project to the solution — it applies to ` +
+    `your next attempt, no restart and no lost session. Ask them, wait for their answer, and report ` +
+    `this refusal instead of working past it.`,
   );
 
   return lines.join('\n');

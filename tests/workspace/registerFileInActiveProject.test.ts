@@ -32,6 +32,9 @@ vi.mock('../../src/utils/configManager', () => ({
   getConfigManager: () => ({ getProjectsForModel: mockGetProjectsForModel }),
 }));
 
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { registerFileInActiveProject, ProjectFileManager } from '../../src/workspace/projectFile';
 
 const ACTIVE = 'K:\\repo\\projects\\Ctso - Feature\\Ctso - Feature.rnrproj';
@@ -146,6 +149,50 @@ describe('registerFileInActiveProject', () => {
 
     expect(note).toMatch(/Could not add/i);
     expect(note).toContain('project file is locked');
+  });
+
+  // #1332: the active project builds the main model; an object of the test model
+  // added to it breaks that project's build.
+  describe('an object of another model of the workspace', () => {
+    let dir: string;
+    let mainProject: string;
+    let testProject: string;
+    const writeProject = (name: string, model: string) => {
+      const file = path.join(dir, name, `${name}.rnrproj`);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, `<Project><PropertyGroup><Model>${model}</Model></PropertyGroup></Project>`);
+      return file;
+    };
+
+    beforeEach(() => {
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), 'register-model-'));
+      mainProject = writeProject('CtsoFinance', 'CtsoFinance');
+      testProject = writeProject('CtsoFinanceTests', 'CtsoFinanceTests');
+      mockResolveMembership.mockResolvedValue({ status: 'missing', owners: [] });
+    });
+    afterEach(() => {
+      mockGetProjectsForModel.mockReset();
+      mockGetProjectsForModel.mockReturnValue([]);
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('goes to the project of its own model, not the active one', async () => {
+      mockGetProjectsForModel.mockImplementation((m: string) => (m === 'CtsoFinanceTests' ? [testProject] : []));
+
+      const note = await registerFileInActiveProject('class', 'CtsoTaxTest', 'CtsoFinanceTests', mainProject);
+
+      expect(mockAddToProject).toHaveBeenCalledWith(testProject, 'class', 'CtsoTaxTest', '');
+      expect(mockAddToProject).not.toHaveBeenCalledWith(mainProject, expect.anything(), expect.anything(), expect.anything());
+      expect(note).toContain('the project of model "CtsoFinanceTests"');
+    });
+
+    it('goes nowhere, and says so, when its model has no project', async () => {
+      const note = await registerFileInActiveProject('class', 'CtsoTaxTest', 'CtsoFinanceTests', mainProject);
+
+      expect(mockAddToProject).not.toHaveBeenCalled();
+      expect(note).toContain('builds model "CtsoFinance"');
+      expect(note).toContain('no project of "CtsoFinanceTests" was found');
+    });
   });
 
   it('never throws when membership cannot be resolved', async () => {

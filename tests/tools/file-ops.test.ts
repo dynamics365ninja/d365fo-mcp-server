@@ -512,6 +512,75 @@ describe('create_d365fo_file', () => {
     expect(result.content[0].text).toMatch(/created|success|MyNewClass/i);
   });
 
+  // #1332: the workspace's project builds MyModel. A modelName naming another
+  // model used to be replaced by MyModel without a word, and the guard then
+  // compared MyModel with itself.
+  describe('a modelName that differs from the active project\'s model', () => {
+    const PROJECT = 'K:\\VSProjects\\MySolution\\MyProject\\MyProject.rnrproj';
+    const written = async () => {
+      const fsMod = await import('fs/promises');
+      return (fsMod.writeFile as any).mock.calls.map((c: any[]) => String(c[0]));
+    };
+
+    beforeEach(async () => {
+      const fsMod = await import('fs/promises');
+      (fsMod.readFile as any).mockImplementation(async (p: string) => {
+        if (p.endsWith('.rnrproj')) return `<Project><PropertyGroup><Model>MyModel</Model></PropertyGroup></Project>`;
+        throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+      });
+      (fsMod.writeFile as any).mockClear();
+    });
+
+    it('creates the object in the named model, not in the project\'s', async () => {
+      // "Contoso" is one of the workspace's models (see the file-wide beforeEach).
+      const result = await handleCreateD365File(req('create_d365fo_file', {
+        objectType: 'class',
+        objectName: 'ContosoTaxTest',
+        modelName: 'Contoso',
+        packageName: 'Contoso',
+        packagePath: 'K:\\PackagesLocalDirectory',
+        addToProject: false,
+      }));
+
+      expect((result as any).isError, result.content[0].text).toBeFalsy();
+      const paths = await written();
+      expect(paths.some((p: string) => /[\\/]Contoso[\\/]AxClass[\\/]ContosoTaxTest/.test(p))).toBe(true);
+      expect(paths.some((p: string) => /[\\/]MyModel[\\/]/.test(p))).toBe(false);
+    });
+
+    it('refuses a model the workspace does not develop instead of writing elsewhere', async () => {
+      delete process.env.D365FO_CROSS_MODEL_WRITE_MODELS;
+
+      const result = await handleCreateD365File(req('create_d365fo_file', {
+        objectType: 'class',
+        objectName: 'ContosoTaxTest',
+        modelName: 'Contoso',
+        packageName: 'Contoso',
+        packagePath: 'K:\\PackagesLocalDirectory',
+        addToProject: false,
+      }));
+
+      expect((result as any).isError).toBe(true);
+      expect(result.content[0].text).toContain('Refusing to create "ContosoTaxTest" in model "Contoso"');
+      expect(await written()).toEqual([]);
+    });
+
+    it('refuses a modelName and projectPath that disagree, rather than picking one', async () => {
+      const result = await handleCreateD365File(req('create_d365fo_file', {
+        objectType: 'class',
+        objectName: 'ContosoTaxTest',
+        modelName: 'Contoso',
+        projectPath: PROJECT,
+        packageName: 'Contoso',
+        packagePath: 'K:\\PackagesLocalDirectory',
+      }));
+
+      expect((result as any).isError).toBe(true);
+      expect(result.content[0].text).toContain('modelName "Contoso" and projectPath disagree');
+      expect(await written()).toEqual([]);
+    });
+  });
+
   it('creates a table-extension file', async () => {
     const result = await handleCreateD365File(
       req('create_d365fo_file', {

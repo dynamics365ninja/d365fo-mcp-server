@@ -3403,27 +3403,26 @@ async function runModify(
       const configManager = getConfigManager();
       await configManager.ensureLoaded();
 
+      // The object's own model, not the active one: its project is that model's (#1332).
+      const objectModel = owningModel || (modelName !== 'any' && modelName) || configManager.getModelName() || undefined;
       let resolvedProjectPath = args.projectPath || await configManager.getProjectPath() || undefined;
       const resolvedSolutionPath = args.solutionPath || await configManager.getSolutionPath() || undefined;
 
       if (!resolvedProjectPath && resolvedSolutionPath) {
-        resolvedProjectPath = await ProjectFileFinder.findProjectInSolution(
-          resolvedSolutionPath,
-          modelName || configManager.getModelName() || ''
-        ) || undefined;
+        resolvedProjectPath = await ProjectFileFinder.findProjectInSolution(resolvedSolutionPath, objectModel || '') || undefined;
       }
 
       projectMessage = await registerFileInActiveProject(
         objectType,
         objectName,
-        modelName || configManager.getModelName() || undefined,
+        objectModel,
         resolvedProjectPath,
       );
       // The "no project references this, and none is configured" variant is a
       // fact about the workspace and repeats verbatim on every write. Adding a
       // file to a project is an ACTION and is never collapsed.
       if (projectMessage.includes('No project of model')) {
-        const model = modelName || configManager.getModelName() || '(unknown)';
+        const model = objectModel || '(unknown)';
         projectMessage = sayOncePerSession(
           'no-project',
           model,
