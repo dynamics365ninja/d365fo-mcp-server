@@ -34,6 +34,19 @@ export interface ResolvedConfigFiles {
   secretsPath: string;
   config: ConfigObject | null;
   secrets: ConfigObject | null;
+  /**
+   * Files that exist but could not be read as a JSON object, or a D365FO_CONFIG
+   * that names a file that is not there. Their settings are missing from
+   * `config`/`secrets`, which looks exactly like "not configured" unless the
+   * caller checks here. With nothing configured, every index script falls back
+   * to a full rebuild of the whole packages path (see src/bootstrapIndexEnv.ts).
+   */
+  unreadable: UnreadableConfigFile[];
+}
+
+export interface UnreadableConfigFile {
+  file: string;
+  error: string;
 }
 
 // `path` is optional because env-only settings have no config-file key at all
@@ -66,15 +79,20 @@ export function configCandidates(baseDir: string): string[] {
   return [join(baseDir, 'd365fo-mcp.json'), join(baseDir, 'config', 'd365fo-mcp.json')];
 }
 
-function readJson(file: string): ConfigObject | null {
+function readJson(file: string, unreadable: UnreadableConfigFile[]): ConfigObject | null {
   try {
     if (!fs.existsSync(file)) return null;
     const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return typeof parsed === 'object' && parsed !== null ? parsed : null;
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) return parsed;
+    unreadable.push({ file, error: 'not a JSON object' });
+    return null;
   } catch (err) {
     // A malformed config must be loud but must not prevent the server from
     // starting on .env alone — it writes to stderr, never stdout (stdio mode).
-    process.stderr.write(`[config] Cannot parse ${file}: ${err instanceof Error ? err.message : String(err)}\n`);
+    // Callers that would destroy data on defaults check `unreadable` instead.
+    const error = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`[config] Cannot parse ${file}: ${error}\n`);
+    unreadable.push({ file, error });
     return null;
   }
 }
@@ -107,13 +125,21 @@ export function resolveConfigFiles(
       ?? join(baseDir, 'config', 'd365fo-mcp.json');
 
   const dir = dirname(configPath);
+  const unreadable: UnreadableConfigFile[] = [];
+  if (explicit && !fs.existsSync(configPath)) {
+    unreadable.push({ file: configPath, error: 'D365FO_CONFIG names this file, but it does not exist' });
+  }
+  const config = readJson(configPath, unreadable);
+  const secretsPath = join(dir, 'secrets.json');
+  const secrets = readJson(secretsPath, unreadable);
   return {
     dir,
     baseDir: configBaseDir(configPath),
     configPath,
-    secretsPath: join(dir, 'secrets.json'),
-    config: readJson(configPath),
-    secrets: readJson(join(dir, 'secrets.json')),
+    secretsPath,
+    config,
+    secrets,
+    unreadable,
   };
 }
 

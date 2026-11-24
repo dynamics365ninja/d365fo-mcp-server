@@ -28,6 +28,56 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Added
+- **`d365fo-mcp index` indexes binary ISV models, also from an npm install, and `setup`
+  offers the ones it finds.** Models shipped as compiled output only (`bin\*.dll`, no
+  object XML) could be indexed signatures-only only by hand from a git checkout: the npm
+  package held neither BinaryModelExtractor nor the `extract-binary-models` import, and a
+  full rebuild (`extractMode: "all"`) deleted what the import had written. Now the setting
+  `index.binaryIsvModels` (`BINARY_ISV_MODELS`, names or masks such as `ContosoIsv*`) makes
+  `d365fo-mcp index` build the extractor on first use (Windows, .NET SDK; rebuilt when an
+  update changes it or the platform is upgraded), dump those models from the packages path
+  and import them after the extraction, so every rebuild keeps them. `index.binaryIsvDumpPath`
+  (`BINARY_ISV_DUMP_PATH`) imports a dump made on another machine or in a pipeline instead,
+  which also works on Linux, macOS and UDE. `d365fo-mcp index --binary-only` re-imports just
+  those models and indexes only them (after an ISV update, without a full rebuild), and
+  `--force-binary` imports models built for another application version. `setup` and
+  `instance add` list the compiled-only packages of a traditional packages path, with their
+  publisher, and preselect the ones not published by Microsoft. If the ISV step fails, the
+  index is still built without the models and the warning names the command to retry. Nothing
+  changes until the setting is set. See docs/BINARY_ISV_MODELS.md.
+
+
+### Changed
+- **A workspace can develop several models: its test model, or a solution split across
+  models, is written into like its main model (#1332).** The server treated the model of
+  the workspace's project as the only one it develops. `create` replaced an explicit
+  `modelName` with the project's model, so `create(modelName="ContosoTests")` quietly wrote
+  into the main model. `modify` and new labels registered objects of another model into the
+  active project, whose build then fails on them. Each write that configuration allowed into
+  another model carried a note telling the agent to undo it. Now a model belongs to the
+  workspace when it is the project's model, when a project of the same `.sln`/`.slnx`
+  builds it, when the main model's descriptor names it in `<InternalsVisibleTo>`, or when
+  the new setting `workspace.models` (`D365FO_WORKSPACE_MODELS`) lists it.
+  `D365FO_CROSS_MODEL_WRITE_MODELS` is its older name and still works. Writes into these
+  models are neither refused nor flagged. `create` honours `modelName`, and refuses a
+  `modelName` that names a Microsoft model or a `projectPath` of another model. Objects and
+  label files go into the project of their own model. When there is no such project, or
+  several, the reply says so and the object goes into no project. `get_workspace_info`
+  lists the other models. Writes into any other custom model are still refused, and a
+  refused `create` of a new object now names the workspace's models to use instead of
+  suggesting an extension. With `workspace.allowCrossModelWrite`
+  (`D365FO_ALLOW_CROSS_MODEL_WRITE`) each write outside these models carries a one-line,
+  factual note. Nothing to do when the test model's project is in the same solution.
+  Otherwise add the models to `workspace.models`.
+- **The write policy is read from the config file too, and the refusal names that file.**
+  `D365FO_CROSS_MODEL_WRITE_MODELS` and `D365FO_ALLOW_CROSS_MODEL_WRITE` could only be set
+  in the `.env` the server loads, which in an npm installation sits in the package folder:
+  an update deleted them, and the refusal did not say which file it meant.
+  `workspace.models` and `workspace.allowCrossModelWrite` now go into the JSON config next
+  to `D365FO_CONFIG`. They are re-read from it before every write, like the `.env`, so an
+  edit applies without a restart, and the refusal names the config file's path.
+
 ### Fixed
 - **A `{` inside a string no longer drops the methods after it.** Creating a class, table
   or table extension from `sourceCode` split it into methods by counting braces in the raw
@@ -45,6 +95,24 @@ those are called out explicitly below.
   brace in a single-quoted or verbatim string, such as `'{4:'`, opened a block that never
   closed, so every method after it was added as part of the one before. It now uses the
   same X++ lexer as the rest of the server.
+- **An unreadable configuration file stops `d365fo-mcp index` instead of rebuilding
+  everything on defaults.** A `config/d365fo-mcp.json` that is not valid JSON (most often a
+  Windows path written with single backslashes, `"K:\AosService\..."`) used to cost one
+  "[config] Cannot parse" line, after which every setting fell back to its default. For an
+  index build that default is `extractMode: "all"`: a custom rebuild of a few minutes became
+  a full extraction of the whole packages path that emptied the metadata folder and the
+  database. Now `extract-metadata`, `build-database`, `build-fts` and
+  `extract-binary-models` exit with code 1 and name the file. `d365fo-mcp index`, `setup`,
+  `config` and `instance upgrade` refuse before doing anything. No save overwrites the broken
+  file any more (one would have replaced it with only the values that run wrote).
+  `d365fo-mcp doctor` reports it as a failure. The same applies to an unreadable
+  `secrets.json` and to a `D365FO_CONFIG` that names a missing file. The MCP server still
+  starts on defaults and logs the error, as before. Fix the file (use `\\` or `/` in paths)
+  and run the command again.
+- **`extract-binary-models` keeps the extract mode and environment of the extraction it adds
+  to.** The import rewrote the extract manifest as `extractMode: "all"`,
+  `environment: "traditional"` whatever the extraction before it recorded; only the list of
+  custom models was merged.
 
 ## [1.25.1] — 2026-11-23
 

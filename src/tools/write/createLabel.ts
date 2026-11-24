@@ -31,6 +31,7 @@ import {
 } from '../../utils/labelReference.js';
 import { isExtensionLabelFile, isListedLabelLanguage, parseLabelLanguages } from '../../metadata/labelParser.js';
 import { ProjectFileManager, ProjectFileFinder } from '../../workspace/projectFile.js';
+import { resolveProjectForModel, describeProjectMismatch } from '../../workspace/workspaceModels.js';
 import { recordWriteSideEffect } from '../../utils/writeSideEffects.js';
 import { forgetCreatedArtifact, lookupCreatedArtifact, recordCreatedArtifact } from '../../workspace/createdArtifactLedger.js';
 
@@ -1414,6 +1415,18 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
         if (!projectPath) console.error(`[create_label] no .rnrproj for model ${model} under ${dir}`);
       }
 
+      // The label file belongs to `model`; the active project may build another
+      // one of this workspace's models. Its descriptors go to that model's own
+      // project, never to a project of another model (#1332).
+      let otherModelNote = '';
+      if (projectPath) {
+        const routed = await resolveProjectForModel(model, projectPath, configManager);
+        if (routed.mismatch) {
+          projectPath = routed.projectPath ?? null;
+          if (!projectPath) otherModelNote = `\n⚠️ Label file descriptors ${describeProjectMismatch(model, routed)}.\n`;
+        }
+      }
+
       if (projectPath) {
         const pfm = new ProjectFileManager({ withinSolutionRoots: true });
         // Collect all languages that have an XML descriptor
@@ -1446,6 +1459,8 @@ export async function createLabelTool(request: CallToolRequest, context: XppServ
                 'Close Visual Studio (or unload the project), re-run the tool, then reopen.\n'
               : `Verify that projectPath exists: ${projectPath}\n`);
         }
+      } else if (otherModelNote) {
+        projectWarning = otherModelNote;
       } else {
         console.error('[create_label] projectPath is null — label descriptors will NOT be added to .rnrproj.');
         projectWarning =

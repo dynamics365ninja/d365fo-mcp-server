@@ -65,3 +65,7 @@ export function requireFullInstall(): boolean {
   process.exitCode = 1;
   return false;
 }
+
+export async function askMultiSelect<T extends string>(message: string, options: Option<T>[], initialValues: T[] = []): Promise<T[]> {
+  return ensure(await p.multiselect<T>({ message, options, initialValues, required: false }));
+}

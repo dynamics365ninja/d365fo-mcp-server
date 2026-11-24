@@ -50,11 +50,15 @@ export interface Setting {
    * Dotted path inside the JSON config, e.g. "environment.packagePath".
    *
    * Absent for `env-only` settings: values whose reader is somewhere the
-   * wizard-managed JSON cannot honestly describe — the cross-model consent
-   * switches, re-read from the .env before every guard decision so a grant
-   * applies without a restart (loadEnv.reloadWritePolicy), and the lock
-   * heartbeat, read at acquire time in a process the wizard never configures.
-   * A JSON key would misrepresent when a change takes effect.
+   * wizard-managed JSON cannot honestly describe — the lock heartbeat, read at
+   * acquire time in a process the wizard never configures. A JSON key would
+   * misrepresent when a change takes effect.
+   *
+   * The write policy (workspace.models, workspace.allowCrossModelWrite) used to
+   * be env-only on the same grounds, being re-read before every guard decision.
+   * reloadWritePolicy now re-reads the JSON config as well, so that reason is
+   * gone — and keeping it in the .env alone put it in the package folder of an
+   * npm installation, which every update replaces (#1332).
    *
    * "The runtime reads it straight from process.env" is NOT that reason — every
    * setting here does, via toEnvRecord. EXTENSION_PREFIX_SOURCE sat in this
@@ -386,26 +390,42 @@ export const SETTINGS: Setting[] = [
     description: 'Forces one specific solution instead of auto-detection. Rarely needed outside CI.',
   },
   {
+    path: 'workspace.models',
+    env: 'D365FO_WORKSPACE_MODELS',
+    section: 'workspace',
+    tier: 'advanced',
+    type: 'list',
+    label: 'Other models developed in this workspace',
+    description:
+      'Comma-separated models this workspace develops besides the one its project targets — a test model, or the ' +
+      'other models of a solution split into several. Writes into them are made, and registered in the project of ' +
+      'that model, like writes into the main model. The models of every project in the active project\'s `.sln` count ' +
+      'already, so this is for models whose projects are not in that solution. Any other custom model is refused ' +
+      'and the extension route is offered instead — see ' +
+      '[Objects owned by another model](CUSTOM_EXTENSIONS.md#objects-owned-by-another-model). Re-read from the ' +
+      'config file (or `.env`) before every write, so an edit applies without a restart.',
+    placeholder: 'ContosoCore,ContosoCoreTests',
+  },
+  {
     env: 'D365FO_CROSS_MODEL_WRITE_MODELS',
     section: 'workspace',
     tier: 'env-only',
     type: 'list',
-    label: 'Models this workspace may also write into',
+    label: 'Models this workspace may also write into (older name)',
     description:
-      'Comma-separated models this workspace may write into besides its own. By default any create/modify/label write ' +
-      'into another custom model is refused and the extension route in the active model is offered instead — see ' +
-      '[Objects owned by another model](CUSTOM_EXTENSIONS.md#objects-owned-by-another-model). Consent lives here, in ' +
-      'configuration, because a tool parameter is something the agent can grant itself. Re-read from `.env` before ' +
-      'every decision, so an edit applies to the next attempt without a restart.',
+      'The older environment name of `workspace.models`, still honoured with the same meaning. Re-read from `.env` ' +
+      'before every write. Creating a model with `d365fo_file` adds the new model here.',
   },
   {
+    path: 'workspace.allowCrossModelWrite',
     env: 'D365FO_ALLOW_CROSS_MODEL_WRITE',
     section: 'workspace',
-    tier: 'env-only',
+    tier: 'advanced',
     type: 'boolean',
     label: 'Allow writes into any other custom model',
     description:
-      'Set to `true` to allow writes into **any** other custom model — the blanket form of the setting above.',
+      'Set to `true` to allow writes into **any** other custom model — the blanket form of `workspace.models`. ' +
+      'Each such write carries a one-line note naming the model it went into.',
     default: false,
   },
 
@@ -621,6 +641,33 @@ export const SETTINGS: Setting[] = [
     // build silently indexed four languages while this table promised one.
     default: ['en-US'],
     placeholder: 'en-US,cs,de',
+  },
+  {
+    path: 'index.binaryIsvModels',
+    env: 'BINARY_ISV_MODELS',
+    section: 'index',
+    tier: 'advanced',
+    type: 'list',
+    label: 'Binary ISV models to index (signatures only)',
+    description:
+      'ISV models shipped as compiled output only (bin\\*.dll, no object XML), as names or masks by module or ' +
+      'model name (`ContosoIsv*,!ContosoIsvDemo`). `d365fo-mcp index` then dumps them with BinaryModelExtractor ' +
+      '(Windows, built on first use with the .NET SDK) from the packages path and imports their signatures, ' +
+      'forms, security and labels after the normal extraction, so a full rebuild no longer drops them. ' +
+      'Empty = off. See docs/BINARY_ISV_MODELS.md.',
+    placeholder: 'ContosoIsv*',
+  },
+  {
+    path: 'index.binaryIsvDumpPath',
+    env: 'BINARY_ISV_DUMP_PATH',
+    section: 'index',
+    tier: 'advanced',
+    type: 'path',
+    label: 'Prepared binary ISV dump folder',
+    description:
+      'A folder written by BinaryModelExtractor on another Windows machine or in a pipeline. When set, ' +
+      '`d365fo-mcp index` imports it as it is instead of dumping on this machine, so it also works on Linux, ' +
+      'macOS and UDE. Relative paths resolve from the installation (or instance) directory.',
   },
   {
     path: 'index.dbPath',

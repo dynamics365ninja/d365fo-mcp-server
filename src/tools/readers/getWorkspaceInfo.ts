@@ -32,6 +32,7 @@ import {
 import { selectProject, renderSelectionFailure } from '../../workspace/projectSelector.js';
 import { projectDisplayName } from '../../workspace/projectMembership.js';
 import { activeCrossModelAllowance } from '../../utils/crossModelWriteGuard.js';
+import { isWorkspaceModel, refreshWorkspaceModels, workspaceModels } from '../../workspace/workspaceModels.js';
 import { parseModuleReferences } from '../../metadata/modelDescriptor.js';
 import { findModelDescriptorPath } from '../../utils/objectFileLookup.js';
 import { assertProjectPathAllowed } from '../../utils/pathContainment.js';
@@ -162,11 +163,24 @@ export async function getWorkspaceInfoTool(
       ? '(still detecting — writes do not need it; the model is configured)'
       : '(not detected)');
 
+  // The workspace's OTHER models: a test model, the rest of a solution split into
+  // several models. Writes into them are as ordinary as writes into the model
+  // above, so the agent has to know them before it writes, not from a refusal
+  // (#1332). Said only when there are any — the common one-model workspace pays
+  // nothing for it.
+  await refreshWorkspaceModels(configManager);
+  const otherModels = workspaceModels(configManager.getWriteAnchorModel?.() ?? modelName)
+    .filter(m => m.source !== 'anchor');
+  const otherModelsLine = otherModels.length > 0
+    ? otherModels.map(m => `${m.name} (${m.source === 'solution' ? 'in the solution' : 'workspace.models'})`).join(', ')
+    : '';
+
   const lines: string[] = diagnostics
     ? [
         `## D365FO Workspace Configuration`,
         ``,
         `Model name      : ${modelName ?? '(not configured)'}  (source: ${modelSource})`,
+        ...(otherModelsLine ? [`Also develops   : ${otherModelsLine}`] : []),
         `Custom write path: ${effectiveWritePath ?? '(not configured)'}  (custom metadata, source: ${effectiveWriteSource})`,
         `Framework dir   : ${msFrameworkPath ?? '(not applicable — single-root setup)'}  (Microsoft metadata, read-only)`,
         `Project path    : ${projectDisplay}  (source: ${projectSource})`,
@@ -178,6 +192,7 @@ export async function getWorkspaceInfoTool(
         `## D365FO Workspace`,
         ``,
         `Model       : ${modelName ?? '(not configured)'}  (${modelSource})`,
+        ...(otherModelsLine ? [`Also models : ${otherModelsLine} — pass modelName to write there`] : []),
         ...prefixLines,
         `Write path  : ${effectiveWritePath ?? '(not configured)'}`,
         `Project     : ${projectDisplay}`,
@@ -494,7 +509,9 @@ export async function getWorkspaceInfoTool(
   // used to reach an object the cross-model guard refused. Say both here,
   // before anything is written, so the switch is not mistaken for access.
   const toolSwitch = configManager.getToolProjectSwitch();
-  if (toolSwitch) {
+  // A switch to another model OF this workspace moves nothing worth warning about:
+  // writes into that model are allowed either way (#1332).
+  if (toolSwitch && !isWorkspaceModel(toolSwitch.forcedModel)) {
     lines.push(
       ``,
       `## ⚠️  Project switched — writes are NOT switched`,
@@ -505,9 +522,9 @@ export async function getWorkspaceInfoTool(
       `anchored to "${toolSwitch.anchorModel}" — the model the open workspace targets — and ` +
       `a create/modify into "${toolSwitch.forcedModel}" will be refused.`,
       `Tell the user the model they asked about is owned by "${toolSwitch.forcedModel}" and let ` +
-      `THEM decide: extend it from "${toolSwitch.anchorModel}", or have THEM allow the write by ` +
-      `adding D365FO_CROSS_MODEL_WRITE_MODELS=${toolSwitch.forcedModel} to the server's ` +
-      `environment — that applies to the next attempt, no restart.`,
+      `THEM decide: extend it from "${toolSwitch.anchorModel}", or have THEM add ` +
+      `"${toolSwitch.forcedModel}" to \`workspace.models\` in the server's config file (or its project ` +
+      `to the solution) — that applies to the next attempt, no restart.`,
       `That setting is the USER'S to make, in their own editor. Do not write it yourself: editing ` +
       `mcp.json, .env or any other server configuration to widen what you may write is granting ` +
       `yourself the permission this guard exists to withhold, whatever the reason seems to be.`,
@@ -522,9 +539,9 @@ export async function getWorkspaceInfoTool(
       `## ⚠️  Cross-model writes are currently ALLOWED`,
       ``,
       `${allowance}.`,
-      `Writes into that model will succeed and will NOT appear in this workspace's project or ` +
-      `version control. If nobody deliberately granted this, remove the setting from the server's ` +
-      `environment before writing anything.`,
+      `Writes into a model this workspace does not develop will succeed. They land outside this ` +
+      `workspace's projects and version control. Check with the user that this setting is wanted ` +
+      `before you write into such a model.`,
     );
   }
 

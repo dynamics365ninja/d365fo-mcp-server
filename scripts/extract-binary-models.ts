@@ -4,7 +4,8 @@
  * Step 1 (Windows, D365FO platform bin available):
  *   BinaryModelExtractor.exe --packages-path <PackagesLocalDirectory> --out <dumpDir> [--models A,B] [--languages en-US,cs|all]
  * Step 2 (any OS):
- *   npm run extract-binary-models -- <dumpDir> [--out <metadataDir>] [--force]
+ *   npm run extract-binary-models -- <dumpDir> [--out <metadataDir>] [--force] [--report <file>]
+ *   (an npm install runs the same step as part of `d365fo-mcp index`, see src/cli/binaryIsv.ts)
  *
  * Writes <metadataDir>/<Module>/... in the shapes `build-database` already indexes:
  *   - classes, class-extensions, tables, EDTs, enums from the dump JSON (signatures only; src/metadata/binaryModelImport.ts)
@@ -15,7 +16,7 @@
  * Refuses to import a model whose references mostly do not resolve against the platform it was read with
  * (built for another application version) unless --force is given.
  */
-import '../src/bootstrapEnv.js';
+import '../src/bootstrapIndexEnv.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
@@ -32,6 +33,7 @@ import {
 import {
   EXTRACT_MANIFEST_FILENAME,
   writeExtractManifest,
+  readExtractManifest,
   readExtractedCustomModels,
 } from '../src/utils/extractManifest.js';
 
@@ -40,13 +42,16 @@ function arg(name: string): string | undefined {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
+const VALUE_OPTIONS = new Set(['--out', '--report']);
 const dumpDir = process.argv
   .slice(2)
-  .find(a => !a.startsWith('--') && process.argv[process.argv.indexOf(a) - 1] !== '--out');
+  .find((a, i, rest) => !a.startsWith('--') && !VALUE_OPTIONS.has(rest[i - 1] ?? ''));
 const outDir = arg('--out') || process.env.METADATA_PATH || './extracted-metadata';
 const force = process.argv.includes('--force');
+/** JSON `{ models: [...] }` naming the modules imported, for the CLI to scope build-database. */
+const reportFile = arg('--report');
 if (!dumpDir) {
-  log.err('usage: extract-binary-models <dumpDir> [--out <metadataDir>] [--force]');
+  log.err('usage: extract-binary-models <dumpDir> [--out <metadataDir>] [--force] [--report <file>]');
   process.exit(2);
 }
 
@@ -69,14 +74,27 @@ function loadDumps(): BinaryModelDump[] {
   return dumps;
 }
 
+/**
+ * How to run extract-metadata from wherever this script runs. A checkout runs the
+ * TypeScript through tsx; the npm package has neither, and ships this script as an
+ * esbuild bundle in dist/scripts/ beside the extract-metadata bundle.
+ */
+function stockExtractionCommand(): { args: string[]; cwd: string } {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const bundle = path.join(here, 'extract-metadata.js');
+  if (fs.existsSync(bundle)) return { args: [bundle], cwd: path.resolve(here, '..', '..') };
+  const repoRoot = path.resolve(here, '..');
+  return { args: ['--import', 'tsx/esm', path.join(repoRoot, 'scripts', 'extract-metadata.ts')], cwd: repoRoot };
+}
+
 /** Stock extract-metadata over the synthetic AOT tree: forms, queries, views, entities, maps, menu items, security... */
 function runStockExtraction(modules: string[], aotRoot: string): void {
-  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const { args, cwd } = stockExtractionCommand();
   const r = spawnSync(
     process.execPath,
-    ['--import', 'tsx/esm', path.join(repoRoot, 'scripts', 'extract-metadata.ts')],
+    args,
     {
-      cwd: repoRoot,
+      cwd,
       encoding: 'utf-8',
       maxBuffer: 64 * 1024 * 1024,
       env: {
@@ -157,6 +175,9 @@ if (blocked) {
 // 2. Wipe, run the stock extraction for the AOT XML, then write the class/table/EDT/enum JSON.
 fs.mkdirSync(outDir, { recursive: true });
 const existingCustom = readExtractedCustomModels(outDir) ?? [];
+// The stock run below rewrites the manifest for the binary models alone; what the
+// normal extraction recorded about the build (mode, UDE or not) is put back after it.
+const existingManifest = readExtractManifest(outDir);
 const converted = dumps.map(d => ({ d, m: convertBinaryModel(d) }));
 for (const { m } of converted) fs.rmSync(path.join(outDir, m.model), { recursive: true, force: true });
 
@@ -210,10 +231,11 @@ for (const { d, m } of converted) {
 // Record as non-Microsoft in the extract manifest (merge with what was there before the stock run rewrote it).
 writeExtractManifest(outDir, {
   generatedAt: new Date().toISOString(),
-  extractMode: 'all',
-  environment: 'traditional',
+  extractMode: existingManifest?.extractMode ?? 'all',
+  environment: existingManifest?.environment ?? 'traditional',
   customModels: [...new Set([...existingCustom, ...models])],
 });
+if (reportFile) fs.writeFileSync(reportFile, JSON.stringify({ models }, null, 2));
 log.ok(
   `done: ${models.length} model(s), ${classes} classes, ${methods} methods, ${tables} tables, ${edts} EDTs, ${enums} enums, ${stamped} AOT objects, ${labels} label texts -> ${path.resolve(outDir)} (${EXTRACT_MANIFEST_FILENAME} updated)`,
 );

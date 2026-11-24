@@ -89,8 +89,9 @@ The model/project the server writes to. Auto-detected from the IDE when left emp
 | `workspace.solutionsPath` | setup | `D365FO_SOLUTIONS_PATH` | — | Scanned once at startup so the server can switch model automatically when you open another solution or git branch. Optional, but it is what makes multi-project workspaces work without reconfiguring. The scan resolves the MODEL; it does not pick a project when several .rnrproj under it build that model — get_workspace_info then reports `Project : (not selected)` and names them, and anything that registers a file needs an explicit projectName/projectPath. Picking one meant every write landed in whichever project the scan saw first. With `workspace.modelName` set, only projects of that model are candidates. It is also the bound on which .rnrproj the server may write: `d365fo_file(action="project")` and the project registration done by create, modify, labels and generate_object all refuse a project that is not under this folder, the IDE's workspace/solution path, `workspace.solutionPath`, or the folder of `workspace.projectPath`. A project activated with `get_workspace_info(projectPath=…)` does not extend the bound — set this to the folder that holds your projects instead. |
 | `workspace.projectPath` | advanced | `D365FO_PROJECT_PATH` | — | Forces one specific project instead of auto-detection. Rarely needed outside CI. Its folder counts as a solution root for project writes (see `workspace.solutionsPath`). |
 | `workspace.solutionPath` | advanced | `D365FO_SOLUTION_PATH` | — | Forces one specific solution instead of auto-detection. Rarely needed outside CI. |
-| — | — | `D365FO_CROSS_MODEL_WRITE_MODELS` | — | Comma-separated models this workspace may write into besides its own. By default any create/modify/label write into another custom model is refused and the extension route in the active model is offered instead — see [Objects owned by another model](CUSTOM_EXTENSIONS.md#objects-owned-by-another-model). Consent lives here, in configuration, because a tool parameter is something the agent can grant itself. Re-read from `.env` before every decision, so an edit applies to the next attempt without a restart. |
-| — | — | `D365FO_ALLOW_CROSS_MODEL_WRITE` | `false` | Set to `true` to allow writes into **any** other custom model — the blanket form of the setting above. |
+| `workspace.models` | advanced | `D365FO_WORKSPACE_MODELS` | — | Comma-separated models this workspace develops besides the one its project targets — a test model, or the other models of a solution split into several. Writes into them are made, and registered in the project of that model, like writes into the main model. The models of every project in the active project's `.sln` count already, so this is for models whose projects are not in that solution. Any other custom model is refused and the extension route is offered instead — see [Objects owned by another model](CUSTOM_EXTENSIONS.md#objects-owned-by-another-model). Re-read from the config file (or `.env`) before every write, so an edit applies without a restart. |
+| — | — | `D365FO_CROSS_MODEL_WRITE_MODELS` | — | The older environment name of `workspace.models`, still honoured with the same meaning. Re-read from `.env` before every write. Creating a model with `d365fo_file` adds the new model here. |
+| `workspace.allowCrossModelWrite` | advanced | `D365FO_ALLOW_CROSS_MODEL_WRITE` | `false` | Set to `true` to allow writes into **any** other custom model — the blanket form of `workspace.models`. Each such write carries a one-line note naming the model it went into. |
 
 ### Naming convention
 
@@ -118,6 +119,8 @@ What gets extracted into the SQLite index and where it is stored.
 | `index.extractMode` | setup | `EXTRACT_MODE` | `all` | Scope of the metadata extraction. "all" gives full cross-reference search over the standard application but takes 1–2 hours and produces a multi-GB database; "custom" indexes only your own models and finishes in minutes. Values: `all` — standard + custom — full search, 1–2 h build; `custom` — custom models only — minutes; `standard` — Microsoft models only. |
 | `index.includeLabels` | setup | `INCLUDE_LABELS` | `true` | Builds the labels database so labels(action="search") and label reuse work. Disabling it speeds up the build and shrinks the index, at the cost of label lookup. |
 | `index.labelLanguages` | setup | `LABEL_LANGUAGES` | `en-US` | Comma-separated language codes, or `all` for every language shipped with the model. Each extra language multiplies the label table (~125 MB apiece) — indexing only the languages you actually ship keeps the database small. `labels(action="create")` follows the same list: a translation for a language the label file does not have yet is written only when it is listed here (or passed in `languages`), and a new label file starts with every listed language. |
+| `index.binaryIsvModels` | advanced | `BINARY_ISV_MODELS` | — | ISV models shipped as compiled output only (bin\\*.dll, no object XML), as names or masks by module or model name (`ContosoIsv*,!ContosoIsvDemo`). `d365fo-mcp index` then dumps them with BinaryModelExtractor (Windows, built on first use with the .NET SDK) from the packages path and imports their signatures, forms, security and labels after the normal extraction, so a full rebuild no longer drops them. Empty = off. See docs/BINARY_ISV_MODELS.md. |
+| `index.binaryIsvDumpPath` | advanced | `BINARY_ISV_DUMP_PATH` | — | A folder written by BinaryModelExtractor on another Windows machine or in a pipeline. When set, `d365fo-mcp index` imports it as it is instead of dumping on this machine, so it also works on Linux, macOS and UDE. Relative paths resolve from the installation (or instance) directory. |
 | `index.dbPath` | advanced | `DB_PATH` | `./data/xpp-metadata.db` | SQLite file holding the indexed X++ metadata. Relative paths resolve from the config file directory. |
 | `index.labelsDbPath` | advanced | `LABELS_DB_PATH` | `./data/xpp-metadata-labels.db` | Second SQLite file for labels (dual-database architecture keeps label writes from locking metadata reads). Defaults to <dbPath>-labels.db. |
 | `index.xrefSqlitePath` | advanced | `D365FO_XREF_SQLITE_PATH` | — | A SQLite export of DYNAMICSXREFDB (tables Modules, Names, References; meta.schema 1) for a server without the C# bridge, e.g. a shared read-only server. find_references and the extension/event/API-usage lookups then answer from it instead of a name-based search; the bridge still takes precedence when it has the database. Opened read-only and immutable on first use: replace the file by rename, never in place (on Windows an open file cannot be renamed over: stop the server, replace the file, start it again). A missing or invalid file is logged and ignored. get_workspace_info shows its export date. |
@@ -244,7 +247,9 @@ Downloading a pre-built index from blob storage instead of building it locally.
     "projectMembership": "active",
     "solutionsPath": "K:\\repos\\MySolution\\projects",
     "projectPath": "",
-    "solutionPath": ""
+    "solutionPath": "",
+    "models": "ContosoCore,ContosoCoreTests",
+    "allowCrossModelWrite": false
   },
   "naming": {
     "prefix": "ISV_",
@@ -264,6 +269,8 @@ Downloading a pre-built index from blob storage instead of building it locally.
     "labelLanguages": [
       "en-US"
     ],
+    "binaryIsvModels": "ContosoIsv*",
+    "binaryIsvDumpPath": "",
     "dbPath": "./data/xpp-metadata.db",
     "labelsDbPath": "./data/xpp-metadata-labels.db",
     "xrefSqlitePath": "",

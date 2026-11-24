@@ -74,6 +74,16 @@ function checkDb(store: SettingsStore, defaultDb: string, label: string): CheckR
 
 /** The structured config the setup wizard writes — absent means never set up. */
 function checkConfig(target: Target, label: string): CheckResult {
+  const unreadable = target.store.unreadable ?? [];
+  if (unreadable.length > 0) {
+    // The server starts on defaults and only logs this; `index`, `setup` and
+    // `config` refuse to run until it is fixed.
+    return {
+      severity: 'fail',
+      message: `${label}: configuration cannot be read — ${unreadable.map(u => `${u.file}: ${u.error}`).join('; ')}`,
+      fix: 'repair the JSON (a Windows path needs \\\\ or /); until then the server runs on defaults and `d365fo-mcp index` refuses to run',
+    };
+  }
   if (fs.existsSync(target.store.configPath)) {
     const shown = relative(dataRoot(), target.store.configPath) || target.store.configPath;
     return { severity: 'ok', message: `${label}: configuration present (${shown})` };

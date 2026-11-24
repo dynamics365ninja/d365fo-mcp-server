@@ -125,3 +125,7 @@ tests/trace-host/obj/
 .vs/
 bridge/BinaryModelExtractor/bin/
 bridge/BinaryModelExtractor/obj/
+
+# Binary ISV dump written by `d365fo-mcp index` (the ISV's API surface: private)
+binary-isv-dump/
+.binary-isv-import.json

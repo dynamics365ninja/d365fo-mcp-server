@@ -90,8 +90,10 @@ and the cross-model guard would refuse the first object written into it. A model
 created is therefore recorded in the server's `.env`:
 
 - `CUSTOM_MODELS` — so it is classified as custom, not standard;
-- `D365FO_CROSS_MODEL_WRITE_MODELS` — so objects can be written into it with
-  `modelName="<Model>"`.
+- `D365FO_CROSS_MODEL_WRITE_MODELS` — the older name of `workspace.models`, so the new model
+  is one of the workspace's models and objects can be written into it with `modelName="<Model>"`
+  (see [The models a workspace develops](CUSTOM_EXTENSIONS.md#the-models-a-workspace-develops)).
+  Once its project is in the workspace's solution, the solution alone makes it one.
 
 Both are also applied to the running server, and the reply lists exactly what was written
 where. A key the server's real environment owns (the shell, or the `env` block of the MCP

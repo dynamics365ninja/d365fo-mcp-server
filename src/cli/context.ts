@@ -180,9 +180,28 @@ export const paths = {
   },
   extractScript: resolve(repoRoot, 'scripts', 'extract-metadata.ts'),
   buildDbScript: resolve(repoRoot, 'scripts', 'build-database.ts'),
-  /** esbuild bundles of the two scripts above — what an npm install ships instead of the sources. */
+  binaryImportScript: resolve(repoRoot, 'scripts', 'extract-binary-models.ts'),
+  /** esbuild bundles of the scripts above — what an npm install ships instead of the sources. */
   extractScriptDist: resolve(repoRoot, 'dist', 'scripts', 'extract-metadata.js'),
   buildDbScriptDist: resolve(repoRoot, 'dist', 'scripts', 'build-database.js'),
+  binaryImportScriptDist: resolve(repoRoot, 'dist', 'scripts', 'extract-binary-models.js'),
+
+  /**
+   * The binary ISV extractor (docs/BINARY_ISV_MODELS.md). Built per machine
+   * like the bridge, for the same reason: it compiles against the platform's
+   * own metadata assemblies. An npm install builds it into the data directory,
+   * because the next `npm install -g` replaces the package.
+   */
+  binaryExtractorDir: resolve(repoRoot, 'bridge', 'BinaryModelExtractor'),
+  binaryExtractorProject: resolve(repoRoot, 'bridge', 'BinaryModelExtractor', 'BinaryModelExtractor.csproj'),
+  get binaryExtractorOutDir(): string {
+    return installMode === 'git'
+      ? resolve(repoRoot, 'bridge', 'BinaryModelExtractor', 'bin', 'Release')
+      : resolve(currentDataRoot, 'binary-extractor');
+  },
+  get binaryExtractorExe(): string {
+    return resolve(this.binaryExtractorOutDir, 'BinaryModelExtractor.exe');
+  },
   /**
    * Not compiled, not bundled — a raw PowerShell script that reflects over the
    * .NET-authored BP-rule DLLs to pull real message/description text, which

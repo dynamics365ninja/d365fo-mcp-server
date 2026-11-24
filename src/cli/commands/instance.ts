@@ -13,8 +13,9 @@ import { createInstance, getInstance, listInstances, normalizeInstanceLayout, su
 import { mcpJsonNote, placementNote, stdioServer } from '../mcpJson.js';
 import { selectXppConfig } from './config.js';
 import { configureSqlForEnvironment } from '../sqlEnvironmentSetup.js';
+import { askBinaryIsvModels } from '../binaryIsv.js';
 import { askAdvanced, askNaming, askSetting, askSettings } from '../settingsPrompt.js';
-import { openInstanceStore, readPath, readSetting, saveStore, writeSetting } from '../settingsStore.js';
+import { openInstanceStore, readPath, readSetting, saveStore, unreadableConfigRefusal, writeSetting } from '../settingsStore.js';
 import { instanceTarget } from '../target.js';
 import { askConfirm, askSelect, askText, p } from '../ui.js';
 import { listXppConfigs, XppConfig, xppConfigDir } from '../xppConfig.js';
@@ -116,6 +117,7 @@ export async function instanceAddCommand(name: string | undefined, portArg: stri
   await askNaming(store);
   p.log.step('Metadata index');
   await askSettings(store, settingsInSection('index', 'basic'));
+  await askBinaryIsvModels(store);
   await askAdvanced(store, ['environment', 'workspace', 'index', 'server', 'bridge', 'behavior']);
   saveStore(store);
 
@@ -204,6 +206,12 @@ export async function instanceUpgradeCommand(name: string | undefined): Promise<
   }
 
   const store = openInstanceStore(inst.dir);
+  const unreadable = unreadableConfigRefusal(store);
+  if (unreadable) {
+    p.log.error(unreadable);
+    process.exitCode = 1;
+    return;
+  }
   const currentValue = readSetting(store, xppConfigNameSetting);
   const currentConfig = typeof currentValue === 'string' && currentValue ? currentValue : null;
   p.log.info(`Current XPP config: ${currentConfig ?? '(not set)'}`);

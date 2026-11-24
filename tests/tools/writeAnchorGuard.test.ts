@@ -28,7 +28,7 @@ vi.mock('../../src/utils/configManager', () => ({
 }));
 
 import { scaffoldWriteRefusal, scaffoldWriteRefusalResult } from '../../src/tools/write/writeAnchorGuard';
-import { standDownNotice, activeCrossModelAllowance } from '../../src/utils/crossModelWriteGuard';
+import { standDownNotice, activeCrossModelAllowance, crossModelWriteRefusal } from '../../src/utils/crossModelWriteGuard';
 
 const table = (targetModel: string | null) => ({
   objectName: 'DemoSKTaxChangeLog',
@@ -39,12 +39,14 @@ const table = (targetModel: string | null) => ({
 beforeEach(() => {
   delete process.env.D365FO_ALLOW_CROSS_MODEL_WRITE;
   delete process.env.D365FO_CROSS_MODEL_WRITE_MODELS;
+  delete process.env.D365FO_WORKSPACE_MODELS;
   mockConfig.getWriteAnchorModel.mockReturnValue('DemoSK');
   mockConfig.getToolProjectSwitch.mockReturnValue(null);
 });
 
 afterEach(() => {
   delete process.env.D365FO_CROSS_MODEL_WRITE_MODELS;
+  delete process.env.D365FO_WORKSPACE_MODELS;
   delete process.env.D365FO_ALLOW_CROSS_MODEL_WRITE;
 });
 
@@ -113,8 +115,8 @@ describe('scaffoldWriteRefusal', () => {
  * quiet.
  */
 describe('standing down is never silent', () => {
-  it('names the configuration that permitted a foreign-model write', () => {
-    process.env.D365FO_CROSS_MODEL_WRITE_MODELS = 'DemoCore';
+  it('names the blanket switch that permitted a foreign-model write', () => {
+    process.env.D365FO_ALLOW_CROSS_MODEL_WRITE = 'true';
 
     const note = standDownNotice({
       objectName: 'DemoSKTaxChangeLog',
@@ -124,9 +126,31 @@ describe('standing down is never silent', () => {
       action: 'create',
     });
 
-    expect(note).toContain('permitted by configuration');
-    expect(note).toContain('DemoCore');
-    expect(note).toContain('D365FO_CROSS_MODEL_WRITE_MODELS');
+    expect(note).toContain('"DemoSKTaxChangeLog" was created in model "DemoCore"');
+    expect(note).toContain('D365FO_ALLOW_CROSS_MODEL_WRITE=true');
+    // Facts, not an instruction: "undo this write" made agents undo correct work (#1332).
+    expect(note).not.toMatch(/undo/i);
+  });
+
+  // #1332: a listed model is one this workspace develops, and a note on every
+  // write into it told the agent to undo correct work.
+  it('says nothing about a write into a model the workspace lists', () => {
+    process.env.D365FO_WORKSPACE_MODELS = 'DemoCore';
+    const check = {
+      objectName: 'DemoSKTaxChangeLog',
+      objectType: 'table',
+      owningModel: 'DemoCore',
+      activeModel: 'DemoSK',
+      action: 'create' as const,
+    };
+
+    expect(crossModelWriteRefusal(check)).toBeNull();
+    expect(standDownNotice(check)).toBe('');
+    // The older name of the same list means the same.
+    delete process.env.D365FO_WORKSPACE_MODELS;
+    process.env.D365FO_CROSS_MODEL_WRITE_MODELS = 'DemoCore';
+    expect(crossModelWriteRefusal(check)).toBeNull();
+    expect(standDownNotice(check)).toBe('');
   });
 
   it('says so when there was no anchor to measure against', () => {
@@ -155,8 +179,9 @@ describe('standing down is never silent', () => {
 
   it('reports an allowance without needing a write to be attempted', () => {
     expect(activeCrossModelAllowance()).toBeNull();
+    // A listed model is the workspace's own (get_workspace_info lists those), not an allowance.
     process.env.D365FO_CROSS_MODEL_WRITE_MODELS = 'DemoCore';
-    expect(activeCrossModelAllowance()).toContain('DemoCore');
+    expect(activeCrossModelAllowance()).toBeNull();
     process.env.D365FO_ALLOW_CROSS_MODEL_WRITE = 'true';
     expect(activeCrossModelAllowance()).toContain('ANY model');
   });

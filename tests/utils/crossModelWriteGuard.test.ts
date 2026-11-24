@@ -13,6 +13,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   crossModelWriteRefusal,
+  standDownNotice,
   baseObjectOf,
   suggestedExtensionName,
 } from '../../src/utils/crossModelWriteGuard';
@@ -41,6 +42,7 @@ const resetEnv = () => {
   clearInferredModelPrefixes();
   delete process.env.D365FO_ALLOW_CROSS_MODEL_WRITE;
   delete process.env.D365FO_CROSS_MODEL_WRITE_MODELS;
+  delete process.env.D365FO_WORKSPACE_MODELS;
   delete process.env.EXTENSION_PREFIX;
   delete process.env.EXTENSION_NAMING_STYLE;
 };
@@ -255,7 +257,7 @@ describe('crossModelWriteRefusal', () => {
 
     expect(msg).toContain('Refusing to modify');
     expect(msg).not.toContain('action="create"');
-    expect(msg).toContain(`D365FO_CROSS_MODEL_WRITE_MODELS=${CORE_MODEL}`);
+    expect(msg).toContain(`"${CORE_MODEL}" to \`workspace.models\``);
   });
 });
 
@@ -286,19 +288,22 @@ describe('crossModelWriteRefusal — a model built on the active one', () => {
     // Pieces of the feature in a dependent model are not evidence of a mistake.
     expect(msg).not.toContain('Half-finished pieces');
     // The decision is still the user's, and the guard still refuses.
-    expect(msg).toContain(`D365FO_CROSS_MODEL_WRITE_MODELS=${TEST_MODEL}`);
+    expect(msg).toContain(`"${TEST_MODEL}" to \`workspace.models\``);
     expect(msg).toContain('Do NOT route around this guard');
   });
 
-  it('names the test model when the active model lists it in InternalsVisibleTo', () => {
-    const msg = crossModelWriteRefusal(testModelCheck({ buildsOnBase: true, testModelOfBase: true }))!;
+  // #1332: the active model's own descriptor declares it its test model, so it is
+  // developed in this workspace — neither refused nor flagged.
+  it('lets the write through when the active model lists it in InternalsVisibleTo', () => {
+    const check = testModelCheck({ buildsOnBase: true, testModelOfBase: true });
 
-    expect(msg).toContain("it is this workspace's test model");
+    expect(crossModelWriteRefusal(check)).toBeNull();
+    expect(standDownNotice(check)).toBe('');
   });
 
   it('gives no extension advice for a delete either', () => {
     const msg = crossModelWriteRefusal({
-      ...testModelCheck({ buildsOnBase: true, testModelOfBase: true }),
+      ...testModelCheck({ buildsOnBase: true, testModelOfBase: false }),
       action: 'delete' as const,
     })!;
 

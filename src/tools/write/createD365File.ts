@@ -58,6 +58,17 @@ import { applyMenuItemBpDefaults, renderMenuItemBpNote } from '../xml/menuItemBp
 import { menuItemFormAllLocal } from '../xml/formDataSourceDomain.js';
 import { menuItemKindOf } from '../../utils/bpCreateDefaults.js';
 import type { XppServerContext } from '../../types/context.js';
+import { resolveProjectForModel, describeProjectMismatch } from '../../workspace/workspaceModels.js';
+
+/** Microsoft standard models custom code is never created in, lower-cased. */
+const KNOWN_MICROSOFT_MODELS = new Set([
+  'applicationsuite', 'applicationcommon', 'applicationfoundation', 'applicationplatform',
+  'applicationwebcomponents', 'applicationworkspaces', 'foundation',
+  'directory', 'dimensions', 'currency', 'calendar', 'casemanagement',
+  'contactperson', 'datasharing', 'dataupgrade', 'datamaintenance',
+  'electronicreporting', 'electronicreportingcore',
+  'banktype', 'banktypes', 'benefitsmanagement', 'creditmanagement',
+]);
 
 
 /**
@@ -856,12 +867,49 @@ export async function handleCreateD365File(
       }
     }
 
+    // A modelName the caller passed is the model they want, and the project only
+    // decides it when they passed none. The project's model used to replace it
+    // outright: create(modelName="ModelB") in a workspace whose project builds
+    // ModelA wrote into ModelA, and the guard then compared ModelA with itself
+    // and said nothing (#1332). Now the named model stands, the cross-model
+    // guard below decides whether this workspace may write into it, and the
+    // object is registered in that model's project, never in ModelA's.
+    const explicitModel = args.modelName?.trim() || undefined;
+    const namesAnotherModel = async (projectModel: string): Promise<boolean> => {
+      if (!explicitModel || projectModel.toLowerCase() === explicitModel.toLowerCase()) return false;
+      // A package name for the project's model is the same model, not another one.
+      if (args.packageName) return true;
+      const alias = await resolvePackageNameAsModel(explicitModel);
+      return alias.modelName.toLowerCase() !== projectModel.toLowerCase();
+    };
+    let ignoredProject: { projectPath: string; modelName: string } | undefined;
+
     // If projectPath is available, extract model name from it
     if (projectPathToUse) {
       const projectManager = new ProjectFileManager({ withinSolutionRoots: true });
       const extractedModelName = await timer.time('model name from .rnrproj', () =>
         projectManager.extractModelName(projectPathToUse!));
-      if (extractedModelName) {
+      if (extractedModelName && await namesAnotherModel(extractedModelName)) {
+        if (args.projectPath) {
+          return {
+            content: [{
+              type: 'text',
+              text: `❌ modelName "${explicitModel}" and projectPath disagree: ${args.projectPath} builds model ` +
+                `"${extractedModelName}". An object is created in one model and registered in a project of that ` +
+                `model. Pass the project of "${explicitModel}", or omit one of the two. Nothing was created.`,
+            }],
+            isError: true,
+          };
+        }
+        // The workspace's project builds another model: keep the named one, and
+        // find its own project once the model is final (see below).
+        ignoredProject = { projectPath: projectPathToUse, modelName: extractedModelName };
+        projectPathToUse = undefined;
+        console.error(
+          `[create_d365fo_file] modelName "${explicitModel}" differs from the active project's model ` +
+          `"${extractedModelName}" — creating in "${explicitModel}"`,
+        );
+      } else if (extractedModelName) {
         actualModelName = extractedModelName;
         wasAutoExtracted = true;
         console.error(
@@ -926,8 +974,23 @@ export async function handleCreateD365File(
       }
     }
 
+    // A modelName that overrode the workspace's project (see explicitModel above)
+    // must still not name a Microsoft model. The project used to correct such a
+    // value silently; now that it is honoured, it is refused here instead.
+    if (ignoredProject && KNOWN_MICROSOFT_MODELS.has(actualModelName.toLowerCase())) {
+      return {
+        content: [{
+          type: 'text',
+          text: `❌ "${actualModelName}" is a Microsoft standard model — custom code is never created there. ` +
+            `This workspace's project builds "${ignoredProject.modelName}": omit modelName to create the object ` +
+            `there, or pass another model of this workspace. Nothing was created.`,
+        }],
+        isError: true,
+      };
+    }
+
     // ⚠️ CRITICAL WARNING: If no project/solution path available anywhere
-    if (!projectPathToUse && !solutionPathToUse) {
+    if (!projectPathToUse && !solutionPathToUse && !ignoredProject) {
       console.error(
         `[create_d365fo_file] ⚠️ WARNING: No projectPath or solutionPath available (not in args, not in .mcp.json)!`
       );
@@ -943,18 +1006,9 @@ export async function handleCreateD365File(
       
       // Extra validation: Check for suspicious/placeholder model names
       const suspiciousNames = ['auto', 'test', 'example', 'temp', 'undefined', 'null'];
-      // Known Microsoft standard D365FO models — NEVER use for custom code
-      const knownMicrosoftModels = [
-        'applicationsuite', 'applicationcommon', 'applicationfoundation', 'applicationplatform',
-        'applicationwebcomponents', 'applicationworkspaces', 'foundation',
-        'directory', 'dimensions', 'currency', 'calendar', 'casemanagement',
-        'contactperson', 'datasharing', 'dataupgrade', 'datamaintenance',
-        'electronicreporting', 'electronicreportingcore',
-        'banktype', 'banktypes', 'benefitsmanagement', 'creditmanagement',
-      ];
       const modelLower = actualModelName.toLowerCase();
       const isPlaceholder = suspiciousNames.includes(modelLower);
-      const isMicrosoftModel = knownMicrosoftModels.includes(modelLower);
+      const isMicrosoftModel = KNOWN_MICROSOFT_MODELS.has(modelLower);
 
       if (isPlaceholder || isMicrosoftModel) {
         const reason = isPlaceholder
@@ -1068,6 +1122,20 @@ export async function handleCreateD365File(
     }
     // Allowed, but possibly not into this model — see standDownNotice.
     const crossModelNotice = standDownNotice(crossModelCheck);
+
+    // The workspace's project builds another model than the one named: register
+    // into that model's own project — one in the solution, or one the solutions
+    // scan found — and never into the active one, whose build would fail on it.
+    let otherModelProjectNote = '';
+    if (ignoredProject) {
+      const routed = await resolveProjectForModel(actualModelName, ignoredProject.projectPath, getConfigManager());
+      projectPathToUse = routed.projectPath;
+      // The solution folder search below would look for this model's project by
+      // file name in the ACTIVE solution; resolveProjectForModel already did
+      // better, so its answer stands.
+      solutionPathToUse = undefined;
+      if (!routed.projectPath) otherModelProjectNote = `\n⚠️ ${describeProjectMismatch(actualModelName, routed)}.\n`;
+    }
 
     const naming = resolveCreateObjectName(
       args,
@@ -1634,7 +1702,7 @@ export async function handleCreateD365File(
                     projectMsg = `\n⚠️ Could not add to project: ${projErr}`;
                   }
                 } else {
-                  projectMsg = buildNoProjectPathWarning();
+                  projectMsg = otherModelProjectNote || buildNoProjectPathWarning();
                 }
               }
 
@@ -1770,7 +1838,7 @@ export async function handleCreateD365File(
                 projectMsg = `\n⚠️ Could not add to project: ${projErr}`;
               }
             } else {
-              projectMsg = buildNoProjectPathWarning();
+              projectMsg = otherModelProjectNote || buildNoProjectPathWarning();
             }
           }
 
@@ -2191,6 +2259,8 @@ export async function handleCreateD365File(
           );
           projectPath = detectedPath;
         }
+      } else if (!projectPath && otherModelProjectNote) {
+        projectMessage = otherModelProjectNote;
       } else if (!projectPath) {
         projectMessage = `\n⚠️ Cannot add to project: projectPath could not be resolved.\n` +
           `Add projectPath to .mcp.json config, or pass it as a tool argument.\n` +

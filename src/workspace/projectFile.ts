@@ -29,6 +29,7 @@ import {
 } from './projectMembership.js';
 import { getConfigManager } from '../utils/configManager.js';
 import { assertProjectPathAllowed } from '../utils/pathContainment.js';
+import { resolveProjectForModel, describeProjectMismatch, type ProjectForModel } from './workspaceModels.js';
 
 /**
  * Register a file that is already on disk into the ACTIVE project, whenever the
@@ -65,6 +66,12 @@ import { assertProjectPathAllowed } from '../utils/pathContainment.js';
  * bailed before its addToProject block, and modify's flag defaulted off against
  * a wire schema telling the caller to keep the default.
  *
+ * The project is one of the object's OWN model. `requestedProjectPath` (the
+ * active project, or the caller's) is used when it builds that model. When it
+ * builds another one, the object goes to its own model's project instead, or to
+ * none: an object of the test model added to the main model's project broke that
+ * project's build, and that is what every write into a second model did (#1332).
+ *
  * Returns the line to append to the tool's response, or '' when there is
  * nothing worth saying. Never throws: the write it comments on has already
  * succeeded, and an unreadable project must not turn that into a failure.
@@ -73,9 +80,21 @@ export async function registerFileInActiveProject(
   objectType: string,
   objectName: string,
   modelName: string | undefined,
-  projectPath: string | undefined,
+  requestedProjectPath: string | undefined,
 ): Promise<string> {
   const axFolder = axFolderForObjectType(objectType);
+
+  let routed: ProjectForModel;
+  try {
+    routed = await resolveProjectForModel(modelName, requestedProjectPath, getConfigManager());
+  } catch {
+    routed = { projectPath: requestedProjectPath, rerouted: false, ambiguous: [] };
+  }
+  const projectPath = routed.projectPath;
+  // How to name the project in the reply: "the active project" only when it is.
+  const target = (p: string) => routed.rerouted
+    ? `${projectDisplayName(p)}, the project of model "${modelName}"`
+    : `the active project ${projectDisplayName(p)}`;
 
   let membership: Membership;
   try {
@@ -93,7 +112,15 @@ export async function registerFileInActiveProject(
   // config gap the caller cannot fix mid-task, and it is the same silence
   // renderMembership keeps: the loud cases only mean something when the quiet
   // ones stay quiet.
-  if (membership.status === 'active' || membership.status === 'unknown') return '';
+  // The exception: the active project builds another model and no project of
+  // this one was found. That is a fact about THIS write, not a standing config
+  // gap, and staying quiet would read as "registered".
+  const mismatchNote = routed.mismatch && !projectPath
+    ? `\n\n⚠️ \`${axFolder}\\${objectName}\` was ${describeProjectMismatch(modelName ?? '', routed)}. ` +
+      `It still compiles: xppc builds the whole model folder.`
+    : '';
+  if (membership.status === 'active') return '';
+  if (membership.status === 'unknown') return mismatchNote;
 
   // Registered elsewhere but not here. Still add it — see the note above — and
   // name the sibling so the agent knows the entry it just made is a second
@@ -107,6 +134,7 @@ export async function registerFileInActiveProject(
     // it compiles either way (xppc builds the whole model folder), but a
     // sibling project already shows it in Visual Studio.
     if (alsoIn) return '';
+    if (mismatchNote) return mismatchNote;
     return `\n\n⚠️ No project of model "${modelName ?? '(unknown)'}" references \`${axFolder}\\${objectName}\`, ` +
       `and no active projectPath is configured to add it to. It still compiles (xppc builds the whole model folder), ` +
       `but no project shows it in Visual Studio.`;
@@ -114,16 +142,17 @@ export async function registerFileInActiveProject(
   // D365FO_PROJECT_MEMBERSHIP=owner: one project already owns it, so leave it there.
   if (keepsInOwnerProject(membership)) {
     return `\n\nℹ️ Left in ${alsoIn}, the one project that references it ` +
-      `(D365FO_PROJECT_MEMBERSHIP=owner) — not added to the active project ${projectDisplayName(projectPath)}.`;
+      `(D365FO_PROJECT_MEMBERSHIP=owner) — not added to ${target(projectPath)}.`;
   }
   try {
     const added = await new ProjectFileManager({ withinSolutionRoots: true }).addToProject(projectPath, objectType, objectName, '');
     if (!added) return '';
     const reload = `Right-click the project → Reload Project if VS is open.`;
     return alsoIn
-      ? `\n\n✅ Added to the active project ${projectDisplayName(projectPath)} (also referenced by ${alsoIn} — ` +
+      ? `\n\n✅ Added to ${target(projectPath)} (also referenced by ${alsoIn} — ` +
         `an element may belong to several projects of a model; it still compiles once). ${reload}`
-      : `\n\n✅ The file was on disk but in no project of this model — added it to ${projectDisplayName(projectPath)}. ` +
+      : `\n\n✅ The file was on disk but in no project of this model — added it to ` +
+        `${routed.rerouted ? target(projectPath) : projectDisplayName(projectPath)}. ` +
         reload;
   } catch (e: any) {
     return `\n\n⚠️ Could not add \`${axFolder}\\${objectName}\` to ` +
