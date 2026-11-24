@@ -15,6 +15,7 @@ import { DOTNET_MISSING, dataRoot, installMode, isWindows, paths, repoRoot, setD
 import type { SectionId } from '../../config/settings.js';
 import { settingByPath } from '../../config/settings.js';
 import { commandExists, runExe, runShell } from '../exec.js';
+import { askBinaryIsvModels } from '../binaryIsv.js';
 import { pinBridgeExe } from '../bridgePath.js';
 import { bridgeFreshness } from '../bridgeSources.js';
 import { maybePrepareCopilotInstructions } from '../copilotFiles.js';
@@ -248,6 +249,7 @@ async function configureIndex(store: SettingsStore): Promise<void> {
   await askSetting(store, setting('index.extractMode'));
   const includeLabels = await askSetting(store, setting('index.includeLabels'));
   if (includeLabels) await askSetting(store, setting('index.labelLanguages'));
+  await askBinaryIsvModels(store);
 }
 
 async function maybeBuildIndex(): Promise<boolean> {

@@ -28,6 +28,31 @@ those are called out explicitly below.
 
 ## [Unreleased]
 
+### Added
+- **`d365fo-mcp index` indexes binary ISV models, also from an npm install, and `setup`
+  offers the ones it finds.** Models shipped as compiled output only (`bin\*.dll`, no
+  object XML) could be indexed signatures-only only by hand from a git checkout: the npm
+  package held neither BinaryModelExtractor nor the `extract-binary-models` import, and a
+  full rebuild (`extractMode: "all"`) deleted what the import had written. Now the setting
+  `index.binaryIsvModels` (`BINARY_ISV_MODELS`, names or masks such as `ContosoIsv*`) makes
+  `d365fo-mcp index` build the extractor on first use (Windows, .NET SDK; rebuilt when an
+  update changes it or the platform is upgraded), dump those models from the packages path
+  and import them after the extraction, so every rebuild keeps them. `index.binaryIsvDumpPath`
+  (`BINARY_ISV_DUMP_PATH`) imports a dump made on another machine or in a pipeline instead,
+  which also works on Linux, macOS and UDE. `d365fo-mcp index --binary-only` re-imports just
+  those models and indexes only them (after an ISV update, without a full rebuild), and
+  `--force-binary` imports models built for another application version. `setup` and
+  `instance add` list the compiled-only packages of a traditional packages path, with their
+  publisher, and preselect the ones not published by Microsoft. If the ISV step fails, the
+  index is still built without the models and the warning names the command to retry. Nothing
+  changes until the setting is set. See docs/BINARY_ISV_MODELS.md.
+
+### Fixed
+- **`extract-binary-models` keeps the extract mode and environment of the extraction it adds
+  to.** The import rewrote the extract manifest as `extractMode: "all"`,
+  `environment: "traditional"` whatever the extraction before it recorded; only the list of
+  custom models was merged.
+
 ## [1.25.1] — 2026-11-23
 
 ### Added

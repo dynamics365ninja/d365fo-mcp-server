@@ -121,7 +121,9 @@ program.command('index')
   .argument('[instance]', "instance name, or 'root' for the repo-level .env")
   .option('--all', 'rebuild every instance')
   .option('-y, --yes', 'non-interactive: skip confirmation questions')
-  .description('Rebuild the metadata index (extract + build database)')
+  .option('--binary-only', 're-import only the binary ISV models (index.binaryIsvModels) and index them')
+  .option('--force-binary', 'import binary ISV models even when their references do not match this platform')
+  .description('Rebuild the metadata index (extract + binary ISV models + build database)')
   .action(indexCommand);
 
 const instance = program.command('instance').description('Manage multi-instance setups (Scenario F)');

@@ -57,7 +57,54 @@ The object XML goes through the **stock** `extract-metadata` parsers, so a binar
 exactly like a source one. Only classes, tables, EDTs and enums need the dump JSON, because the provider returns them as
 structured signatures while a compiled `AxMethod` has no `Source` text for the XML parsers to read.
 
-## Install and run
+## With the d365fo-mcp CLI (npm install or checkout)
+
+`d365fo-mcp index` runs all of the steps below for you, whether the server was installed with
+`npm install -g d365fo-mcp` or from a checkout. Tell it which models to read:
+
+```jsonc
+// config/d365fo-mcp.json (or instances/<name>/d365fo-mcp.json)
+{
+  "index": { "binaryIsvModels": ["ContosoIsv*", "!ContosoIsvDemo"] }
+}
+```
+
+`d365fo-mcp setup` and `d365fo-mcp instance add` ask this for you. On a traditional VM they list
+the packages in the packages path that ship compiled output and no object XML, with the publisher
+from their descriptor, and preselect the ones not published by Microsoft.
+
+Every `d365fo-mcp index` (and the reindex that `d365fo-mcp update` offers) then runs:
+
+1. `extract-metadata`, as before;
+2. **binary ISV models**: builds BinaryModelExtractor against `<packagePath>\bin` the first time,
+   and again whenever an update changes its sources or the platform is upgraded. An npm install
+   keeps it in `<installation directory>\binary-extractor`, where updates do not delete it. The step
+   then dumps the models into `binary-isv-dump\` beside the configuration and imports them, with
+   the label languages of `index.labelLanguages`;
+3. `build-database`. A `custom` build also covers the imported models.
+
+Because the import runs after the extraction every time, a full rebuild (`extractMode: "all"`,
+which empties `METADATA_PATH`) keeps the models.
+
+| Command | What it does |
+|---|---|
+| `d365fo-mcp index` | extraction + binary ISV models + database |
+| `d365fo-mcp index --binary-only` | binary ISV models + a database build of only those models (after an ISV update) |
+| `d365fo-mcp index --force-binary` | imports models whose references mostly do not resolve (see [Platform compatibility](#platform-compatibility)) |
+
+The dump needs Windows, the .NET SDK and a full `PackagesLocalDirectory` (`environment.packagePath`).
+Where there is none (Linux, macOS, UDE, an Azure-hosted index), make the dump on a Windows machine
+as in [Manual run](#manual-run-checkout-pipelines) and point the server at it:
+
+```json
+{ "index": { "binaryIsvDumpPath": "D:/isv-dump" } }
+```
+
+`index` then imports that folder as it is and dumps nothing. If the binary step fails (no .NET SDK,
+platform mismatch), the index is still built without the models. A warning names the cause and the
+`--binary-only` command to run once it is fixed.
+
+## Manual run (checkout, pipelines)
 
 1. **Platform.** Use a full `PackagesLocalDirectory` (a build agent's NuGet-restored platform and application packages, or a
    dev box). Put the ISV package beside the others: `<PLD>\<ISVPackage>\bin\*` and `<PLD>\<ISVPackage>\Resources\*`
