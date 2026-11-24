@@ -174,6 +174,14 @@ describe('entry points load configuration before their other imports', () => {
     'scripts/azure-blob-manager.ts',
     'scripts/purge-property-stats.ts',
   ];
+  // These rebuild the index, and on default settings they rebuild all of it:
+  // they must refuse an unreadable config instead (src/bootstrapIndexEnv.ts).
+  const INDEX_SCRIPTS = new Set([
+    'scripts/build-database.ts',
+    'scripts/build-fts.ts',
+    'scripts/extract-metadata.ts',
+    'scripts/extract-binary-models.ts',
+  ]);
 
   for (const entry of ENTRY_POINTS) {
     it(`${entry} imports the env bootstrap as its first import`, () => {
@@ -185,7 +193,7 @@ describe('entry points load configuration before their other imports', () => {
 
       expect(firstImport, `${entry} has no imports at all`).toBeDefined();
       expect(firstImport, `${entry} must import bootstrapEnv first — any import placed above it is evaluated before configuration is loaded`)
-        .toMatch(/bootstrapEnv\.js'/);
+        .toMatch(INDEX_SCRIPTS.has(entry) ? /bootstrapIndexEnv\.js'/ : /bootstrapEnv\.js'/);
     });
 
     it(`${entry} does not call loadEnv() from its module body`, () => {

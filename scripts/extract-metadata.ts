@@ -3,8 +3,8 @@
  * Extracts X++ metadata from D365 F&O PackagesLocalDirectory
  */
 
-// Load configuration onto process.env — MUST stay the first import (see src/bootstrapEnv.ts).
-import '../src/bootstrapEnv.js';
+// Load configuration onto process.env — MUST stay the first import (see src/bootstrapIndexEnv.ts).
+import '../src/bootstrapIndexEnv.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
@@ -117,7 +117,7 @@ const writtenByModel = new Map<string, Set<string>>();
 
 /**
  * index.storeObjectSource: whether objects' original XML is kept for object_source. Read
- * once; bootstrapEnv, this script's first import, has already loaded the configuration.
+ * once; bootstrapIndexEnv, this script's first import, has already loaded the configuration.
  */
 const STORE_OBJECT_SOURCE = storeObjectSourceEnabled();
 

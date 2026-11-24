@@ -23,8 +23,8 @@
  *           Upload final xpp-metadata.db to Blob Storage
  */
 
-// Load configuration onto process.env — MUST stay the first import (see src/bootstrapEnv.ts).
-import '../src/bootstrapEnv.js';
+// Load configuration onto process.env — MUST stay the first import (see src/bootstrapIndexEnv.ts).
+import '../src/bootstrapIndexEnv.js';
 import * as fsSync from 'fs';
 import { XppSymbolIndex } from '../src/metadata/symbolIndex.js';
 import { indexAllLabels } from '../src/metadata/labelParser.js';

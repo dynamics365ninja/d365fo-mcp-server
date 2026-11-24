@@ -22,7 +22,7 @@ import { maybePrepareCopilotInstructions } from '../copilotFiles.js';
 import { mcpJsonNote, placementNote, stdioServer } from '../mcpJson.js';
 import { checkRelease } from '../npmRegistry.js';
 import { askAdvanced, askNaming, askSecrets, askSetting } from '../settingsPrompt.js';
-import { migrateLegacyEnv, openStore, readSetting, saveStore, writeSetting, type SettingsStore } from '../settingsStore.js';
+import { migrateLegacyEnv, openStore, readSetting, saveStore, unreadableConfigRefusal, writeSetting, type SettingsStore } from '../settingsStore.js';
 import { findPackagesRoot } from '../../utils/packagesRoot.js';
 import { rootTarget } from '../target.js';
 import { askConfirm, askSelect, askText, p, requireFullInstall } from '../ui.js';
@@ -295,6 +295,15 @@ export async function setupCommand(): Promise<void> {
 
   // Before anything is written: every path below hangs off the data directory.
   await configureDataRoot();
+
+  // Before the bridge build and every question: the wizard would start from
+  // defaults and its save would overwrite the file the user has to repair.
+  const unreadable = unreadableConfigRefusal(openStore(dataRoot(), paths.rootEnv));
+  if (unreadable) {
+    p.log.error(unreadable);
+    process.exitCode = 1;
+    return;
+  }
 
   // All scenarios need the local clone installed and built
   if (!await ensureInstalledAndBuilt()) { process.exitCode = 1; return; }
