@@ -46,6 +46,15 @@ those are called out explicitly below.
   publisher, and preselect the ones not published by Microsoft. If the ISV step fails, the
   index is still built without the models and the warning names the command to retry. Nothing
   changes until the setting is set. See docs/BINARY_ISV_MODELS.md.
+- **The Dataverse sign-in on UDE says in the log why it opened the browser.** A test run
+  could open a new sign-in tab for nearly every call it made to the environment, and
+  nothing showed why the silent renewal before each of them failed: the error was
+  swallowed. Now the server writes timestamped `[dataverse-auth]` lines with the process id
+  to stderr: failed silent requests with msal's error details and the state of the account,
+  silent renewals, numbered browser sign-ins, token cache writes and reloads (with token
+  counts before and after), and msal's own warnings. Tokens, account names, email addresses
+  and profile paths are never logged. To keep the lines, set `LOG_FILE` (`server.logFile`)
+  and restart the server.
 
 
 ### Changed
@@ -79,6 +88,10 @@ those are called out explicitly below.
   edit applies without a restart, and the refusal names the config file's path.
 
 ### Fixed
+- **A Dataverse sign-in completed while its page was being shown again no longer fails the
+  call.** When the call that started a browser sign-in on UDE had given up, the next call
+  showed the same page again; if the sign-in finished during that moment, the call failed
+  with a TypeError instead of returning the token. It now returns the token.
 - **An unreadable configuration file stops `d365fo-mcp index` instead of rebuilding
   everything on defaults.** A `config/d365fo-mcp.json` that is not valid JSON (most often a
   Windows path written with single backslashes, `"K:\AosService\..."`) used to cost one

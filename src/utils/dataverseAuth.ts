@@ -9,7 +9,8 @@
  *
  * A server process asks for one sign-in and renews it silently after that. At most one browser
  * sign-in per client is in progress at a time. Tokens are never logged or returned to the
- * caller's transcript.
+ * caller's transcript. What the sign-in does (silent requests that fail and why, browser
+ * sign-ins, token cache reloads) goes to stderr as `[dataverse-auth]` lines, which LOG_FILE keeps.
  *
  * On Windows the token cache is also kept in a file encrypted for the current user (DPAPI, as
  * az CLI and `pac` do, see dataverseTokenCache.ts), so a new server process renews silently from
@@ -19,6 +20,13 @@
  */
 import { spawn } from 'node:child_process';
 import { type AccountInfo, type AuthenticationResult, PublicClientApplication } from '@azure/msal-node';
+import {
+  accountFingerprint,
+  dataverseAuthLogCount,
+  describeAuthError,
+  logDataverseAuth,
+  msalLoggerOptions,
+} from './dataverseAuthLog.js';
 import { createFileTokenCachePlugin, dataverseTokenCachePath } from './dataverseTokenCache.js';
 
 /**
@@ -90,6 +98,8 @@ interface PendingSignIn {
   url?: string;
   /** Callers waiting on it now. Its page is shown again only to a caller that finds none. */
   waiters: number;
+  /** Its number among the browser sign-ins of this process, for the log. */
+  number: number;
 }
 
 /**
@@ -98,7 +108,24 @@ interface PendingSignIn {
  * msal's loopback listener has no timeout of its own and stays open until the sign-in settles,
  * so starting a second one would open a second tab and leave a second listener behind.
  */
-const clients = new Map<string, { app: PublicClientApplication; account?: AccountInfo; pending?: PendingSignIn; ready?: Promise<void> }>();
+const clients = new Map<string, {
+  app: PublicClientApplication;
+  account?: AccountInfo;
+  /** Where `account` came from, for the log. */
+  accountSource?: string;
+  pending?: PendingSignIn;
+  ready?: Promise<void>;
+  /** Browser sign-ins this process started, numbered in the log. */
+  signIns?: number;
+  /** dataverseAuthLogCount() after the last logged silent success; a success is logged again once anything else was. */
+  quietSince?: number;
+}>();
+
+/** Whether the account belongs to the configured tenant, without naming either. */
+function tenantRelation(account: AccountInfo, tenant: string): string {
+  if (['organizations', 'common', 'consumers'].includes(tenant.toLowerCase())) return `any (${tenant.toLowerCase()})`;
+  return account.tenantId?.toLowerCase() === tenant.toLowerCase() ? 'matches' : 'differs';
+}
 
 /** Test-only: forget every cached client and its tokens. */
 export function _resetDataverseAuth(): void {
@@ -127,6 +154,7 @@ export async function getDataverseAccessToken(
           clientId: settings.clientId,
           authority: `https://login.microsoftonline.com/${settings.tenant}`,
         },
+        system: { loggerOptions: msalLoggerOptions },
         ...(settings.tokenCachePath
           ? { cache: { cachePlugin: createFileTokenCachePlugin(settings.tokenCachePath) } }
           : {}),
@@ -141,9 +169,16 @@ export async function getDataverseAccessToken(
       loading.ready = (async () => {
         try {
           const accounts = await loading.app.getTokenCache().getAllAccounts();
-          loading.account = accounts.find(a => a.tenantId?.toLowerCase() === settings.tenant.toLowerCase()) ?? accounts[0];
-        } catch {
+          const inTenant = accounts.find(a => a.tenantId?.toLowerCase() === settings.tenant.toLowerCase());
+          loading.account = inTenant ?? accounts[0];
+          if (loading.account) loading.accountSource = inTenant ? 'cache file (tenant match)' : 'cache file (first account)';
+          logDataverseAuth(
+            `process start: ${accounts.length} account(s) in the token cache file` +
+            (loading.account ? `, using account ${accountFingerprint(loading.account.homeAccountId)} (${loading.accountSource})` : ''),
+          );
+        } catch (error) {
           /* unreadable cache: sign in as without it */
+          logDataverseAuth(`process start: the token cache could not be read: ${describeAuthError(error)}`);
         }
       })();
     }
@@ -151,17 +186,36 @@ export async function getDataverseAccessToken(
   await entry.ready;
   const scopes = [`${settings.url}/.default`];
 
+  // A status read (silentOnly) is told apart, so its "not signed in" isn't mistaken for a failed renewal.
+  const request = `${options.silentOnly ? 'status read' : 'silent token request'}${options.forceRefresh ? ' (forceRefresh)' : ''}`;
   if (entry.account) {
+    const account = entry.account;
     try {
       const silent = await entry.app.acquireTokenSilent({
-        account: entry.account,
+        account,
         scopes,
         ...(options.forceRefresh ? { forceRefresh: true } : {}),
       });
-      if (silent?.accessToken) return silent.accessToken;
-    } catch {
+      if (silent?.accessToken) {
+        // Logged when it went to the network (a renewal, about hourly) or when anything else was logged since the
+        // last one, e.g. a cache reload or a failure: shows whether the request after it worked. Cache hits stay quiet.
+        if (!silent.fromCache || entry.quietSince !== dataverseAuthLogCount()) {
+          const minutes = silent.expiresOn ? Math.round((silent.expiresOn.getTime() - Date.now()) / 60_000) : undefined;
+          logDataverseAuth(
+            `${request} succeeded ${silent.fromCache ? 'from the cache' : 'over the network'}` +
+            `${minutes === undefined ? '' : `, token expires in ${minutes} min`}, account ${accountFingerprint(account.homeAccountId)}`,
+          );
+          entry.quietSince = dataverseAuthLogCount();
+        }
+        return silent.accessToken;
+      }
+      logDataverseAuth(`${request} returned no access token`);
+    } catch (error) {
       /* expired refresh token, or a scope for a different environment: sign in again */
+      logDataverseAuth(`${request} failed: ${describeAuthError(error)}; ${await describeAccountState(entry.app, account, entry.accountSource, settings.tenant)}`);
     }
+  } else {
+    logDataverseAuth(`${request}: no signed-in account in this process or the token cache`);
   }
 
   if (options.silentOnly) {
@@ -169,15 +223,25 @@ export async function getDataverseAccessToken(
     throw new Error('Not signed in to Dataverse yet.');
   }
 
+  let signIn: PendingSignIn;
   if (entry.pending) {
     // A sign-in from an earlier call has not finished. While another call is waiting on it, its
     // tab is open: just wait too. When the call that started it gave up, show its page again
     // rather than start a second sign-in; a tab the user closed is thereby replaced, and the
-    // same listener receives the answer.
-    if (entry.pending.waiters === 0 && entry.pending.url) await openBrowser(entry.pending.url).catch(() => {});
+    // same listener receives the answer. Taken before the await: a sign-in that settles while the
+    // page opens clears entry.pending.
+    signIn = entry.pending;
+    if (signIn.waiters === 0 && signIn.url) {
+      logDataverseAuth(`browser sign-in #${signIn.number} is unfinished and nobody waits on it: showing its page again`);
+      await openBrowser(signIn.url).catch(() => {});
+    } else {
+      logDataverseAuth(`waiting for browser sign-in #${signIn.number}, started by another call`);
+    }
   } else {
     const current = entry;
-    const pending: PendingSignIn = { waiters: 0 } as PendingSignIn;
+    current.signIns = (current.signIns ?? 0) + 1;
+    const pending: PendingSignIn = { waiters: 0, number: current.signIns } as PendingSignIn;
+    logDataverseAuth(`starting browser sign-in #${pending.number} in this process`);
     pending.result = current.app.acquireTokenInteractive({
       scopes,
       openBrowser: async url => {
@@ -189,8 +253,20 @@ export async function getDataverseAccessToken(
     }).then(
       result => {
         // Kept even when the caller that started it has timed out: the next call is then silent.
-        if (result?.account) current.account = result.account;
+        if (result?.account) {
+          current.account = result.account;
+          current.accountSource = `browser sign-in #${pending.number}`;
+        }
+        logDataverseAuth(
+          `browser sign-in #${pending.number} completed` +
+          (result?.account ? `, account ${accountFingerprint(result.account.homeAccountId)}` : ' without an account') +
+          (result?.accessToken ? '' : ' without an access token'),
+        );
         return result;
+      },
+      error => {
+        logDataverseAuth(`browser sign-in #${pending.number} failed: ${describeAuthError(error)}`);
+        throw error;
       },
     ).finally(() => {
       if (current.pending === pending) current.pending = undefined;
@@ -198,16 +274,19 @@ export async function getDataverseAccessToken(
     // A sign-in nobody is waiting for any more must not surface as an unhandled rejection.
     pending.result.catch(() => {});
     current.pending = pending;
+    signIn = pending;
   }
 
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(
-      () => reject(new Error(`Sign-in was not completed within ${INTERACTIVE_TIMEOUT_MS / 60_000} minutes.`)),
+      () => {
+        logDataverseAuth(`gave up waiting for browser sign-in #${signIn.number} after ${INTERACTIVE_TIMEOUT_MS / 60_000} minutes`);
+        reject(new Error(`Sign-in was not completed within ${INTERACTIVE_TIMEOUT_MS / 60_000} minutes.`));
+      },
       INTERACTIVE_TIMEOUT_MS,
     );
   });
-  const signIn = entry.pending!;
   signIn.waiters++;
   try {
     const result = await Promise.race([signIn.result, timeout]);
@@ -217,4 +296,25 @@ export async function getDataverseAccessToken(
     signIn.waiters--;
     clearTimeout(timer);
   }
+}
+
+/**
+ * For the log of a failed silent request: which account was used (a fingerprint), where it came from,
+ * whether it belongs to the configured tenant, and whether the token cache still holds it.
+ */
+async function describeAccountState(
+  app: PublicClientApplication,
+  account: AccountInfo,
+  source: string | undefined,
+  tenant: string,
+): Promise<string> {
+  let inCache: string;
+  try {
+    const accounts = await app.getTokenCache().getAllAccounts();
+    const found = accounts.some(a => a.homeAccountId === account.homeAccountId);
+    inCache = `${found ? 'still' : 'no longer'} in the token cache (${accounts.length} account(s))`;
+  } catch {
+    inCache = 'token cache unreadable';
+  }
+  return `account ${accountFingerprint(account.homeAccountId)} from ${source ?? 'unknown'}, tenant ${tenantRelation(account, tenant)}, ${inCache}`;
 }

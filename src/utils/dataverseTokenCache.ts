@@ -18,6 +18,7 @@ import { randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { ICachePlugin, TokenCacheContext } from '@azure/msal-node';
+import { describeAuthError, logDataverseAuth } from './dataverseAuthLog.js';
 
 /** Encrypts and decrypts base64 text for the current user. Injectable for tests. */
 export interface SecretProtector {
@@ -129,11 +130,17 @@ export function createFileTokenCachePlugin(file: string, protector: SecretProtec
         return; // no cache yet: start empty
       }
       if (!stored || stored === lastSeen) return;
+      const before = describeCacheContents(context);
       try {
         const plain = await protector.unprotect(stored);
         context.tokenCache.deserialize(Buffer.from(plain, 'base64').toString('utf8'));
-      } catch {
+        logDataverseAuth(
+          `token cache ${lastSeen === undefined ? 'loaded from' : 'changed by another process, reloaded from'} ` +
+          `the file; in memory before: ${before}, after: ${describeCacheContents(context)}`,
+        );
+      } catch (error) {
         /* corrupt, or not readable for this user: keep what is in memory */
+        logDataverseAuth(`token cache file could not be read, the in-memory cache is kept: ${describeAuthError(error)}`);
       }
       // Remembered either way, so an unreadable file is tried once, not on every request.
       lastSeen = stored;
@@ -143,12 +150,35 @@ export function createFileTokenCachePlugin(file: string, protector: SecretProtec
       try {
         const plain = Buffer.from(context.tokenCache.serialize(), 'utf8').toString('base64');
         const protectedText = (await protector.protect(plain)).trim();
-        if (!protectedText) return;
+        if (!protectedText) {
+          logDataverseAuth('token cache not written: encryption returned nothing');
+          return;
+        }
         await writeFileAtomic(file, protectedText);
         lastSeen = protectedText;
-      } catch {
+        // Rare (a sign-in or a renewed token, about hourly), and names this process as the writer
+        // when another one later reports a reload.
+        logDataverseAuth(`token cache written: ${describeCacheContents(context)}`);
+      } catch (error) {
         /* not persisted: the next server process signs in again, as before */
+        logDataverseAuth(`token cache not written: ${describeAuthError(error)}`);
       }
     },
   };
+}
+
+/**
+ * How many accounts, access tokens and refresh tokens the in-memory cache holds; '?' when it can't tell.
+ * `serialize()` also clears msal's TokenCache.hasChanged(); nothing reads that flag (afterCacheAccess goes by
+ * the context's own cacheHasChanged, fixed when msal creates the context), but a future caller of it would
+ * have to know.
+ */
+function describeCacheContents(context: TokenCacheContext): string {
+  try {
+    const kv = JSON.parse(context.tokenCache.serialize() || '{}') as Record<string, Record<string, unknown> | undefined>;
+    const count = (key: string) => Object.keys(kv[key] ?? {}).length;
+    return `${count('Account')} account(s), ${count('AccessToken')} access token(s), ${count('RefreshToken')} refresh token(s)`;
+  } catch {
+    return '?';
+  }
 }

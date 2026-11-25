@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { mkdtempSync, readFileSync, readdirSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -9,6 +9,20 @@ import {
   type SecretProtector,
   windowsPowerShellPath,
 } from '../../src/utils/dataverseTokenCache';
+
+// The plugin logs its reads and writes; kept out of the test output, and readable by the tests.
+let log: MockInstance;
+beforeEach(() => {
+  log = vi.spyOn(console, 'error').mockImplementation(() => {});
+});
+afterEach(() => {
+  log.mockRestore();
+});
+
+/** The `[dataverse-auth]` lines logged so far, without the time and pid prefix. */
+function loggedLines(): string[] {
+  return log.mock.calls.map(c => String(c[0]).replace(/^\[dataverse-auth\] \S+ pid=\d+ /, ''));
+}
 
 /** Reversible stand-in for DPAPI, so the test runs everywhere and shows the file is not plain text. */
 const fakeProtector: SecretProtector = {
@@ -149,6 +163,52 @@ describe('createFileTokenCachePlugin', () => {
     const failing: SecretProtector = { ...fakeProtector, protect: async () => { throw new Error('DPAPI call failed'); } };
     await expect(createFileTokenCachePlugin(file, failing).afterCacheAccess(context('{}', true).ctx)).resolves.toBeUndefined();
     expect(existsSync(file)).toBe(false);
+  });
+
+  it('logs the writes and a reload by another process, with what the cache held before and after, never its contents', async () => {
+    const file = path.join(mkdtempSync(path.join(tmpdir(), 'dvcache-')), 'cache.bin');
+    const plugin = createFileTokenCachePlugin(file, fakeProtector);
+    let held = '{"Account":{"a":{}},"AccessToken":{"t1":{"secret":"token-in-memory"}},"RefreshToken":{"r":{}}}';
+    const live = {
+      cacheHasChanged: true,
+      tokenCache: { serialize: () => held, deserialize: (value: string) => { held = value; } },
+    } as never;
+    await plugin.afterCacheAccess(live);
+
+    // Another process writes a cache without the access token; this one's next access loads it.
+    await createFileTokenCachePlugin(file, fakeProtector)
+      .afterCacheAccess(context('{"Account":{"a":{}},"RefreshToken":{"r":{}}}', true).ctx);
+    await plugin.beforeCacheAccess(live);
+
+    const lines = loggedLines();
+    expect(lines).toEqual([
+      'token cache written: 1 account(s), 1 access token(s), 1 refresh token(s)',
+      'token cache written: 1 account(s), 0 access token(s), 1 refresh token(s)',
+      'token cache changed by another process, reloaded from the file; in memory before: ' +
+        '1 account(s), 1 access token(s), 1 refresh token(s), after: 1 account(s), 0 access token(s), 1 refresh token(s)',
+    ]);
+    expect(lines.join('\n')).not.toContain('token-in-memory');
+  });
+
+  it('logs the first load in a process, and an unreadable file', async () => {
+    const file = path.join(mkdtempSync(path.join(tmpdir(), 'dvcache-')), 'cache.bin');
+    await createFileTokenCachePlugin(file, fakeProtector).afterCacheAccess(context('{"Account":{"a":{}}}', true).ctx);
+    await createFileTokenCachePlugin(file, fakeProtector).beforeCacheAccess(context('{}', false).ctx);
+    writeFileSync(file, 'not ours');
+    await createFileTokenCachePlugin(file, fakeProtector).beforeCacheAccess(context('{}', false).ctx);
+
+    expect(loggedLines().slice(1)).toEqual([
+      'token cache loaded from the file; in memory before: 0 account(s), 0 access token(s), 0 refresh token(s), ' +
+        'after: 0 account(s), 0 access token(s), 0 refresh token(s)',
+      'token cache file could not be read, the in-memory cache is kept: [Error] foreign',
+    ]);
+  });
+
+  it('logs why the cache was not written', async () => {
+    const file = path.join(mkdtempSync(path.join(tmpdir(), 'dvcache-')), 'cache.bin');
+    const failing: SecretProtector = { ...fakeProtector, protect: async () => { throw new Error('DPAPI call failed'); } };
+    await createFileTokenCachePlugin(file, failing).afterCacheAccess(context('{}', true).ctx);
+    expect(loggedLines()).toEqual(['token cache not written: [Error] DPAPI call failed']);
   });
 });
 
