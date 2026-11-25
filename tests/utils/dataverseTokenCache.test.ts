@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } fr
 import { mkdtempSync, readFileSync, readdirSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { PublicClientApplication } from '@azure/msal-node';
 import {
   createFileTokenCachePlugin,
   dataverseTokenCachePath,
@@ -115,12 +116,13 @@ describe('createFileTokenCachePlugin', () => {
     await plugin.afterCacheAccess(context('{"v":1}', true).ctx);
     expect(protect).toHaveBeenCalledTimes(1);
 
-    // Token requests that change nothing: neither PowerShell call, the file is still the one written.
+    // Token requests that change nothing: neither PowerShell call, the file is still the one written. msal
+    // still gets the cache each time, from memory.
     for (let i = 0; i < 5; i++) {
       const access = context('{"v":1}', false);
       await plugin.beforeCacheAccess(access.ctx);
       await plugin.afterCacheAccess(access.ctx);
-      expect(access.state.loaded).toBeUndefined();
+      expect(access.state.loaded).toBe('{"v":1}');
     }
     expect(unprotect).not.toHaveBeenCalled();
     expect(protect).toHaveBeenCalledTimes(1);
@@ -184,8 +186,8 @@ describe('createFileTokenCachePlugin', () => {
     expect(lines).toEqual([
       'token cache written: 1 account(s), 1 access token(s), 1 refresh token(s)',
       'token cache written: 1 account(s), 0 access token(s), 1 refresh token(s)',
-      'token cache changed by another process, reloaded from the file; in memory before: ' +
-        '1 account(s), 1 access token(s), 1 refresh token(s), after: 1 account(s), 0 access token(s), 1 refresh token(s)',
+      'token cache changed by another process, reloaded from the file; this process had: ' +
+        '1 account(s), 1 access token(s), 1 refresh token(s), the file has: 1 account(s), 0 access token(s), 1 refresh token(s)',
     ]);
     expect(lines.join('\n')).not.toContain('token-in-memory');
   });
@@ -198,10 +200,114 @@ describe('createFileTokenCachePlugin', () => {
     await createFileTokenCachePlugin(file, fakeProtector).beforeCacheAccess(context('{}', false).ctx);
 
     expect(loggedLines().slice(1)).toEqual([
-      'token cache loaded from the file; in memory before: 0 account(s), 0 access token(s), 0 refresh token(s), ' +
-        'after: 0 account(s), 0 access token(s), 0 refresh token(s)',
-      'token cache file could not be read, the in-memory cache is kept: [Error] foreign',
+      'token cache loaded from the file; this process had: nothing, ' +
+        'the file has: 1 account(s), 0 access token(s), 0 refresh token(s)',
+      'token cache file could not be read, this process keeps its own: [Error] foreign',
     ]);
+  });
+
+  it('keeps a renewed token across msal\'s overwriteCache, which rebuilds the cache from the text last deserialized', async () => {
+    // msal-node's TokenCache, as far as the plugin sees it: before every silent request, overwriteCache()
+    // clears the in-memory cache, calls beforeCacheAccess, and rebuilds the cache from the text last passed to
+    // deserialize(). A token request that renews a token changes the in-memory cache without deserialize().
+    const cache = {
+      memory: '' as string,
+      snapshot: undefined as string | undefined,
+      serialize() { return this.memory; },
+      deserialize(text: string) { this.snapshot = text; this.memory = text; },
+    };
+    const contextOf = (changed: boolean) => ({ cacheHasChanged: changed, tokenCache: cache }) as never;
+    const overwriteCache = async () => {
+      cache.memory = '';
+      await plugin.beforeCacheAccess(contextOf(false));
+      cache.memory = cache.snapshot ?? '';
+      await plugin.afterCacheAccess(contextOf(false));
+    };
+    const renew = async (text: string) => {
+      await plugin.beforeCacheAccess(contextOf(true));
+      cache.memory = text;
+      await plugin.afterCacheAccess(contextOf(true));
+    };
+
+    const file = path.join(mkdtempSync(path.join(tmpdir(), 'dvcache-')), 'cache.bin');
+    await createFileTokenCachePlugin(file, fakeProtector).afterCacheAccess(context('{"AccessToken":{"old":{}}}', true).ctx);
+    const unprotect = vi.fn(fakeProtector.unprotect);
+    const plugin = createFileTokenCachePlugin(file, { ...fakeProtector, unprotect });
+
+    await overwriteCache();
+    expect(cache.memory).toBe('{"AccessToken":{"old":{}}}');
+
+    await renew('{"AccessToken":{"renewed":{}}}');
+    await overwriteCache();
+    await overwriteCache();
+    expect(cache.memory).toBe('{"AccessToken":{"renewed":{}}}');
+    // Still one decryption: the renewed cache comes from memory, not from the file.
+    expect(unprotect).toHaveBeenCalledTimes(1);
+  });
+
+  it('survives a file that is JSON but not a cache msal accepts, with the real msal TokenCache', async () => {
+    const file = path.join(mkdtempSync(path.join(tmpdir(), 'dvcache-')), 'cache.bin');
+    writeFileSync(file, await fakeProtector.protect(Buffer.from('null').toString('base64')));
+    const app = new PublicClientApplication({
+      auth: { clientId: '00000000-0000-0000-0000-000000000001' },
+      cache: { cachePlugin: createFileTokenCachePlugin(file, fakeProtector) },
+    });
+    const cache = app.getTokenCache() as unknown as { overwriteCache(): Promise<void>; serialize(): string };
+
+    // Without the guard, msal keeps `null` as the text it rebuilds from, and every access after it throws.
+    await expect(app.getTokenCache().getAllAccounts()).resolves.toEqual([]);
+    await expect(cache.overwriteCache()).resolves.toBeUndefined();
+    await expect(app.getTokenCache().getAllAccounts()).resolves.toEqual([]);
+    expect(() => cache.serialize()).not.toThrow();
+    expect(loggedLines()).toContain('token cache file is not a cache msal accepts, this process keeps its own');
+  });
+
+  it('keeps its own cache when another process writes one msal rejects', async () => {
+    const cache = {
+      memory: '',
+      deserialize(text: string) {
+        if (JSON.parse(text) === null) throw new TypeError("Cannot read properties of null (reading 'Account')");
+        this.memory = text;
+      },
+      serialize() { return this.memory; },
+    };
+    const file = path.join(mkdtempSync(path.join(tmpdir(), 'dvcache-')), 'cache.bin');
+    const plugin = createFileTokenCachePlugin(file, fakeProtector);
+    cache.memory = '{"AccessToken":{"own":{}}}';
+    await plugin.afterCacheAccess({ cacheHasChanged: true, tokenCache: cache } as never);
+
+    writeFileSync(file, await fakeProtector.protect(Buffer.from('null').toString('base64')));
+    cache.memory = '';
+    await plugin.beforeCacheAccess({ cacheHasChanged: false, tokenCache: cache } as never);
+    expect(cache.memory).toBe('{"AccessToken":{"own":{}}}');
+  });
+
+  it('never logs the text of a file that decrypts to something that is not JSON', async () => {
+    const file = path.join(mkdtempSync(path.join(tmpdir(), 'dvcache-')), 'cache.bin');
+    writeFileSync(file, await fakeProtector.protect(Buffer.from('secret-token-abcdefghij').toString('base64')));
+    const ctx = {
+      cacheHasChanged: false,
+      tokenCache: { serialize: () => '{}', deserialize: (value: string) => JSON.parse(value) },
+    } as never;
+    await createFileTokenCachePlugin(file, fakeProtector).beforeCacheAccess(ctx);
+    expect(loggedLines()).toEqual(['token cache file is not a cache msal accepts, this process keeps its own']);
+    expect(loggedLines().join('\n')).not.toContain('secret');
+  });
+
+  it('keeps a renewed token in the process when the cache file cannot be written', async () => {
+    const cache = {
+      memory: '{"AccessToken":{"renewed":{}}}',
+      deserialize(text: string) { this.memory = text; },
+      serialize() { return this.memory; },
+    };
+    const file = path.join(mkdtempSync(path.join(tmpdir(), 'dvcache-')), 'cache.bin');
+    const failing: SecretProtector = { ...fakeProtector, protect: async () => { throw new Error('DPAPI call failed'); } };
+    const plugin = createFileTokenCachePlugin(file, failing);
+
+    await plugin.afterCacheAccess({ cacheHasChanged: true, tokenCache: cache } as never);
+    cache.memory = '';
+    await plugin.beforeCacheAccess({ cacheHasChanged: false, tokenCache: cache } as never);
+    expect(cache.memory).toBe('{"AccessToken":{"renewed":{}}}');
   });
 
   it('logs why the cache was not written', async () => {

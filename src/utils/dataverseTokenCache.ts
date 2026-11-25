@@ -113,42 +113,80 @@ async function writeFileAtomic(file: string, text: string): Promise<void> {
  * an access it encrypts and writes only when the cache changed (a sign-in or a renewed token). In a steady
  * session that is one decryption at start and one encryption per renewal, not a PowerShell per request.
  *
+ * Before every access it still hands msal the whole cache through `deserialize()`, from the plain text it
+ * keeps in memory when the file hasn't changed. msal relies on that: before each silent request its
+ * `TokenCache.overwriteCache()` clears the in-memory cache and rebuilds it from the text last deserialized.
+ * Skipping `deserialize()` therefore rolled the cache back, on every request, to the state the process
+ * started with: renewed tokens and browser sign-ins were lost, so each request renewed over the network,
+ * or, without a usable account in that state, opened a new browser sign-in.
+ *
  * A missing, empty, corrupt or foreign file (another user's, or not ours at all) starts an empty cache: the
  * user then signs in once in the browser, as without the plugin, and the next write replaces the file. A
- * failed write is not an error either: only the next process asks again. Nothing here logs or throws the
- * cache contents.
+ * failed write is not an error either: the process keeps its tokens, and only the next process asks again.
+ * Nothing here logs or throws the cache contents.
  */
 export function createFileTokenCachePlugin(file: string, protector: SecretProtector = dpapiProtector): ICachePlugin {
-  /** The encrypted text the in-memory cache currently matches, read from or written to `file`. */
+  /** The encrypted text last read from or written to `file`. */
   let lastSeen: string | undefined;
+  /** The cache as this process last loaded or changed it (serialized JSON); what msal gets before each access. */
+  let current: string | undefined;
   return {
     async beforeCacheAccess(context: TokenCacheContext): Promise<void> {
-      let stored: string;
+      let stored: string | undefined;
       try {
-        stored = (await fs.readFile(file, 'utf8')).trim();
+        stored = (await fs.readFile(file, 'utf8')).trim() || undefined;
       } catch {
-        return; // no cache yet: start empty
+        stored = undefined; // no cache file (yet): keep what this process has
       }
-      if (!stored || stored === lastSeen) return;
-      const before = describeCacheContents(context);
-      try {
-        const plain = await protector.unprotect(stored);
-        context.tokenCache.deserialize(Buffer.from(plain, 'base64').toString('utf8'));
-        logDataverseAuth(
-          `token cache ${lastSeen === undefined ? 'loaded from' : 'changed by another process, reloaded from'} ` +
-          `the file; in memory before: ${before}, after: ${describeCacheContents(context)}`,
-        );
-      } catch (error) {
-        /* corrupt, or not readable for this user: keep what is in memory */
-        logDataverseAuth(`token cache file could not be read, the in-memory cache is kept: ${describeAuthError(error)}`);
+      /** msal rejected the file's text, after it had already taken it as the text to rebuild from. */
+      let rejected = false;
+      if (stored !== undefined && stored !== lastSeen) {
+        let loaded: string | undefined;
+        try {
+          loaded = Buffer.from(await protector.unprotect(stored), 'base64').toString('utf8');
+        } catch (error) {
+          /* corrupt, or not readable for this user: keep what this process has */
+          logDataverseAuth(`token cache file could not be read, this process keeps its own: ${describeAuthError(error)}`);
+        }
+        // msal itself decides whether it is a cache: valid JSON can still make it throw (`null`, an entry that
+        // is null), and a text it rejected would break every later access if it were kept. Its error isn't
+        // logged, as a JSON error quotes the start of the text.
+        if (loaded !== undefined) {
+          if (tryDeserialize(context, loaded)) {
+            logDataverseAuth(
+              `token cache ${lastSeen === undefined ? 'loaded from' : 'changed by another process, reloaded from'} ` +
+              `the file; this process had: ${describeCacheJson(current)}, the file has: ${describeCacheJson(loaded)}`,
+            );
+            current = loaded;
+          } else {
+            logDataverseAuth('token cache file is not a cache msal accepts, this process keeps its own');
+            rejected = true;
+          }
+        }
+        // Remembered either way, so an unreadable file is tried once, not on every request.
+        lastSeen = stored;
       }
-      // Remembered either way, so an unreadable file is tried once, not on every request.
-      lastSeen = stored;
+      // msal rebuilds its cache from the text it was last given, so it gets this process's cache every time;
+      // after a rejected file, an empty one if the process has none. If msal rejects even this process's own
+      // cache, start empty rather than fail every later access.
+      const text = current ?? (rejected ? EMPTY_CACHE : undefined);
+      if (text !== undefined && !tryDeserialize(context, text)) {
+        logDataverseAuth('this process\'s token cache was rejected by msal, starting with an empty cache');
+        current = undefined;
+        tryDeserialize(context, EMPTY_CACHE);
+      }
     },
     async afterCacheAccess(context: TokenCacheContext): Promise<void> {
       if (!context.cacheHasChanged) return;
+      // Kept before the write, so a failed write doesn't lose the new tokens for this process.
       try {
-        const plain = Buffer.from(context.tokenCache.serialize(), 'utf8').toString('base64');
+        current = context.tokenCache.serialize();
+      } catch {
+        logDataverseAuth('token cache not written: msal could not serialize it');
+        return;
+      }
+      try {
+        const plain = Buffer.from(current, 'utf8').toString('base64');
         const protectedText = (await protector.protect(plain)).trim();
         if (!protectedText) {
           logDataverseAuth('token cache not written: encryption returned nothing');
@@ -158,24 +196,33 @@ export function createFileTokenCachePlugin(file: string, protector: SecretProtec
         lastSeen = protectedText;
         // Rare (a sign-in or a renewed token, about hourly), and names this process as the writer
         // when another one later reports a reload.
-        logDataverseAuth(`token cache written: ${describeCacheContents(context)}`);
+        logDataverseAuth(`token cache written: ${describeCacheJson(current)}`);
       } catch (error) {
-        /* not persisted: the next server process signs in again, as before */
+        /* not persisted: this process keeps its tokens (current), the next server process signs in again */
         logDataverseAuth(`token cache not written: ${describeAuthError(error)}`);
       }
     },
   };
 }
 
-/**
- * How many accounts, access tokens and refresh tokens the in-memory cache holds; '?' when it can't tell.
- * `serialize()` also clears msal's TokenCache.hasChanged(); nothing reads that flag (afterCacheAccess goes by
- * the context's own cacheHasChanged, fixed when msal creates the context), but a future caller of it would
- * have to know.
- */
-function describeCacheContents(context: TokenCacheContext): string {
+/** An empty msal cache, for msal to rebuild from when there is nothing (usable) to give it. */
+const EMPTY_CACHE = '{}';
+
+/** Hands msal a serialized cache; false when msal rejects it. Never logs the text or msal's error about it. */
+function tryDeserialize(context: TokenCacheContext, text: string): boolean {
   try {
-    const kv = JSON.parse(context.tokenCache.serialize() || '{}') as Record<string, Record<string, unknown> | undefined>;
+    context.tokenCache.deserialize(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** How many accounts, access tokens and refresh tokens a serialized cache holds; '?' when it can't tell. */
+function describeCacheJson(json: string | undefined): string {
+  if (json === undefined) return 'nothing';
+  try {
+    const kv = JSON.parse(json || '{}') as Record<string, Record<string, unknown> | undefined>;
     const count = (key: string) => Object.keys(kv[key] ?? {}).length;
     return `${count('Account')} account(s), ${count('AccessToken')} access token(s), ${count('RefreshToken')} refresh token(s)`;
   } catch {

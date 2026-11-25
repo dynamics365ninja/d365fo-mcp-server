@@ -88,6 +88,12 @@ those are called out explicitly below.
   edit applies without a restart, and the refusal names the config file's path.
 
 ### Fixed
+- **UDE test runs and deployments no longer open a new sign-in tab in the browser for
+  almost every call.** Since 1.25.1, the server forgot every token it got after it
+  started: each call to the environment went back to the tokens the server had at start.
+  If those still worked, each call quietly fetched a new token. If they didn't, each call
+  opened a new sign-in tab, which the browser usually completed at once. Now the server
+  keeps the tokens it gets, so it signs in or renews a token only when needed.
 - **A Dataverse sign-in completed while its page was being shown again no longer fails the
   call.** When the call that started a browser sign-in on UDE had given up, the next call
   showed the same page again; if the sign-in finished during that moment, the call failed
