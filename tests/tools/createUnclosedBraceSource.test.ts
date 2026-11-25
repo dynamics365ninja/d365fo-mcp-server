@@ -65,6 +65,16 @@ vi.mock('../../src/utils/configManager', () => ({
   extractModelFromFilePath: vi.fn(() => null),
 }));
 
+// Raw label text is turned into a label (created in the label file) before the
+// object is written. Recorded here, so a test can tell whether that happened.
+const { resolveLabel } = vi.hoisted(() => ({
+  resolveLabel: vi.fn(async () => ({ ref: '@Contoso:ContosoRentEquipment', note: 'created label' })),
+}));
+vi.mock('../../src/tools/write/createLabel', async (orig) => {
+  const actual = await orig<typeof import('../../src/tools/write/createLabel')>();
+  return { ...actual, resolveOrCreateLabelRef: resolveLabel };
+});
+
 vi.mock('../../src/utils/packageResolver', () => ({
   // A `function`, not an arrow: the handler constructs it with `new`.
   PackageResolver: vi.fn().mockImplementation(function () {
@@ -157,5 +167,23 @@ describe('create with an unclosed { in sourceCode', () => {
     expect(text).toMatch(/never closed \(line \d+/);
     expect(create).not.toHaveBeenCalled();
     expect([...files.keys()].filter(p => p.endsWith('.xml'))).toEqual([]);
+  });
+
+  // The label auto-resolve runs before either writer splits the source, and it
+  // creates labels: the refusal said "Nothing was written" with a new label in
+  // the label file. The control case proves the label path is reached at all.
+  it.each([
+    ['an unclosed {', false, `public class ContosoRentEquipment extends common\n{\n}\n\n${UNCLOSED}`],
+    ['valid source (control)', true, `public class ContosoRentEquipment extends common\n{\n}\n\npublic void contosoFirst()\n{\n}`],
+  ])('table with a raw label and %s: label created = %s', async (_what, labelCreated, sourceCode) => {
+    const { bridge } = readyBridge();
+    await handleCreateD365File(
+      req({
+        objectType: 'table', objectName: 'ContosoRentEquipment', modelName: 'Contoso', sourceCode,
+        properties: { label: 'Rent equipment' }, addToProject: false,
+      }),
+      buildContext(bridge),
+    );
+    expect(resolveLabel.mock.calls.length > 0).toBe(labelCreated);
   });
 });

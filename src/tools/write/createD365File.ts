@@ -534,6 +534,28 @@ const LABELLED_COLLECTIONS: Array<{ key: string; singular: string }> = [
 ];
 
 /**
+ * True when create splits this `sourceCode` into methods and the split fails, so
+ * both writers will refuse the create with XppSplitError. Mirrors which types
+ * they split: classes, tables and table extensions (unless the source is JSON,
+ * which the table writers skip) and data entities (also `properties.sourceCode`).
+ */
+function sourceCodeSplitFails(objectType: string, sourceCode: string | undefined, properties: unknown): boolean {
+  const source = objectType === 'data-entity'
+    ? sourceCode ?? (properties as { sourceCode?: unknown } | undefined)?.sourceCode
+    : sourceCode;
+  if (typeof source !== 'string' || !source.trim()) return false;
+  const isTable = objectType === 'table' || objectType === 'table-extension';
+  if (!isTable && !['class', 'class-extension', 'data-entity'].includes(objectType)) return false;
+  if (isTable && source.trim().startsWith('{')) return false;
+  try {
+    XmlTemplateGenerator.parseSourceForBridge(source);
+    return false;
+  } catch (e) {
+    return e instanceof XppSplitError;
+  }
+}
+
+/**
  * Replace every raw-text `label` under `properties` with a real label reference,
  * reusing an existing label when one already carries that exact text.
  *
@@ -1174,7 +1196,11 @@ export async function handleCreateD365File(
     // An `@Ref` the caller passed is never touched, and autoCorrect=false keeps
     // the old behaviour (raw text written as passed + the BP advisory), the same
     // opt-out the modify path publishes.
-    const autoLabelNotes = args.autoCorrect !== false && actualModelName
+    //
+    // Source the writers will refuse (XppSplitError) skips it: this would create
+    // the labels, and the create then fails with "Nothing was written".
+    const autoLabelNotes = args.autoCorrect !== false && actualModelName &&
+      !sourceCodeSplitFails(args.objectType, args.sourceCode, args.properties)
       ? await timer.time('label auto-resolve', () => autoResolveRawLabels(
           args.properties as Record<string, unknown> | undefined,
           {

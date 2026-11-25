@@ -86,7 +86,8 @@ those are called out explicitly below.
   dropped while the create reported success.
   Braces are now matched with string and comment content ignored. A `{` that really is
   never closed fails the create with its line number and the line that opens the block,
-  and nothing is written; a table extension is no longer written without its methods.
+  and nothing is written — not even the label that raw `label` text would have been turned
+  into; a table extension is no longer written without its methods.
   When the object already exists, the suggested `modify` call reports the same problem
   instead of leaving the methods out without a word.
 - **`add-method` with several methods no longer merges them at a `{` in a single-quoted
