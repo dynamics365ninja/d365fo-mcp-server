@@ -46,6 +46,7 @@ const EXTENSION_OF_INTRINSIC: Record<string, string> = {
   query: 'queryStr', 'data-entity': 'dataEntityViewStr',
 };
 import { readMethodCall } from '../../utils/methodBodyHint.js';
+import { maskXpp } from '../../utils/xppLexer.js';
 import { ensureXppDocComment, ensureBlankLineBeforeClosingBrace } from '../../utils/xppDocGen.js';
 import { xppMethodSourceForXml, reindentXppSource } from '../../utils/xppFormat.js';
 import {
@@ -106,6 +107,72 @@ export function parameterListOpenIndex(sigText: string): number {
 }
 
 /**
+ * Index of the '}' that closes the '{' at `open`, or -1 when it is never closed.
+ *
+ * `masked` must be maskXpp() of the source being split: braces inside string
+ * literals and comments are blanked there, so any '{' there does not count as an
+ * opening brace.
+ */
+function matchingBraceIndex(masked: string, open: number): number {
+  let depth = 0;
+  for (let i = open; i < masked.length; i++) {
+    if (masked[i] === '{') depth++;
+    else if (masked[i] === '}' && --depth === 0) return i;
+  }
+  return -1;
+}
+
+/**
+ * X++ source that cannot be split into a declaration and methods.
+ *
+ * When the bridge create path fails, it normally falls back to writing the XML
+ * itself. For this error it must not: the fallback cannot split the source
+ * either, and for some object types it ignores the source and would write the
+ * object without its methods. A separate class lets that path recognize the
+ * error and stop.
+ */
+export class XppSplitError extends Error {
+  /**
+   * @param message What a write path reports: the problem, that nothing was
+   *   written and why.
+   * @param detail The problem and the advice alone, for callers that wrote
+   *   nothing for another reason (e.g. the object already exists).
+   */
+  constructor(message: string, readonly detail: string = message) {
+    super(message);
+    this.name = 'XppSplitError';
+  }
+}
+
+/**
+ * The error for a block whose '{' is never closed. The split must not return a
+ * partial result: the caller would write the methods found so far and lose the
+ * rest without a word.
+ */
+function unclosedBlockError(source: string, open: number): XppSplitError {
+  const lines = source.substring(0, open + 1).split('\n');
+  const line = lines.length;
+  const text = lines[line - 1].trim();
+  // X++ puts the '{' on its own line, so quoting that line says nothing; name
+  // the line that opens the block (usually the method signature) instead.
+  const opener = text === '{'
+    ? lines.slice(0, -1).reverse().map(l => l.trim()).find(l => l !== '')
+    : undefined;
+  const where = opener
+    ? `line ${line}, the block after "${opener}"`
+    : `line ${line}: "${text}"`;
+  const problem = `X++ source has a '{' that is never closed (${where}).`;
+  const advice =
+    'Check that every method body is closed. Braces inside string literals and comments are ignored, ' +
+    'so an unterminated string or comment, or an apostrophe in macro text (#define), can also cause this.';
+  return new XppSplitError(
+    `${problem} Nothing was written, because splitting it into methods would drop everything ` +
+    `after that brace. ${advice}`,
+    `${problem} ${advice}`,
+  );
+}
+
+/**
  * XML Templates for different D365FO object types
  */
 export class XmlTemplateGenerator {
@@ -125,24 +192,21 @@ export class XmlTemplateGenerator {
     declaration: string;
     methods: Array<{ name: string; source: string }>;
   } {
+    // Braces are found on the masked copy (string and comment content blanked,
+    // same length) and the text is cut from the original.
+    const maskedSource = maskXpp(fullSource);
+
     // Find the '{' that opens the class body
-    const firstBrace = fullSource.indexOf('{');
+    const firstBrace = maskedSource.indexOf('{');
     if (firstBrace === -1) return { declaration: fullSource, methods: [] };
 
     // Walk to the matching '}' that closes the class header block
-    let depth = 0;
-    let classEndIdx = -1;
-    for (let i = firstBrace; i < fullSource.length; i++) {
-      if (fullSource[i] === '{') depth++;
-      else if (fullSource[i] === '}') {
-        depth--;
-        if (depth === 0) { classEndIdx = i; break; }
-      }
-    }
-    if (classEndIdx === -1) return { declaration: fullSource, methods: [] };
+    const classEndIdx = matchingBraceIndex(maskedSource, firstBrace);
+    if (classEndIdx === -1) throw unclosedBlockError(fullSource, firstBrace);
 
     let declaration = fullSource.substring(0, classEndIdx + 1);
     const rest = fullSource.substring(classEndIdx + 1);
+    const maskedRest = maskedSource.substring(classEndIdx + 1);
     if (!rest.trim()) {
       // Nothing after the class closing brace — methods may be nested inside the class braces instead.
       const innerResult = XmlTemplateGenerator.extractInnerClassMethods(declaration);
@@ -154,8 +218,7 @@ export class XmlTemplateGenerator {
         return innerResult;
       }
       // Ensure exactly one blank line before the closing '}' when the body has content.
-      const bodyStart = declaration.indexOf('{');
-      const bodyContent = declaration.substring(bodyStart + 1, declaration.lastIndexOf('}'));
+      const bodyContent = declaration.substring(firstBrace + 1, classEndIdx);
       if (bodyContent.trim().length > 0) {
         declaration = declaration.replace(/\n+(\s*)}(\s*)$/, '\n\n}');
       }
@@ -164,7 +227,7 @@ export class XmlTemplateGenerator {
 
     // D365FO requires member-variable declarations inside <Declaration>, so rescue any that
     // appear outside the class {} but before the first method.
-    const nextBraceInRest = rest.indexOf('{');
+    const nextBraceInRest = maskedRest.indexOf('{');
     if (nextBraceInRest !== -1) {
       const preMethodText = rest.substring(0, nextBraceInRest);
       const varLines = preMethodText
@@ -189,22 +252,14 @@ export class XmlTemplateGenerator {
     const methods: Array<{ name: string; source: string }> = [];
     let pos = 0;
     while (pos < rest.length) {
-      const nextBrace = rest.indexOf('{', pos);
+      const nextBrace = maskedRest.indexOf('{', pos);
       if (nextBrace === -1) break;
 
       const sigText = rest.substring(pos, nextBrace);
 
-      // Find the matching '}' for this method body (depth-counting)
-      let d = 0;
-      let bodyEnd = -1;
-      for (let i = nextBrace; i < rest.length; i++) {
-        if (rest[i] === '{') d++;
-        else if (rest[i] === '}') {
-          d--;
-          if (d === 0) { bodyEnd = i; break; }
-        }
-      }
-      if (bodyEnd === -1) break;
+      // Find the matching '}' for this method body
+      const bodyEnd = matchingBraceIndex(maskedRest, nextBrace);
+      if (bodyEnd === -1) throw unclosedBlockError(fullSource, classEndIdx + 1 + nextBrace);
 
       const methodSource = rest.substring(pos, bodyEnd + 1).trim();
 
@@ -251,11 +306,13 @@ export class XmlTemplateGenerator {
     declaration: string;
     methods: Array<{ name: string; source: string }>;
   } | null {
-    const classOpenIdx = classDeclaration.indexOf('{');
-    const classCloseIdx = classDeclaration.lastIndexOf('}');
+    const maskedDeclaration = maskXpp(classDeclaration);
+    const classOpenIdx = maskedDeclaration.indexOf('{');
+    const classCloseIdx = maskedDeclaration.lastIndexOf('}');
     if (classOpenIdx === -1 || classCloseIdx <= classOpenIdx) return null;
 
     const classBody = classDeclaration.substring(classOpenIdx + 1, classCloseIdx);
+    const maskedBody = maskedDeclaration.substring(classOpenIdx + 1, classCloseIdx);
 
     const methods: Array<{ name: string; source: string }> = [];
     const memberVarLines: string[] = [];
@@ -268,7 +325,7 @@ export class XmlTemplateGenerator {
 
     let pos = 0;
     while (pos < classBody.length) {
-      const nextBrace = classBody.indexOf('{', pos);
+      const nextBrace = maskedBody.indexOf('{', pos);
       if (nextBrace === -1) {
         // No more braces — collect any trailing member-variable declarations
         for (const line of classBody.substring(pos).split('\n')) {
@@ -286,16 +343,8 @@ export class XmlTemplateGenerator {
       const sigText = classBody.substring(pos, nextBrace);
 
       // Find the matching '}' for this block
-      let depth = 0;
-      let bodyEnd = -1;
-      for (let i = nextBrace; i < classBody.length; i++) {
-        if (classBody[i] === '{') depth++;
-        else if (classBody[i] === '}') {
-          depth--;
-          if (depth === 0) { bodyEnd = i; break; }
-        }
-      }
-      if (bodyEnd === -1) break;
+      const bodyEnd = matchingBraceIndex(maskedBody, nextBrace);
+      if (bodyEnd === -1) throw unclosedBlockError(classDeclaration, classOpenIdx + 1 + nextBrace);
 
       const parenIdx = parameterListOpenIndex(sigText);
       if (parenIdx !== -1) {
