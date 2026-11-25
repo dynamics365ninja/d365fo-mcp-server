@@ -4,8 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import {
   scaffoldProject, ScaffoldError, validateProjectName, parseSolutionProjects,
-  addProjectToSolutionText, renderRnrproj, buildTasksTargetsOf, inferProjectsRoot,
-  looksLikeProjectsRoot,
+  addProjectToSolutionText, inferProjectsRoot, looksLikeProjectsRoot,
 } from '../../src/workspace/projectScaffold.js';
 import { ProjectFileManager } from '../../src/workspace/projectFile.js';
 
@@ -53,26 +52,6 @@ describe('validateProjectName', () => {
     for (const n of ['', ' x', 'x ', '..\\evil', 'a/b', 'a<b', 'a&b', '-lead', 'trail.', 'CON', 'x'.repeat(101)]) {
       expect(validateProjectName(n), JSON.stringify(n)).not.toBeNull();
     }
-  });
-});
-
-describe('renderRnrproj', () => {
-  const xml = renderRnrproj({ modelName: 'ContosoInventory', projectName: 'C-1', projectGuid: '{AAAAAAAA-0000-0000-0000-000000000001}' });
-  it('is BOM + CRLF and names the model and a lowercase guid', () => {
-    expect(xml.charCodeAt(0)).toBe(0xFEFF);
-    expect(xml).toContain('\r\n');
-    expect(xml).not.toMatch(/[^\r]\n/);
-    expect(xml).toContain('<Model>ContosoInventory</Model>');
-    expect(xml).toContain('<ProjectGuid>{aaaaaaaa-0000-0000-0000-000000000001}</ProjectGuid>');
-  });
-  it('DBSyncInBuild is False, as in existing projects', () => {
-    expect(renderRnrproj({ modelName: 'M', projectName: 'P', projectGuid: '{X}' })).toContain('<DBSyncInBuild>False</DBSyncInBuild>');
-  });
-  it('inherits the build-task targets of a sibling', () => {
-    const sibling = '<Import Project="$(BuildTasksDirectory)\\Microsoft.Dynamics.Framework.Tools.BuildTasks.18.0.targets" />';
-    expect(buildTasksTargetsOf(sibling)).toBe('Microsoft.Dynamics.Framework.Tools.BuildTasks.18.0.targets');
-    const inherited = renderRnrproj({ modelName: 'M', projectName: 'P', projectGuid: '{X}', buildTasksTargets: buildTasksTargetsOf(sibling) });
-    expect(inherited).toContain('BuildTasks.18.0.targets');
   });
 });
 
@@ -135,6 +114,20 @@ describe('scaffoldProject — shared solution', () => {
     const projects = parseSolutionProjects(sln.slice(1));
     expect(projects.map(p => p.relPath)).toEqual(['T-001\\T-001.rnrproj', 'T-002-Foo\\T-002-Foo.rnrproj']);
     expect(sln).toContain('ProjectSection(ProjectDependencies)');
+  });
+
+  it('a template it cannot fill stops before anything is written', async () => {
+    await sharedRepo();
+    const before = await fs.readFile(path.join(root, 'ContosoInventory.sln'), 'utf-8');
+    const template = {
+      text: '<Project>\n  <PropertyGroup>\n    <X>$NewThing$</X>\n  </PropertyGroup>\n</Project>',
+      source: 'visual-studio' as const, warnings: [], info: [],
+    };
+    await expect(scaffoldProject({
+      projectName: 'T-002', modelName: 'ContosoInventory', projectsRoot: root, solutionMode: 'auto', template,
+    })).rejects.toThrow(ScaffoldError);
+    await expect(fs.access(path.join(root, 'T-002'))).rejects.toThrow();
+    expect(await fs.readFile(path.join(root, 'ContosoInventory.sln'), 'utf-8')).toBe(before);
   });
 
   it('two projects created in a row both land in the solution', async () => {

@@ -11,6 +11,7 @@ import {
   scaffoldProject, removeProject, validateProjectName, ScaffoldError, inferProjectsRoot, looksLikeProjectsRoot,
   type SolutionMode,
 } from '../../workspace/projectScaffold.js';
+import { describeProjectTemplate } from '../../workspace/projectTemplate.js';
 
 const ArgsSchema = z.object({
   projectName: z.string(),
@@ -89,7 +90,6 @@ export async function handleCreateProject(args: Record<string, unknown>) {
       solutionFile: a.solutionFile,
       displayName: a.displayName,
       dependsOn: a.dependsOn,
-      templateProject: siblings[0],
     });
   } catch (e) {
     if (e instanceof ScaffoldError) return fail(e.message);
@@ -112,6 +112,9 @@ export async function handleCreateProject(args: Record<string, unknown>) {
     result.solutionPath
       ? `solution: ${result.solutionPath}${result.dependsOn.length ? ` (builds after: ${result.dependsOn.join(', ')})` : ''}`
       : 'solution: none — the project is not in any .sln',
+    describeProjectTemplate(result.template),
+    ...result.template.warnings.map(n => `⚠️ ${n}`),
+    ...result.template.info,
     activated
       ? 'It is now the active project: objects created next are registered into it (addToProject).'
       : 'Not activated — pass projectPath on later creates to register objects into it.',
