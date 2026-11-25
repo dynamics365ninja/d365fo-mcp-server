@@ -85,6 +85,23 @@ those are called out explicitly below.
   Studio upgrade could be a file that no longer exists. Now the `.rnrproj` comes from the
   project template of Visual Studio's Finance and Operations extension, or from a built-in
   copy of it when the extension is not installed. The result names the template it used.
+- **A `{` inside a string no longer drops the methods after it.** Creating a class, table
+  or table extension from `sourceCode` split it into methods by counting braces in the raw
+  text, so an unbalanced brace in a string literal or comment — such as the `'{4:'` an
+  MT940 parser searches for — left a method body open, and every method after it was
+  dropped while the create reported success.
+  Braces are now matched with string and comment content ignored. A `{` that really is
+  never closed fails the create with its line number and the line that opens the block,
+  and nothing is written — not even the label that raw `label` text would have been turned
+  into; a table extension is no longer written without its methods.
+  When the object already exists, the suggested `modify` call reports the same problem
+  instead of leaving the methods out without a word.
+- **`add-method` with several methods no longer merges them at a `{` in a single-quoted
+  string.** `d365fo_file(action="modify")` splits a `sourceCode` holding several methods
+  into one `add-method` each, but its splitter recognized only double-quoted strings. A
+  brace in a single-quoted or verbatim string, such as `'{4:'`, opened a block that never
+  closed, so every method after it was added as part of the one before. It now uses the
+  same X++ lexer as the rest of the server.
 - **An unreadable configuration file stops `d365fo-mcp index` instead of rebuilding
   everything on defaults.** A `config/d365fo-mcp.json` that is not valid JSON (most often a
   Windows path written with single backslashes, `"K:\AosService\..."`) used to cost one
