@@ -71,7 +71,7 @@
 
 import { resolveObjectPrefix, applyObjectPrefix, isAsGivenNamingMode, isNoPrefixMode } from './modelClassifier.js';
 import { reloadWritePolicy, writePolicyFiles } from './loadEnv.js';
-import { isWorkspaceModel, workspaceModels } from '../workspace/workspaceModels.js';
+import { isExcludedWorkspaceModel, isWorkspaceModel, workspaceModels } from '../workspace/workspaceModels.js';
 import { resolveFormattedExtensionName } from './objectNaming.js';
 import type { ModelDependency } from '../metadata/modelDescriptor.js';
 
@@ -144,6 +144,8 @@ export interface CrossModelWriteCheck {
 function staysInWorkspace(check: CrossModelWriteCheck): boolean {
   const { owningModel, activeModel, owningPackage } = check;
   if (activeModel && (eq(owningModel, activeModel) || eq(owningPackage, activeModel))) return true;
+  // `workspace.excludeModels` outranks every other reason below (#1342).
+  if (!check.workspaceModels && isExcludedWorkspaceModel(owningModel)) return false;
   // The anchor's own descriptor names it in <InternalsVisibleTo>: by the anchor
   // model's own declaration, its test model, developed with it.
   if (check.dependency?.testModelOfBase === true) return true;
@@ -371,6 +373,15 @@ export function crossModelWriteRefusal(check: CrossModelWriteCheck): string | nu
   // extension remedy below would not compile, and pieces of a feature already in it
   // are where that feature belongs, not traces of a misplaced write.
   const buildsOnActive = check.dependency?.buildsOnBase === true;
+  const excluded = !check.workspaceModels && isExcludedWorkspaceModel(owningModel);
+  if (excluded) {
+    lines.push(
+      `"${owningModel}" is listed in \`workspace.excludeModels\`: the user took it out of this ` +
+      `workspace's models, whatever its solution or \`workspace.models\` says. It is code that ` +
+      `"${activeModel}" only consumes.`,
+      '',
+    );
+  }
   if (buildsOnActive) {
     lines.push(
       `"${owningModel}" is built on "${activeModel}": its descriptor references "${activeModel}", so ` +
@@ -380,7 +391,7 @@ export function crossModelWriteRefusal(check: CrossModelWriteCheck): string | nu
       `There is no in-model route for this ${verb}.`,
       '',
     );
-  } else {
+  } else if (!excluded) {
     lines.push(
       `"${owningModel}" is not one of this workspace's models: no project of its solution builds it, ` +
       `and \`workspace.models\` does not list it. The change would land in code that "${activeModel}" ` +
@@ -448,7 +459,10 @@ export function crossModelWriteRefusal(check: CrossModelWriteCheck): string | nu
         `earlier run made this same mistake, NOT evidence that the feature belongs there.`),
     '',
     `Whether "${owningModel}" is developed in this workspace is the user's decision, not yours. If it ` +
-    `is, they add ${whereToConfigure(owningModel)}, or add its project to the solution — it applies to ` +
+    (excluded
+      ? `is, they remove it from \`workspace.excludeModels\` in the server's config file`
+      : `is, they add ${whereToConfigure(owningModel)}, or add its project to the solution`) +
+    ` — it applies to ` +
     `your next attempt, no restart and no lost session. Ask them, wait for their answer, and report ` +
     `this refusal instead of working past it.`,
   );

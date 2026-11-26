@@ -70,6 +70,7 @@ beforeEach(() => {
   resetWorkspaceModelsCache();
   delete process.env.D365FO_WORKSPACE_MODELS;
   delete process.env.D365FO_CROSS_MODEL_WRITE_MODELS;
+  delete process.env.D365FO_WORKSPACE_EXCLUDE_MODELS;
   delete process.env.D365FO_ALLOW_CROSS_MODEL_WRITE;
   delete process.env.D365FO_SOLUTION_PATH;
 });
@@ -77,6 +78,7 @@ beforeEach(() => {
 afterEach(() => {
   resetWorkspaceModelsCache();
   delete process.env.D365FO_WORKSPACE_MODELS;
+  delete process.env.D365FO_WORKSPACE_EXCLUDE_MODELS;
   delete process.env.D365FO_SOLUTION_PATH;
   fs.rmSync(root, { recursive: true, force: true });
 });
@@ -147,6 +149,45 @@ describe('the models a workspace develops', () => {
     expect(isWorkspaceModel('ContosoCoreTests')).toBe(true);
   });
 
+  it('reads no solution when several projects build the anchor model and none was picked (#1342)', async () => {
+    // One project per work item, none selected, and a build solution that lists
+    // one of them next to a project for every ISV model it compiles.
+    const workItem = project(path.join(root, 'WI1'), 'ContosoCoreWI1', 'ContosoCore');
+    const isv = project(root, 'ContosoIsv', 'ContosoIsv');
+    solution(root, 'ContosoBuild', [main, isv]);
+
+    await refreshWorkspaceModels(cm(null, { getProjectsForModel: () => [main, workItem] }));
+
+    expect(isWorkspaceModel('ContosoIsv')).toBe(false);
+    expect(workspaceModels('ContosoCore')).toEqual([{ name: 'ContosoCore', source: 'anchor' }]);
+  });
+
+  it('still reads the solution workspace.solutionPath names when no project was picked', async () => {
+    const isv = project(root, 'ContosoIsv', 'ContosoIsv');
+    process.env.D365FO_SOLUTION_PATH = solution(root, 'Contoso', [main, tests]);
+    solution(path.join(root, 'ContosoIsv'), 'ContosoBuild', [main, isv]);
+
+    await refreshWorkspaceModels(cm(null, { getProjectsForModel: () => [main] }));
+
+    expect(isWorkspaceModel('ContosoCoreTests')).toBe(true);
+    expect(isWorkspaceModel('ContosoIsv')).toBe(false);
+  });
+
+  it('leaves out a model of the solution that workspace.excludeModels lists, but never the anchor', async () => {
+    const isv = project(root, 'ContosoIsv', 'ContosoIsv');
+    solution(root, 'ContosoBuild', [main, tests, isv]);
+    process.env.D365FO_WORKSPACE_EXCLUDE_MODELS = 'contosoisv, ContosoCore';
+    process.env.D365FO_WORKSPACE_MODELS = 'ContosoIsv';
+
+    await refreshWorkspaceModels(cm(main));
+
+    expect(isWorkspaceModel('ContosoIsv')).toBe(false);
+    expect(workspaceModels('ContosoCore')).toEqual([
+      { name: 'ContosoCore', source: 'anchor' },
+      { name: 'ContosoCoreTests', source: 'solution' },
+    ]);
+  });
+
   it('counts the models listed in workspace.models and in the older env name', () => {
     process.env.D365FO_WORKSPACE_MODELS = 'ContosoCoreTests';
     process.env.D365FO_CROSS_MODEL_WRITE_MODELS = 'ContosoExt';
@@ -186,6 +227,27 @@ describe('the cross-model guard and the workspace\'s models', () => {
     expect(msg).toContain('modelName="ContosoCore" or modelName="ContosoCoreTests"');
     expect(msg).not.toContain('Extend it from');
     expect(msg).toContain('`workspace.models`');
+  });
+
+  it('refuses a model workspace.excludeModels lists, even as the anchor\'s test model, and says how to undo it', async () => {
+    const isv = project(root, 'ContosoIsv', 'ContosoIsv');
+    solution(root, 'ContosoBuild', [main, isv]);
+    process.env.D365FO_WORKSPACE_EXCLUDE_MODELS = 'ContosoIsv';
+    await refreshWorkspaceModels(cm(main));
+
+    const check = {
+      ...write('ContosoIsv'),
+      objectName: 'ContosoIsvDocument',
+      action: 'modify' as const,
+      dependency: { buildsOnBase: false, testModelOfBase: true },
+    };
+    const msg = crossModelWriteRefusal(check)!;
+
+    expect(msg).toContain('Refusing to modify "ContosoIsvDocument" in model "ContosoIsv"');
+    expect(msg).toContain('is listed in `workspace.excludeModels`');
+    expect(msg).toContain('remove it from `workspace.excludeModels`');
+    expect(msg).not.toContain('no project of its solution builds it');
+    expect(msg).toContain('Extend it from "ContosoCore" instead');
   });
 });
 

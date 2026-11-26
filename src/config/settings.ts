@@ -400,11 +400,27 @@ export const SETTINGS: Setting[] = [
       'Comma-separated models this workspace develops besides the one its project targets — a test model, or the ' +
       'other models of a solution split into several. Writes into them are made, and registered in the project of ' +
       'that model, like writes into the main model. The models of every project in the active project\'s `.sln` count ' +
-      'already, so this is for models whose projects are not in that solution. Any other custom model is refused ' +
+      'already, so this is for models whose projects are not in that solution, and for a workspace where no single ' +
+      'project is detected or configured: no solution is read then. Any other custom model is refused ' +
       'and the extension route is offered instead — see ' +
       '[Objects owned by another model](CUSTOM_EXTENSIONS.md#objects-owned-by-another-model). Re-read from the ' +
       'config file (or `.env`) before every write, so an edit applies without a restart.',
     placeholder: 'ContosoCore,ContosoCoreTests',
+  },
+  {
+    path: 'workspace.excludeModels',
+    env: 'D365FO_WORKSPACE_EXCLUDE_MODELS',
+    section: 'workspace',
+    tier: 'advanced',
+    type: 'list',
+    label: 'Models this workspace does not develop, even if its solution builds them',
+    description:
+      'Comma-separated models to take out of this workspace\'s models, whatever the `.sln` or `workspace.models` ' +
+      'says — typically ISV models shipped as source, which a build solution holds a project for only so that they ' +
+      'compile. Writes into them are refused like writes into any other custom model, and the extension route is ' +
+      'offered instead. The model of the workspace\'s own project cannot be excluded. Re-read from the config file ' +
+      '(or `.env`) before every write.',
+    placeholder: 'ContosoIsvCore,ContosoIsvReports',
   },
   {
     env: 'D365FO_CROSS_MODEL_WRITE_MODELS',
