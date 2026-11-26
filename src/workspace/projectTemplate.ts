@@ -142,7 +142,11 @@ export function renderRnrprojFromTemplate(template: string, opts: RenderOptions)
   return '\uFEFF' + text.replace(/\n/g, '\r\n');
 }
 
-/** The built-in copy of VS's template, for machines without the extension. */
+/**
+ * The built-in copy of VS's template, for machines without the extension. Only the build-tasks
+ * targets differ. The extension's template (7.0.7996.33) has `v4.6` as a literal, not
+ * `$targetframeworkversion$`, and so do the projects VS creates from it.
+ */
 export function builtInTemplateText(buildTasksTargets: string): string {
   return [
     '<?xml version="1.0" encoding="utf-8"?>',
@@ -152,7 +156,7 @@ export function builtInTemplateText(buildTasksTargets: string): string {
     `    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>`,
     `    <BuildTasksDirectory Condition=" '$(BuildTasksDirectory)' == ''">$(MSBuildProgramFiles32)\\MSBuild\\Microsoft\\Dynamics\\AX</BuildTasksDirectory>`,
     '    <Model>$Model$</Model>',
-    '    <TargetFrameworkVersion>v$targetframeworkversion$</TargetFrameworkVersion>',
+    '    <TargetFrameworkVersion>v4.6</TargetFrameworkVersion>',
     '    <OutputPath>bin</OutputPath>',
     '    <SchemaVersion>2.0</SchemaVersion>',
     '    <GenerateCrossReferences>True</GenerateCrossReferences>',

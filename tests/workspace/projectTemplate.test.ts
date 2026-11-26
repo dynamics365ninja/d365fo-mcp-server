@@ -138,7 +138,8 @@ describe('renderRnrprojFromTemplate', () => {
     expect(xml).not.toMatch(/[^\r]\n/);
     expect(xml).not.toMatch(/\$[A-Za-z]+\$/);
     expect(xml).toContain('<Model>ContosoExt</Model>');
-    expect(xml).toContain('<TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>');
+    // As in the extension's template and the projects VS creates from it, not a newer framework.
+    expect(xml).toContain('<TargetFrameworkVersion>v4.6</TargetFrameworkVersion>');
     expect(xml).toContain('<DBSyncInBuild>False</DBSyncInBuild>');
     expect(xml).toContain('<Partition>initial</Partition>');
     expect(xml).toContain('    <Company>\r\n    </Company>\r\n');
