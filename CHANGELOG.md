@@ -79,6 +79,12 @@ those are called out explicitly below.
   edit applies without a restart, and the refusal names the config file's path.
 
 ### Fixed
+- **A new project imports the build tasks of the Visual Studio tools installed now, not
+  those of an older project.** `d365fo_file(action="project", operation="create")` copied the
+  build-tasks `.targets` name from an existing project of the model, which after a Visual
+  Studio upgrade could be a file that no longer exists. Now the `.rnrproj` comes from the
+  project template of Visual Studio's Finance and Operations extension, or from a built-in
+  copy of it when the extension is not installed. The result names the template it used.
 - **A `{` inside a string no longer drops the methods after it.** Creating a class, table
   or table extension from `sourceCode` split it into methods by counting braces in the raw
   text, so an unbalanced brace in a string literal or comment — such as the `'{4:'` an

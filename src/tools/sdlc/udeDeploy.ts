@@ -16,12 +16,11 @@
  * The library does not always throw when the deployment fails — an upload error ends in a status
  * line and a normal return — so success is read from the status lines (classifyDeployOutcome).
  */
-import { execFile, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { appendFile, lstat, mkdtemp, readdir, rmdir, stat, symlink, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { promisify } from 'node:util';
 import { getConfigManager } from '../../utils/configManager.js';
 import {
   type DataverseAuthSettings,
@@ -31,10 +30,9 @@ import {
 } from '../../utils/dataverseAuth.js';
 import { withOperationLock } from '../../utils/operationLocks.js';
 import type { ProgressReporter } from '../../utils/progressReporter.js';
+import { extensionFolders, parseVswhereOutput, visualStudioInstallations } from '../../utils/visualStudio.js';
 import { decideSyncScope, recordDeploy, recordSyncedDeploy } from './udeSyncScope.js';
 import { UDE_DEPLOY_LOADER, UDE_DEPLOY_POWERSHELL } from './udeDeployPowerShell.js';
-
-const execFileAsync = promisify(execFile);
 
 /** A full sync took ~20 min for a tiny model; past this the child is stopped. */
 const DEPLOY_TIMEOUT_MS = 60 * 60_000;
@@ -139,56 +137,13 @@ export async function signInForDeploy(dataverse: DataverseAuthSettings): Promise
 
 // ── locating things ─────────────────────────────────────────────────────────
 
-/** Installation folders from `vswhere -property installationPath`, one per line. */
-export function parseVswhereOutput(stdout: string): string[] {
-  return stdout.split(/\r?\n/).map(l => l.trim()).filter(l => /^[A-Za-z]:\\/.test(l));
-}
+export { parseVswhereOutput };
 
-/**
- * Visual Studio installation folders: every instance vswhere knows (2022, 2026, previews, any
- * edition), else the standard paths. Power Platform Tools may be in any of them.
- */
-async function visualStudioInstallations(): Promise<string[]> {
-  const programFilesX86 = process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)';
-  const vswhere = path.join(programFilesX86, 'Microsoft Visual Studio', 'Installer', 'vswhere.exe');
-  const found = new Set<string>();
-  if (existsSync(vswhere)) {
-    try {
-      const { stdout } = await execFileAsync(vswhere, ['-all', '-prerelease', '-products', '*', '-property', 'installationPath'],
-        { timeout: 15_000, windowsHide: true });
-      for (const p of parseVswhereOutput(stdout)) found.add(p);
-    } catch { /* fall back to the standard paths */ }
-  }
-  const programFiles = process.env.ProgramFiles ?? 'C:\\Program Files';
-  for (const version of ['18', '2022']) {
-    for (const edition of ['Enterprise', 'Professional', 'Community']) {
-      const p = path.join(programFiles, 'Microsoft Visual Studio', version, edition);
-      if (existsSync(p)) found.add(p);
-    }
-  }
-  return [...found];
-}
-
-/**
- * Extension folders holding Power Platform Tools' deployment library. VSIX extensions live one
- * level below Common7\IDE\Extensions, in a folder with a random name.
- */
+/** Extension folders holding Power Platform Tools' deployment library, in any Visual Studio installation. */
 export async function findPowerPlatformToolsDirs(installations?: string[]): Promise<string[]> {
-  const dirs: string[] = [];
-  for (const install of installations ?? await visualStudioInstallations()) {
-    const extensions = path.join(install, 'Common7', 'IDE', 'Extensions');
-    let entries: string[];
-    try {
-      entries = await readdir(extensions);
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      const dir = path.join(extensions, entry);
-      if (existsSync(path.join(dir, 'Microsoft.PowerPlatform.VSShared.Util.dll'))) dirs.push(dir);
-    }
-  }
-  return dirs;
+  return (await extensionFolders(installations ?? await visualStudioInstallations()))
+    .map(e => e.dir)
+    .filter(dir => existsSync(path.join(dir, 'Microsoft.PowerPlatform.VSShared.Util.dll')));
 }
 
 /** A single folder or file name: no path separator, drive colon or NUL, and not `.` or `..`. */
