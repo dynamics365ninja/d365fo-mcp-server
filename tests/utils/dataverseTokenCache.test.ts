@@ -318,6 +318,141 @@ describe('createFileTokenCachePlugin', () => {
   });
 });
 
+describe('createFileTokenCachePlugin with the real msal-node client', () => {
+  // No emulation of msal here: real acquireTokenSilent calls, whose overwriteCache() runs before each one.
+  // Only the network is fake: it answers instance discovery, the OpenID configuration and the token
+  // endpoint, and counts the token requests. The cache starts with an expired access token and a refresh token.
+  const clientId = '00000000-0000-0000-0000-000000000001';
+  const tid = '11111111-1111-1111-1111-111111111111';
+  const oid = '22222222-2222-2222-2222-222222222222';
+  const home = `${oid}.${tid}`;
+  const env = 'login.microsoftonline.com';
+  const scope = 'https://contoso.crm.dynamics.com/.default';
+
+  function seedCache(): string {
+    const now = Math.floor(Date.now() / 1000);
+    return JSON.stringify({
+      Account: {
+        [`${home}-${env}-${tid}`]: {
+          home_account_id: home, environment: env, realm: tid, local_account_id: oid,
+          username: 'user@contoso.com', authority_type: 'MSSTS',
+        },
+      },
+      AccessToken: {
+        [`${home}-${env}-accesstoken-${clientId}-${tid}-${scope}`.toLowerCase()]: {
+          home_account_id: home, environment: env, credential_type: 'AccessToken', client_id: clientId,
+          secret: 'AT-start', realm: tid, target: scope, token_type: 'Bearer',
+          cached_at: String(now - 7200), expires_on: String(now - 3600), extended_expires_on: String(now - 3600),
+        },
+      },
+      RefreshToken: {
+        [`${home}-${env}-refreshtoken-${clientId}--`]: {
+          home_account_id: home, environment: env, credential_type: 'RefreshToken', client_id: clientId, secret: 'RT-1',
+        },
+      },
+      IdToken: {},
+      AppMetadata: {},
+    });
+  }
+
+  function fakeNetwork() {
+    const counter = { tokenRequests: 0 };
+    const tenantUrl = `https://${env}/${tid}`;
+    const networkClient = {
+      async sendGetRequestAsync(url: string) {
+        if (url.includes('discovery/instance')) {
+          return {
+            status: 200, headers: {}, body: {
+              tenant_discovery_endpoint: `${tenantUrl}/v2.0/.well-known/openid-configuration`,
+              metadata: [{ preferred_network: env, preferred_cache: env, aliases: [env] }],
+            },
+          };
+        }
+        return {
+          status: 200, headers: {}, body: {
+            token_endpoint: `${tenantUrl}/oauth2/v2.0/token`, issuer: `${tenantUrl}/v2.0`,
+            authorization_endpoint: `${tenantUrl}/oauth2/v2.0/authorize`,
+            end_session_endpoint: `${tenantUrl}/oauth2/v2.0/logout`, jwks_uri: `${tenantUrl}/discovery/v2.0/keys`,
+          },
+        };
+      },
+      async sendPostRequestAsync() {
+        counter.tokenRequests++;
+        return {
+          status: 200, headers: {}, body: {
+            token_type: 'Bearer', scope, expires_in: 3600, ext_expires_in: 3600,
+            access_token: `AT-renewed-${counter.tokenRequests}`, refresh_token: `RT-${counter.tokenRequests + 1}`,
+            client_info: Buffer.from(JSON.stringify({ uid: oid, utid: tid })).toString('base64url'),
+          },
+        };
+      },
+    };
+    return { counter, networkClient: networkClient as never };
+  }
+
+  function app(file: string, networkClient: never): PublicClientApplication {
+    return new PublicClientApplication({
+      auth: { clientId, authority: `https://${env}/${tid}` },
+      system: { networkClient },
+      cache: { cachePlugin: createFileTokenCachePlugin(file, fakeProtector) },
+    });
+  }
+
+  async function silentTokens(client: PublicClientApplication, count: number): Promise<string[]> {
+    const [account] = await client.getTokenCache().getAllAccounts();
+    const tokens: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const result = await client.acquireTokenSilent({ account, scopes: [scope] });
+      tokens.push(`${result.accessToken}${result.fromCache ? ' from cache' : ' over the network'}`);
+    }
+    return tokens;
+  }
+
+  it('renews an expired token once, then serves the renewed one from the cache', async () => {
+    const file = path.join(mkdtempSync(path.join(tmpdir(), 'dvcache-')), 'cache.bin');
+    await createFileTokenCachePlugin(file, fakeProtector).afterCacheAccess(context(seedCache(), true).ctx);
+    const { counter, networkClient } = fakeNetwork();
+
+    // Before the fix every request went back to the cache of process start and renewed again:
+    // AT-renewed-1..4, all over the network, 4 token requests.
+    expect(await silentTokens(app(file, networkClient), 4)).toEqual([
+      'AT-renewed-1 over the network',
+      'AT-renewed-1 from cache',
+      'AT-renewed-1 from cache',
+      'AT-renewed-1 from cache',
+    ]);
+    expect(counter.tokenRequests).toBe(1);
+
+    // Another server process sharing the cache file starts with the renewed token.
+    const other = fakeNetwork();
+    expect(await silentTokens(app(file, other.networkClient), 2)).toEqual(['AT-renewed-1 from cache', 'AT-renewed-1 from cache']);
+    expect(other.counter.tokenRequests).toBe(0);
+  });
+
+  it('keeps the renewed token in the process when the cache file cannot be written', async () => {
+    const file = path.join(mkdtempSync(path.join(tmpdir(), 'dvcache-')), 'cache.bin');
+    await createFileTokenCachePlugin(file, fakeProtector).afterCacheAccess(context(seedCache(), true).ctx);
+    const { counter, networkClient } = fakeNetwork();
+    const client = new PublicClientApplication({
+      auth: { clientId, authority: `https://${env}/${tid}` },
+      system: { networkClient },
+      cache: {
+        cachePlugin: createFileTokenCachePlugin(file, {
+          ...fakeProtector,
+          protect: async () => { throw new Error('DPAPI call failed'); },
+        }),
+      },
+    });
+
+    expect(await silentTokens(client, 3)).toEqual([
+      'AT-renewed-1 over the network',
+      'AT-renewed-1 from cache',
+      'AT-renewed-1 from cache',
+    ]);
+    expect(counter.tokenRequests).toBe(1);
+  });
+});
+
 describe('windowsPowerShellPath', () => {
   it('runs Windows PowerShell from SystemRoot, not whatever powershell.exe is first on PATH', () => {
     expect(windowsPowerShellPath({ SystemRoot: 'C:\\Windows' }))
