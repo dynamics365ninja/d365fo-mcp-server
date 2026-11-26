@@ -10,12 +10,14 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { withFileLock, writeFileAtomic } from '../utils/atomicFileWrite.js';
+import {
+  defaultProjectTemplate, renderRnrprojFromTemplate, ProjectTemplateError, type ProjectTemplate,
+} from './projectTemplate.js';
 
 /** Project-type GUID VS assigns to a D365FO (.rnrproj) project. */
 export const D365FO_PROJECT_TYPE_GUID = '{FC65038C-1B2F-41E1-A629-BED71D161FFF}';
 
 const BOM = '﻿';
-const DEFAULT_BUILD_TASKS_TARGETS = 'Microsoft.Dynamics.Framework.Tools.BuildTasks.17.0.targets';
 
 export type SolutionMode = 'auto' | 'shared' | 'per-project' | 'none';
 
@@ -31,8 +33,8 @@ export interface ScaffoldProjectOptions {
   displayName?: string;
   /** Names of projects in the SAME solution this one builds after. */
   dependsOn?: string[];
-  /** An existing project of the model, to inherit the build-task version from. */
-  templateProject?: string;
+  /** The .rnrproj template. Default: Visual Studio's own (defaultProjectTemplate). */
+  template?: ProjectTemplate;
 }
 
 export interface ScaffoldResult {
@@ -46,6 +48,8 @@ export interface ScaffoldResult {
   written: string[];
   /** Projects of the solution this one now depends on. */
   dependsOn: string[];
+  /** The template the .rnrproj was made from. */
+  template: ProjectTemplate;
 }
 
 /** A refusal the caller can act on. Never thrown for a programming error. */
@@ -68,62 +72,8 @@ export function validateProjectName(name: string): string | null {
 
 // ── .rnrproj ─────────────────────────────────────────────────────────────────
 
-/** The build-task targets file a sibling project imports, so the new one builds with the same VS. */
-export function buildTasksTargetsOf(rnrprojXml: string): string | null {
-  const m = /<Import\s+Project="\$\(BuildTasksDirectory\)\\([^"]*BuildTasks[^"]*\.targets)"/i.exec(rnrprojXml);
-  return m ? m[1] : null;
-}
-
-export function renderRnrproj(opts: {
-  modelName: string;
-  projectName: string;
-  projectGuid: string;
-  buildTasksTargets?: string | null;
-}): string {
-  const { modelName, projectName, projectGuid } = opts;
-  const targets = opts.buildTasksTargets || DEFAULT_BUILD_TASKS_TARGETS;
-  const lines = [
-    '<?xml version="1.0" encoding="utf-8"?>',
-    '<Project ToolsVersion="14.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">',
-    '  <PropertyGroup>',
-    `    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>`,
-    `    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>`,
-    `    <BuildTasksDirectory Condition=" '$(BuildTasksDirectory)' == ''">$(MSBuildProgramFiles32)\\MSBuild\\Microsoft\\Dynamics\\AX</BuildTasksDirectory>`,
-    `    <Model>${modelName}</Model>`,
-    '    <TargetFrameworkVersion>v4.6</TargetFrameworkVersion>',
-    '    <OutputPath>bin</OutputPath>',
-    '    <SchemaVersion>2.0</SchemaVersion>',
-    '    <GenerateCrossReferences>True</GenerateCrossReferences>',
-    '    <RunAppCheckerRules>False</RunAppCheckerRules>',
-    '    <LogAppcheckerDiagsAsErrors>False</LogAppcheckerDiagsAsErrors>',
-    '    <DeployOnline>False</DeployOnline>',
-    `    <ProjectGuid>${projectGuid.toLowerCase()}</ProjectGuid>`,
-    `    <Name>${projectName}</Name>`,
-    `    <RootNamespace>${projectName}</RootNamespace>`,
-    '    <StartupType>Class</StartupType>',
-    '  </PropertyGroup>',
-    `  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">`,
-    '    <Configuration>Debug</Configuration>',
-    '    <DBSyncInBuild>False</DBSyncInBuild>',
-    '    <GenerateFormAdaptors>False</GenerateFormAdaptors>',
-    '    <Company>',
-    '    </Company>',
-    '    <Partition>initial</Partition>',
-    '    <PlatformTarget>AnyCPU</PlatformTarget>',
-    '    <DataEntityExpandParentChildRelations>False</DataEntityExpandParentChildRelations>',
-    '    <DataEntityUseLabelTextAsFieldName>False</DataEntityUseLabelTextAsFieldName>',
-    '  </PropertyGroup>',
-    `  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">`,
-    '    <DebugSymbols>true</DebugSymbols>',
-    '    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>',
-    '  </PropertyGroup>',
-    // No ItemGroups: ProjectFileManager.addToProject creates them on first use.
-    '  <Import Project="$(MSBuildBinPath)\\Microsoft.Common.targets" />',
-    `  <Import Project="$(BuildTasksDirectory)\\${targets}" />`,
-    '</Project>',
-  ];
-  return BOM + lines.join('\r\n') + '\r\n';
-}
+// The .rnrproj itself comes from projectTemplate.ts. It has no ItemGroups:
+// ProjectFileManager.addToProject creates them on first use.
 
 // ── .sln ─────────────────────────────────────────────────────────────────────
 
@@ -447,9 +397,15 @@ export async function scaffoldProject(opts: ScaffoldProjectOptions): Promise<Sca
     dependsOnGuids = [...new Set(dependsOnGuids)];
   }
 
-  let templateTargets: string | null = null;
-  if (opts.templateProject) {
-    try { templateTargets = buildTasksTargetsOf((await readTextKeepingBom(opts.templateProject)).text); } catch { /* optional */ }
+  const template = opts.template ?? await defaultProjectTemplate();
+  let rnrproj: string;
+  try {
+    rnrproj = renderRnrprojFromTemplate(template.text, {
+      modelName: opts.modelName, projectName: opts.projectName, projectGuid: guid,
+    });
+  } catch (e) {
+    if (e instanceof ProjectTemplateError) throw new ScaffoldError(`cannot use the project template: ${e.message}`);
+    throw e;
   }
 
   // ── Writes ────────────────────────────────────────────────────────────────
@@ -459,12 +415,7 @@ export async function scaffoldProject(opts: ScaffoldProjectOptions): Promise<Sca
   const relPath = `${opts.projectName}\\${opts.projectName}.rnrproj`;
   try {
     await fs.mkdir(projectDir, { recursive: true });
-    await writeFileAtomic(projectPath, renderRnrproj({
-      modelName: opts.modelName,
-      projectName: opts.projectName,
-      projectGuid: guid,
-      buildTasksTargets: templateTargets,
-    }));
+    await writeFileAtomic(projectPath, rnrproj);
     written.push(projectPath);
 
     let solutionPath: string | null = null;
@@ -485,7 +436,7 @@ export async function scaffoldProject(opts: ScaffoldProjectOptions): Promise<Sca
       written.push(solutionPath);
     }
 
-    return { projectPath, projectGuid: guid, solutionPath, solutionMode: mode, written, dependsOn };
+    return { projectPath, projectGuid: guid, solutionPath, solutionMode: mode, written, dependsOn, template };
   } catch (err) {
     // Undo this call's files; the shared .sln is written last, so it is untouched here.
     for (const f of written) {

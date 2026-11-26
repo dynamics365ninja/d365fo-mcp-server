@@ -88,6 +88,12 @@ those are called out explicitly below.
   edit applies without a restart, and the refusal names the config file's path.
 
 ### Fixed
+- **A new project imports the build tasks of the Visual Studio tools installed now, not
+  those of an older project.** `d365fo_file(action="project", operation="create")` copied the
+  build-tasks `.targets` name from an existing project of the model, which after a Visual
+  Studio upgrade could be a file that no longer exists. Now the `.rnrproj` comes from the
+  project template of Visual Studio's Finance and Operations extension, or from a built-in
+  copy of it when the extension is not installed. The result names the template it used.
 - **UDE test runs and deployments no longer open a new sign-in tab in the browser for
   almost every call.** Since 1.25.1, the server forgot every token it got after it
   started: each call to the environment went back to the tokens the server had at start.

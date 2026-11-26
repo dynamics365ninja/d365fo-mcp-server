@@ -38,6 +38,8 @@ describe('d365fo_file(action="project", operation="create")', () => {
       params: { operation: 'create', projectName: 'T-002-New', modelName: 'ContosoCore', projectsRoot: root, activate: false },
     });
     expect(r.isError, r.content[0].text).toBeFalsy();
+    // tests/setup.ts makes every test use the built-in template.
+    expect(r.content[0].text).toContain('template: built-in (no Finance and Operations extension found in Visual Studio)');
     const rnrproj = await fs.readFile(path.join(root, 'T-002-New', 'T-002-New.rnrproj'), 'utf-8');
     expect(rnrproj).toContain('<Model>ContosoCore</Model>');
     expect(await fs.readFile(path.join(root, 'ContosoCore.sln'), 'utf-8')).toContain(String.raw`T-002-New\T-002-New.rnrproj`);
