@@ -46,6 +46,15 @@ those are called out explicitly below.
   publisher, and preselect the ones not published by Microsoft. If the ISV step fails, the
   index is still built without the models and the warning names the command to retry. Nothing
   changes until the setting is set. See docs/BINARY_ISV_MODELS.md.
+- **The Dataverse sign-in on UDE says in the log why it opened the browser.** A test run
+  could open a new sign-in tab for nearly every call it made to the environment, and
+  nothing showed why the silent renewal before each of them failed: the error was
+  swallowed. Now the server writes timestamped `[dataverse-auth]` lines with the process id
+  to stderr: failed silent requests with msal's error details and the state of the account,
+  silent renewals, numbered browser sign-ins, token cache writes and reloads (with token
+  counts before and after), and msal's own warnings. Tokens, account names, email addresses
+  and profile paths are never logged. To keep the lines, set `LOG_FILE` (`server.logFile`)
+  and restart the server.
 
 
 ### Changed
@@ -85,6 +94,16 @@ those are called out explicitly below.
   Studio upgrade could be a file that no longer exists. Now the `.rnrproj` comes from the
   project template of Visual Studio's Finance and Operations extension, or from a built-in
   copy of it when the extension is not installed. The result names the template it used.
+- **UDE test runs and deployments no longer open a new sign-in tab in the browser for
+  almost every call.** Since 1.25.1, the server forgot every token it got after it
+  started: each call to the environment went back to the tokens the server had at start.
+  If those still worked, each call quietly fetched a new token. If they didn't, each call
+  opened a new sign-in tab, which the browser usually completed at once. Now the server
+  keeps the tokens it gets, so it signs in or renews a token only when needed.
+- **A Dataverse sign-in completed while its page was being shown again no longer fails the
+  call.** When the call that started a browser sign-in on UDE had given up, the next call
+  showed the same page again; if the sign-in finished during that moment, the call failed
+  with a TypeError instead of returning the token. It now returns the token.
 - **A `{` inside a string no longer drops the methods after it.** Creating a class, table
   or table extension from `sourceCode` split it into methods by counting braces in the raw
   text, so an unbalanced brace in a string literal or comment — such as the `'{4:'` an
