@@ -16,13 +16,23 @@
  *     The solution is the developer's own statement of what they work on
  *     together, and Visual Studio already lets them edit every project in it;
  *   • it is listed in `workspace.models` (D365FO_WORKSPACE_MODELS), or in
- *     D365FO_CROSS_MODEL_WRITE_MODELS, the older name of the same list.
+ *     D365FO_CROSS_MODEL_WRITE_MODELS, the older name of the same list;
+ * and it is not listed in `workspace.excludeModels` (D365FO_WORKSPACE_EXCLUDE_MODELS),
+ * which takes a model out again whatever the solution or the other list says. A
+ * customer's build solution holds a project for every ISV model shipped as source,
+ * only so that the pipeline compiles it; read as a
+ * statement of what the workspace develops, it made that ISV code writable in
+ * place (#1342). The anchor itself cannot be excluded.
  *
  * Every other custom model is still refused by the cross-model guard: the
  * failure that guard was written for (an agent editing a shared model in place,
  * from a workspace that only consumes it) is untouched by this. The solution is
  * read from the project the SERVER detected or the user configured, never from a
- * get_workspace_info project switch, so a tool call cannot widen the set.
+ * get_workspace_info project switch, so a tool call cannot widen the set. When
+ * neither exists — several projects build the anchor model and none was picked —
+ * no solution is read at all, except the one D365FO_SOLUTION_PATH names: every
+ * solution that lists any of those projects would be a guess about intent, and
+ * one build solution among them was enough to add every model it builds (#1342).
  *
  * The guard is synchronous and is called from a dozen writers, so the solution
  * part is cached here and refreshed by refreshWorkspaceModels(), which
@@ -68,6 +78,17 @@ export function configuredWorkspaceModels(): string[] {
     if (!out.some(o => eq(o, name))) out.push(name);
   }
   return out;
+}
+
+/** The models `workspace.excludeModels` takes out of the workspace (#1342). */
+export function excludedWorkspaceModels(): string[] {
+  reloadWritePolicy();
+  return splitList(process.env.D365FO_WORKSPACE_EXCLUDE_MODELS);
+}
+
+/** True when `workspace.excludeModels` lists `model`. */
+export function isExcludedWorkspaceModel(model: string | null | undefined): boolean {
+  return !!model && excludedWorkspaceModels().some(m => eq(m, model));
 }
 
 // ── Solution projects ────────────────────────────────────────────────────────
@@ -148,8 +169,11 @@ export interface WorkspaceModelsConfig {
 
 /**
  * The projects the workspace itself points at: the one the server detected or
- * the user configured, else the anchor model's projects from the solutions scan.
- * Never a project a get_workspace_info switch activated — see the header.
+ * the user configured. Never a project a get_workspace_info switch activated,
+ * and never "every project of the anchor model" when none was picked — see the
+ * header. With 81 work-item projects building one model, the solutions that
+ * list any of them included the customer's build solution, and with it every
+ * ISV model that solution compiles (#1342).
  */
 function anchorProjects(cm: WorkspaceModelsConfig): string[] {
   const out: string[] = [];
@@ -158,12 +182,6 @@ function anchorProjects(cm: WorkspaceModelsConfig): string[] {
   };
   try { add(cm.getServerDetectedProject?.()?.projectPath); } catch { /* best effort */ }
   try { add(cm.getConfiguredProjectPath?.()); } catch { /* best effort */ }
-  if (out.length === 0) {
-    try {
-      const anchor = cm.getWriteAnchorModel?.();
-      for (const p of cm.getProjectsForModel?.(anchor) ?? []) add(p);
-    } catch { /* best effort */ }
-  }
   return out;
 }
 
@@ -225,12 +243,16 @@ export async function refreshWorkspaceModels(cm: WorkspaceModelsConfig): Promise
 
 /**
  * Every model this workspace develops, with the reason it counts. The anchor
- * comes first when given.
+ * comes first when given. A model `workspace.excludeModels` lists is left out,
+ * unless it is the anchor.
  */
 export function workspaceModels(anchor?: string | null): WorkspaceModel[] {
   const out: WorkspaceModel[] = [];
+  const excluded = excludedWorkspaceModels();
   const add = (name: string, source: WorkspaceModelSource) => {
-    if (name && !out.some(m => eq(m.name, name))) out.push({ name, source });
+    if (!name || out.some(m => eq(m.name, name))) return;
+    if (source !== 'anchor' && excluded.some(x => eq(x, name))) return;
+    out.push({ name, source });
   };
   if (anchor) add(anchor, 'anchor');
   for (const p of solutionState.projects) add(p.modelName, 'solution');
@@ -240,7 +262,7 @@ export function workspaceModels(anchor?: string | null): WorkspaceModel[] {
 
 /** The reason `model` counts as one of this workspace's models, or null. */
 export function workspaceModelSource(model: string | null | undefined): WorkspaceModelSource | null {
-  if (!model) return null;
+  if (!model || isExcludedWorkspaceModel(model)) return null;
   if (solutionState.projects.some(p => eq(p.modelName, model))) return 'solution';
   if (configuredWorkspaceModels().some(m => eq(m, model))) return 'config';
   return null;

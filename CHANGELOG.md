@@ -55,6 +55,17 @@ those are called out explicitly below.
   counts before and after), and msal's own warnings. Tokens, account names, email addresses
   and profile paths are never logged. To keep the lines, set `LOG_FILE` (`server.logFile`)
   and restart the server.
+- **`workspace.excludeModels` takes a model out of the workspace's models, whatever its
+  solution says (#1342).** A customer's build solution holds a project for every ISV model
+  shipped as source, only so that the pipeline compiles it. With the workspace's project in
+  that solution, those ISV models counted as developed in the workspace, so an agent edited
+  an ISV class in place instead of being refused and pointed to an extension. Now the models
+  listed in `workspace.excludeModels` (`D365FO_WORKSPACE_EXCLUDE_MODELS`) are refused like
+  any other custom model, with the extension route, even when the solution,
+  `workspace.models` or the main model's `<InternalsVisibleTo>` names them. The refusal says
+  the model is excluded and that removing it from the list is the user's decision. The
+  model of the workspace's own project cannot be excluded. Re-read before every write, like
+  `workspace.models`.
 
 
 ### Changed
@@ -67,7 +78,12 @@ those are called out explicitly below.
   another model carried a note telling the agent to undo it. Now a model belongs to the
   workspace when it is the project's model, when a project of the same `.sln`/`.slnx`
   builds it, when the main model's descriptor names it in `<InternalsVisibleTo>`, or when
-  the new setting `workspace.models` (`D365FO_WORKSPACE_MODELS`) lists it.
+  the new setting `workspace.models` (`D365FO_WORKSPACE_MODELS`) lists it, and
+  `workspace.excludeModels` does not (see Added). The solution is the one of the project the
+  server detected or `workspace.projectPath` names, or the one `workspace.solutionPath`
+  names. When several projects build the main model and none of them was picked, no
+  solution is read: every solution that listed any of them counted at first, and one build
+  solution was enough to make every ISV model it compiles writable in place (#1342).
   `D365FO_CROSS_MODEL_WRITE_MODELS` is its older name and still works. Writes into these
   models are neither refused nor flagged. `create` honours `modelName`, and refuses a
   `modelName` that names a Microsoft model or a `projectPath` of another model. Objects and

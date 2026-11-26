@@ -202,6 +202,14 @@ A write into any of them is an ordinary write. `d365fo_file(action="create", mod
 
 The setting is re-read before every write, from the config file and from `.env`, so an edit applies to the next attempt without a restart. Put it in the config file: in an npm installation the `.env` sits in the package folder, and an update replaces it.
 
+The solution is read only from the project the server detected or you configured (`workspace.projectPath`), or from the solution `workspace.solutionPath` names. When several projects build the main model and none of them was picked — one project per work item under `workspace.solutionsPath`, say — no solution is read: which of them states what the workspace develops would be a guess. List the other models in `workspace.models` then.
+
+A build solution often holds a project for every ISV model shipped as source, only so that the pipeline compiles it. Those models are not developed in the workspace. Take them out with `workspace.excludeModels`; it outranks the solution and `workspace.models`, and writes into them are refused with the extension route, like writes into any other custom model:
+
+```json
+{ "workspace": { "excludeModels": ["ContosoIsvCore", "ContosoIsvReports"] } }
+```
+
 ### Other custom models are refused
 
 Any other custom model is code this workspace only consumes — for example a shared `ContosoFinanceCore` that the country model `ContosoFinanceSK` extends, when the workspace's solution holds only the country model.
