@@ -12,44 +12,9 @@ import * as path from 'path';
 import { getConfigManager, fallbackPackagePath } from './configManager.js';
 import { PackageResolver } from './packageResolver.js';
 import { findDescriptorPath } from '../metadata/modelDescriptor.js';
+import { aotFolderFor } from '../metadata/aotFolders.js';
 
-/**
- * objectType → the Ax* metadata folder its XML lives in. Module-level because
- * two functions answer questions about that layout now: findD365FileOnDisk
- * (where the file IS) and expectedD365FilePath (where it WOULD be).
- */
-const AOT_FOLDER_BY_OBJECT_TYPE: Record<string, string> = {
-  class: 'AxClass',
-  table: 'AxTable',
-  form: 'AxForm',
-  enum: 'AxEnum',
-  query: 'AxQuery',
-  view: 'AxView',
-  map: 'AxMap',
-  edt: 'AxEdt',
-  'data-entity': 'AxDataEntityView',
-  report: 'AxReport',
-  'table-extension': 'AxTableExtension',
-  'class-extension': 'AxClass',
-  'form-extension': 'AxFormExtension',
-  'enum-extension': 'AxEnumExtension',
-  'edt-extension': 'AxEdtExtension',
-  'data-entity-extension': 'AxDataEntityViewExtension',
-  'menu-item-display': 'AxMenuItemDisplay',
-  'menu-item-action': 'AxMenuItemAction',
-  'menu-item-output': 'AxMenuItemOutput',
-  'menu-item-display-extension': 'AxMenuItemDisplayExtension',
-  'menu-item-action-extension': 'AxMenuItemActionExtension',
-  'menu-item-output-extension': 'AxMenuItemOutputExtension',
-  menu: 'AxMenu',
-  'menu-extension': 'AxMenuExtension',
-  'security-privilege': 'AxSecurityPrivilege',
-  'security-duty': 'AxSecurityDuty',
-  'security-role': 'AxSecurityRole',
-  'security-duty-extension': 'AxSecurityDutyExtension',
-  'security-role-extension': 'AxSecurityRoleExtension',
-  'ignore-diagnostic-list': 'AxIgnoreDiagnosticList',
-};
+// objectType → Ax* folder: metadata/aotFolders.ts, the same map the create tool writes with.
 
 /**
  * Resolve a MODEL DESCRIPTOR's path: <root>/<Package>/Descriptor/<Model>.xml.
@@ -157,7 +122,7 @@ export async function findD365FileOnDisk(
   modelName?: string,
   explicitPackagePath?: string,
 ): Promise<string | null> {
-  const objectFolder = AOT_FOLDER_BY_OBJECT_TYPE[objectType];
+  const objectFolder = aotFolderFor(objectType);
   if (!objectFolder) return null;
 
   const configManager = getConfigManager();
@@ -323,7 +288,7 @@ export async function findD365FileViaIndex(
   modelName?: string,
 ): Promise<IndexedObjectFile | null> {
   // Types with no folder of their own are not objects this can read a file for.
-  if (!AOT_FOLDER_BY_OBJECT_TYPE[objectType]) return null;
+  if (!aotFolderFor(objectType)) return null;
 
   let rows: Array<{ file_path: string; model: string }>;
   try {
@@ -530,7 +495,7 @@ export async function expectedD365FilePath(
   modelName?: string,
   explicitPackagePath?: string,
 ): Promise<string | null> {
-  const objectFolder = AOT_FOLDER_BY_OBJECT_TYPE[objectType];
+  const objectFolder = aotFolderFor(objectType);
   if (!objectFolder) return null;
 
   const configManager = getConfigManager();

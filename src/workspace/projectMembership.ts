@@ -33,6 +33,7 @@
 
 import * as fs from 'fs/promises';
 import { Parser } from '../utils/xml.js';
+import { AOT_FOLDER_BY_OBJECT_TYPE, aotFolderFor } from '../metadata/aotFolders.js';
 
 export type MembershipStatus =
   /** Referenced by the project we are writing into. */
@@ -56,53 +57,11 @@ export interface Membership {
  * One copy, because the writer and the membership check disagreeing is a bug
  * that looks exactly like a missing registration. ProjectFileManager builds the
  * Include from this; verify_d365fo_project and the inline check look it up with
- * the same function.
+ * the same function. The map itself is metadata/aotFolders.ts, which the create
+ * tool and the on-disk lookup use too.
  */
-const AX_FOLDER_BY_OBJECT_TYPE: Record<string, string> = {
-  class: 'AxClass',
-  'class-extension': 'AxClass',
-  table: 'AxTable',
-  enum: 'AxEnum',
-  form: 'AxForm',
-  query: 'AxQuery',
-  view: 'AxView',
-  'data-entity': 'AxDataEntityView',
-  'table-extension': 'AxTableExtension',
-  'form-extension': 'AxFormExtension',
-  'data-entity-extension': 'AxDataEntityViewExtension',
-  report: 'AxReport',
-  'menu-item-display': 'AxMenuItemDisplay',
-  'menu-item-action': 'AxMenuItemAction',
-  'menu-item-output': 'AxMenuItemOutput',
-  'menu-item-display-extension': 'AxMenuItemDisplayExtension',
-  'menu-item-action-extension': 'AxMenuItemActionExtension',
-  'menu-item-output-extension': 'AxMenuItemOutputExtension',
-  edt: 'AxEdt',
-  'edt-extension': 'AxEdtExtension',
-  'enum-extension': 'AxEnumExtension',
-  menu: 'AxMenu',
-  'menu-extension': 'AxMenuExtension',
-  'security-privilege': 'AxSecurityPrivilege',
-  'security-duty': 'AxSecurityDuty',
-  'security-role': 'AxSecurityRole',
-  'security-duty-extension': 'AxSecurityDutyExtension',
-  'security-role-extension': 'AxSecurityRoleExtension',
-  'business-event': 'AxClass',
-  tile: 'AxTile',
-  kpi: 'AxKPI',
-  map: 'AxMap',
-  service: 'AxService',
-  'service-group': 'AxServiceGroup',
-  macro: 'AxMacroDictionary',
-  'configuration-key': 'AxConfigurationKey',
-  'security-policy': 'AxSecurityPolicy',
-  'aggregate-measurement': 'AxAggregateMeasurement',
-  'license-code': 'AxLicenseCode',
-  'ignore-diagnostic-list': 'AxIgnoreDiagnosticList',
-};
-
 export function axFolderForObjectType(objectType: string): string {
-  return AX_FOLDER_BY_OBJECT_TYPE[objectType] || 'AxClass';
+  return aotFolderFor(objectType) || 'AxClass';
 }
 
 /**
@@ -120,13 +79,13 @@ export function axFolderForObjectType(objectType: string): string {
  * that already know the type has a folder keep using axFolderForObjectType.
  */
 export function hasAxFolder(objectType: string): boolean {
-  return Object.hasOwn(AX_FOLDER_BY_OBJECT_TYPE, objectType);
+  return Object.hasOwn(AOT_FOLDER_BY_OBJECT_TYPE, objectType);
 }
 
 /** AOT folder name (any case) → object type. Used to read objects back out of a project. */
 export function objectTypeForAxFolder(axFolder: string): string | undefined {
   const needle = axFolder.toLowerCase();
-  for (const [type, folder] of Object.entries(AX_FOLDER_BY_OBJECT_TYPE)) {
+  for (const [type, folder] of Object.entries(AOT_FOLDER_BY_OBJECT_TYPE)) {
     // First wins, so 'class' is returned for AxClass rather than 'class-extension'.
     if (folder.toLowerCase() === needle) return type;
   }

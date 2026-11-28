@@ -104,6 +104,15 @@ those are called out explicitly below.
   edit applies without a restart, and the refusal names the config file's path.
 
 ### Fixed
+- **`project add-object` finds a security policy, configuration key, license code, macro,
+  tile, KPI, service, service group or aggregate measurement on disk.** The on-disk lookup
+  kept its own list of object type folders, which knew 30 of the types `create` writes. For
+  the other ten, `d365fo_file(action="project", operation="add-object")` answered "no such
+  file on disk" for a file `create` had just written, so a security policy created with
+  `xmlContent` could be in no project with no way to register it. Reads and deletes that go
+  through the same lookup missed those types too. Now `create`, the project registration and
+  the lookup share one map (`src/metadata/aotFolders.ts`), and a test fails when a `create`
+  object type has no folder in it.
 - **A new project imports the build tasks of the Visual Studio tools installed now, not
   those of an older project.** `d365fo_file(action="project", operation="create")` copied the
   build-tasks `.targets` name from an existing project of the model, which after a Visual

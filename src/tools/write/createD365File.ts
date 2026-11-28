@@ -4,6 +4,7 @@
  */
 
 import * as fs from 'fs/promises';
+import { aotFolderFor } from '../../metadata/aotFolders.js';
 import { directXmlSetIndexValidTimeState, coerceNoYesFlag } from './directXmlWriters.js';
 import { applyCreateTags } from './tagsApply.js';
 import { writeFileAtomic } from '../../utils/atomicFileWrite.js';
@@ -1219,49 +1220,9 @@ export async function handleCreateD365File(
       : '';
 
     // Determine object folder based on type
-    const objectFolderMap: Record<string, string> = {
-      class: 'AxClass',
-      'class-extension': 'AxClass',
-      table: 'AxTable',
-      enum: 'AxEnum',
-      form: 'AxForm',
-      query: 'AxQuery',
-      view: 'AxView',
-      'data-entity': 'AxDataEntityView',
-      report: 'AxReport',
-      edt: 'AxEdt',
-      'edt-extension': 'AxEdtExtension',
-      'table-extension': 'AxTableExtension',
-      'form-extension': 'AxFormExtension',
-      'data-entity-extension': 'AxDataEntityViewExtension',
-      'enum-extension': 'AxEnumExtension',
-      'menu-item-display': 'AxMenuItemDisplay',
-      'menu-item-action': 'AxMenuItemAction',
-      'menu-item-output': 'AxMenuItemOutput',
-      'menu-item-display-extension': 'AxMenuItemDisplayExtension',
-      'menu-item-action-extension': 'AxMenuItemActionExtension',
-      'menu-item-output-extension': 'AxMenuItemOutputExtension',
-      menu: 'AxMenu',
-      'menu-extension': 'AxMenuExtension',
-      'security-privilege': 'AxSecurityPrivilege',
-      'security-duty': 'AxSecurityDuty',
-      'security-role': 'AxSecurityRole',
-      'security-duty-extension': 'AxSecurityDutyExtension',
-      'security-role-extension': 'AxSecurityRoleExtension',
-      'business-event': 'AxClass',
-      tile: 'AxTile',
-      kpi: 'AxKPI',
-      map: 'AxMap',
-      service: 'AxService',
-      'service-group': 'AxServiceGroup',
-      macro: 'AxMacroDictionary',
-      'configuration-key': 'AxConfigurationKey',
-      'security-policy': 'AxSecurityPolicy',
-      'aggregate-measurement': 'AxAggregateMeasurement',
-      'license-code': 'AxLicenseCode',
-    };
+    // Same map the project registration and the disk lookup use (metadata/aotFolders.ts).
 
-    const objectFolder = objectFolderMap[args.objectType];
+    const objectFolder = aotFolderFor(args.objectType);
     if (!objectFolder) {
       throw new Error(`Unsupported object type: ${args.objectType}`);
     }
