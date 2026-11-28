@@ -51,6 +51,7 @@
  *   ATTR002 [SysObsolete] without message, isError AND date (xppbp moniker)
  *   EXT001  an extension-method class whose class or methods are not static
  *   KW001   a variable named after a reserved word
+ *   INT001  an interface method declared with ";" instead of an empty body
  *
  * Keyword scans run against a comment/string-masked copy of the source
  * (maskStringsAndComments) to avoid false positives inside literals/comments.
@@ -2434,6 +2435,73 @@ function checkExtensionMethodClassShape(code: string): ValidationViolation[] {
 }
 
 /**
+ * INT001 — an interface method declared without a body.
+ *
+ * C# and Java end an interface member with `;`. X++ does not: every interface method
+ * has an empty body, `public void run(str _a) { }`. Written C#-style, the compiler stops
+ * with a fatal "'{' expected" on the interface, and the errors it then reports on the
+ * implementing classes ("declared private on the base class and may not be overridden")
+ * and on the callers ("expects 0 argument(s)") point everywhere except at the cause.
+ *
+ * Checked after an `interface` declaration only: inside its braces, or after them when
+ * the methods follow the declaration as separate blocks, the way AxClass XML stores
+ * them. A statement at that level that has a method header's shape and ends in `;` is
+ * reported. Over the shipped metadata (every AxClass, interfaces and classes alike) the
+ * rule reports nothing.
+ */
+const INTERFACE_DECL = /\binterface\s+[A-Za-z_]\w*/i;
+const BODILESS_METHOD_HEADER =
+  /^\s*(?:\[[^\]]*\]\s*)*(?:(?:public|protected|private|internal|static|final|abstract|client|server)\s+)*([A-Za-z_][\w.]*)(?:\[\])?\s+([A-Za-z_]\w*)\s*\([\s\S]*\)\s*$/;
+
+function checkInterfaceMethodBody(code: string): ValidationViolation[] {
+  const masked = maskStringsAndComments(code);
+  const decl = INTERFACE_DECL.exec(masked);
+  if (!decl) return [];
+  const lines = code.split('\n');
+  const violations: ValidationViolation[] = [];
+
+  // Statements at the interface's own level: depth 1 inside its braces, depth 0
+  // after them. A method with a body opens a brace, so it never ends in `;` here.
+  let depth = 0;
+  let parens = 0;
+  let start = decl.index + decl[0].length;
+  for (let i = start; i < masked.length; i++) {
+    const ch = masked[i];
+    if (ch === '(') parens++;
+    else if (ch === ')') parens--;
+    if (parens > 0) continue;
+    if (ch === '{' || ch === '}') {
+      depth += ch === '{' ? 1 : -1;
+      start = i + 1;
+    } else if (ch === ';') {
+      // The masker blanks a comment's text but keeps its `//` and `/*` markers, so a
+      // comment in front of the method would hide the header. Blank the markers too,
+      // keeping offsets, so the reported line is the header's own.
+      const statement = masked.slice(start, i)
+        .replace(/\/\/[^\n]*|\/\*|\*\//g, c => ' '.repeat(c.length));
+      const header = depth <= 1 ? BODILESS_METHOD_HEADER.exec(statement) : null;
+      // A return type: any declaration type, or void (reserved, so not one of those).
+      if (header && (/^void$/i.test(header[1]) || isDeclarationType(header[1]))) {
+        const at = start + statement.search(/\S/);
+        const lineNo = lineNumber(masked, at);
+        violations.push({
+          rule: 'INT001',
+          severity: 'error',
+          line: lineNo,
+          excerpt: lines[lineNo - 1]?.trim() ?? header[0].trim(),
+          fix: `An X++ interface method has an empty body, not a semicolon: ` +
+            `"public ${header[1]} ${header[2]}(…) { }". Written with ";" the compiler stops with ` +
+            `"'{' expected", and the errors it reports on the implementing classes and the ` +
+            'callers disappear once the interface is fixed.',
+        });
+      }
+      start = i + 1;
+    }
+  }
+  return violations;
+}
+
+/**
  * KW001 — a variable named after a reserved word.
  *
  * The reserved set is the parser's own (115 words, read from the shipped compiler),
@@ -2824,6 +2892,7 @@ const XPP_RULES = [
   checkSelectExpressionAndValidTimeState,
   checkAttributeArguments,
   checkExtensionMethodClassShape,
+  checkInterfaceMethodBody,
   checkStackedMethodAttributes,
   checkAssertExpectedException,
   checkTestMethodWithoutBase,
