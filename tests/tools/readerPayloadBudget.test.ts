@@ -14,7 +14,9 @@
 import { describe, it, expect } from 'vitest';
 import { tryBridgeTable, tryBridgeForm } from '../../src/bridge/bridgeAdapter';
 import { capToolResponse } from '../../src/tools/responseCaps';
-import { truncateOnBlockBoundary, TABLE_FIELD_PAGE_SIZE, DEFAULT_MAX_CONTROLS } from '../../src/utils/payloadBudget';
+import {
+  truncateOnBlockBoundary, TABLE_FIELD_PAGE_SIZE, DEFAULT_MAX_CONTROLS, FORM_METHOD_PAGE_SIZE,
+} from '../../src/utils/payloadBudget';
 
 // A bridge that is ready and answers readTable/readForm with the fixture.
 const fakeBridge = (answers: Record<string, unknown>): any => ({
@@ -130,6 +132,64 @@ describe('form control tree is capped (audit §3.9)', () => {
   });
 });
 
+describe('form methods are paged like class methods', () => {
+  // Each bridge form method carries up to 400 chars of source. With the control tree
+  // capped, a form with 60+ methods spent most of its answer on this list.
+  const formWithMethods = (count: number) => ({
+    name: 'ContosoRentalOrder',
+    model: 'ContosoExt',
+    dataSources: [],
+    controls: controlTree(5),
+    methods: Array.from({ length: count }, (_, i) => ({
+      name: `method${i}`,
+      source: `public void method${i}()\n{\n${'    info("@ContosoExt:Label");\n'.repeat(20)}}`,
+    })),
+  });
+  const shown = (text: string) => (text.match(/^### method\d+$/gm) ?? []).length;
+
+  it('renders one page of methods and names the next methodOffset', async () => {
+    const res = await tryBridgeForm(fakeBridge({ form: formWithMethods(62) }), 'ContosoRentalOrder');
+    const text = res!.content[0].text;
+
+    expect(shown(text)).toBe(FORM_METHOD_PAGE_SIZE);
+    expect(text).toContain(`## 🔧 Form Methods (62, showing 1–${FORM_METHOD_PAGE_SIZE})`);
+    expect(text).toContain(`${62 - FORM_METHOD_PAGE_SIZE} more methods`);
+    expect(text).toContain(`methodOffset: ${FORM_METHOD_PAGE_SIZE}`);
+    expect(text).not.toContain(`### method${FORM_METHOD_PAGE_SIZE}\n`);
+    // The summary still counts every method.
+    expect(text).toContain('Methods: 62');
+  });
+
+  it('serves a later page at methodOffset, and the last page has no "more" line', async () => {
+    const res = await tryBridgeForm(fakeBridge({ form: formWithMethods(62) }), 'ContosoRentalOrder', undefined, 60);
+    const text = res!.content[0].text;
+
+    expect(shown(text)).toBe(2);
+    expect(text).toContain('### method60');
+    expect(text).toContain('### method61');
+    expect(text).toContain('showing 61–62');
+    expect(text).not.toContain('more methods');
+  });
+
+  it('says when methodOffset is past the end', async () => {
+    const res = await tryBridgeForm(fakeBridge({ form: formWithMethods(20) }), 'ContosoRentalOrder', undefined, 30);
+    const text = res!.content[0].text;
+
+    expect(shown(text)).toBe(0);
+    expect(text).toContain('`methodOffset: 30` is past the end');
+  });
+
+  it('leaves a form with few methods as it was, with no paging text', async () => {
+    const res = await tryBridgeForm(fakeBridge({ form: formWithMethods(4) }), 'ContosoRentalOrder');
+    const text = res!.content[0].text;
+
+    expect(shown(text)).toBe(4);
+    expect(text).toContain('## 🔧 Form Methods (4)');
+    expect(text).not.toContain('showing');
+    expect(text).not.toContain('more methods');
+  });
+});
+
 describe('the new knobs are reachable from the published surface', () => {
   it('names fieldsOffset, fieldFilter and maxControls in the get_object_info options schema', async () => {
     // A payload cap the model cannot see does not shrink anything — it just makes
@@ -141,6 +201,7 @@ describe('the new knobs are reachable from the published surface', () => {
     expect(optionsDesc).toContain('fieldsOffset');
     expect(optionsDesc).toContain('fieldFilter');
     expect(optionsDesc).toContain('maxControls');
+    expect(optionsDesc).toMatch(/methodOffset \(form\)/);
   });
 });
 

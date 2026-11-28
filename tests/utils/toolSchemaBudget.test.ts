@@ -228,6 +228,10 @@ const CHARS_PER_TOKEN = 4;
 // run_systest_class's className says that on UDE it takes several classes of one model,
 // comma-separated, sent as one run (+40, no new parameter, the type stays string). Its
 // description says "classes". Measured payload after: 45_060. The ceiling holds.
+//
+// get_object_info's options name methodOffset for forms too, now that form methods
+// are paged like a class's (+13, no new parameter). Measured payload after: 45_089
+// (was 45_076). The ceiling holds.
 const TOTAL_BUDGET = 45_100;
 // axdb_sql is published only once SQL is configured, so TOTAL_BUDGET above —
 // the payload every default install sends — does not carry it. A configured

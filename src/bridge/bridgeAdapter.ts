@@ -37,7 +37,7 @@ import { subscriberAccessLevelValue } from '../utils/subscriberAccessLevel.js';
 import {
   pageFields, fieldsHeading, fieldsFooter,
   createControlBudget, chargeControl, chargeSkippedSubtree, controlsFooter,
-  methodOffsetPastEndNote, methodRangeText,
+  methodOffsetPastEndNote, methodRangeText, moreMethodsNote, FORM_METHOD_PAGE_SIZE,
   type ControlBudget,
 } from '../utils/payloadBudget.js';
 import type {
@@ -539,19 +539,20 @@ export async function tryBridgeForm(
   bridge: BridgeClient | undefined,
   formName: string,
   maxControls?: number,
+  methodOffset = 0,
 ): Promise<ToolResult | null> {
   if (!bridge?.isReady || !bridge.metadataAvailable) return null;
   try {
     const form = await bridge.readForm(formName);
     if (!form) return null;
-    return { content: [{ type: 'text', text: formatForm(form, maxControls) }] };
+    return { content: [{ type: 'text', text: formatForm(form, maxControls, methodOffset) }] };
   } catch (e) {
     recordBridgeFailure(`readForm(${formName})`, e);
     return null;
   }
 }
 
-function formatForm(form: BridgeFormInfo, maxControls?: number): string {
+function formatForm(form: BridgeFormInfo, maxControls?: number, methodOffset = 0): string {
   let out = `# Form: ${form.name}\n\n`;
   if (form.model) out += `**Model:** ${form.model}\n`;
   if (form.formPattern) out += `**Pattern:** ${form.formPattern}\n`;
@@ -580,10 +581,15 @@ function formatForm(form: BridgeFormInfo, maxControls?: number): string {
   out += buildControlTreeV2(form.controls, 0, budget);
   out += controlsFooter(budget);
 
-  // Methods
+  // Methods, paged like a class's: each carries up to 400 chars of source, and
+  // with the control tree capped this list was the largest part of a big form.
   if (form.methods && form.methods.length > 0) {
-    out += `\n## 🔧 Form Methods (${form.methods.length})\n\n`;
-    for (const m of form.methods) {
+    const total = form.methods.length;
+    out += `\n## 🔧 Form Methods (${total}`;
+    if (total > FORM_METHOD_PAGE_SIZE) out += methodRangeText(methodOffset, total, FORM_METHOD_PAGE_SIZE);
+    out += `)\n\n`;
+    out += methodOffsetPastEndNote(methodOffset, total, FORM_METHOD_PAGE_SIZE);
+    for (const m of form.methods.slice(methodOffset, methodOffset + FORM_METHOD_PAGE_SIZE)) {
       out += `### ${m.name}\n`;
       if (m.source) {
         const preview = m.source.substring(0, 400);
@@ -591,6 +597,7 @@ function formatForm(form: BridgeFormInfo, maxControls?: number): string {
       }
       out += '\n';
     }
+    out += moreMethodsNote(methodOffset, total, FORM_METHOD_PAGE_SIZE);
   }
 
   // Summary

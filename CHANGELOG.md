@@ -69,6 +69,13 @@ those are called out explicitly below.
 
 
 ### Changed
+- **`get_object_info` on a form lists its methods 15 at a time, like a class.** The control
+  tree was already capped at 150, but every form method was listed, and through the bridge
+  each one came with up to 400 characters of source. A platform form such as `SalesTable`
+  has 180 methods, so the method list was most of the answer. Now the first 15 are shown
+  with "180, showing 1–15", a line names the next `methodOffset`, and
+  `options={methodOffset: 15}` returns the next page. The summary still counts every
+  method. A form with 15 methods or fewer looks as before.
 - **A workspace can develop several models: its test model, or a solution split across
   models, is written into like its main model (#1332).** The server treated the model of
   the workspace's project as the only one it develops. `create` replaced an explicit
