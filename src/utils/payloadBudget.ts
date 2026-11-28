@@ -16,6 +16,20 @@ export const TABLE_FIELD_PAGE_SIZE = 50;
 /** Controls rendered before the tree is cut. A platform form can carry >1000. */
 export const DEFAULT_MAX_CONTROLS = 150;
 
+/**
+ * Form methods per page — the class page size. The bridge prints up to 400 chars of
+ * source per form method, and SalesTable has more than 60: the method list alone was
+ * the largest part of a form read once the control tree was capped.
+ */
+export const FORM_METHOD_PAGE_SIZE = 15;
+
+/** '' when nothing follows this page; otherwise the line naming the next methodOffset. */
+export function moreMethodsNote(offset: number, total: number, pageSize: number): string {
+  const rest = total - offset - pageSize;
+  if (offset >= total || rest <= 0) return '';
+  return `> ⚠️ **${rest} more methods.** Call again with \`methodOffset: ${offset + pageSize}\`.\n`;
+}
+
 export interface FieldPage<T> {
   visible: T[];
   /** Fields on the object, before filtering. */

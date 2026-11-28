@@ -336,3 +336,38 @@ describe('getFormInfoTool — searchControl must not be lost to the bridge', () 
     expect(textOf(result)).toMatch(/Source: C# bridge/);
   });
 });
+
+describe('getFormInfoTool — form methods are paged', () => {
+  const methods = Array.from({ length: 20 }, (_, i) =>
+    `      <Method>\n        <Name>method${i}</Name>\n        <Source>public void method${i}()\n{\n}</Source>\n      </Method>`,
+  ).join('\n');
+  const manyMethods = FORM_XML.replace(/<Methods>[\s\S]*?<\/Methods>/, `<Methods>\n${methods}\n    </Methods>`);
+
+  beforeEach(() => {
+    vi.mocked(fs.readFile).mockReset();
+    vi.mocked(fs.readFile).mockResolvedValue(manyMethods as never);
+  });
+
+  it('shows the first page and names the next methodOffset', async () => {
+    const out = textOf(await getFormInfoTool(req({ formName: 'MyFleetVehicleForm', filePath: FIXTURE_PATH }), ctx()));
+
+    expect(out).toContain('## 🔧 Form Methods (20, showing 1–15)');
+    expect(out).toContain('### method14');
+    expect(out).not.toContain('### method15');
+    expect(out).toContain('5 more methods');
+    expect(out).toContain('methodOffset: 15');
+    expect(out).toContain('**Methods:** 20');
+  });
+
+  it('serves the rest at methodOffset', async () => {
+    const out = textOf(await getFormInfoTool(
+      req({ formName: 'MyFleetVehicleForm', filePath: FIXTURE_PATH, methodOffset: 15 }), ctx(),
+    ));
+
+    expect(out).toContain('showing 16–20');
+    expect(out).toContain('### method15');
+    expect(out).toContain('### method19');
+    expect(out).not.toContain('### method14');
+    expect(out).not.toContain('more methods');
+  });
+});

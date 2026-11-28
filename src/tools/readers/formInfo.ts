@@ -26,6 +26,7 @@ import { assertWritePathAllowed } from '../../utils/pathContainment.js';
 import {
   createControlBudget, chargeControl, chargeSkippedSubtree, controlsFooter,
   DEFAULT_MAX_CONTROLS, type ControlBudget,
+  FORM_METHOD_PAGE_SIZE, methodOffsetPastEndNote, methodRangeText, moreMethodsNote,
 } from '../../utils/payloadBudget.js';
 
 const GetFormInfoArgsSchema = z.object({
@@ -51,6 +52,9 @@ const GetFormInfoArgsSchema = z.object({
   maxControls: z.number().optional().describe(
     `Cap on how many controls the tree renders (default ${DEFAULT_MAX_CONTROLS}). ` +
     'Prefer searchControl over raising this — a platform form has >1000 controls.'
+  ),
+  methodOffset: z.number().optional().default(0).describe(
+    `Offset for paginating form methods (use multiples of ${FORM_METHOD_PAGE_SIZE})`
   ),
 });
 
@@ -95,6 +99,7 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
       includeMethods,
       searchControl,
       maxControls,
+      methodOffset,
     } = args;
 
     // Explicit filePath skips the bridge — retry path for newly-created forms not yet indexed.
@@ -123,7 +128,7 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
           isError: true,
         };
       }
-      return await parseAndFormatForm(formName, 'Unknown', xmlContent, includeControls, includeDataSources, includeMethods, searchControl, maxControls);
+      return await parseAndFormatForm(formName, 'Unknown', xmlContent, includeControls, includeDataSources, includeMethods, searchControl, maxControls, methodOffset);
     }
 
     // searchControl is implemented on the XML path only, so the bridge — which
@@ -136,7 +141,7 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
     const wantsSearch = Boolean(searchControl);
 
     if (!wantsSearch) {
-      const bridgeResult = await tryBridgeForm(context.bridge, formName, maxControls);
+      const bridgeResult = await tryBridgeForm(context.bridge, formName, maxControls, methodOffset);
       if (bridgeResult) {
         // The bridge cannot know it is short — whatever the deserializer dropped
         // was gone before it looked. Compare against the file (#985).
@@ -157,7 +162,7 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
       try {
         const result = await parseAndFormatForm(
           indexed.ref.name, indexed.ref.model, indexed.xml,
-          includeControls, includeDataSources, includeMethods, searchControl, maxControls,
+          includeControls, includeDataSources, includeMethods, searchControl, maxControls, methodOffset,
         );
         return indexed.source === 'stored' ? appendNote(result, storedCopyNote(indexed.storedAt)) : result;
       } catch { /* not a usable AxForm XML — fall through to the error below */ }
@@ -167,7 +172,7 @@ export async function getFormInfoTool(request: CallToolRequest, context: XppServ
     // describe the form, but it cannot filter — say so rather than returning a
     // full tree that looks like the search found everything.
     if (wantsSearch) {
-      const bridgeFallback = await tryBridgeForm(context.bridge, formName, maxControls);
+      const bridgeFallback = await tryBridgeForm(context.bridge, formName, maxControls, methodOffset);
       if (bridgeFallback) {
         const note =
           `⚠️ searchControl="${searchControl}" was NOT applied: the form XML is not in the symbol ` +
@@ -350,6 +355,7 @@ async function parseAndFormatForm(
   includeMethods: boolean,
   searchControl?: string,
   maxControls?: number,
+  methodOffset = 0,
 ) {
   const xmlObj = await parseStringPromise(xmlContent);
 
@@ -391,7 +397,7 @@ async function parseAndFormatForm(
   }
 
   return prefixResult(
-    formatFormOutput(formInfo, includeControls, includeDataSources, includeMethods, maxControls),
+    formatFormOutput(formInfo, includeControls, includeDataSources, includeMethods, maxControls, methodOffset),
     orderNote,
   );
 }
@@ -642,6 +648,7 @@ function formatFormOutput(
   includeDataSources: boolean,
   includeMethods: boolean,
   maxControls?: number,
+  methodOffset = 0,
 ): any {
   let output = `# Form: \`${formInfo.name}\`\n\n`;
   output += `**Model:** ${formInfo.model}\n\n`;
@@ -687,12 +694,18 @@ function formatFormOutput(
   }
 
   if (includeMethods && formInfo.methods.length > 0) {
-    output += `## 🔧 Form Methods\n\n`;
-    for (const method of formInfo.methods) {
+    // Paged like the bridge path and like a class's methods.
+    const total = formInfo.methods.length;
+    output += `## 🔧 Form Methods (${total}`;
+    if (total > FORM_METHOD_PAGE_SIZE) output += methodRangeText(methodOffset, total, FORM_METHOD_PAGE_SIZE);
+    output += `)\n\n`;
+    output += methodOffsetPastEndNote(methodOffset, total, FORM_METHOD_PAGE_SIZE);
+    for (const method of formInfo.methods.slice(methodOffset, methodOffset + FORM_METHOD_PAGE_SIZE)) {
       output += `### ${method.name}\n\n`;
       // A compiled (binary ISV) form lists method names only; an empty code block would read as an empty method.
       if (method.signature) output += `\`\`\`xpp\n${method.signature}\n\`\`\`\n\n`;
     }
+    output += moreMethodsNote(methodOffset, total, FORM_METHOD_PAGE_SIZE);
   }
 
   output += `## 📈 Summary\n\n`;
