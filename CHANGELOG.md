@@ -29,6 +29,15 @@ those are called out explicitly below.
 ## [Unreleased]
 
 ### Added
+- **`validate_code` reports an interface method written with `;` instead of a body
+  (INT001).** X++ interface methods have an empty body, `public void run(str _a) { }`. An
+  agent used to C# writes `void run(str _a);`, and the compiler then stops with a fatal
+  "'{' expected" plus errors on the implementing classes and the callers that never name
+  the semicolon. The new error-severity rule looks only after an `interface` declaration,
+  inside its braces or after them, the way AxClass XML stores the methods. Over the 67,290
+  AxClass files of a platform install it reports nothing. With every shipped interface
+  method's body replaced by `;`, it finds 6,838 of the 6,842 (the four it misses return a
+  .NET generic type). The rule count in docs/ARCHITECTURE.md is 57.
 - **`d365fo-mcp index` indexes binary ISV models, also from an npm install, and `setup`
   offers the ones it finds.** Models shipped as compiled output only (`bin\*.dll`, no
   object XML) could be indexed signatures-only only by hand from a git checkout: the npm
